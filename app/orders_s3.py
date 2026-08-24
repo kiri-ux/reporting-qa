@@ -7,6 +7,7 @@ changed, so a monthly batch does not re-import an unchanged file.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import shutil
 import tempfile
 from pathlib import Path
@@ -97,7 +98,15 @@ def _resolve_keys(client) -> list[str]:
 
 
 def head() -> tuple[str, dt.datetime | None]:
-    """Combined fingerprint across every key, so adding a file counts as a change."""
+    """Combined fingerprint across every key, so adding a file counts as a change.
+
+    HASHED, not concatenated. The obvious version joined `key:etag` for every
+    object, which is ~67 characters each - five files overflowed the 255-char
+    column and Postgres rejected the insert inside an exception handler, so the
+    whole request 500'd with the real cause nowhere on screen. SQLite does not
+    enforce VARCHAR length, which is why every local test passed. A digest is
+    fixed width whatever the folder holds, and comparing it is all this is for.
+    """
     client = _client()
     parts, newest = [], None
     for key in _resolve_keys(client):
@@ -106,7 +115,25 @@ def head() -> tuple[str, dt.datetime | None]:
         lm = resp.get("LastModified")
         if lm and (newest is None or lm.replace(tzinfo=None) > newest):
             newest = lm.replace(tzinfo=None)
-    return "|".join(parts), newest
+    digest = hashlib.sha256("|".join(parts).encode()).hexdigest()
+    return f"{len(parts)}f-{digest[:40]}", newest
+
+
+def _fail(db: Session, source: str, message: str, prev: OrderSync | None,
+          etag: str = "", lm: dt.datetime | None = None) -> OrderSync:
+    """Record a failed sync.
+
+    The rollback matters: once a statement errors, Postgres aborts the whole
+    transaction and every later statement in it fails too. Without this, the
+    attempt to save the error message raises its own error and the caller gets
+    a bare 500 instead of the explanation.
+    """
+    db.rollback()
+    rec = OrderSync(source=source[:512], etag=etag[:255], last_modified=lm, ok=False,
+                    message=message, rows=prev.rows if prev else 0)
+    db.add(rec)
+    db.commit()
+    return rec
 
 
 def sync(db: Session, *, force: bool = False) -> OrderSync:
@@ -115,8 +142,7 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
     prev = last_sync(db)
 
     if not settings.s3_configured:
-        rec = OrderSync(source="", ok=False, message="No S3 bucket configured.", rows=0)
-        db.add(rec); db.commit(); return rec
+        return _fail(db, "", "No S3 bucket configured.", None)
 
     if not force and prev and prev.ok:
         age = (dt.datetime.utcnow() - prev.synced_at).total_seconds() / 60
@@ -126,13 +152,9 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
     try:
         etag, lm = head()
     except (CredentialsMissing, NothingToImport) as exc:
-        rec = OrderSync(source=source, ok=False, message=str(exc),
-                        rows=prev.rows if prev else 0)
-        db.add(rec); db.commit(); return rec
+        return _fail(db, source, str(exc), prev)
     except Exception as exc:
-        rec = OrderSync(source=source, ok=False, message=f"Could not reach S3: {exc}",
-                        rows=prev.rows if prev else 0)
-        db.add(rec); db.commit(); return rec
+        return _fail(db, source, f"Could not reach S3: {exc}", prev)
 
     if not force and prev and prev.ok and prev.etag == etag:
         prev.synced_at = dt.datetime.utcnow()          # unchanged, just touch it
@@ -157,10 +179,8 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
     except Exception as exc:
         if tmpdir:
             shutil.rmtree(tmpdir, ignore_errors=True)
-        rec = OrderSync(source=source, etag=etag, last_modified=lm, ok=False,
-                        message=f"Downloaded but could not import: {exc}",
-                        rows=prev.rows if prev else 0)
-        db.add(rec); db.commit(); return rec
+        return _fail(db, source, f"Downloaded but could not import: "
+                                 f"{type(exc).__name__}: {exc}", prev, etag, lm)
 
     n = result["kept"] if isinstance(result, dict) else result
     msg = f"Imported {n} order lines"
@@ -168,8 +188,8 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
         msg += f" from {result.get('files', 1)} file(s), {result.get('rows_read', 0):,} rows read"
         if result.get("duplicate_rows"):
             msg += f", {result['duplicate_rows']:,} duplicate rows ignored"
-    rec = OrderSync(source=f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys),
-                    etag=etag, last_modified=lm, rows=n, ok=True, message=msg + ".",
+    rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],
+                    etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + ".",
                     guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {})
     db.add(rec); db.commit()
     if tmpdir:

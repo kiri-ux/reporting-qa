@@ -177,7 +177,20 @@ async def orders_import(file: UploadFile = File(...), period: str = Form(""),
 
 @app.post("/orders/sync")
 def orders_sync(db: Session = Depends(get_db)):
-    sync_orders(db, force=True)
+    """A failed sync must land back on /orders with the reason on screen. A
+    bare 500 tells you nothing and hides the message the sync already wrote."""
+    try:
+        sync_orders(db, force=True)
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        try:
+            db.add(OrderSync(source="", ok=False, rows=0,
+                             message=f"Sync crashed: {type(exc).__name__}: {exc}"))
+            db.commit()
+        except Exception:  # noqa: BLE001 - never let logging the error be the error
+            db.rollback()
     return RedirectResponse("/orders", status_code=303)
 
 

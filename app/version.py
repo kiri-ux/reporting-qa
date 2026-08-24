@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.24-1"
-BUILD_NOTES = ("Vici brand shell: Atlas Blue rail, Agdasima headings, "
-               "GT Walsheim body. S3 failures now name their own cause. "
-               "Build number on every page.")
+BUILD = "2026.08.24-2"
+BUILD_NOTES = ("S3 fingerprint is hashed, so a folder of exports no longer "
+               "overflows its column and 500s the sync. A failed sync now "
+               "rolls back and shows the reason on the order list.")
 # ---------------------------------------------------------------------------
 
 

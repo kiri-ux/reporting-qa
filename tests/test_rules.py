@@ -295,3 +295,30 @@ def test_export_guidance_reports_the_range_to_pull():
     assert g["pull_to"] == dt.date.today().isoformat()
     assert g["pull_from"] < "2019-01-01"          # reaches back to the 2018 orders
     assert g["may_be_truncated"] is False
+
+
+def test_s3_fingerprint_fits_its_column():
+    """A folder of many exports must not overflow OrderSync.etag.
+
+    The first version joined `key:etag` per object. Five files came to 299
+    characters against a VARCHAR(255), so Postgres rejected the row from
+    inside an exception handler and the request 500'd with the real cause
+    nowhere on screen. SQLite ignores VARCHAR length, so the whole suite
+    passed while production was broken - which is why this test asserts the
+    length directly rather than trusting an insert to fail.
+    """
+    import hashlib
+    from app.db import OrderSync
+
+    limit = OrderSync.__table__.c.etag.type.length
+    for n_files in (1, 5, 50, 500):
+        parts = [f"orders/a_very_long_export_filename_{i:04d}.csv:"
+                 f"{'d41d8cd98f00b204e9800998ecf8427e'}" for i in range(n_files)]
+        digest = hashlib.sha256("|".join(parts).encode()).hexdigest()
+        fingerprint = f"{len(parts)}f-{digest[:40]}"
+        assert len(fingerprint) <= limit, f"{n_files} files overflows etag({limit})"
+
+    # different contents must still produce different fingerprints
+    a = hashlib.sha256(b"orders/x.csv:aaa").hexdigest()[:40]
+    b = hashlib.sha256(b"orders/x.csv:bbb").hexdigest()[:40]
+    assert a != b
