@@ -30,7 +30,8 @@ log = logging.getLogger("reportqa.partners")
 SEED = Path(__file__).parent / "seed" / "partners.csv"
 
 FIELDS = ("partner", "buyer", "buyer_email", "seo", "seo_email", "manager",
-          "reporting_team", "to_emails", "trainer", "reporting_notes", "buyer_notes")
+          "reporting_team", "to_emails", "trainer", "reporting_notes", "buyer_notes",
+          "group", "delivery_target")
 
 # Header spellings seen in exports of the roster sheet. The canonical field
 # names are added below too - the bundled seed file is written with those, and
@@ -47,6 +48,9 @@ HEADER_ALIASES = {
     "trainer": "trainer",
     "reporting notes": "reporting_notes",
     "buyer notes": "buyer_notes",
+    # Delivery. Markets sharing a group ship as one link.
+    "group": "group", "partner group": "group", "parent": "group",
+    "delivery": "delivery_target", "delivery target": "delivery_target",
 }
 HEADER_ALIASES.update({f: f for f in FIELDS})
 HEADER_ALIASES.update({f.replace("_", " "): f for f in FIELDS})
@@ -103,7 +107,9 @@ def import_partners(db: Session, raw: bytes | str, *, replace: bool = True) -> i
         be = get("buyer_email")
         if be and "@" not in be:
             break
-        rows[_key(name)] = {f: get(f) for f in FIELDS} | {"partner": name}
+        row = {f: get(f) for f in FIELDS} | {"partner": name}
+        row["group"] = row["group"] or name      # blank = ships on its own
+        rows[_key(name)] = row
 
     if replace:
         db.query(Partner).delete()

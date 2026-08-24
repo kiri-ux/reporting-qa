@@ -467,3 +467,128 @@ def test_seo_falls_back_to_the_seo_person():
     # an actual campaign manager always wins
     assert resolve_owner(p, "SEO", "Jane", "jane@v.com") == ("Jane", "jane@v.com")
     assert resolve_owner(None, "Display Ads", "") == ("", "")
+
+
+# ---------------------------------------------------------------- the cycle
+def test_business_days_skip_federal_holidays():
+    """Counting weekdays only is right eight months a year and quietly wrong
+    for the rest - and the months it breaks (January, December) are the ones
+    with no slack to absorb a two-day error."""
+    from app.cycle import federal_holidays, is_business_day, nth_business_day
+
+    # July 2026: the 4th is a Saturday, so Friday the 3rd is the holiday.
+    assert dt.date(2026, 7, 3) in federal_holidays(2026)
+    assert not is_business_day(dt.date(2026, 7, 3))
+
+    # January 2027: 1st is a Friday holiday, so business days start Monday 4th.
+    assert nth_business_day(2027, 1, 1) == dt.date(2027, 1, 4)
+    assert nth_business_day(2027, 1, 3) == dt.date(2027, 1, 6)
+
+    # Thanksgiving 2026 is Nov 26; the 5th business day of December is unaffected.
+    assert dt.date(2026, 11, 26) in federal_holidays(2026)
+    assert nth_business_day(2026, 12, 5) == dt.date(2026, 12, 7)
+
+
+def test_lifetime_window_matches_the_stated_rule():
+    """Ends in the data month, or by the 3rd business day of the next: in.
+    Ends on the 4th or 5th business day: waits for the following cycle."""
+    from app.cycle import cycle_for
+
+    c = cycle_for("2026-07")
+    assert c.lifetime_cutoff == dt.date(2026, 8, 5)     # Mon 3, Tue 4, Wed 5
+    assert c.due_on == dt.date(2026, 8, 7)              # 5th business day
+
+    assert c.needs_lifetime(dt.date(2026, 7, 1))
+    assert c.needs_lifetime(dt.date(2026, 7, 31))
+    assert c.needs_lifetime(dt.date(2026, 8, 1))        # ends on the 1st: in
+    assert c.needs_lifetime(dt.date(2026, 8, 5))        # 3rd business day: in
+    assert not c.needs_lifetime(dt.date(2026, 8, 6))    # 4th business day: out
+    assert not c.needs_lifetime(dt.date(2026, 8, 7))    # 5th business day: out
+    assert not c.needs_lifetime(dt.date(2026, 6, 30))   # last cycle's
+    assert not c.needs_lifetime(None)
+
+
+def test_a_partner_ships_only_when_every_report_is_signed_off():
+    """Delivery is gated on a person, not on the checks. A clean report that
+    nobody looked at must not ship, and a failing one ships only when someone
+    knowingly waives it."""
+    from app.board import Expected, GroupRow
+    from app.db import Report
+
+    def rep(sev, state):
+        return Report(severity=sev, review_state=state, findings=[])
+
+    clean_unreviewed = Expected(market="M", group="G", client="A", kind="monthly",
+                                report=rep("pass", "new"))
+    assert clean_unreviewed.state == "in"
+    assert not GroupRow("G", "", [clean_unreviewed]).ready
+
+    clean_reviewed = Expected(market="M", group="G", client="A", kind="monthly",
+                              report=rep("pass", "reviewed"))
+    assert clean_reviewed.state == "ready"
+    assert GroupRow("G", "", [clean_reviewed]).ready
+
+    failing_reviewed = Expected(market="M", group="G", client="B", kind="monthly",
+                                report=rep("fail", "reviewed"))
+    assert failing_reviewed.state == "errors"
+    assert not GroupRow("G", "", [failing_reviewed]).ready
+
+    waived = Expected(market="M", group="G", client="B", kind="monthly",
+                      report=rep("fail", "waived"))
+    assert waived.state == "ready"
+
+    # one missing report holds the whole group
+    missing = Expected(market="M", group="G", client="C", kind="lifetime")
+    assert missing.state == "missing"
+    assert not GroupRow("G", "", [clean_reviewed, missing]).ready
+
+    # and an empty group is not "ready" by vacuous truth
+    assert not GroupRow("G", "", []).ready
+
+
+def test_expected_set_covers_monthlies_and_lifetimes(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'c.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import board as bmod
+    importlib.reload(bmod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    db.add(db_mod.Partner(partner="7 Mountains PA State College", group="7 Mountains",
+                          reporting_team="Jacob", delivery_target="dropbox"))
+    db.add(db_mod.Partner(partner="7 Mountains KY", group="7 Mountains",
+                          reporting_team="Paulina"))
+    D = dt.date.fromisoformat
+    for client, product, s, e in [
+        ("Watsontown", "Display Ads", "2024-03-01", "2026-09-30"),   # still running
+        ("Centre Hills", "Connected TV Ads", "2026-02-01", "2026-07-31"),  # ended in July
+        ("Beech Bend", "Video Ads", "2026-06-01", "2026-08-03"),     # ends 1st bday
+        ("Late Co", "Display Ads", "2026-06-01", "2026-08-06"),      # ends 4th bday
+        ("Old Co", "Display Ads", "2025-01-01", "2026-06-15"),       # ended before
+    ]:
+        db.add(db_mod.OrderLine(market="7 Mountains PA State College", client=client,
+                                product=product, starts_on=D(s), ends_on=D(e),
+                                account_ids="14885"))
+    db.commit()
+
+    exp = bmod.expected_for(db, "2026-07")
+    got = {(e.client, e.kind) for e in exp}
+
+    assert ("Watsontown", "monthly") in got
+    assert ("Watsontown", "lifetime") not in got        # still running
+    assert ("Centre Hills", "monthly") in got
+    assert ("Centre Hills", "lifetime") in got          # ended inside July
+    assert ("Beech Bend", "lifetime") in got            # ended Aug 3
+    assert ("Late Co", "lifetime") not in got           # ended Aug 6
+    assert ("Old Co", "monthly") not in got             # ended in June
+    assert all(e.group == "7 Mountains" for e in exp)
+
+    groups = bmod.by_group(db, "2026-07", exp)
+    assert [g.group for g in groups] == ["7 Mountains"]
+    assert groups[0].target == "dropbox"
+    assert not groups[0].ready                          # nothing received yet

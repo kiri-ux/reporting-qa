@@ -339,6 +339,86 @@ def partners_csv(db: Session = Depends(get_db)):
                           "Buyer notes"], rows)
 
 
+# ---------------------------------------------------------------- cycle board
+@app.get("/cycle", response_class=HTMLResponse)
+def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
+               state: str = Query(""), db: Session = Depends(get_db)):
+    from .board import STATE_LABEL, by_group, expected_for, summary
+    from .cycle import current_period, cycle_for, recent_periods
+    from .delivery import latest_deliveries
+
+    period = period or current_period()
+    cyc = cycle_for(period)
+    exp = expected_for(db, period)
+    groups = by_group(db, period, exp)
+    if group:
+        groups = [g for g in groups if g.group == group]
+    rows = [e for g in groups for e in g.expected]
+    if state:
+        rows = [e for e in rows if e.state == state]
+    return templates.TemplateResponse(request, "cycle.html", {
+        "nav": "cycle", "cycle": cyc, "period": period,
+        "periods": recent_periods(), "groups": groups, "rows": rows,
+        "summary": summary(exp), "state_label": STATE_LABEL,
+        "filter_group": group, "filter_state": state,
+        "deliveries": latest_deliveries(db, period),
+        "configured": settings.delivery_configured,
+        "today": dt.date.today(),
+    })
+
+
+@app.post("/report/{report_id}/review")
+def review_report(report_id: int, request: Request, state: str = Form(...),
+                  who: str = Form(""), note: str = Form(""),
+                  db: Session = Depends(get_db)):
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    if state not in {"new", "reviewed", "waived", "needs_fix"}:
+        raise HTTPException(400, "unknown review state")
+    rep.review_state = state
+    rep.reviewed_by = who.strip()
+    rep.review_note = note.strip()
+    rep.reviewed_at = dt.datetime.utcnow() if state != "new" else None
+    db.commit()
+    back = request.headers.get("referer") or "/cycle"
+    return RedirectResponse(back, status_code=303)
+
+
+@app.post("/cycle/{period}/deliver")
+def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
+                  db: Session = Depends(get_db)):
+    from .delivery import deliver
+    deliver(db, period, group, force=bool(force))
+    return RedirectResponse(f"/cycle?period={period}", status_code=303)
+
+
+@app.get("/delivery/{delivery_id}/file")
+def delivery_file(delivery_id: int, db: Session = Depends(get_db)):
+    from .db import Delivery
+    d = db.get(Delivery, delivery_id)
+    if not d or not d.local_path or not Path(d.local_path).exists():
+        raise HTTPException(404)
+    return FileResponse(d.local_path, media_type="application/zip",
+                        filename=Path(d.local_path).name)
+
+
+@app.get("/cycle.csv")
+def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
+    from .board import expected_for
+    from .cycle import current_period
+    period = period or current_period()
+    rows = [[e.group, e.market, e.client, e.kind, ", ".join(e.products),
+             e.account_ids, e.ends_on or "", e.buyer, e.reporter,
+             e.state, e.report.reviewed_by if e.report else "",
+             e.report.review_note if e.report else ""]
+            for e in expected_for(db, period)]
+    return _csv_response(f"report-qa-cycle-{period}.csv",
+                         ["Partner group", "Market", "Client", "Kind", "Products",
+                          "Order", "Ends", "Buyer", "Reporter", "Status",
+                          "Reviewed by", "Note"], rows)
+
+
 @app.get("/partners", response_class=HTMLResponse)
 def partners_view(request: Request, db: Session = Depends(get_db)):
     from .partners import all_partners

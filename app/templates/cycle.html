@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}{{ cycle.label }} cycle · Report QA{% endblock %}
+{% block where %}Cycle · {{ cycle.label }}{% endblock %}
+{% block body %}
+
+<div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+  <div>
+    <h1>{{ cycle.label }} reports</h1>
+    <p class="sub">
+      Data for {{ cycle.starts_on.strftime('%b %-d') }}–{{ cycle.ends_on.strftime('%b %-d, %Y') }}.
+      Lifetimes included for orders ending through
+      <b>{{ cycle.lifetime_cutoff.strftime('%b %-d') }}</b> (3rd business day).
+      Due <b>{{ cycle.due_on.strftime('%A, %b %-d') }}</b> (5th business day)
+      {%- set d = cycle.due_on - today %}
+      {%- if d.days > 0 %} · {{ d.days }} day{{ 's' if d.days != 1 }} left
+      {%- elif d.days == 0 %} · <span style="color:var(--warn)">due today</span>
+      {%- else %} · <span style="color:var(--crit)">{{ -d.days }} day{{ 's' if -d.days != 1 }} late</span>
+      {%- endif %}.
+    </p>
+  </div>
+  <form method="get" action="/cycle" style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <label for="period" style="margin:0;font-size:12px">Cycle</label>
+    <select name="period" id="period" onchange="this.form.submit()"
+            style="font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--line);
+                   border-radius:20px;background:var(--surface);color:var(--ink)">
+      {% for p in periods %}
+        <option value="{{ p }}" {% if p == period %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<section>
+  <div class="cards">
+    <div><b>{{ summary.total }}</b><span>Expected{% if summary.lifetimes %}
+      · {{ summary.lifetimes }} lifetime{% endif %}</span></div>
+    <div class="c-fail"><b>{{ summary.missing }}</b><span>Not received</span></div>
+    <div><b>{{ summary['in'] + summary.warnings }}</b><span>In, awaiting review</span></div>
+    <div class="c-fail"><b>{{ summary.errors + summary.needs_fix }}</b><span>Errors or needs fix</span></div>
+    <div class="c-ok"><b>{{ summary.ready }}</b><span>Good to go</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">Partners ({{ groups|length }})</h2>
+    <span class="tabs">
+      {% if filter_group or filter_state %}
+        <a href="/cycle?period={{ period }}">Clear filters</a>{% endif %}
+      <a href="/cycle.csv?period={{ period }}" class="on">Download CSV</a>
+    </span>
+  </div>
+
+  <div class="glist">
+    {% for g in groups %}
+      {% set d = deliveries.get(g.group) %}
+      <div class="gcard {% if g.ready %}done{% endif %}">
+        <div class="ghead">
+          <div>
+            <h3 style="margin:0">{{ g.group }}</h3>
+            <p class="sub" style="margin:2px 0 0;font-size:12.5px">
+              {{ g.markets|length }} market{{ 's' if g.markets|length != 1 }} ·
+              {{ g.expected|length }} report{{ 's' if g.expected|length != 1 }}
+              {%- if g.target %} · {{ g.target }}{% endif %}</p>
+          </div>
+          <span class="pct {% if g.ready %}ok{% endif %}">{{ g.pct }}%</span>
+        </div>
+
+        <div class="bar" role="img"
+             aria-label="{{ g.counts.ready }} of {{ g.expected|length }} good to go">
+          {% for s in ['ready','warnings','in','needs_fix','errors','missing'] %}
+            {% if g.counts[s] %}
+              <span class="seg s-{{ s }}"
+                    style="flex:{{ g.counts[s] }}"
+                    title="{{ g.counts[s] }} {{ state_label[s] }}"></span>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <div class="gtags">
+          {% for s in ['missing','errors','needs_fix','in','warnings','ready'] %}
+            {% if g.counts[s] %}
+              <a class="pill p-{{ s }}"
+                 href="/cycle?period={{ period }}&group={{ g.group|urlencode }}&state={{ s }}">
+                {{ g.counts[s] }} {{ state_label[s] }}</a>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <div class="gfoot">
+          <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
+          {% if d and d.ok and d.share_url %}
+            <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
+              Open shared link</a>
+            <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>
+          {% elif d and d.ok %}
+            <a class="btn gold" href="/delivery/{{ d.id }}/file">Download zip</a>
+            <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>
+          {% elif g.ready and not d %}
+            <form method="post" action="/cycle/{{ period }}/deliver" style="display:inline">
+              <input type="hidden" name="group" value="{{ g.group }}">
+              <button class="btn gold" type="submit">Package &amp; share</button>
+            </form>
+          {% elif not g.ready %}
+            <span class="acct">{{ g.expected|length - g.counts.ready }} still open</span>
+          {% endif %}
+        </div>
+
+        {% if d and not d.ok %}
+          <p class="dfail">{{ d.message }}</p>
+          {% if d.local_path %}
+            <div class="gfoot">
+              <a class="btn" href="/delivery/{{ d.id }}/file">Download the zip anyway</a>
+              <form method="post" action="/cycle/{{ period }}/deliver" style="display:inline">
+                <input type="hidden" name="group" value="{{ g.group }}">
+                <button class="btn gold" type="submit">Retry upload</button>
+              </form>
+            </div>
+          {% elif g.ready %}
+            <form method="post" action="/cycle/{{ period }}/deliver">
+              <input type="hidden" name="group" value="{{ g.group }}">
+              <button class="btn gold" type="submit">Try again</button>
+            </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="empty">Nothing expected this cycle. Load the order list first.</p>
+    {% endfor %}
+  </div>
+</section>
+
+{% if rows %}
+<section>
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">
+      Reports{% if filter_group %} · {{ filter_group }}{% endif %}
+      {%- if filter_state %} · {{ state_label[filter_state] }}{% endif %}</h2>
+  </div>
+  <div class="tools">
+    <input type="search" data-filter="tbl-cycle" data-count="cnt-cycle"
+           placeholder="Filter by market, client, buyer, reporter...">
+    <span class="count" id="cnt-cycle"></span>
+  </div>
+  <div class="tw"><table id="tbl-cycle">
+    <thead><tr><th>Market</th><th>Client</th><th>Kind</th><th>Status</th>
+    <th>Findings</th><th>Reporter</th><th>Sign-off</th></tr></thead>
+    <tbody>{% for e in rows %}
+      <tr>
+        <td class="nw">{{ e.market }}</td>
+        <td><b>{{ e.client }}</b>
+          {% if e.report %}<br><a class="acct" href="/report/{{ e.report.id }}/file">PDF</a>{% endif %}</td>
+        <td class="nw">{% if e.kind == 'lifetime' %}
+          <span class="pill p-info">lifetime</span>
+          {% if e.ends_on %}<br><span class="acct">ended {{ e.ends_on }}</span>{% endif %}
+          {% else %}<span class="acct">monthly</span>{% endif %}</td>
+        <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
+        <td style="font-size:13px;color:var(--ink-2);max-width:38ch">
+          {% if e.report and e.report.findings %}
+            {% for f in e.report.findings[:3] %}{{ f.title or f.detail }}<br>{% endfor %}
+            {% if e.report.findings|length > 3 %}
+              <span class="acct">+{{ e.report.findings|length - 3 }} more</span>{% endif %}
+          {% elif e.report %}<span class="empty">All checks passed</span>
+          {% else %}<span class="empty">Not received</span>{% endif %}
+        </td>
+        <td class="nw">{{ e.reporter }}
+          {% if e.report and e.report.reviewed_by %}<br>
+            <span class="acct">{{ e.report.reviewed_by }}</span>{% endif %}</td>
+        <td class="nw">
+          {% if e.report %}
+          <form method="post" action="/report/{{ e.report.id }}/review" class="signoff">
+            <input type="text" name="who" placeholder="Your name" size="10"
+                   value="{{ e.report.reviewed_by }}">
+            <button class="mini ok" name="state" value="reviewed"
+                    {% if e.report.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
+            <button class="mini warn" name="state" value="needs_fix"
+                    {% if e.report.review_state == 'needs_fix' %}disabled{% endif %}>Needs fix</button>
+            {% if e.report.severity == 'fail' %}
+              <button class="mini" name="state" value="waived"
+                      title="Ship it anyway - the finding is a known quirk"
+                      {% if e.report.review_state == 'waived' %}disabled{% endif %}>Waive</button>
+            {% endif %}
+          </form>
+          {% else %}<span class="empty">—</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+
+<style>
+.glist{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.gcard{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+ box-shadow:var(--shadow);padding:15px 17px;display:flex;flex-direction:column;gap:11px}
+.gcard.done{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset,var(--shadow)}
+.ghead{display:flex;align-items:flex-start;gap:12px}
+.pct{margin-left:auto;font-family:Agdasima,sans-serif;font-size:26px;font-weight:700;
+ color:var(--atlas-50);font-variant-numeric:tabular-nums;line-height:1}
+.pct.ok{color:var(--ok)}
+.bar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--ink-10)}
+.seg{display:block}
+.s-ready{background:var(--ok)} .s-warnings{background:var(--gold)}
+.s-in{background:var(--velocity-50)} .s-needs_fix{background:var(--plum)}
+.s-errors{background:var(--cardinal)} .s-missing{background:var(--atlas-10)}
+.gtags{display:flex;flex-wrap:wrap;gap:5px}
+.gtags a{text-decoration:none}
+.gfoot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:auto;
+ padding-top:4px;font-size:13px}
+.dfail{margin:0;font-size:13px;color:var(--crit);background:var(--crit-bg);
+ padding:9px 12px;border-radius:8px}
+.p-ready{background:var(--ok-bg);color:var(--ok)}
+.p-warnings{background:var(--warn-bg);color:var(--warn)}
+.p-in{background:var(--velocity-10);color:var(--velocity)}
+.p-needs_fix{background:#F1E4F5;color:var(--plum)}
+.p-errors{background:var(--crit-bg);color:var(--crit)}
+.p-missing{background:var(--ink-10);color:#5B6672}
+.signoff{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.signoff input{font:inherit;font-size:12.5px;padding:4px 8px;border:1px solid var(--line);
+ border-radius:14px;background:var(--surface);color:var(--ink);width:88px}
+.mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
+ padding:4px 10px;border-radius:14px;border:1px solid var(--line);cursor:pointer;
+ background:var(--surface);color:var(--ink-2)}
+.mini:hover:not(:disabled){border-color:var(--velocity);color:var(--velocity)}
+.mini:disabled{opacity:.45;cursor:default}
+.mini.ok{border-color:var(--ok);color:var(--ok)}
+.mini.ok:hover:not(:disabled){background:var(--ok);color:#fff}
+.mini.warn{border-color:var(--warn);color:var(--warn)}
+.mini.warn:hover:not(:disabled){background:var(--warn);color:#fff}
+</style>
+{% endblock %}

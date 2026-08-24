@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.24-5"
-BUILD_NOTES = ("Filter and CSV download on the order list and partners. "
-               "Export date range shows even when the last sync failed. "
-               "Each S3 file is now classified on its own header.")
+BUILD = "2026.08.24-6"
+BUILD_NOTES = ("Monthly cycle board: what each partner owes, reporter "
+               "sign-off, and a packaged shareable link once every market "
+               "in a partner group is good to go.")
 # ---------------------------------------------------------------------------
 
 

@@ -39,6 +39,22 @@ class Settings(BaseSettings):
     # one market gets one Slack post and one email rather than eighteen.
     batch_quiet_minutes: int = 12
 
+    # ---- delivery ----------------------------------------------------------
+    # Where a finished partner's zip goes when the roster does not say.
+    delivery_target: str = "local"           # local | drive | dropbox
+
+    # Google: a service account JSON key, pasted whole into one env var. The
+    # service account's email must be a member of the shared drive.
+    google_service_account_json: str = ""
+    drive_parent_folder_id: str = ""         # folder inside the shared drive
+
+    # Dropbox: a refresh token, not an access token. Access tokens expire after
+    # four hours, so one pasted in by hand is dead before the next cycle.
+    dropbox_app_key: str = ""
+    dropbox_app_secret: str = ""
+    dropbox_refresh_token: str = ""
+    dropbox_folder: str = "/Vici Reports"
+
     # device breakout legitimately excludes these products
     device_excluded_products: str = "Mobile Conquesting,PPC,YouTube,LinkedIn,Performance Max"
     # creative types that never carry a preview image
@@ -64,6 +80,36 @@ class Settings(BaseSettings):
     @property
     def digest_recipients(self) -> list[str]:
         return [e.strip() for e in self.digest_to.split(",") if e.strip()]
+
+    def google_credentials(self) -> dict:
+        """The service account key, however it was pasted in.
+
+        Render's env editor is a single-line box, so the JSON usually arrives
+        with its newlines escaped or the whole thing base64'd. Both are handled
+        rather than failing with a JSON parse error that says nothing useful.
+        """
+        import base64
+        import json
+        raw = self.google_service_account_json.strip()
+        if not raw:
+            raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON is not set.")
+        if not raw.lstrip().startswith("{"):
+            raw = base64.b64decode(raw).decode()
+        info = json.loads(raw)
+        # A private key pasted through a single-line field has literal \n in it.
+        if "private_key" in info:
+            info["private_key"] = info["private_key"].replace("\\n", "\n")
+        return info
+
+    @property
+    def delivery_configured(self) -> dict[str, bool]:
+        return {
+            "drive": bool(self.google_service_account_json.strip()
+                          and self.drive_parent_folder_id.strip()),
+            "dropbox": bool(self.dropbox_app_key.strip()
+                            and self.dropbox_app_secret.strip()
+                            and self.dropbox_refresh_token.strip()),
+        }
 
     def env_report(self) -> list[dict]:
         """What the running process actually sees. Rendered on /orders so a

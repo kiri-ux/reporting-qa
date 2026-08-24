@@ -79,7 +79,55 @@ class Report(Base):
     owner_buyer: Mapped[str] = mapped_column(String(255), default="")
     owner_team: Mapped[str] = mapped_column(String(255), default="")
 
+    # The reporter's own verdict, separate from what the checks found. A clean
+    # report still needs a human to have looked at it before it ships, and a
+    # failing one can be waived when the finding is a known data quirk rather
+    # than something wrong with the report.
+    review_state: Mapped[str] = mapped_column(String(16), default="new")
+    # new | reviewed | waived | needs_fix
+    reviewed_by: Mapped[str] = mapped_column(String(128), default="")
+    reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+
     batch: Mapped["Batch"] = relationship(back_populates="reports")
+
+    @property
+    def ready(self) -> bool:
+        """Good to go: a person has signed off, and nothing is failing that
+        they did not knowingly wave through."""
+        if self.review_state == "waived":
+            return True
+        return self.review_state == "reviewed" and self.severity != "fail"
+
+    @property
+    def board_state(self) -> str:
+        """One word for the cycle board."""
+        if self.review_state == "needs_fix":
+            return "needs_fix"
+        if self.ready:
+            return "ready"
+        if self.severity == "fail":
+            return "errors"
+        if self.severity == "warn":
+            return "warnings"
+        return "in"
+
+
+class Delivery(Base):
+    """One partner group's finished cycle, packaged and shared."""
+    __tablename__ = "deliveries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(32), index=True)
+    group: Mapped[str] = mapped_column(String(255), index=True)
+    target: Mapped[str] = mapped_column(String(32), default="drive")   # drive|dropbox|local
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    reports: Mapped[int] = mapped_column(Integer, default=0)
+    bytes: Mapped[int] = mapped_column(Integer, default=0)
+    local_path: Mapped[str] = mapped_column(String(1024), default="")
+    share_url: Mapped[str] = mapped_column(Text, default="")
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    message: Mapped[str] = mapped_column(Text, default="")
 
 
 class Partner(Base):
@@ -104,6 +152,14 @@ class Partner(Base):
     trainer: Mapped[str] = mapped_column(String(128), default="")
     reporting_notes: Mapped[str] = mapped_column(Text, default="")
     buyer_notes: Mapped[str] = mapped_column(Text, default="")
+    # Markets that ship as one delivery. "7 Mountains PA Selinsgrove" and
+    # "7 Mountains KY" both carry group "7 Mountains", so the partner gets one
+    # link covering every market rather than one per market.
+    # Mapped to "partner_group": GROUP is a reserved SQL word, so an
+    # unquoted ADD COLUMN group ... is a syntax error on Postgres.
+    group: Mapped[str] = mapped_column("partner_group", String(255), default="", index=True)
+    # Where that group's zip goes. Blank uses the default target.
+    delivery_target: Mapped[str] = mapped_column(String(32), default="")
 
     @property
     def recipients(self) -> list[str]:
@@ -176,6 +232,12 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "products", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "guidance", "JSON"),
     ("batches", "last_report_at", "TIMESTAMP"),
+    ("reports", "review_state", "VARCHAR(16) DEFAULT 'new' NOT NULL"),
+    ("reports", "reviewed_by", "VARCHAR(128) DEFAULT '' NOT NULL"),
+    ("reports", "reviewed_at", "TIMESTAMP"),
+    ("reports", "review_note", "TEXT DEFAULT '' NOT NULL"),
+    ("partners", "partner_group", "VARCHAR(255) DEFAULT '' NOT NULL"),
+    ("partners", "delivery_target", "VARCHAR(32) DEFAULT '' NOT NULL"),
 ]
 
 
