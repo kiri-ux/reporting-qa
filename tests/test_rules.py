@@ -148,3 +148,106 @@ def test_sync_keeps_the_old_list_when_s3_is_unreachable():
     rec = s3mod.sync(db, force=True)
     assert rec.ok is False and "AccessDenied" in rec.message
     assert db.query(OrderLine).count() == 1
+
+
+# ---------------------------------------------------------------- products
+def test_products_detected_from_sections_not_the_footnote():
+    """Every report's footnote mentions CTV and TikTok. Neither should be
+    reported as a product unless it is actually on the buy."""
+    from app.checks.parser import extract_tables, pdf_text
+    from app.checks.products import detect
+
+    text = pdf_text(FIXTURES / "benton_rodeo.pdf")
+    found = detect(text, extract_tables(text))
+    assert "Mobile Conquesting" in found
+    assert "TikTok" not in found and "CTV" not in found
+
+
+def test_order_product_names_map_to_report_names():
+    from app.checks.products import map_order_product
+    assert map_order_product("Mobile Conquesting Display & Video Ads") == "Mobile Conquesting"
+    assert map_order_product("Amazon Premium CTV + Video Ads") == "CTV"
+    assert map_order_product("Pay-Per-Click Ads") == "PPC"
+
+
+def test_product_check_is_quiet_without_an_order_list():
+    r = run_all(FIXTURES / "benton_rodeo.pdf")
+    assert not [f for f in r["findings"] if f["code"].startswith("product_")]
+
+
+def test_product_check_flags_missing_and_rogue():
+    r = run_all(FIXTURES / "benton_rodeo.pdf",
+                expected_products={"Mobile Conquesting", "Meta"})
+    got = {f["code"] for f in r["findings"]}
+    assert "product_missing" in got                     # Meta ordered, not on the report
+    r2 = run_all(FIXTURES / "benton_rodeo.pdf", expected_products={"Meta"})
+    assert "product_rogue" in {f["code"] for f in r2["findings"]}
+
+
+def test_account_ids_split_on_underscores():
+    """Filenames join accounts inconsistently. Underscore is a word character,
+    so "14885_48365" would otherwise read as a single id."""
+    from app.checks.parser import meta_from_filename
+    m = meta_from_filename("July 2026_W and L Subaru 14885_48365.pdf")
+    assert m["client"] == "W and L Subaru"
+    assert m["account_ids"] == "14885 48365"
+
+
+# ---------------------------------------------------------------- IO export
+IO_EXPORT = FIXTURES / "orders_io_export.csv"
+
+
+@pytest.mark.skipif(not IO_EXPORT.exists(), reason="no IO export fixture")
+def test_io_export_eligibility():
+    """Live IOs and orders live inside the period only. No RFPs, no cancelled
+    line items, nothing that ended before the period started."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    res = import_io_export(db, IO_EXPORT.read_bytes(), period="2026-07")
+
+    assert res["skipped"].get("RFP")
+    assert res["skipped"].get("ended before the period")
+    assert res["skipped"].get("line item cancelled")
+
+    rows = db.query(OrderLine).all()
+    assert all("RFP" not in (r.campaign or "") for r in rows)
+    # one row per client and product, so a client's report has one expected set
+    assert len({(r.client, r.product) for r in rows}) == len(rows)
+
+    subaru = {r.product for r in rows if r.client == "W&L Subaru"}
+    assert subaru == {"Meta", "Mobile Conquesting", "Social Mirror", "Video"}
+
+
+def test_concurrent_init_db_does_not_crash(tmp_path):
+    """Two gunicorn workers call init_db() at once. create_all is check-then-
+    create, so the loser used to die with 'table already exists'."""
+    import threading
+
+    import app.db as dbmod
+    from app.config import settings
+
+    settings.database_url = f"sqlite:///{tmp_path / 'race.db'}"
+    import importlib
+    importlib.reload(dbmod)
+
+    errors = []
+
+    def boot():
+        try:
+            dbmod.init_db()
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=boot) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors

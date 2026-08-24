@@ -11,9 +11,10 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from .checks import run_all
+from .checks.parser import meta_from_filename
 from .config import settings
 from .db import Batch, Report
-from .roster import attach_owners, completeness
+from .roster import attach_owners, completeness, expected_products
 from .notify import post_slack, send_digest
 
 # Subjects and filenames name the market inconsistently: "7MOU SG",
@@ -90,12 +91,14 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         safe = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:180] or f"{uuid.uuid4().hex}.pdf"
         path = store / safe
         path.write_bytes(blob)
+        meta_guess = meta_from_filename(name)
+        exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"])
         try:
-            result = run_all(path, filename=name)
+            result = run_all(path, filename=name, expected_products=exp)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},
-                      "impressions": 0, "clicks": 0, "pages": 0, "severity": "fail",
+                      "impressions": 0, "clicks": 0, "pages": 0, "products": [], "severity": "fail",
                       "findings": [{"code": "unreadable", "severity": "fail",
                                     "title": "Report could not be read",
                                     "detail": str(exc)}]}
@@ -106,6 +109,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
             market=batch.market, period=meta.get("period") or batch.period,
             is_lifetime=bool(meta.get("is_lifetime")),
             pages=result["pages"], impressions=result["impressions"], clicks=result["clicks"],
+            products=", ".join(result.get("products") or []),
             severity=result["severity"], findings=result["findings"],
         )
         db.add(rep)

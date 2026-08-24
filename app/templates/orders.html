@@ -43,12 +43,16 @@
     <form action="/orders/import" method="post" enctype="multipart/form-data"
           style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <input type="file" name="file" accept=".csv,.xlsx,.xlsm" required>
+      <input type="text" name="period" placeholder="Period, e.g. 2026-07" size="16">
       <button class="btn" type="submit">Replace order list</button>
     </form>
     <p class="sub" style="font-size:13px;margin-top:12px">
-      CSV or XLSX. Recognised headers: Market, Client, Account, Campaign, Start Date,
-      End Date, Buyer, P&amp;A Team Member, Buyer Email, Team Email. Column order does not
-      matter and extra columns are ignored.
+      CSV or XLSX. The IO tool's own export is recognised automatically and filtered to
+      live IOs, or orders that were live inside the period: no RFPs, no cancelled line
+      items, nothing that ended before the period started. Leave the period blank to use
+      the previous month.<br>
+      A simple list also works, with headers: Market, Client, Account, Campaign,
+      Start Date, End Date, Buyer, P&amp;A Team Member, Buyer Email, Team Email.
       {% if s3 %}<br><b>Note:</b> the next batch will re-sync from S3 and overwrite this.{% endif %}</p>
   </div>
 </section>
@@ -57,10 +61,11 @@
   <h2>Loaded ({{ lines|length }})</h2>
   {% if lines %}
   <div class="tw"><table>
-    <thead><tr><th>Market</th><th>Client</th><th>Accounts</th><th>Start</th><th>End</th>
-    <th>Buyer</th><th>Team member</th></tr></thead>
+    <thead><tr><th>Market</th><th>Client</th><th>Product</th><th>Order</th><th>Start</th><th>End</th>
+    <th>Buyer</th><th>Owner</th></tr></thead>
     <tbody>{% for l in lines %}
-      <tr><td>{{ l.market }}</td><td>{{ l.client }}</td><td class="acct">{{ l.account_ids }}</td>
+      <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
+          <td>{{ l.product }}</td><td class="acct">{{ l.account_ids }}</td>
           <td class="mono">{{ l.starts_on or '' }}</td><td class="mono">{{ l.ends_on or '' }}</td>
           <td>{{ l.buyer }}</td><td>{{ l.team_member }}</td></tr>
     {% endfor %}</tbody></table></div>

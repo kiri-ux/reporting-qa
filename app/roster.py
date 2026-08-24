@@ -72,12 +72,23 @@ def _rows_from_xlsx(raw: bytes, sheet: str | None = None) -> list[list[str]]:
 
 
 def import_orders(db: Session, raw: bytes, filename: str = "orders.csv",
-                  sheet: str | None = None, replace: bool = True) -> int:
-    """Accepts CSV or XLSX. The order list lives in S3 as one or the other."""
+                  sheet: str | None = None, replace: bool = True,
+                  period: str | None = None) -> int:
+    """Accepts CSV or XLSX, and recognises the IO tool's own export, which needs
+    its own eligibility rules rather than being read as a flat list."""
     if filename.lower().endswith((".xlsx", ".xlsm")):
         rows = _rows_from_xlsx(raw, sheet)
     else:
         rows = _rows_from_csv(raw)
+    if rows:
+        from .orders_io import import_io_export, looks_like_io_export
+        if looks_like_io_export(rows[0]):
+            if filename.lower().endswith((".xlsx", ".xlsm")):
+                import csv as _csv, io as _io
+                buf = _io.StringIO()
+                _csv.writer(buf).writerows(rows)
+                raw = buf.getvalue().encode()
+            return import_io_export(db, raw, period=period, replace=replace)["kept"]
     return _import_rows(db, rows, replace=replace)
 
 
@@ -149,6 +160,23 @@ def attach_owners(db: Session, report: Report) -> None:
             if not report.market:
                 report.market = ol.market
             return
+
+
+def expected_products(db: Session, client: str, account_ids: str) -> set[str] | None:
+    """Products the client's qualifying orders say belong on this report.
+    Returns None when the client is not on the order list, so the check stays
+    quiet rather than guessing."""
+    lines = db.scalars(select(OrderLine)).all()
+    if not lines:
+        return None
+    ids = _keyify(client, account_ids)
+    hit = [l for l in lines if ids and (ids & _keyify(l.client, l.account_ids))]
+    if not hit:
+        norm = re.sub(r"[^a-z0-9]", "", (client or "").lower())
+        hit = [l for l in lines if norm and re.sub(r"[^a-z0-9]", "", l.client.lower()) == norm]
+    if not hit:
+        return None
+    return {l.product for l in hit if l.product}
 
 
 def completeness(db: Session, market: str, period: str) -> dict:

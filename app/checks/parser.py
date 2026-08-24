@@ -214,6 +214,10 @@ def meta_from_filename(name: str) -> dict:
     is_lifetime = stem.lower().startswith("lifetime")
     m = FILENAME_RE.match(stem)
     rest = m.group("rest") if m else stem
+    # accounts are separated inconsistently: spaces, underscores, colons, slashes.
+    # Underscore is a word character, so "14885_48365" has no \b between the two
+    # ids and would read as one token.
+    rest = re.sub(r"[_:/]+", " ", rest)
     accounts = ACCOUNTS_RE.findall(rest)
     client = rest
     for a in accounts:

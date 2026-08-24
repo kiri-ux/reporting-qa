@@ -11,6 +11,7 @@ from pathlib import Path
 from ..config import settings
 from .parser import (SKIP_LINE, Table, extract_tables, headline, meta_from_filename,
                      meta_from_text, page_count, page_ink_pct, pdf_text, tokens)
+from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
 
 LINE_ITEM = re.compile(r"Line Item Performance$")
 CREATIVE = re.compile(r"(Creative Performance|Creative Group Performance)$")
@@ -255,6 +256,36 @@ def check_geofence_names(ctx) -> list[dict]:
                f"latitude or longitude. Expected if the fence was built from an address list.")]
 
 
+def check_products(ctx) -> list[dict]:
+    """Compare the products on the report against the products the client's live
+    orders say should be there. Skips silently when no order list is loaded."""
+    expected = ctx.get("expected_products")
+    if expected is None:
+        return []
+    found = ctx["products"]
+    expected = {p for p in expected if p not in NOT_IN_MONTHLY_REPORT}
+
+    out = []
+    missing = sorted(expected - found)
+    if missing:
+        out.append(_f("product_missing", "fail",
+                      f"{len(missing)} product{'s' if len(missing) > 1 else ''} on the order "
+                      f"but not on the report",
+                      "Expected from live orders and absent here: " + ", ".join(missing) +
+                      ". On the report: " + (", ".join(sorted(found)) or "nothing detected") + "."))
+    rogue = sorted(found - expected)
+    if rogue and expected:
+        out.append(_f("product_rogue", "fail",
+                      f"{len(rogue)} product{'s' if len(rogue) > 1 else ''} on the report "
+                      f"with no live order",
+                      "On the report but not on any qualifying order: " + ", ".join(rogue) +
+                      ". Expected: " + (", ".join(sorted(expected)) or "none") + "."))
+    if not out:
+        out.append(_f("products_match", "info", "Products match the order",
+                      ", ".join(sorted(found)) or "no products detected"))
+    return out
+
+
 RULES = [
     check_headline_ctr,
     check_line_items,
@@ -265,19 +296,24 @@ RULES = [
     check_thumbnails,
     check_blank_pages,
     check_geofence_names,
+    check_products,
 ]
 
 SEV_ORDER = {"fail": 2, "warn": 1, "info": 0}
 
 
-def run_all(path: Path, filename: str | None = None) -> dict:
+def run_all(path: Path, filename: str | None = None,
+            expected_products: set[str] | None = None) -> dict:
     text = pdf_text(path)
     imps, clicks, ctr = headline(text)
+    tables = extract_tables(text, strict=True)
     ctx = {
         "path": path,
         "text": text,
         "pages": page_count(path),
-        "tables": extract_tables(text, strict=True),
+        "tables": tables,
+        "products": detect_products(text, tables),
+        "expected_products": expected_products,
         "imps": imps, "clicks": clicks, "ctr": ctr,
     }
     findings: list[dict] = []
@@ -307,6 +343,7 @@ def run_all(path: Path, filename: str | None = None) -> dict:
 
     return {
         "meta": meta,
+        "products": sorted(ctx["products"]),
         "impressions": int(imps or 0),
         "clicks": int(clicks or 0),
         "pages": ctx["pages"],

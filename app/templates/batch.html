@@ -23,7 +23,8 @@
     {% for r in reports %}
       <tr>
         <td><b>{{ r.client }}</b>{% if r.is_lifetime %} <span class="pill p-info">lifetime</span>{% endif %}
-            <br><span class="acct">{{ r.account_ids }}</span></td>
+            <br><span class="acct">{{ r.account_ids }}</span>
+            {% if r.products %}<br><span class="acct" style="font-size:11px">{{ r.products }}</span>{% endif %}</td>
         <td style="font-size:13px;color:var(--ink-2)">{{ r.owner_buyer or '—' }}{% if r.owner_team %}<br>{{ r.owner_team }}{% endif %}</td>
         <td><span class="pill p-{{ r.severity }}">{{ r.severity }}</span></td>
         <td>

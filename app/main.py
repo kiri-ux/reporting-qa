@@ -123,9 +123,10 @@ def orders_view(request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/orders/import")
-async def orders_import(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def orders_import(file: UploadFile = File(...), period: str = Form(""),
+                        db: Session = Depends(get_db)):
     n = import_orders(db, await file.read(), filename=file.filename or "orders.csv",
-                      replace=True)
+                      replace=True, period=period or None)
     return RedirectResponse(f"/orders?imported={n}", status_code=303)
 
 
