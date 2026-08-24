@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Workload · Report QA{% endblock %}
+{% block where %}Workload{% endblock %}
+{% block body %}
+<div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+  <div>
+    <h1>Who is carrying what</h1>
+    <p class="sub">Counted on <b>clients</b>, not order lines - one client running nine
+    products is one report to pull and one thing to review. Counting lines would make
+    multi-product accounts look several times heavier than they are.</p>
+  </div>
+  <span class="tabs" style="margin-left:auto">
+    {% for r, label in [('buyer','Buyer'), ('reporter','Reporter'), ('trainer','Trainer')] %}
+      <a href="/people?role={{ r }}" class="{% if role == r %}on{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </span>
+</div>
+
+<section>
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">
+      {{ rows|length }} {{ role }}{{ 's' if rows|length != 1 }} ·
+      {{ total_clients }} clients</h2>
+  </div>
+
+  {% if rows %}
+  <div class="tw"><table>
+    <thead><tr><th>{{ role|capitalize }}</th><th>Clients</th><th></th>
+    <th>Partners</th><th>Lines</th><th>Most of it is</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr>
+        <td class="nw"><b>{{ r.who }}</b></td>
+        <td class="n"><b style="font-family:Agdasima,sans-serif;font-size:19px;
+            color:var(--atlas)">{{ r.clients }}</b></td>
+        <td style="width:36%;min-width:150px">
+          <span class="wbar"><span class="wfill"
+            style="width:{{ (100 * r.clients / biggest)|round(1) }}%"></span></span></td>
+        <td class="n">{{ r.partners }}</td>
+        <td class="n">{{ r.lines }}</td>
+        <td><span class="chips">{% for c in r.chips %}
+          <span class="chip" data-name="{{ c.name }} · {{ c.n }} lines"
+                style="background:{{ c.bg }};color:{{ c.fg }}">{{ c.code }}</span>
+        {% endfor %}</span></td>
+      </tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}
+    <p class="empty">Nothing loaded yet.</p>
+  {% endif %}
+</section>
+
+<style>
+.wbar{display:block;height:9px;border-radius:5px;background:var(--ink-10);overflow:hidden}
+.wfill{display:block;height:100%;background:var(--velocity);border-radius:5px}
+</style>
+{% endblock %}

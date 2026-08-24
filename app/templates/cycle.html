@@ -139,17 +139,19 @@
   </div>
   <div class="tools">
     <input type="search" data-filter="tbl-cycle" data-count="cnt-cycle"
-           placeholder="Filter by market, client, buyer, reporter...">
+           placeholder="Search everything...">
     <span class="count" id="cnt-cycle"></span>
   </div>
+  <div class="colfilters" data-filters-for="tbl-cycle"></div>
   <div class="tw"><table id="tbl-cycle">
-    <thead><tr><th>Market</th><th>Client</th><th>Kind</th><th>Status</th>
-    <th>Findings</th><th>Reporter</th><th>Sign-off</th></tr></thead>
+    <thead><tr><th data-col="Market">Market</th><th>Client</th><th data-col="Kind">Kind</th>
+    <th data-col="Status">Status</th><th>Findings</th><th data-col="Reporter">Reporter</th>
+    <th>Sign-off</th></tr></thead>
     <tbody>{% for e in rows %}
       <tr>
         <td class="nw">{{ e.market }}</td>
         <td><b>{{ e.client }}</b>
-          {% if e.report %}<br><a class="acct" href="/report/{{ e.report.id }}/file">PDF</a>{% endif %}</td>
+          {% if e.report %}<br><a class="acct" href="/report/{{ e.report.id }}/view">View PDF</a>{% endif %}</td>
         <td class="nw">{% if e.kind == 'lifetime' %}
           <span class="pill p-info">lifetime</span>
           {% if e.ends_on %}<br><span class="acct">ended {{ e.ends_on }}</span>{% endif %}

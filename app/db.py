@@ -113,6 +113,32 @@ class Report(Base):
         return "in"
 
 
+class Inbound(Base):
+    """Every delivery attempt that reached the app, accepted or not.
+
+    Without this, a report that never appears has no trail at all: the sender
+    saw a 200, the dashboard shows nothing, and there is no way to tell a
+    rejected key from a missing attachment from a batch filed under a market
+    nobody thought to look at.
+    """
+    __tablename__ = "inbound"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    received_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow,
+                                                     index=True)
+    source: Mapped[str] = mapped_column(String(32), default="")
+    sender: Mapped[str] = mapped_column(String(255), default="")
+    subject: Mapped[str] = mapped_column(String(512), default="")
+    filenames: Mapped[str] = mapped_column(Text, default="")
+    files: Mapped[int] = mapped_column(Integer, default=0)
+    bytes: Mapped[int] = mapped_column(Integer, default=0)
+    accepted: Mapped[bool] = mapped_column(Boolean, default=True)
+    outcome: Mapped[str] = mapped_column(Text, default="")
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    market: Mapped[str] = mapped_column(String(128), default="")
+    period: Mapped[str] = mapped_column(String(32), default="")
+
+
 class Delivery(Base):
     """One partner group's finished cycle, packaged and shared."""
     __tablename__ = "deliveries"

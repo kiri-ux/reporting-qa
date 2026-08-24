@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from . import brand, version
 from .config import settings
-from .db import Batch, OrderLine, OrderSync, Partner, Report, SessionLocal, init_db
+from .db import (Batch, Inbound, OrderLine, OrderSync, Partner, Report,
+                 SessionLocal, init_db)
 from .ingest import (finish_batch, parse_postmark, process_batch, sweep_stale)
 from .orders_s3 import last_sync, sync as sync_orders
 from .roster import completeness, import_orders
@@ -32,6 +33,16 @@ templates.env.globals.update(
     build_service=version.service(),
     nav="",
 )
+
+
+
+# Test and placeholder partners that should never reach a dashboard, a count or
+# a delivery. Matched case-insensitively on the whole name.
+EXCLUDED_PARTNERS = {"dummy partner", "test partner", "test", "zzz test"}
+
+
+def _excluded(market: str) -> bool:
+    return (market or "").strip().lower() in EXCLUDED_PARTNERS
 
 
 def get_db():
@@ -100,8 +111,32 @@ async def _finish_when_quiet(batch_id: int) -> None:
         db.close()
 
 
-def _guard(k: str | None):
+
+def _log_inbound(db: Session, *, source: str, sender: str, subject: str,
+                 files: list, accepted: bool, outcome: str,
+                 batch: Batch | None = None) -> None:
+    """Record the attempt. Never let logging be the thing that fails a
+    webhook - a sender that gets a 500 will retry, and a retry storm is worse
+    than a missing log line."""
+    try:
+        db.add(Inbound(
+            source=source, sender=sender[:255], subject=subject[:512],
+            filenames=", ".join(n for n, _ in files)[:4000], files=len(files),
+            bytes=sum(len(b) for _, b in files), accepted=accepted,
+            outcome=outcome, batch_id=batch.id if batch else None,
+            market=batch.market if batch else "", period=batch.period if batch else ""))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        import traceback; traceback.print_exc(); db.rollback()
+
+
+def _guard(k: str | None, db: Session | None = None, source: str = "") -> None:
     if k != settings.inbound_secret:
+        if db is not None:
+            _log_inbound(db, source=source, sender="", subject="", files=[],
+                         accepted=False,
+                         outcome="Rejected: the ?k= secret on the URL does not match "
+                                 "INBOUND_SECRET. Copy it again from Render.")
         raise HTTPException(status_code=403, detail="bad key")
 
 
@@ -109,7 +144,7 @@ def _guard(k: str | None):
 @app.post("/inbound/mailgun")
 async def inbound_mailgun(request: Request, background: BackgroundTasks,
                           k: str | None = Query(None), db: Session = Depends(get_db)):
-    _guard(k)
+    _guard(k, db, "mailgun")
     form = await request.form()
     sender = str(form.get("sender") or form.get("from") or "")
     subject = str(form.get("subject") or "")
@@ -118,9 +153,14 @@ async def inbound_mailgun(request: Request, background: BackgroundTasks,
         if hasattr(value, "filename") and value.filename:
             files.append((value.filename, await value.read()))
     if not files:
+        _log_inbound(db, source="mailgun", sender=sender, subject=subject, files=[],
+                     accepted=False, outcome="Email had no attachments.")
         return {"ok": True, "skipped": "no attachments"}
     batch = process_batch(db, files, source="mailgun", email_from=sender,
                           subject=subject, notify=False, coalesce=True)
+    _log_inbound(db, source="mailgun", sender=sender, subject=subject, files=files,
+                 accepted=True, outcome=f"Filed under {batch.market or 'no market'} "
+                                        f"for {batch.period}.", batch=batch)
     background.add_task(_finish_when_quiet, batch.id)
     return {"ok": True, "batch": batch.id, "reports": len(batch.reports)}
 
@@ -137,7 +177,7 @@ async def inbound_zapier(request: Request, background: BackgroundTasks,
 
     Reports coalesce into one batch per market per month - see open_batch.
     """
-    _guard(k)                      # reject before reading the upload, not after
+    _guard(k, db, "zapier")        # reject before reading the upload, not after
     form = await request.form()
     sender = str(form.get("from") or form.get("sender") or form.get("email") or "")
     subject = str(form.get("subject") or "")
@@ -147,11 +187,25 @@ async def inbound_zapier(request: Request, background: BackgroundTasks,
         if hasattr(value, "filename") and value.filename:
             files.append((value.filename, await value.read()))
     if not files:
+        _log_inbound(db, source="zapier", sender=sender, subject=subject, files=[],
+                     accepted=False, outcome="No file on the request. In the Zap, set "
+                                             "Payload Type to Form and map the attachment "
+                                             "into the File field.")
         return {"ok": True, "skipped": "no file on the request",
                 "hint": "In the Zap, set Payload Type to Form and map the "
                         "attachment into the File field."}
+    pdfs = [n for n, _ in files if n.lower().endswith((".pdf", ".zip"))]
+    if not pdfs:
+        _log_inbound(db, source="zapier", sender=sender, subject=subject, files=files,
+                     accepted=False,
+                     outcome="Attachment is not a PDF or a zip, so nothing was checked.")
+        return {"ok": True, "skipped": "no pdf attachment",
+                "got": [n for n, _ in files]}
     batch = process_batch(db, files, source="zapier", email_from=sender,
                           subject=subject, market=market, notify=False, coalesce=True)
+    _log_inbound(db, source="zapier", sender=sender, subject=subject, files=files,
+                 accepted=True, outcome=f"Filed under {batch.market or 'no market'} "
+                                        f"for {batch.period}.", batch=batch)
     background.add_task(_finish_when_quiet, batch.id)
     return {"ok": True, "batch": batch.id, "market": batch.market,
             "period": batch.period, "reports": len(batch.reports)}
@@ -201,7 +255,10 @@ def report_file(report_id: int, db: Session = Depends(get_db)):
     rep = db.get(Report, report_id)
     if not rep or not rep.stored_path or not Path(rep.stored_path).exists():
         raise HTTPException(404)
-    return FileResponse(rep.stored_path, media_type="application/pdf", filename=rep.filename)
+    # inline, not attachment: these get looked at far more often than saved
+    return FileResponse(rep.stored_path, media_type="application/pdf",
+                        headers={"Content-Disposition":
+                                 f'inline; filename="{rep.filename}"'})
 
 
 # ---------------------------------------------------------------- manual paths
@@ -222,7 +279,7 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
     window a report has to cover.
     """
     from .product_codes import pill
-    from .partners import find as find_partner
+    from .partners import find as find_partner, resolve_owner
 
     by: dict[tuple[str, str], dict] = {}
     partner_cache: dict[str, Partner | None] = {}
@@ -237,7 +294,7 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
                 "partner": l.market, "client": l.client, "orders": set(),
                 "products": [], "codes": set(), "starts": None, "ends": None,
                 "buyers": [], "reporter": p.reporting_team if p else "",
-                "trainer": p.trainer if p else "",
+                "trainer": p.trainer if p else "", "_partner": p,
                 "in_roster": p is not None,
                 "lifetime": False,
             }
@@ -247,8 +304,17 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
             row["products"].append(pl)
         if l.account_ids:
             row["orders"].add(l.account_ids)
-        if l.buyer and l.buyer not in row["buyers"]:
-            row["buyers"].append(l.buyer)
+        # RESOLVE THE BUYER HERE, not only at import.
+        #
+        # The stored buyer is whatever the export's campaign manager said at
+        # import time, so every line loaded before the roster fallback existed
+        # has an empty one - and re-importing 850 MB to fill in a name nobody
+        # changed is the wrong fix. Reporter and trainer already came from the
+        # roster on every render; the buyer now does too, so the column repairs
+        # itself and stays right when the roster is updated.
+        who = l.buyer or resolve_owner(row["_partner"], l.product)[0]
+        if who and who not in row["buyers"]:
+            row["buyers"].append(who)
         if l.starts_on and (row["starts"] is None or l.starts_on < row["starts"]):
             row["starts"] = l.starts_on
         if l.ends_on and (row["ends"] is None or l.ends_on > row["ends"]):
@@ -257,6 +323,7 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
 
     out = list(by.values())
     for r in out:
+        r.pop("_partner", None)
         r["products"].sort(key=lambda p: p["code"])
         r["orders"] = ", ".join(sorted(r["orders"]))
         r["buyer"] = ", ".join(r["buyers"])
@@ -267,7 +334,9 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
 @app.get("/orders", response_class=HTMLResponse)
 def orders_view(request: Request, view: str = Query("clients"),
                 db: Session = Depends(get_db)):
-    lines = db.scalars(select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
+    lines = [l for l in db.scalars(
+        select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
+        if not _excluded(l.market)]
     from .product_codes import PRODUCTS, ink_on
     legend = [{"code": c, "bg": h, "fg": ink_on(h), "name": n} for c, h, n, _ in PRODUCTS]
     clients = _client_rollup(db, lines) if view == "clients" else []
@@ -305,7 +374,9 @@ def _csv_response(filename: str, header: list[str], rows) -> Response:
 
 @app.get("/orders.csv")
 def orders_csv(view: str = Query("clients"), db: Session = Depends(get_db)):
-    lines = db.scalars(select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
+    lines = [l for l in db.scalars(
+        select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
+        if not _excluded(l.market)]
     today = dt.date.today().isoformat()
     if view == "clients":
         rows = [[c["partner"], c["client"],
@@ -417,6 +488,76 @@ def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
                          ["Partner group", "Market", "Client", "Kind", "Products",
                           "Order", "Ends", "Buyer", "Reporter", "Status",
                           "Reviewed by", "Note"], rows)
+
+
+@app.get("/inbound", response_class=HTMLResponse)
+def inbound_view(request: Request, db: Session = Depends(get_db)):
+    """What has actually reached the app, accepted or not."""
+    rows = db.scalars(select(Inbound).order_by(desc(Inbound.received_at)).limit(200)).all()
+    return templates.TemplateResponse(request, "inbound.html", {
+        "nav": "inbound", "rows": rows,
+        "secret_set": settings.inbound_secret not in ("", "change-me"),
+        "zap_url": f"/inbound/zapier?k={'*' * 8}",
+    })
+
+
+@app.get("/people", response_class=HTMLResponse)
+def people_view(request: Request, role: str = Query("buyer"),
+                db: Session = Depends(get_db)):
+    """Campaign counts by buyer, reporter and trainer.
+
+    Counted on clients, not order lines: one client with nine products is one
+    report to pull and one thing to review, so counting lines would make the
+    workload look several times bigger than it is for whoever runs multi-product
+    accounts.
+    """
+    from .partners import find as find_partner, resolve_owner
+    lines = db.scalars(select(OrderLine)).all()
+    pcache: dict[str, Partner | None] = {}
+
+    tally: dict[str, dict] = {}
+    seen_clients: dict[str, set] = {}
+    for l in lines:
+        if _excluded(l.market):
+            continue
+        if l.market not in pcache:
+            pcache[l.market] = find_partner(db, l.market)
+        p = pcache[l.market]
+        who = {"buyer": l.buyer or resolve_owner(p, l.product)[0],
+               "reporter": p.reporting_team if p else "",
+               "trainer": p.trainer if p else ""}.get(role, "")
+        who = who or "(unassigned)"
+        t = tally.setdefault(who, {"who": who, "clients": 0, "lines": 0,
+                                   "partners": set(), "products": {}})
+        t["lines"] += 1
+        t["partners"].add(l.market)
+        t["products"][l.product] = t["products"].get(l.product, 0) + 1
+        key = (l.market.lower(), l.client.lower())
+        s = seen_clients.setdefault(who, set())
+        if key not in s:
+            s.add(key)
+            t["clients"] += 1
+
+    from .product_codes import pill
+    rows = []
+    for t in tally.values():
+        top = sorted(t["products"].items(), key=lambda x: -x[1])[:6]
+        rows.append({**t, "partners": len(t["partners"]),
+                     "chips": [dict(pill(name), n=n) for name, n in top]})
+    rows.sort(key=lambda r: -r["clients"])
+    biggest = max((r["clients"] for r in rows), default=1) or 1
+    return templates.TemplateResponse(request, "people.html", {
+        "nav": "people", "role": role, "rows": rows, "biggest": biggest,
+        "total_clients": sum(r["clients"] for r in rows)})
+
+
+@app.get("/report/{report_id}/view", response_class=HTMLResponse)
+def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db)):
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    return templates.TemplateResponse(request, "viewer.html",
+                                      {"nav": "cycle", "rep": rep})
 
 
 @app.get("/partners", response_class=HTMLResponse)

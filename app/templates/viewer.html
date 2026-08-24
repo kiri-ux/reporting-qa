@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ rep.client }} · Report QA{% endblock %}
+{% block where %}<a href="/cycle">Cycle</a> / {{ rep.client }}{% endblock %}
+{% block body %}
+<div style="display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap">
+  <div>
+    <h1>{{ rep.client }}</h1>
+    <p class="sub">{{ rep.market }} · {{ rep.period }}
+      {%- if rep.is_lifetime %} · <span class="pill p-info">lifetime</span>{% endif %}
+      {%- if rep.pages %} · {{ rep.pages }} pages{% endif %}
+      {%- if rep.impressions %} · {{ '{:,}'.format(rep.impressions) }} impressions{% endif %}</p>
+  </div>
+  <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <span class="pill p-{{ rep.board_state }}">{{ rep.board_state|replace('_',' ')|title }}</span>
+    <a class="btn" href="/report/{{ rep.id }}/file" download="{{ rep.filename }}">Download</a>
+  </span>
+</div>
+
+{% if rep.findings %}
+<section>
+  <h2>What the checks found</h2>
+  <div class="panel">
+    <ul class="find">
+      {% for f in rep.findings %}
+        <li><span class="pill p-{{ 'fail' if f.severity == 'fail' else
+              'warn' if f.severity == 'warn' else 'info' }}"
+              style="margin-right:7px">{{ f.severity or 'info' }}</span>
+          <b>{{ f.title or f.code }}</b>
+          {% if f.detail and f.detail != f.title %}<br><span>{{ f.detail }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h2>The report</h2>
+  {% if rep.stored_path %}
+    <div class="pdfwrap">
+      {# The browser's own PDF viewer. No library to load, no page-by-page
+         rendering, and it prints and searches the way people expect. #}
+      <object data="/report/{{ rep.id }}/file#view=FitH" type="application/pdf">
+        <div class="panel">
+          <h3>Your browser will not display PDFs inline</h3>
+          <p class="sub">Some browsers and most mobile ones refuse to embed a PDF.</p>
+          <p><a class="btn" href="/report/{{ rep.id }}/file" target="_blank"
+                rel="noopener">Open the PDF in a new tab</a></p>
+        </div>
+      </object>
+    </div>
+  {% else %}
+    <p class="empty">The file for this report is no longer on disk.</p>
+  {% endif %}
+</section>
+
+<style>
+.pdfwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;
+ box-shadow:var(--shadow);background:var(--ink-10)}
+.pdfwrap object{display:block;width:100%;height:min(82vh,1100px);border:0}
+@media(max-width:760px){.pdfwrap object{height:70vh}}
+</style>
+{% endblock %}

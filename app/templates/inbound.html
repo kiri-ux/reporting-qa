@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Inbound · Report QA{% endblock %}
+{% block where %}Inbound log{% endblock %}
+{% block body %}
+<div>
+  <h1>What has reached the app</h1>
+  <p class="sub">Every delivery attempt, accepted or not. If a report was sent and never
+  appeared on a board, the reason is here - a rejected key, a missing attachment, or a
+  batch filed under a market you did not think to look at.</p>
+</div>
+
+{% if not secret_set %}
+<div class="note" style="border-left-color:var(--crit);background:var(--crit-bg)">
+  <b>INBOUND_SECRET is still the default.</b> Anyone who guesses the URL can post reports
+  into this tool. Set it in Render and put the same value on the end of the webhook URL.
+</div>
+{% endif %}
+
+<section>
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">Last {{ rows|length }} attempts</h2>
+  </div>
+
+  {% if rows %}
+  <div class="tools">
+    <input type="search" data-filter="tbl-inbound" data-count="cnt-inbound"
+           placeholder="Search everything...">
+    <span class="count" id="cnt-inbound"></span>
+  </div>
+  <div class="colfilters" data-filters-for="tbl-inbound"></div>
+  <div class="tw"><table id="tbl-inbound">
+    <thead><tr><th>When</th><th data-col="Source">Source</th><th>From</th><th>Subject</th>
+    <th>Files</th><th data-col="Result">Result</th><th>What happened</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr>
+        <td class="mono nw">{{ r.received_at.strftime('%b %d, %H:%M') }}</td>
+        <td class="nw">{{ r.source }}</td>
+        <td style="font-size:13px">{{ r.sender or '—' }}</td>
+        <td style="font-size:13px;max-width:32ch">{{ r.subject or '—' }}</td>
+        <td style="font-size:12.5px;max-width:26ch">
+          {% if r.files %}{{ r.filenames }}<br>
+            <span class="acct">{{ (r.bytes / 1048576)|round(2) }} MB</span>
+          {% else %}<span class="empty">none</span>{% endif %}</td>
+        <td class="nw"><span class="pill {{ 'p-pass' if r.accepted else 'p-fail' }}">
+          {{ 'Accepted' if r.accepted else 'Rejected' }}</span></td>
+        <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
+          {{ r.outcome }}
+          {% if r.batch_id %}<br><a href="/batch/{{ r.batch_id }}">Open batch {{ r.batch_id }}</a>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}</tbody></table></div>
+
+  {% else %}
+    <div class="panel">
+      <h3>Nothing has arrived yet</h3>
+      <p class="sub" style="margin-top:8px">If you have already sent a test, it did not
+      reach this app at all. In order of likelihood:</p>
+      <ol class="sub" style="max-width:70ch">
+        <li><b>The Zap did not actually run.</b> Zapier's "Test action" sends from Zapier's
+          own servers; check the Zap History tab for a run, not just a green tick in the
+          editor.</li>
+        <li><b>Wrong URL.</b> It must be
+          <code>https://qa.reporting.zone/inbound/zapier?k=YOUR_SECRET</code> - the path is
+          <code>/inbound/zapier</code>, not <code>/inbound/mailgun</code>.</li>
+        <li><b>The deploy is older than this page.</b> This log only records attempts made
+          after this build went live. Anything sent before it is not here.</li>
+      </ol>
+      <p class="sub">A rejected key or a missing attachment would still show up as a row,
+      so an empty table means nothing arrived - not that something arrived and failed.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -200,6 +200,36 @@ tr[hidden]{display:none}
  opacity:0;pointer-events:none;transition:opacity .1s;z-index:60}
 .chip:hover::after,.chip:hover::before,.chip:focus::after,.chip:focus::before{opacity:1}
 
+/* ---- rail tooltips ---- */
+.rail a{position:relative}
+.rail a::after{content:attr(data-label);position:absolute;left:calc(100% + 10px);top:50%;
+ transform:translateY(-50%);background:var(--atlas);color:#fff;
+ font-family:'GT Walsheim Pro',sans-serif;font-size:13px;font-weight:700;white-space:nowrap;
+ padding:6px 11px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .12s;
+ box-shadow:0 5px 18px rgba(0,45,88,.32);z-index:60}
+.rail a::before{content:'';position:absolute;left:calc(100% + 4px);top:50%;
+ transform:translateY(-50%);border:5px solid transparent;border-right-color:var(--atlas);
+ opacity:0;pointer-events:none;transition:opacity .12s;z-index:60}
+.rail a:hover::after,.rail a:hover::before,
+.rail a:focus-visible::after,.rail a:focus-visible::before{opacity:1}
+@media(max-width:760px){.rail a::after,.rail a::before{display:none}}
+
+/* ---- per-column filters ---- */
+.colfilters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.colf{display:flex;flex-direction:column;gap:3px}
+.colf label{font-family:Agdasima,sans-serif;font-size:12px;font-weight:700;
+ letter-spacing:.09em;text-transform:uppercase;color:var(--atlas-50);margin:0}
+.colf select{font:inherit;font-size:13.5px;padding:6px 11px;border:1px solid var(--line);
+ border-radius:16px;background:var(--surface);color:var(--ink);min-width:140px;max-width:230px}
+.colf select:focus{outline:none;border-color:var(--velocity);
+ box-shadow:0 0 0 3px var(--velocity-10)}
+.colf select.set{border-color:var(--velocity);background:var(--velocity-10);font-weight:700}
+.mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
+ padding:6px 12px;border-radius:16px;border:1px solid var(--line);cursor:pointer;
+ background:var(--surface);color:var(--ink-2)}
+.mini:hover:not(:disabled){border-color:var(--velocity);color:var(--velocity)}
+.mini:disabled{opacity:.45;cursor:default}
+
 /* ---- back to top ---- */
 .totop{position:fixed;right:22px;bottom:22px;z-index:30;width:42px;height:42px;
  border-radius:50%;background:var(--atlas);color:#fff;display:none;
@@ -238,26 +268,40 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
     <path d="M38.4 43.2l3.2 3.4 6-6.6" fill="none" stroke="#002D58" stroke-width="3.4"
           stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
-  <a href="/" class="{% if nav == 'dash' %}on{% endif %}" title="Dashboard" aria-label="Dashboard">
+  <a href="/" class="{% if nav == 'dash' %}on{% endif %}" title="Dashboard" aria-label="Dashboard" data-label="Dashboard">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
       <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
     </svg></a>
-  <a href="/cycle" class="{% if nav == 'cycle' %}on{% endif %}" title="This cycle" aria-label="This cycle">
+  <a href="/cycle" class="{% if nav == 'cycle' %}on{% endif %}" title="This cycle" aria-label="This cycle" data-label="This cycle">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>
       <path d="M9 14.5l2 2 4-4"/>
     </svg></a>
-  <a href="/orders" class="{% if nav == 'orders' %}on{% endif %}" title="Order list" aria-label="Order list">
+  <a href="/orders" class="{% if nav == 'orders' %}on{% endif %}" title="Order list" aria-label="Order list" data-label="Order list">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.4" fill="currentColor"/>
       <circle cx="3.5" cy="12" r="1.4" fill="currentColor"/>
       <circle cx="3.5" cy="18" r="1.4" fill="currentColor"/>
     </svg></a>
-  <a href="/partners" class="{% if nav == 'partners' %}on{% endif %}" title="Partners" aria-label="Partners">
+  <a href="/people" class="{% if nav == 'people' %}on{% endif %}" title="Workload"
+     aria-label="Workload" data-label="Workload by person">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+    </svg></a>
+  <a href="/inbound" class="{% if nav == 'inbound' %}on{% endif %}" title="Inbound"
+     aria-label="Inbound" data-label="Inbound log">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 13h5l1.5 3h5L16 13h5"/>
+      <path d="M4.6 5.7L3 13v5.5A1.5 1.5 0 0 0 4.5 20h15a1.5 1.5 0 0 0 1.5-1.5V13l-1.6-7.3
+               A2 2 0 0 0 17.5 4h-11a2 2 0 0 0-1.9 1.7z"/>
+    </svg></a>
+  <a href="/partners" class="{% if nav == 'partners' %}on{% endif %}" title="Partners" aria-label="Partners" data-label="Partners">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
@@ -297,24 +341,39 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
     window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
   });
 
-  // Filter. Matching runs against the row's own text, cached once, so typing
-  // over two thousand rows does not re-read the DOM on every keystroke.
+  // Filter: a free-text box plus per-column dropdowns, both narrowing the same
+  // rows. The dropdowns exist because free text cannot tell one column from
+  // another - there is a Katie who is a trainer and a Katie who is a buyer, and
+  // typing her name finds both.
   document.querySelectorAll('[data-filter]').forEach(function (box) {
     var table = document.getElementById(box.dataset.filter);
     if (!table) return;
     var out = document.getElementById(box.dataset.count);
+    var wrap = document.querySelector('[data-filters-for="' + box.dataset.filter + '"]');
+
+    // Cache each row's text once. Re-reading the DOM per keystroke over two
+    // thousand rows is what makes a filter feel broken.
     var rows = Array.prototype.map.call(table.tBodies[0].rows, function (tr) {
-      return { tr: tr, hay: tr.textContent.toLowerCase() };
+      var cells = Array.prototype.map.call(tr.cells, function (td) {
+        return td.textContent.replace(/\s+/g, ' ').trim();
+      });
+      return { tr: tr, hay: tr.textContent.toLowerCase(), cells: cells };
     });
-    var total = rows.length, t;
+    var total = rows.length, t, selects = [];
+
     var run = function () {
-      var q = box.value.toLowerCase().trim();
       // Space-separated words all have to match, in any order, so
       // "7 mountains ctv" narrows instead of finding nothing.
+      var q = box.value.toLowerCase().trim();
       var terms = q ? q.split(/\s+/) : [];
+      var picks = selects.filter(function (s) { return s.el.value; });
       var shown = 0;
       rows.forEach(function (r) {
-        var hit = terms.every(function (w) { return r.hay.indexOf(w) !== -1; });
+        var hit = terms.every(function (w) { return r.hay.indexOf(w) !== -1; })
+          && picks.every(function (s) {
+            return (r.cells[s.i] || '').split(/\s*,\s*/)
+              .some(function (v) { return v.trim() === s.el.value; });
+          });
         r.tr.hidden = !hit;
         if (hit) shown++;
       });
@@ -322,6 +381,47 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
         ? total.toLocaleString() + ' rows'
         : shown.toLocaleString() + ' of ' + total.toLocaleString() + ' rows';
     };
+
+    // A dropdown per column marked filterable, built from the values actually
+    // present, so it never offers a choice that matches nothing.
+    if (wrap && table.tHead) {
+      Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th, i) {
+        if (!th.hasAttribute('data-col')) return;
+        var vals = {};
+        rows.forEach(function (r) {
+          (r.cells[i] || '').split(/\s*,\s*/).forEach(function (v) {
+            v = v.trim();
+            if (v && v !== '\u2014' && v !== '-') vals[v] = (vals[v] || 0) + 1;
+          });
+        });
+        var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
+        if (!names.length) return;
+        var f = document.createElement('div'); f.className = 'colf';
+        var lb = document.createElement('label'); lb.textContent = th.dataset.col;
+        var sel = document.createElement('select');
+        sel.appendChild(new Option('All (' + names.length + ')', ''));
+        names.forEach(function (n) { sel.appendChild(new Option(n + '  (' + vals[n] + ')', n)); });
+        lb.htmlFor = sel.id = 'colf-' + box.dataset.filter + '-' + i;
+        f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
+        selects.push({ i: i, el: sel });
+        sel.addEventListener('change', function () {
+          sel.classList.toggle('set', !!sel.value);
+          run();
+        });
+      });
+      if (selects.length) {
+        var clear = document.createElement('button');
+        clear.type = 'button'; clear.className = 'mini'; clear.textContent = 'Clear';
+        clear.style.alignSelf = 'flex-end'; clear.style.marginBottom = '1px';
+        clear.addEventListener('click', function () {
+          box.value = '';
+          selects.forEach(function (s) { s.el.value = ''; s.el.classList.remove('set'); });
+          run();
+        });
+        wrap.appendChild(clear);
+      }
+    }
+
     box.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 90); });
     run();
   });

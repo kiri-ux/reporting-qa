@@ -16,13 +16,15 @@
   {% if partners %}
   <div class="tools">
     <input type="search" data-filter="tbl-partners" data-count="cnt-partners"
-           placeholder="Filter by partner, buyer, SEO, reporter, trainer, email...">
+           placeholder="Search everything...">
     <span class="count" id="cnt-partners"></span>
     <a class="btn" href="/partners.csv">Download CSV</a>
   </div>
+  <div class="colfilters" data-filters-for="tbl-partners"></div>
   <div class="tw"><table id="tbl-partners">
-    <thead><tr><th>Partner</th><th>Buyer</th><th>SEO</th><th>Manager</th>
-    <th>Reporter</th><th>Trainer</th><th>Reports go to</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Partner</th><th data-col="Buyer">Buyer</th><th data-col="SEO">SEO</th>
+    <th data-col="Manager">Manager</th><th data-col="Reporter">Reporter</th>
+    <th data-col="Trainer">Trainer</th><th>Reports go to</th><th>Notes</th></tr></thead>
     <tbody>{% for p in partners %}
       <tr>
         <td><b>{{ p.partner }}</b></td>

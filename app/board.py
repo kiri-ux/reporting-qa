@@ -18,6 +18,14 @@ from .db import OrderLine, Partner, Report
 
 ACC = re.compile(r"\b\d{4,6}\b")
 
+# Test rows that must never appear on a board, block a delivery, or count
+# toward anyone's workload.
+EXCLUDED_PARTNERS = {"dummy partner", "test partner", "test", "zzz test"}
+
+
+def excluded(market: str) -> bool:
+    return (market or "").strip().lower() in EXCLUDED_PARTNERS
+
 
 def _key(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
@@ -86,6 +94,8 @@ def expected_for(db: Session, period: str) -> list[Expected]:
 
     rows: dict[tuple[str, str, str], Expected] = {}
     for l in db.scalars(select(OrderLine)).all():
+        if excluded(l.market):
+            continue
         live = cyc.was_live(l.starts_on, l.ends_on)
         life = cyc.needs_lifetime(l.ends_on)
         if not live and not life:

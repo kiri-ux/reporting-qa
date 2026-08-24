@@ -151,13 +151,15 @@
   {% elif view == 'clients' %}
     <div class="tools">
       <input type="search" data-filter="tbl-clients" data-count="cnt-clients"
-             placeholder="Filter by partner, client, product code, buyer, reporter...">
+             placeholder="Search everything...">
       <span class="count" id="cnt-clients"></span>
       <a class="btn" href="/orders.csv?view=clients">Download CSV</a>
     </div>
+    <div class="colfilters" data-filters-for="tbl-clients"></div>
     <div class="tw"><table id="tbl-clients">
-      <thead><tr><th>Partner</th><th>Client</th><th>Products</th><th>Order</th>
-      <th>Start</th><th>End</th><th>Buyer</th><th>Reporter</th><th>Trainer</th></tr></thead>
+      <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
+      <th>Order</th><th>Start</th><th>End</th><th data-col="Buyer">Buyer</th>
+      <th data-col="Reporter">Reporter</th><th data-col="Trainer">Trainer</th></tr></thead>
       <tbody>{% for c in clients %}
         <tr>
           <td>{{ c.partner }}</td>
@@ -187,13 +189,15 @@
   {% else %}
     <div class="tools">
       <input type="search" data-filter="tbl-lines" data-count="cnt-lines"
-             placeholder="Filter by partner, client, product, order, buyer...">
+             placeholder="Search everything...">
       <span class="count" id="cnt-lines"></span>
       <a class="btn" href="/orders.csv?view=lines">Download CSV</a>
     </div>
+    <div class="colfilters" data-filters-for="tbl-lines"></div>
     <div class="tw"><table id="tbl-lines">
-      <thead><tr><th>Partner</th><th>Client</th><th>Product</th><th>Order</th>
-      <th>Start</th><th>End</th><th>Buyer</th></tr></thead>
+      <thead><tr><th data-col="Partner">Partner</th><th>Client</th>
+      <th data-col="Product">Product</th><th>Order</th>
+      <th>Start</th><th>End</th><th data-col="Buyer">Buyer</th></tr></thead>
       <tbody>{% for l in lines %}
         <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
             <td>{{ l.product }}</td><td class="acct">{{ l.account_ids }}</td>
