@@ -38,6 +38,27 @@
     <div class="note">No S3 bucket configured. Set <code>ORDERS_S3_BUCKET</code> and
     <code>ORDERS_S3_KEY</code> to make the bucket the source of truth, or upload by hand below.</div>
   {% endif %}
+
+  <details style="margin-top:14px">
+    <summary style="cursor:pointer;font-size:14px;color:var(--muted)">
+      What this deploy actually sees</summary>
+    <table style="margin-top:10px;font-size:13px">
+      <thead><tr><th>Variable</th><th>Value in the running process</th><th></th></tr></thead>
+      <tbody>
+      {% for e in env_report %}
+        <tr>
+          <td><code>{{ e.name }}</code></td>
+          <td>{% if e.value %}<code class="acct">{{ e.value }}</code>{% else %}
+              <span style="color:var(--crit)">blank</span>{% endif %}</td>
+          <td style="color:{{ 'var(--crit)' if not e.ok else 'var(--muted)' }}">{{ e.note }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="sub" style="font-size:13px;margin-top:8px">
+      These are read once at startup. If a value here does not match the Environment tab
+      in Render, the process has not restarted since you changed it - use Manual Deploy.</p>
+  </details>
 </section>
 
 {% if sync and sync.guidance %}

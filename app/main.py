@@ -131,6 +131,7 @@ def orders_view(request: Request, db: Session = Depends(get_db)):
     lines = db.scalars(select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
     return templates.TemplateResponse(request, "orders.html", {
         "lines": lines, "sync": last_sync(db), "s3": settings.s3_configured,
+        "env_report": settings.env_report(),
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})
 

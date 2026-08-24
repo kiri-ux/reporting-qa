@@ -19,9 +19,28 @@ from .db import OrderSync
 from .roster import import_orders
 
 
+class CredentialsMissing(RuntimeError):
+    pass
+
+
 def _client():
     import boto3
-    return boto3.client("s3", region_name=settings.orders_s3_region)
+
+    key = settings.aws_access_key_id.strip()
+    secret = settings.aws_secret_access_key.strip()
+    missing = [n for n, v in (("AWS_ACCESS_KEY_ID", key),
+                              ("AWS_SECRET_ACCESS_KEY", secret)) if not v]
+    if missing:
+        raise CredentialsMissing(
+            f"{' and '.join(missing)} not visible to the running app. Set them on "
+            f"the web service in Render, then Manual Deploy so the process "
+            f"restarts with them."
+        )
+    kw = dict(region_name=settings.orders_s3_region.strip() or "us-east-1",
+              aws_access_key_id=key, aws_secret_access_key=secret)
+    if settings.aws_session_token.strip():
+        kw["aws_session_token"] = settings.aws_session_token.strip()
+    return boto3.client("s3", **kw)
 
 
 def last_sync(db: Session) -> OrderSync | None:
@@ -80,6 +99,10 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
 
     try:
         etag, lm = head()
+    except CredentialsMissing as exc:
+        rec = OrderSync(source=source, ok=False, message=str(exc),
+                        rows=prev.rows if prev else 0)
+        db.add(rec); db.commit(); return rec
     except Exception as exc:
         rec = OrderSync(source=source, ok=False, message=f"Could not reach S3: {exc}",
                         rows=prev.rows if prev else 0)
