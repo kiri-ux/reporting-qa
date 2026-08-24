@@ -6,6 +6,7 @@ import csv
 import datetime as dt
 import io
 import re
+from pathlib import Path
 from dateutil import parser as dp
 
 from sqlalchemy import select
@@ -79,35 +80,57 @@ def import_orders(db: Session, raw, filename: str = "orders.csv",
     """Accepts CSV or XLSX, and recognises the IO tool's own export, which needs
     its own eligibility rules rather than being read as a flat list."""
     from pathlib import Path as _P
+    from .orders_io import import_io_export, looks_like_io_export
+
     blobs = raw if isinstance(raw, list) else [raw]
     if not blobs:
         raise ValueError("No files to import.")
-    first = blobs[0]
-    if isinstance(first, (str, _P)):
-        # streamed from S3: peek at the header only
-        with open(first, "r", encoding="utf-8-sig", errors="replace", newline="") as fh:
-            header = next(csv.reader(fh), [])
-        from .orders_io import import_io_export, looks_like_io_export
-        if looks_like_io_export(header):
-            return import_io_export(db, blobs, period=period, replace=replace)
-        rows = _rows_from_csv(open(first, "rb").read())
-    elif filename.lower().endswith((".xlsx", ".xlsm")):
-        rows = _rows_from_xlsx(first, sheet)
-    else:
-        rows = _rows_from_csv(first)
-    if rows:
-        from .orders_io import import_io_export, looks_like_io_export
-        if looks_like_io_export(rows[0]):
-            if filename.lower().endswith((".xlsx", ".xlsm")):
-                import csv as _csv, io as _io
-                conv = []
-                for b in blobs:
-                    buf = _io.StringIO()
-                    _csv.writer(buf).writerows(_rows_from_xlsx(b, sheet))
-                    conv.append(buf.getvalue().encode())
-                blobs = conv
-            return import_io_export(db, blobs, period=period, replace=replace)
-    all_rows = rows if len(blobs) == 1 else [r for b in blobs for r in _rows_from_csv(b)]
+
+    def header_of(b) -> list[str]:
+        """First row, without reading the rest. An export can be 400 MB."""
+        if isinstance(b, (str, _P)):
+            with open(b, "r", encoding="utf-8-sig", errors="replace", newline="") as fh:
+                return next(csv.reader(fh), [])
+        if filename.lower().endswith((".xlsx", ".xlsm")):
+            rows = _rows_from_xlsx(b, sheet)
+            return rows[0] if rows else []
+        text = b.decode("utf-8-sig", errors="replace")[:64_000]
+        return next(csv.reader(io.StringIO(text)), [])
+
+    # EVERY FILE IS CLASSIFIED ON ITS OWN HEADER.
+    #
+    # The first version peeked at one file and applied the verdict to all of
+    # them. A folder holding one IO export plus anything else - a partner
+    # list, a stray sheet, a half-written upload - then went down whichever
+    # path that one file chose. Worse, the fallback branch handed file PATHS
+    # to a reader expecting bytes, so the failure surfaced as an unrelated
+    # error from deep inside the parser with no mention of a file.
+    io_exports, others = [], []
+    for b in blobs:
+        try:
+            (io_exports if looks_like_io_export(header_of(b)) else others).append(b)
+        except Exception as exc:  # noqa: BLE001 - a bad file names itself
+            name = b if isinstance(b, (str, _P)) else filename
+            raise ValueError(f"Could not read {Path(str(name)).name}: "
+                             f"{type(exc).__name__}: {exc}") from exc
+
+    if io_exports:
+        res = import_io_export(db, io_exports, period=period, replace=replace)
+        if isinstance(res, dict) and others:
+            res["ignored_files"] = [Path(str(o)).name if isinstance(o, (str, _P))
+                                    else filename for o in others]
+        return res
+
+    # No IO export among them, so treat what is left as a plain list. Read
+    # each one as bytes regardless of whether it arrived as a path.
+    def as_rows(b) -> list[list[str]]:
+        if isinstance(b, (str, _P)):
+            return _rows_from_csv(Path(b).read_bytes())
+        if filename.lower().endswith((".xlsx", ".xlsm")):
+            return _rows_from_xlsx(b, sheet)
+        return _rows_from_csv(b)
+
+    all_rows = [r for b in blobs for r in as_rows(b)]
     return _import_rows(db, all_rows, replace=replace)
 
 

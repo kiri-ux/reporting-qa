@@ -14,7 +14,13 @@
     <h2 style="border:0;margin:0;padding:0">Roster ({{ partners|length }})</h2>
   </div>
   {% if partners %}
-  <div class="tw"><table>
+  <div class="tools">
+    <input type="search" data-filter="tbl-partners" data-count="cnt-partners"
+           placeholder="Filter by partner, buyer, SEO, reporter, trainer, email...">
+    <span class="count" id="cnt-partners"></span>
+    <a class="btn" href="/partners.csv">Download CSV</a>
+  </div>
+  <div class="tw"><table id="tbl-partners">
     <thead><tr><th>Partner</th><th>Buyer</th><th>SEO</th><th>Manager</th>
     <th>Reporter</th><th>Trainer</th><th>Reports go to</th><th>Notes</th></tr></thead>
     <tbody>{% for p in partners %}

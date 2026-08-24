@@ -250,6 +250,32 @@ def import_io_export(db: Session, sources, period: str | None = None,
             "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}
 
 
+def guidance_from_loaded(db: Session) -> dict:
+    """The date range the next export needs, worked out from what is loaded.
+
+    The import returns this too, but only on a successful run - so the moment
+    a sync failed, the one panel telling you what range to pull disappeared,
+    which is exactly when you most need it. This derives the same answer from
+    the order lines already in the database, so the guidance is on screen
+    whenever there is anything to be guided about.
+    """
+    from sqlalchemy import func, select as _select
+    row = db.execute(_select(func.min(OrderLine.starts_on),
+                             func.max(OrderLine.ends_on))).first()
+    if not row or not row[0]:
+        return {}
+    earliest, latest = row[0], row[1]
+    return {
+        "covered_from": earliest.isoformat(),
+        "covered_to": latest.isoformat() if latest else "",
+        "earliest_order_start": earliest.isoformat(),
+        "pull_from": earliest.isoformat(),
+        "pull_to": dt.date.today().isoformat(),
+        "may_be_truncated": False,
+        "derived": True,          # from what is loaded, not from the last import
+    }
+
+
 def _export_guidance(covered_from: dt.date | None, covered_to: dt.date | None,
                      earliest_order: dt.date | None) -> dict:
     """Work out the date range the next TapClicks export needs.

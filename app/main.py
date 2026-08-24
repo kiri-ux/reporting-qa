@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, HTTPException,
@@ -270,17 +271,72 @@ def orders_view(request: Request, view: str = Query("clients"),
     from .product_codes import PRODUCTS, ink_on
     legend = [{"code": c, "bg": h, "fg": ink_on(h), "name": n} for c, h, n, _ in PRODUCTS]
     clients = _client_rollup(db, lines) if view == "clients" else []
+    from .orders_io import guidance_from_loaded
+    sync_rec = last_sync(db)
+    guidance = (sync_rec.guidance if sync_rec and sync_rec.guidance
+                else guidance_from_loaded(db))
     # A partner in the order export with no roster row has no reporter, no
     # trainer and no fallback owner, which is worth seeing rather than reading
     # as an empty cell.
     no_roster = sorted({c["partner"] for c in clients if not c["in_roster"] and c["partner"]})
     return templates.TemplateResponse(request, "orders.html", {
-        "lines": lines, "sync": last_sync(db), "s3": settings.s3_configured,
+        "lines": lines, "sync": sync_rec, "guidance": guidance,
+        "s3": settings.s3_configured,
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster,
         "env_report": settings.env_report(),
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})
+
+
+def _csv_response(filename: str, header: list[str], rows) -> Response:
+    """Whatever the page is showing, downloadable. Written through csv.writer
+    so a client name with a comma or a quote in it survives the trip."""
+    import csv as _csv, io as _io
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(header)
+    w.writerows(rows)
+    return Response(
+        content="\ufeff" + buf.getvalue(),        # BOM, so Excel reads UTF-8
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/orders.csv")
+def orders_csv(view: str = Query("clients"), db: Session = Depends(get_db)):
+    lines = db.scalars(select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
+    today = dt.date.today().isoformat()
+    if view == "clients":
+        rows = [[c["partner"], c["client"],
+                 " ".join(p["code"] for p in c["products"]),
+                 ", ".join(p["name"] for p in c["products"]),
+                 c["orders"], c["starts"] or "", c["ends"] or "",
+                 c["buyer"], c["reporter"], c["trainer"],
+                 "yes" if c["lifetime"] else "", "" if c["in_roster"] else "not on roster"]
+                for c in _client_rollup(db, lines)]
+        return _csv_response(f"report-qa-clients-{today}.csv",
+                             ["Partner", "Client", "Products", "Product names", "Order",
+                              "Start", "End", "Buyer", "Reporter", "Trainer",
+                              "Lifetime due", "Roster"], rows)
+    rows = [[l.market, l.client, l.product, l.account_ids,
+             l.starts_on or "", l.ends_on or "", l.buyer, l.buyer_email]
+            for l in lines]
+    return _csv_response(f"report-qa-order-lines-{today}.csv",
+                         ["Partner", "Client", "Product", "Order", "Start", "End",
+                          "Buyer", "Buyer email"], rows)
+
+
+@app.get("/partners.csv")
+def partners_csv(db: Session = Depends(get_db)):
+    from .partners import all_partners
+    rows = [[p.partner, p.buyer, p.buyer_email, p.seo, p.seo_email, p.manager,
+             p.reporting_team, p.trainer, "; ".join(p.recipients),
+             p.reporting_notes, p.buyer_notes] for p in all_partners(db)]
+    return _csv_response(f"report-qa-partners-{dt.date.today().isoformat()}.csv",
+                         ["Partner", "Buyer", "Buyer email", "SEO", "SEO email", "Manager",
+                          "Reporter", "Trainer", "Reports go to", "Reporting notes",
+                          "Buyer notes"], rows)
 
 
 @app.get("/partners", response_class=HTMLResponse)

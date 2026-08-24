@@ -150,6 +150,8 @@ input[type=text]:focus{outline:none;border-color:var(--velocity);
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
  font-size:.93em}
 .nw{white-space:nowrap}
+/* in the DOM for filtering, not on screen */
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ---- product chips ----
    Colors come from the product legend, so the code is doing the identifying
@@ -172,6 +174,40 @@ input[type=text]:focus{outline:none;border-color:var(--velocity);
  padding:4px 12px;border-radius:16px;color:var(--ink-2);text-decoration:none}
 .tabs a:hover{background:var(--velocity-10);color:var(--velocity);text-decoration:none}
 .tabs a.on{background:var(--atlas);color:#fff}
+
+/* ---- filter box + download ---- */
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.tools input[type=search]{font:inherit;font-size:14px;padding:8px 13px;min-width:280px;flex:1;
+ border:1px solid var(--line);border-radius:20px;background:var(--surface);color:var(--ink)}
+.tools input[type=search]:focus{outline:none;border-color:var(--velocity);
+ box-shadow:0 0 0 3px var(--velocity-10)}
+.tools .count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;
+ white-space:nowrap}
+tr[hidden]{display:none}
+
+/* ---- chip tooltip ----
+   A title attribute waits about a second and renders in the OS font. These
+   are two-letter codes; the whole point is reading them at a glance, so the
+   name has to appear as fast as the eye moves. */
+.chip{position:relative}
+.chip::after{content:attr(data-name);position:absolute;bottom:calc(100% + 7px);left:50%;
+ transform:translateX(-50%);background:var(--atlas);color:#fff;font-family:'GT Walsheim Pro',sans-serif;
+ font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;white-space:nowrap;
+ padding:5px 9px;border-radius:7px;opacity:0;pointer-events:none;transition:opacity .1s;
+ z-index:60;box-shadow:0 4px 14px rgba(0,45,88,.24)}
+.chip::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;
+ transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--atlas);
+ opacity:0;pointer-events:none;transition:opacity .1s;z-index:60}
+.chip:hover::after,.chip:hover::before,.chip:focus::after,.chip:focus::before{opacity:1}
+
+/* ---- back to top ---- */
+.totop{position:fixed;right:22px;bottom:22px;z-index:30;width:42px;height:42px;
+ border-radius:50%;background:var(--atlas);color:#fff;display:none;
+ align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,45,88,.3);
+ text-decoration:none;border:0;cursor:pointer}
+.totop:hover{background:var(--velocity);text-decoration:none}
+.totop svg{width:19px;height:19px}
+.totop.show{display:flex}
 details summary{cursor:pointer}
 
 footer{margin-left:var(--rail);padding:16px 28px 34px;border-top:1px solid var(--line);
@@ -236,4 +272,53 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
   <span>Report QA · {{ build_label }}{% if build_service and build_service != 'local' %} · {{ build_service }}{% endif %}</span>
   <span class="n">{{ build_notes }}</span>
 </footer>
+
+<button class="totop" id="totop" aria-label="Back to top" title="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+
+<script>
+(function () {
+  // Back to top. These tables run to a couple of thousand rows.
+  var btn = document.getElementById('totop');
+  var onScroll = function () { btn.classList.toggle('show', window.scrollY > 600); };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  btn.addEventListener('click', function () {
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  });
+
+  // Filter. Matching runs against the row's own text, cached once, so typing
+  // over two thousand rows does not re-read the DOM on every keystroke.
+  document.querySelectorAll('[data-filter]').forEach(function (box) {
+    var table = document.getElementById(box.dataset.filter);
+    if (!table) return;
+    var out = document.getElementById(box.dataset.count);
+    var rows = Array.prototype.map.call(table.tBodies[0].rows, function (tr) {
+      return { tr: tr, hay: tr.textContent.toLowerCase() };
+    });
+    var total = rows.length, t;
+    var run = function () {
+      var q = box.value.toLowerCase().trim();
+      // Space-separated words all have to match, in any order, so
+      // "7 mountains ctv" narrows instead of finding nothing.
+      var terms = q ? q.split(/\s+/) : [];
+      var shown = 0;
+      rows.forEach(function (r) {
+        var hit = terms.every(function (w) { return r.hay.indexOf(w) !== -1; });
+        r.tr.hidden = !hit;
+        if (hit) shown++;
+      });
+      if (out) out.textContent = shown === total
+        ? total.toLocaleString() + ' rows'
+        : shown.toLocaleString() + ' of ' + total.toLocaleString() + ' rows';
+    };
+    box.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 90); });
+    run();
+  });
+})();
+</script>
 </body></html>

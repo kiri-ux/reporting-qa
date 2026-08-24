@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.24-4"
-BUILD_NOTES = ("Reporting roster built in: reporter, trainer and recipients "
-               "per partner, and the buyer as fallback owner (SEO person on "
-               "SEO lines). Order list is by client, with product chips.")
+BUILD = "2026.08.24-5"
+BUILD_NOTES = ("Filter and CSV download on the order list and partners. "
+               "Export date range shows even when the last sync failed. "
+               "Each S3 file is now classified on its own header.")
 # ---------------------------------------------------------------------------
 
 

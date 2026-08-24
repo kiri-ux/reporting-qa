@@ -64,8 +64,8 @@
   </details>
 </section>
 
-{% if sync and sync.guidance %}
-{% set g = sync.guidance %}
+{% if guidance %}
+{% set g = guidance %}
 <section>
   <h2>Next export from TapClicks</h2>
   <div class="panel">
@@ -135,18 +135,27 @@
   {% if no_roster %}
     <div class="note" style="border-left-color:var(--gold);background:var(--warn-bg);
          margin-bottom:14px">
-      <b>{{ no_roster|length }} partner{{ 's' if no_roster|length != 1 else '' }} not on the
-      reporting roster</b>, so there is no reporter, trainer or fallback owner for
-      {{ 'them' if no_roster|length != 1 else 'it' }}:
-      {{ no_roster|join(', ') }}.
-      <a href="/partners">Update the roster</a>.</div>
+      <b>{{ no_roster|length }} partner{{ 's' if no_roster|length != 1 else '' }} in the order
+      list {{ 'are' if no_roster|length != 1 else 'is' }} not in the roster loaded here</b>, so
+      {{ 'they have' if no_roster|length != 1 else 'it has' }} no reporter, trainer or fallback
+      owner. If {{ 'they are' if no_roster|length != 1 else 'it is' }} on the roster sheet, the
+      copy here is out of date - <a href="/partners">upload the current one</a>.
+      <details style="margin-top:8px"><summary style="font-size:13px">Show the
+        {{ no_roster|length }}</summary>
+        <p style="margin:6px 0 0;font-size:13px">{{ no_roster|join(', ') }}</p></details></div>
   {% endif %}
 
   {% if not lines %}
     <p class="empty">Nothing loaded yet.</p>
 
   {% elif view == 'clients' %}
-    <div class="tw"><table>
+    <div class="tools">
+      <input type="search" data-filter="tbl-clients" data-count="cnt-clients"
+             placeholder="Filter by partner, client, product code, buyer, reporter...">
+      <span class="count" id="cnt-clients"></span>
+      <a class="btn" href="/orders.csv?view=clients">Download CSV</a>
+    </div>
+    <div class="tw"><table id="tbl-clients">
       <thead><tr><th>Partner</th><th>Client</th><th>Products</th><th>Order</th>
       <th>Start</th><th>End</th><th>Buyer</th><th>Reporter</th><th>Trainer</th></tr></thead>
       <tbody>{% for c in clients %}
@@ -155,9 +164,9 @@
           <td><b>{{ c.client }}</b>{% if c.lifetime %}
             <span class="pill p-warn" style="margin-left:6px">lifetime due</span>{% endif %}</td>
           <td><span class="chips">{% for p in c.products %}
-            <span class="chip" title="{{ p.name }}"
+            <span class="chip" data-name="{{ p.name }}" tabindex="0"
                   style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
-          {% endfor %}</span></td>
+          {% endfor %}</span><span class="sr">{% for p in c.products %}{{ p.name }} {% endfor %}</span></td>
           <td class="acct">{{ c.orders }}</td>
           <td class="mono nw">{{ c.starts or '' }}</td>
           <td class="mono nw">{{ c.ends or '' }}</td>
@@ -170,13 +179,19 @@
     <details style="margin-top:14px">
       <summary style="font-size:14px;color:var(--muted)">Product key</summary>
       <span class="chips" style="margin-top:10px">{% for p in legend %}
-        <span class="chip" style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
+        <span class="chip" data-name="{{ p.name }}" style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
         <span style="font-size:12.5px;color:var(--ink-2);margin:0 14px 0 -2px">{{ p.name }}</span>
       {% endfor %}</span>
     </details>
 
   {% else %}
-    <div class="tw"><table>
+    <div class="tools">
+      <input type="search" data-filter="tbl-lines" data-count="cnt-lines"
+             placeholder="Filter by partner, client, product, order, buyer...">
+      <span class="count" id="cnt-lines"></span>
+      <a class="btn" href="/orders.csv?view=lines">Download CSV</a>
+    </div>
+    <div class="tw"><table id="tbl-lines">
       <thead><tr><th>Partner</th><th>Client</th><th>Product</th><th>Order</th>
       <th>Start</th><th>End</th><th>Buyer</th></tr></thead>
       <tbody>{% for l in lines %}
