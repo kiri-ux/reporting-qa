@@ -61,16 +61,22 @@ def previous_period(today: dt.date | None = None) -> str:
     return (first - dt.timedelta(days=1)).strftime("%Y-%m")
 
 
-def import_io_export(db: Session, raw: bytes, period: str | None = None,
+def import_io_export(db: Session, raw: bytes | list[bytes], period: str | None = None,
                      replace: bool = True) -> dict:
     """Load the export, keep only what should get a report, one row per
-    client + product."""
+    client + product.
+
+    Accepts several exports at once. They are merged and de-duplicated on
+    order id plus line item id, so overlapping date ranges are harmless."""
     period = period or previous_period()
     p_start, p_end = period_bounds(period)
 
-    rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig", errors="replace"))))
+    blobs = raw if isinstance(raw, list) else [raw]
+    rows: list[dict] = []
+    for blob in blobs:
+        rows.extend(csv.DictReader(io.StringIO(blob.decode("utf-8-sig", errors="replace"))))
     if not rows:
-        return {"kept": 0, "clients": 0, "skipped": {}}
+        return {"kept": 0, "clients": 0, "skipped": {}, "guidance": {}}
 
     skipped: dict[str, int] = {}
 
@@ -79,12 +85,20 @@ def import_io_export(db: Session, raw: bytes, period: str | None = None,
 
     seen: set[tuple] = set()
     kept: dict[tuple[str, str], dict] = {}
+    dupes = 0
+    export_dates: list[dt.date] = []          # the `date` column the range filters on
+    order_starts: list[dt.date] = []          # earliest possible line start per order
 
     for r in rows:
         order_id = _txt(r.get("orders_id"))
         line_id = _txt(r.get("id"))
+        d = _date(r.get("date"))
+        if d:
+            export_dates.append(d)
+
         key = (order_id, line_id)
-        if key in seen:                       # daily grain, one row per line item is enough
+        if key in seen:                       # daily grain, and exports may overlap
+            dupes += 1
             continue
         seen.add(key)
 
@@ -117,6 +131,10 @@ def import_io_export(db: Session, raw: bytes, period: str | None = None,
         if not product:
             skip(f"unmapped product: {product_raw}"); continue
 
+        os_ = _date(r.get("orders_start_date"))
+        if os_:
+            order_starts.append(os_)
+
         k = (client, product)
         if k not in kept:
             kept[k] = {
@@ -148,5 +166,38 @@ def import_io_export(db: Session, raw: bytes, period: str | None = None,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))
     db.commit()
+
+    guidance = _export_guidance(export_dates, order_starts, p_start)
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
-            "period": period, "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}
+            "period": period, "rows_read": len(rows), "duplicate_rows": dupes,
+            "files": len(blobs), "guidance": guidance,
+            "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}
+
+
+def _export_guidance(export_dates: list[dt.date], order_starts: list[dt.date],
+                     period_start: dt.date) -> dict:
+    """Work out the date range the next TapClicks export needs.
+
+    The export's date filter runs on the line item's start date, not on
+    delivery. A campaign that launched in 2020 and is still running only
+    appears in an export whose range reaches back to 2020. So the range has to
+    start at the earliest start date you still care about, not 30 days ago.
+    """
+    if not export_dates:
+        return {}
+    covered_from, covered_to = min(export_dates), max(export_dates)
+    earliest_order = min(order_starts) if order_starts else covered_from
+
+    # An order whose own start predates the export window may have line items
+    # that started before the window and were therefore filtered out.
+    at_risk = earliest_order < covered_from
+    pull_from = min(earliest_order, covered_from)
+
+    return {
+        "covered_from": covered_from.isoformat(),
+        "covered_to": covered_to.isoformat(),
+        "earliest_order_start": earliest_order.isoformat(),
+        "pull_from": pull_from.isoformat(),
+        "pull_to": dt.date.today().isoformat(),
+        "may_be_truncated": at_risk,
+    }

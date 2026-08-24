@@ -71,25 +71,33 @@ def _rows_from_xlsx(raw: bytes, sheet: str | None = None) -> list[list[str]]:
     return out
 
 
-def import_orders(db: Session, raw: bytes, filename: str = "orders.csv",
+def import_orders(db: Session, raw, filename: str = "orders.csv",
                   sheet: str | None = None, replace: bool = True,
-                  period: str | None = None) -> int:
+                  period: str | None = None):
+    """Returns the IO export's result dict when it recognises that format,
+    otherwise a plain row count."""
     """Accepts CSV or XLSX, and recognises the IO tool's own export, which needs
     its own eligibility rules rather than being read as a flat list."""
+    blobs = raw if isinstance(raw, list) else [raw]
+    first = blobs[0]
     if filename.lower().endswith((".xlsx", ".xlsm")):
-        rows = _rows_from_xlsx(raw, sheet)
+        rows = _rows_from_xlsx(first, sheet)
     else:
-        rows = _rows_from_csv(raw)
+        rows = _rows_from_csv(first)
     if rows:
         from .orders_io import import_io_export, looks_like_io_export
         if looks_like_io_export(rows[0]):
             if filename.lower().endswith((".xlsx", ".xlsm")):
                 import csv as _csv, io as _io
-                buf = _io.StringIO()
-                _csv.writer(buf).writerows(rows)
-                raw = buf.getvalue().encode()
-            return import_io_export(db, raw, period=period, replace=replace)["kept"]
-    return _import_rows(db, rows, replace=replace)
+                conv = []
+                for b in blobs:
+                    buf = _io.StringIO()
+                    _csv.writer(buf).writerows(_rows_from_xlsx(b, sheet))
+                    conv.append(buf.getvalue().encode())
+                blobs = conv
+            return import_io_export(db, blobs, period=period, replace=replace)
+    all_rows = rows if len(blobs) == 1 else [r for b in blobs for r in _rows_from_csv(b)]
+    return _import_rows(db, all_rows, replace=replace)
 
 
 def import_order_csv(db: Session, raw: bytes, replace: bool = True) -> int:

@@ -28,14 +28,54 @@
       </form>
       <p class="sub" style="font-size:13px;margin-top:12px">
         Every incoming batch refreshes this first, so a campaign added or ended since the
-        last run is already reflected. The object is only re-downloaded when its ETag
-        changes, and at most once an hour unless you force it here.</p>
+        last run is already reflected. Files are only re-downloaded when something changes,
+        and at most once an hour unless you force it here.<br>
+        <b>Overlapping exports are fine.</b> Set <code>ORDERS_S3_KEY</code> to a comma separated
+        list, or to a folder path ending in <code>/</code>, and every file is merged and
+        de-duplicated on order and line item id.</p>
     </div>
   {% else %}
     <div class="note">No S3 bucket configured. Set <code>ORDERS_S3_BUCKET</code> and
     <code>ORDERS_S3_KEY</code> to make the bucket the source of truth, or upload by hand below.</div>
   {% endif %}
 </section>
+
+{% if sync and sync.guidance %}
+{% set g = sync.guidance %}
+<section>
+  <h2>Next export from TapClicks</h2>
+  <div class="panel">
+    <p style="margin:0 0 12px">Set the date range to:</p>
+    <div class="tw"><table>
+      <tbody>
+        <tr><td style="width:90px"><b>From</b></td>
+            <td class="mono" style="font-size:17px">{{ g.pull_from }}</td>
+            <td style="color:var(--ink-2);font-size:14px">The earliest start date of any order that still needs a report</td></tr>
+        <tr><td><b>To</b></td>
+            <td class="mono" style="font-size:17px">{{ g.pull_to }}</td>
+            <td style="color:var(--ink-2);font-size:14px">Today, so anything launched since is picked up</td></tr>
+      </tbody>
+    </table></div>
+    <p class="sub" style="font-size:14px;margin-top:12px">
+      TapClicks filters that export on the line item's <b>start date</b>, not on delivery. A campaign
+      that launched in 2020 and is still running only appears if the range reaches back to 2020, which
+      is why a rolling 30 day lookback loses orders.</p>
+    {% if g.may_be_truncated %}
+    <div class="note" style="margin-top:14px;border-left-color:var(--crit)">
+      <b style="color:var(--crit)">This export may be missing rows.</b><br>
+      It covers start dates from <span class="mono">{{ g.covered_from }}</span>, but orders in it began as
+      early as <span class="mono">{{ g.earliest_order_start }}</span>. Line items that started before
+      <span class="mono">{{ g.covered_from }}</span> were filtered out. Re-pull from
+      <span class="mono">{{ g.pull_from }}</span>.
+    </div>
+    {% else %}
+    <p class="sub" style="font-size:14px;margin-top:10px">
+      This export covers <span class="mono">{{ g.covered_from }}</span> to
+      <span class="mono">{{ g.covered_to }}</span> and reaches back far enough for every order in it.</p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
 
 <section>
   <h2>{% if s3 %}Override by hand{% else %}Import{% endif %}</h2>

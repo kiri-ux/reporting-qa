@@ -10,7 +10,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .db import Batch, OrderLine, Report, SessionLocal, init_db
+from .db import Batch, OrderLine, OrderSync, Report, SessionLocal, init_db
 from .ingest import parse_postmark, process_batch
 from .orders_s3 import last_sync, sync as sync_orders
 from .roster import completeness, import_orders
@@ -125,8 +125,17 @@ def orders_view(request: Request, db: Session = Depends(get_db)):
 @app.post("/orders/import")
 async def orders_import(file: UploadFile = File(...), period: str = Form(""),
                         db: Session = Depends(get_db)):
-    n = import_orders(db, await file.read(), filename=file.filename or "orders.csv",
-                      replace=True, period=period or None)
+    res = import_orders(db, await file.read(), filename=file.filename or "orders.csv",
+                        replace=True, period=period or None)
+    n = res["kept"] if isinstance(res, dict) else res
+    if isinstance(res, dict):
+        msg = (f"Imported {n} order lines from an upload, "
+               f"{res.get('rows_read', 0):,} rows read")
+        if res.get("duplicate_rows"):
+            msg += f", {res['duplicate_rows']:,} duplicate rows ignored"
+        db.add(OrderSync(source=f"upload: {file.filename}", rows=n, ok=True,
+                         message=msg + ".", guidance=res.get("guidance") or {}))
+        db.commit()
     return RedirectResponse(f"/orders?imported={n}", status_code=303)
 
 

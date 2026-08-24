@@ -251,3 +251,47 @@ def test_concurrent_init_db_does_not_crash(tmp_path):
     for t in threads:
         t.join()
     assert not errors
+
+
+def test_overlapping_exports_are_merged_not_duplicated():
+    """Two exports with overlapping date ranges must not double-count."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    raw = IO_EXPORT.read_bytes()
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+
+    one = sessionmaker(bind=engine)()
+    a = import_io_export(one, raw, period="2026-07")
+
+    two = sessionmaker(bind=engine)()
+    b = import_io_export(two, [raw, raw], period="2026-07")
+
+    assert b["kept"] == a["kept"]
+    assert b["duplicate_rows"] > a["duplicate_rows"]
+    assert two.query(OrderLine).count() == a["kept"]
+
+
+def test_export_guidance_reports_the_range_to_pull():
+    """The export filters on line-item start date, so the range has to reach
+    back to the oldest campaign still running, not 30 days."""
+    import datetime as dt
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db import Base
+    from app.orders_io import import_io_export
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    g = import_io_export(db, IO_EXPORT.read_bytes(), period="2026-07")["guidance"]
+
+    assert g["pull_to"] == dt.date.today().isoformat()
+    assert g["pull_from"] < "2019-01-01"          # reaches back to the 2018 orders
+    assert g["may_be_truncated"] is False

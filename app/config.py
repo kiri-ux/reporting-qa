@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # order list in S3. Leave the bucket blank to use manual upload only.
     orders_s3_bucket: str = ""
-    orders_s3_key: str = ""              # e.g. "reporting/order-list.xlsx"
+    orders_s3_key: str = ""              # one key, several comma separated, or a prefix ending in /
     orders_s3_region: str = "us-east-1"
     orders_s3_sheet: str = ""            # xlsx only; blank means the first sheet
     orders_refresh_minutes: int = 60     # re-check S3 at most this often
@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     @property
     def s3_configured(self) -> bool:
         return bool(self.orders_s3_bucket and self.orders_s3_key)
+
+    @property
+    def orders_s3_keys(self) -> list[str]:
+        return [k.strip() for k in self.orders_s3_key.split(",") if k.strip()]
 
     @property
     def digest_recipients(self) -> list[str]:

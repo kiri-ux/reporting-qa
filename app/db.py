@@ -112,6 +112,7 @@ class OrderSync(Base):
     rows: Mapped[int] = mapped_column(Integer, default=0)
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     message: Mapped[str] = mapped_column(Text, default="")
+    guidance: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 # --------------------------------------------------------------------------
@@ -134,6 +135,7 @@ _LOCK_ID = 8_150_724          # arbitrary, just has to be consistent
 ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "product", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("reports", "products", "VARCHAR(512) DEFAULT '' NOT NULL"),
+    ("order_sync", "guidance", "JSON"),
 ]
 
 
