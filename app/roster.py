@@ -78,9 +78,18 @@ def import_orders(db: Session, raw, filename: str = "orders.csv",
     otherwise a plain row count."""
     """Accepts CSV or XLSX, and recognises the IO tool's own export, which needs
     its own eligibility rules rather than being read as a flat list."""
+    from pathlib import Path as _P
     blobs = raw if isinstance(raw, list) else [raw]
     first = blobs[0]
-    if filename.lower().endswith((".xlsx", ".xlsm")):
+    if isinstance(first, (str, _P)):
+        # streamed from S3: peek at the header only
+        with open(first, "r", encoding="utf-8-sig", errors="replace", newline="") as fh:
+            header = next(csv.reader(fh), [])
+        from .orders_io import import_io_export, looks_like_io_export
+        if looks_like_io_export(header):
+            return import_io_export(db, blobs, period=period, replace=replace)
+        rows = _rows_from_csv(open(first, "rb").read())
+    elif filename.lower().endswith((".xlsx", ".xlsm")):
         rows = _rows_from_xlsx(first, sheet)
     else:
         rows = _rows_from_csv(first)

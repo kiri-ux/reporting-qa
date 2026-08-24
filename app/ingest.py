@@ -121,22 +121,33 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     db.refresh(batch)
 
     if notify:
-        # refresh the order list from S3 before judging completeness, so a
-        # campaign added or ended since the last batch is already reflected
-        if settings.s3_configured:
-            try:
-                from .orders_s3 import sync as sync_orders
-                sync_orders(db)
-            except Exception:
-                pass
-        comp = completeness(db, batch.market, batch.period)
-        owners = [e for r in batch.reports if r.severity in ("fail", "warn")
-                  for e in (r.owner_buyer, r.owner_team) if e and "@" in e]
-        post_slack(batch, comp)
-        send_digest(batch, comp, extra_to=owners)
-        batch.notified_at = dt.datetime.utcnow()
-        db.commit()
+        finish_batch(db, batch.id)
     return batch
+
+
+def finish_batch(db: Session, batch_id: int) -> None:
+    """Refresh the order list, judge completeness, then notify.
+
+    Split out from process_batch so the inbound webhook can answer first. The
+    order export runs to hundreds of megabytes, and downloading it should not
+    hold a mail provider's connection open.
+    """
+    batch = db.get(Batch, batch_id)
+    if batch is None or batch.notified_at:
+        return
+    if settings.s3_configured:
+        try:
+            from .orders_s3 import sync as sync_orders
+            sync_orders(db)
+        except Exception:
+            pass
+    comp = completeness(db, batch.market, batch.period)
+    owners = [e for r in batch.reports if r.severity in ("fail", "warn")
+              for e in (r.owner_buyer, r.owner_team) if e and "@" in e]
+    post_slack(batch, comp)
+    send_digest(batch, comp, extra_to=owners)
+    batch.notified_at = dt.datetime.utcnow()
+    db.commit()
 
 
 # ---------------------------------------------------------------- webhook shapes

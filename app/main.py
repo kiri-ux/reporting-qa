@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import (Depends, FastAPI, File, Form, HTTPException, Query,
-                     Request, UploadFile)
+from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, HTTPException,
+                     Query, Request, UploadFile)
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import Batch, OrderLine, OrderSync, Report, SessionLocal, init_db
-from .ingest import parse_postmark, process_batch
+from .ingest import finish_batch, parse_postmark, process_batch
 from .orders_s3 import last_sync, sync as sync_orders
 from .roster import completeness, import_orders
 
@@ -37,6 +37,15 @@ def healthz():
     return {"ok": True}
 
 
+def _finish(batch_id: int) -> None:
+    """Runs after the webhook has already answered."""
+    db = SessionLocal()
+    try:
+        finish_batch(db, batch_id)
+    finally:
+        db.close()
+
+
 def _guard(k: str | None):
     if k != settings.inbound_secret:
         raise HTTPException(status_code=403, detail="bad key")
@@ -44,8 +53,8 @@ def _guard(k: str | None):
 
 # ---------------------------------------------------------------- inbound email
 @app.post("/inbound/mailgun")
-async def inbound_mailgun(request: Request, k: str | None = Query(None),
-                          db: Session = Depends(get_db)):
+async def inbound_mailgun(request: Request, background: BackgroundTasks,
+                          k: str | None = Query(None), db: Session = Depends(get_db)):
     _guard(k)
     form = await request.form()
     sender = str(form.get("sender") or form.get("from") or "")
@@ -56,19 +65,23 @@ async def inbound_mailgun(request: Request, k: str | None = Query(None),
             files.append((value.filename, await value.read()))
     if not files:
         return {"ok": True, "skipped": "no attachments"}
-    batch = process_batch(db, files, source="mailgun", email_from=sender, subject=subject)
+    batch = process_batch(db, files, source="mailgun", email_from=sender,
+                          subject=subject, notify=False)
+    background.add_task(_finish, batch.id)
     return {"ok": True, "batch": batch.id, "reports": len(batch.reports)}
 
 
 @app.post("/inbound/postmark")
-async def inbound_postmark(request: Request, k: str | None = Query(None),
-                           db: Session = Depends(get_db)):
+async def inbound_postmark(request: Request, background: BackgroundTasks,
+                           k: str | None = Query(None), db: Session = Depends(get_db)):
     _guard(k)
     payload = await request.json()
     sender, subject, files = parse_postmark(payload)
     if not files:
         return {"ok": True, "skipped": "no attachments"}
-    batch = process_batch(db, files, source="postmark", email_from=sender, subject=subject)
+    batch = process_batch(db, files, source="postmark", email_from=sender,
+                          subject=subject, notify=False)
+    background.add_task(_finish, batch.id)
     return {"ok": True, "batch": batch.id, "reports": len(batch.reports)}
 
 

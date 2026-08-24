@@ -7,6 +7,9 @@ changed, so a monthly batch does not re-import an unchanged file.
 from __future__ import annotations
 
 import datetime as dt
+import shutil
+import tempfile
+from pathlib import Path
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -87,14 +90,24 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
         db.commit()
         return prev
 
+    tmpdir = None
     try:
         client = _client()
         keys = _resolve_keys(client)
-        blobs = [client.get_object(Bucket=settings.orders_s3_bucket, Key=k)["Body"].read()
-                 for k in keys]
-        result = import_orders(db, blobs, filename=keys[0] if keys else "orders.csv",
+        # These exports run to hundreds of megabytes, so stream each one to disk
+        # and parse it row by row rather than holding it in memory.
+        tmpdir = tempfile.mkdtemp(prefix="orders-", dir=str(settings.data_dir))
+        paths = []
+        for i, k in enumerate(keys):
+            dest = Path(tmpdir) / f"{i:03d}-{Path(k).name}"
+            with open(dest, "wb") as fh:
+                client.download_fileobj(settings.orders_s3_bucket, k, fh)
+            paths.append(dest)
+        result = import_orders(db, paths, filename=keys[0] if keys else "orders.csv",
                                sheet=settings.orders_s3_sheet or None, replace=True)
     except Exception as exc:
+        if tmpdir:
+            shutil.rmtree(tmpdir, ignore_errors=True)
         rec = OrderSync(source=source, etag=etag, last_modified=lm, ok=False,
                         message=f"Downloaded but could not import: {exc}",
                         rows=prev.rows if prev else 0)
@@ -110,4 +123,6 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
                     etag=etag, last_modified=lm, rows=n, ok=True, message=msg + ".",
                     guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {})
     db.add(rec); db.commit()
+    if tmpdir:
+        shutil.rmtree(tmpdir, ignore_errors=True)
     return rec
