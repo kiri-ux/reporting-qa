@@ -47,12 +47,22 @@ def last_sync(db: Session) -> OrderSync | None:
     return db.scalars(select(OrderSync).order_by(desc(OrderSync.id)).limit(1)).first()
 
 
+DATA_EXTS = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls")
+
+
+class NothingToImport(RuntimeError):
+    pass
+
+
 def _resolve_keys(client) -> list[str]:
     """A key ending in / is treated as a prefix, so several exports can be
-    dropped in one folder and merged."""
+    dropped in one folder and merged. Raises with what it did find when the
+    prefix turns up no data files, since an empty list is otherwise silent."""
     out: list[str] = []
+    seen: list[str] = []                   # everything under the prefix, for the error
     for k in settings.orders_s3_keys:
-        if k.endswith("/"):
+        k = k.lstrip("/")                  # "/orders/" and "orders/" are the same place
+        if k == "" or k.endswith("/"):     # "" or "/" means the whole bucket
             token = None
             while True:
                 kw = {"Bucket": settings.orders_s3_bucket, "Prefix": k}
@@ -60,13 +70,29 @@ def _resolve_keys(client) -> list[str]:
                     kw["ContinuationToken"] = token
                 page = client.list_objects_v2(**kw)
                 for obj in page.get("Contents", []):
-                    if obj["Key"].lower().endswith((".csv", ".xlsx", ".xlsm")):
-                        out.append(obj["Key"])
+                    key, size = obj["Key"], obj.get("Size", 0)
+                    if key.endswith("/"):          # console folder marker
+                        continue
+                    seen.append(f"{key} ({size:,} bytes)")
+                    if key.lower().endswith(DATA_EXTS) and size > 0:
+                        out.append(key)
                 if not page.get("IsTruncated"):
                     break
                 token = page.get("NextContinuationToken")
         else:
             out.append(k)
+
+    if not out:
+        prefix = ", ".join(settings.orders_s3_keys)
+        if not seen:
+            raise NothingToImport(
+                f"Nothing found under s3://{settings.orders_s3_bucket}/{prefix}. "
+                f"Check the folder name, and that the IAM user has s3:ListBucket "
+                f"on the bucket itself, not just s3:GetObject on its contents.")
+        raise NothingToImport(
+            f"Found {len(seen)} object(s) under s3://{settings.orders_s3_bucket}/{prefix} "
+            f"but none are usable data files ({', '.join(DATA_EXTS)}, non-empty): "
+            + "; ".join(seen[:8]) + (" ..." if len(seen) > 8 else ""))
     return sorted(set(out))
 
 
@@ -99,7 +125,7 @@ def sync(db: Session, *, force: bool = False) -> OrderSync:
 
     try:
         etag, lm = head()
-    except CredentialsMissing as exc:
+    except (CredentialsMissing, NothingToImport) as exc:
         rec = OrderSync(source=source, ok=False, message=str(exc),
                         rows=prev.rows if prev else 0)
         db.add(rec); db.commit(); return rec

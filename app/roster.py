@@ -80,6 +80,8 @@ def import_orders(db: Session, raw, filename: str = "orders.csv",
     its own eligibility rules rather than being read as a flat list."""
     from pathlib import Path as _P
     blobs = raw if isinstance(raw, list) else [raw]
+    if not blobs:
+        raise ValueError("No files to import.")
     first = blobs[0]
     if isinstance(first, (str, _P)):
         # streamed from S3: peek at the header only

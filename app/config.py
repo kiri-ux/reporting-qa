@@ -74,7 +74,9 @@ class Settings(BaseSettings):
              "ok": bool(self.orders_s3_key.strip()) and not looks_like_key,
              "note": "This is an AWS access key, not a path. It belongs in AWS_ACCESS_KEY_ID."
                      if looks_like_key else
-                     ("Ends in / so every file under it is merged."
+                     ("Whole bucket. Every CSV in it is merged."
+                      if self.orders_s3_key.strip().lstrip("/") == "" else
+                      "Folder. Every CSV under it is merged."
                       if self.orders_s3_key.strip().endswith("/") else
                       "No trailing slash, so only this exact object is read.")},
             {"name": "ORDERS_S3_REGION", "value": self.orders_s3_region.strip(),
