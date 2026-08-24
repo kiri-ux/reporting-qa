@@ -149,6 +149,29 @@ input[type=text]:focus{outline:none;border-color:var(--velocity);
 .acct{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
  font-size:.93em}
+.nw{white-space:nowrap}
+
+/* ---- product chips ----
+   Colors come from the product legend, so the code is doing the identifying
+   and the color only reinforces it. Every chip carries its abbreviation, which
+   is what makes this readable to someone who has not memorised the palette,
+   and legible for anyone who cannot separate two of these hues. */
+.chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.chip{display:inline-flex;align-items:center;justify-content:center;
+ font-family:Agdasima,sans-serif;font-size:13px;font-weight:700;letter-spacing:.05em;
+ min-width:26px;height:20px;padding:0 7px;border-radius:5px;line-height:1;
+ border:1px solid rgba(0,45,88,.14)}
+
+/* ---- section bar with view tabs ---- */
+.secbar{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+ border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:12px}
+.secbar h2{font-family:Agdasima,sans-serif;font-size:15px;font-weight:700;
+ letter-spacing:.12em;text-transform:uppercase;color:var(--atlas-50)}
+.tabs{display:flex;gap:4px;margin-left:auto}
+.tabs a{font-family:'GT Walsheim Pro',sans-serif;font-size:13px;font-weight:700;
+ padding:4px 12px;border-radius:16px;color:var(--ink-2);text-decoration:none}
+.tabs a:hover{background:var(--velocity-10);color:var(--velocity);text-decoration:none}
+.tabs a.on{background:var(--atlas);color:#fff}
 details summary{cursor:pointer}
 
 footer{margin-left:var(--rail);padding:16px 28px 34px;border-top:1px solid var(--line);
@@ -191,6 +214,12 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
       <path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.4" fill="currentColor"/>
       <circle cx="3.5" cy="12" r="1.4" fill="currentColor"/>
       <circle cx="3.5" cy="18" r="1.4" fill="currentColor"/>
+    </svg></a>
+  <a href="/partners" class="{% if nav == 'partners' %}on{% endif %}" title="Partners" aria-label="Partners">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
     </svg></a>
 </nav>
 

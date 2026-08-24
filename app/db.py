@@ -36,6 +36,9 @@ class Batch(Base):
     period: Mapped[str] = mapped_column(String(32), default="")          # "2026-07"
     status: Mapped[str] = mapped_column(String(24), default="pending")   # pending|running|done|error
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # When the most recent report landed. Reports arrive one email at a time, so
+    # this is what decides a batch has gone quiet and the digest can go out.
+    last_report_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     note: Mapped[str] = mapped_column(Text, default="")
 
     reports: Mapped[list["Report"]] = relationship(back_populates="batch", cascade="all, delete-orphan")
@@ -77,6 +80,42 @@ class Report(Base):
     owner_team: Mapped[str] = mapped_column(String(255), default="")
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
+
+
+class Partner(Base):
+    """Who runs reporting for each partner, from the reporting roster sheet.
+
+    Two jobs. It names the reporter, trainer and recipients for a partner, and
+    it supplies the fallback owner when a line item comes out of the IO export
+    with no campaign manager on it - the partner's buyer normally, or the SEO
+    person for an SEO line item.
+    """
+    __tablename__ = "partners"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    partner: Mapped[str] = mapped_column(String(255), index=True)
+    buyer: Mapped[str] = mapped_column(String(128), default="")
+    buyer_email: Mapped[str] = mapped_column(String(255), default="")
+    seo: Mapped[str] = mapped_column(String(128), default="")
+    seo_email: Mapped[str] = mapped_column(String(255), default="")
+    manager: Mapped[str] = mapped_column(String(128), default="")
+    reporting_team: Mapped[str] = mapped_column(String(128), default="")
+    to_emails: Mapped[str] = mapped_column(Text, default="")
+    trainer: Mapped[str] = mapped_column(String(128), default="")
+    reporting_notes: Mapped[str] = mapped_column(Text, default="")
+    buyer_notes: Mapped[str] = mapped_column(Text, default="")
+
+    @property
+    def recipients(self) -> list[str]:
+        """The To: cell holds several addresses, separated by ; or , and
+        sometimes annotated with a name in brackets."""
+        import re as _re
+        out = []
+        for part in _re.split(r"[;,]", self.to_emails or ""):
+            m = _re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", part)
+            if m:
+                out.append(m.group(0))
+        return out
 
 
 class OrderLine(Base):
@@ -136,6 +175,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "product", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("reports", "products", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "guidance", "JSON"),
+    ("batches", "last_report_at", "TIMESTAMP"),
 ]
 
 

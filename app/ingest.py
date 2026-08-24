@@ -71,23 +71,55 @@ def expand_attachments(files: list[tuple[str, bytes]]) -> list[tuple[str, bytes]
     return out
 
 
+def open_batch(db: Session, market: str, period: str) -> Batch | None:
+    """The batch these reports should join, if there is one.
+
+    TapClicks mails one report per client, so a market's month arrives as
+    eighteen separate deliveries seconds apart. Without this, every one becomes
+    its own batch, its own dashboard row and its own Slack post, and the
+    completeness check never sees a whole market at once. A batch stays open
+    for `batch_window_minutes` and stops accepting once its digest has gone out.
+    """
+    from sqlalchemy import select
+    cutoff = dt.datetime.utcnow() - dt.timedelta(minutes=settings.batch_window_minutes)
+    return db.scalars(
+        select(Batch)
+        .where(Batch.market == market, Batch.period == period,
+               Batch.notified_at.is_(None), Batch.received_at >= cutoff)
+        .order_by(Batch.received_at.desc())
+        .limit(1)
+    ).first()
+
+
 def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = "upload",
                   email_from: str = "", subject: str = "", market: str = "",
-                  notify: bool = True) -> Batch:
+                  notify: bool = True, coalesce: bool = False) -> Batch:
     pdfs = expand_attachments(files)
     names = [n for n, _ in pdfs]
-    batch = Batch(
-        source=source, email_from=email_from, email_subject=subject,
-        market=market or guess_market(subject, email_from, names),
-        period=guess_period(names, subject), status="running",
-    )
-    db.add(batch)
+    market = market or guess_market(subject, email_from, names)
+    period = guess_period(names, subject)
+
+    batch = open_batch(db, market, period) if coalesce else None
+    if batch is not None:
+        batch.status = "running"
+    else:
+        batch = Batch(
+            source=source, email_from=email_from, email_subject=subject,
+            market=market, period=period, status="running",
+        )
+        db.add(batch)
     db.flush()
 
     store = settings.data_dir / f"batch-{batch.id}"
     store.mkdir(parents=True, exist_ok=True)
 
+    # A retried webhook must not double-count a report already in this batch.
+    already = {r.filename for r in batch.reports}
+
     for name, blob in pdfs:
+        if name in already:
+            continue
+        already.add(name)
         safe = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:180] or f"{uuid.uuid4().hex}.pdf"
         path = store / safe
         path.write_bytes(blob)
@@ -117,6 +149,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         attach_owners(db, rep)
 
     batch.status = "done"
+    batch.last_report_at = dt.datetime.utcnow()
     db.commit()
     db.refresh(batch)
 
@@ -125,7 +158,29 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     return batch
 
 
-def finish_batch(db: Session, batch_id: int) -> None:
+def sweep_stale(db: Session) -> int:
+    """Notify any batch that has gone quiet but never got its digest.
+
+    The quiet timer lives in a background task, so a deploy or a worker restart
+    mid-delivery would otherwise leave a batch silently un-notified forever.
+    Cheap enough to run on a page load.
+    """
+    from sqlalchemy import select
+    quiet = dt.datetime.utcnow() - dt.timedelta(minutes=settings.batch_quiet_minutes)
+    stale = db.scalars(
+        select(Batch).where(Batch.notified_at.is_(None), Batch.status == "done",
+                            Batch.last_report_at.is_not(None),
+                            Batch.last_report_at < quiet).limit(5)
+    ).all()
+    for b in stale:
+        try:
+            finish_batch(db, b.id, respect_quiet=False)
+        except Exception:  # noqa: BLE001 - a page load must never 500 over this
+            db.rollback()
+    return len(stale)
+
+
+def finish_batch(db: Session, batch_id: int, *, respect_quiet: bool = False) -> None:
     """Refresh the order list, judge completeness, then notify.
 
     Split out from process_batch so the inbound webhook can answer first. The
@@ -135,6 +190,13 @@ def finish_batch(db: Session, batch_id: int) -> None:
     batch = db.get(Batch, batch_id)
     if batch is None or batch.notified_at:
         return
+    if respect_quiet and batch.last_report_at:
+        # Something arrived while this timer was asleep, so the delivery is
+        # still in progress. That report scheduled its own timer, which will
+        # be the one to send. Doing nothing here is what debounces the digest.
+        quiet_for = (dt.datetime.utcnow() - batch.last_report_at).total_seconds() / 60
+        if quiet_for < settings.batch_quiet_minutes:
+            return
     if settings.s3_configured:
         try:
             from .orders_s3 import sync as sync_orders

@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.24-2"
-BUILD_NOTES = ("S3 fingerprint is hashed, so a folder of exports no longer "
-               "overflows its column and 500s the sync. A failed sync now "
-               "rolls back and shows the reason on the order list.")
+BUILD = "2026.08.24-4"
+BUILD_NOTES = ("Reporting roster built in: reporter, trainer and recipients "
+               "per partner, and the buyer as fallback owner (SEO person on "
+               "SEO lines). Order list is by client, with product chips.")
 # ---------------------------------------------------------------------------
 
 

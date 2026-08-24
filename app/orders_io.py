@@ -213,16 +213,32 @@ def import_io_export(db: Session, sources, period: str | None = None,
     if replace:
         db.query(OrderLine).delete()
 
+    # The export's campaign manager IS the buyer. The two had drifted apart in
+    # the schema, which is why the order list showed an empty Buyer column
+    # beside a populated Owner one. Blanks fall back to the reporting roster:
+    # the partner's buyer, or its SEO person on an SEO line item.
+    from .partners import find as find_partner, resolve_owner
+    partner_cache: dict[str, object] = {}
+    fallbacks = 0
+
     for (client, product), v in kept.items():
         manager, email = v["manager"], ""
         m = re.match(r"(.*?)\s*\(([^)]+)\)\s*$", manager)
         if m:
             manager, email = m.group(1).strip(), m.group(2).strip()
+
+        market = v["market"]
+        if market not in partner_cache:
+            partner_cache[market] = find_partner(db, market)
+        buyer, buyer_email = resolve_owner(partner_cache[market], product, manager, email)
+        if buyer and not manager:
+            fallbacks += 1
+
         db.add(OrderLine(
-            market=v["market"], client=client, account_ids=v["order_id"],
+            market=market, client=client, account_ids=v["order_id"],
             campaign=v["campaign"], product=product,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
-            team_member=manager, team_email=email,
+            buyer=buyer, buyer_email=buyer_email,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))
     db.commit()
@@ -230,7 +246,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
     guidance = _export_guidance(_date(date_min), _date(date_max), order_start_min)
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
-            "files": len(sources), "guidance": guidance,
+            "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,
             "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}
 
 

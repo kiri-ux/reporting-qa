@@ -160,25 +160,47 @@ def _keyify(client: str, accounts: str) -> set[str]:
     return ids
 
 
+def _stamp(db: Session, report: Report, ol: OrderLine) -> None:
+    report.owner_buyer = ol.buyer_email or ol.buyer
+    report.owner_team = ol.team_email or ol.team_member
+    if not report.market:
+        report.market = ol.market
+    _fill_from_roster(db, report)
+
+
+def _fill_from_roster(db: Session, report: Report) -> None:
+    """Fall back to the reporting roster for anything the order line lacks.
+
+    The IO export does not always carry a campaign manager, and it never
+    carries the reporting team or the trainer. Those live on the partner.
+    """
+    from .partners import find as find_partner
+    if not report.market:
+        return
+    p = find_partner(db, report.market)
+    if p is None:
+        return
+    if not report.owner_buyer:
+        report.owner_buyer = p.buyer_email or p.buyer
+    if not report.owner_team:
+        report.owner_team = p.reporting_team
+
+
 def attach_owners(db: Session, report: Report) -> None:
-    """Stamp buyer and team member onto a report by account id, then name."""
+    """Stamp the owner onto a report by account id, then by name, then by the
+    partner's roster entry."""
     ids = _keyify(report.client, report.account_ids)
     for ol in db.scalars(select(OrderLine)).all():
         if ids & _keyify(ol.client, ol.account_ids):
-            report.owner_buyer = ol.buyer
-            report.owner_team = ol.team_member
-            if not report.market:
-                report.market = ol.market
+            _stamp(db, report, ol)
             return
     norm = re.sub(r"[^a-z0-9]", "", (report.client or "").lower())
-    if not norm:
-        return
-    for ol in db.scalars(select(OrderLine)).all():
-        if norm and norm == re.sub(r"[^a-z0-9]", "", ol.client.lower()):
-            report.owner_buyer, report.owner_team = ol.buyer, ol.team_member
-            if not report.market:
-                report.market = ol.market
-            return
+    if norm:
+        for ol in db.scalars(select(OrderLine)).all():
+            if norm == re.sub(r"[^a-z0-9]", "", ol.client.lower()):
+                _stamp(db, report, ol)
+                return
+    _fill_from_roster(db, report)
 
 
 def expected_products(db: Session, client: str, account_ids: str) -> set[str] | None:

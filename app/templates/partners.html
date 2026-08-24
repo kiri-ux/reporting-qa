@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Partners · Report QA{% endblock %}
+{% block where %}Partners{% endblock %}
+{% block body %}
+<div>
+  <h1>Who runs reporting for whom</h1>
+  <p class="sub">The reporting roster: who pulls each partner's reports, who trains them, and
+  where the finished reports go. This is also the fallback owner when a line item comes out of
+  the order export with no campaign manager on it.</p>
+</div>
+
+<section>
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">Roster ({{ partners|length }})</h2>
+  </div>
+  {% if partners %}
+  <div class="tw"><table>
+    <thead><tr><th>Partner</th><th>Buyer</th><th>SEO</th><th>Manager</th>
+    <th>Reporter</th><th>Trainer</th><th>Reports go to</th><th>Notes</th></tr></thead>
+    <tbody>{% for p in partners %}
+      <tr>
+        <td><b>{{ p.partner }}</b></td>
+        <td>{{ p.buyer }}{% if p.buyer_email %}<br>
+          <span class="acct">{{ p.buyer_email }}</span>{% endif %}</td>
+        <td>{{ p.seo }}{% if p.seo_email %}<br>
+          <span class="acct">{{ p.seo_email }}</span>{% endif %}</td>
+        <td>{{ p.manager }}</td>
+        <td>{{ p.reporting_team }}</td>
+        <td>{{ p.trainer }}</td>
+        <td>{% for e in p.recipients %}<span class="acct">{{ e }}</span><br>{% endfor %}</td>
+        <td style="font-size:12.5px;color:var(--ink-2);max-width:34ch">
+          {{ p.reporting_notes }}{% if p.buyer_notes %}
+          <br><i>{{ p.buyer_notes }}</i>{% endif %}</td>
+      </tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}
+    <p class="empty">No roster loaded.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Replace the roster</h2>
+  <div class="panel">
+    <form action="/partners/import" method="post" enctype="multipart/form-data"
+          style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input type="file" name="file" accept=".csv" required>
+      <button class="btn" type="submit">Replace roster</button>
+    </form>
+    <p class="sub" style="font-size:13px;margin-top:12px">
+      Export the reporting roster tab as CSV and upload it here. The headers it expects are the
+      sheet's own: <code>Partner, Buyer, Email, SEO, Email, Manager, Reporting Team, To:,
+      Trainer, Reporting Notes, Buyer Notes</code> - the two <code>Email</code> columns are
+      read in order, the first as the buyer's and the second as the SEO person's.<br>
+      A copy ships with the app, so a fresh deploy always has a roster. Uploading here replaces
+      it and survives future deploys.</p>
+  </div>
+</section>
+{% endblock %}

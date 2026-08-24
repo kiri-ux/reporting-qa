@@ -122,17 +122,70 @@
 </section>
 
 <section>
-  <h2>Loaded ({{ lines|length }})</h2>
-  {% if lines %}
-  <div class="tw"><table>
-    <thead><tr><th>Market</th><th>Client</th><th>Product</th><th>Order</th><th>Start</th><th>End</th>
-    <th>Buyer</th><th>Owner</th></tr></thead>
-    <tbody>{% for l in lines %}
-      <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
-          <td>{{ l.product }}</td><td class="acct">{{ l.account_ids }}</td>
-          <td class="mono">{{ l.starts_on or '' }}</td><td class="mono">{{ l.ends_on or '' }}</td>
-          <td>{{ l.buyer }}</td><td>{{ l.team_member }}</td></tr>
-    {% endfor %}</tbody></table></div>
-  {% else %}<p class="empty">Nothing loaded yet.</p>{% endif %}
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">Loaded</h2>
+    <span class="tabs">
+      <a href="/orders?view=clients" class="{% if view == 'clients' %}on{% endif %}">
+        By client ({{ clients|length if view == 'clients' else '' }})</a>
+      <a href="/orders?view=lines" class="{% if view == 'lines' %}on{% endif %}">
+        Every line ({{ lines|length }})</a>
+    </span>
+  </div>
+
+  {% if no_roster %}
+    <div class="note" style="border-left-color:var(--gold);background:var(--warn-bg);
+         margin-bottom:14px">
+      <b>{{ no_roster|length }} partner{{ 's' if no_roster|length != 1 else '' }} not on the
+      reporting roster</b>, so there is no reporter, trainer or fallback owner for
+      {{ 'them' if no_roster|length != 1 else 'it' }}:
+      {{ no_roster|join(', ') }}.
+      <a href="/partners">Update the roster</a>.</div>
+  {% endif %}
+
+  {% if not lines %}
+    <p class="empty">Nothing loaded yet.</p>
+
+  {% elif view == 'clients' %}
+    <div class="tw"><table>
+      <thead><tr><th>Partner</th><th>Client</th><th>Products</th><th>Order</th>
+      <th>Start</th><th>End</th><th>Buyer</th><th>Reporter</th><th>Trainer</th></tr></thead>
+      <tbody>{% for c in clients %}
+        <tr>
+          <td>{{ c.partner }}</td>
+          <td><b>{{ c.client }}</b>{% if c.lifetime %}
+            <span class="pill p-warn" style="margin-left:6px">lifetime due</span>{% endif %}</td>
+          <td><span class="chips">{% for p in c.products %}
+            <span class="chip" title="{{ p.name }}"
+                  style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
+          {% endfor %}</span></td>
+          <td class="acct">{{ c.orders }}</td>
+          <td class="mono nw">{{ c.starts or '' }}</td>
+          <td class="mono nw">{{ c.ends or '' }}</td>
+          <td>{{ c.buyer }}</td>
+          <td>{{ c.reporter }}</td>
+          <td>{{ c.trainer }}</td>
+        </tr>
+      {% endfor %}</tbody></table></div>
+
+    <details style="margin-top:14px">
+      <summary style="font-size:14px;color:var(--muted)">Product key</summary>
+      <span class="chips" style="margin-top:10px">{% for p in legend %}
+        <span class="chip" style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
+        <span style="font-size:12.5px;color:var(--ink-2);margin:0 14px 0 -2px">{{ p.name }}</span>
+      {% endfor %}</span>
+    </details>
+
+  {% else %}
+    <div class="tw"><table>
+      <thead><tr><th>Partner</th><th>Client</th><th>Product</th><th>Order</th>
+      <th>Start</th><th>End</th><th>Buyer</th></tr></thead>
+      <tbody>{% for l in lines %}
+        <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
+            <td>{{ l.product }}</td><td class="acct">{{ l.account_ids }}</td>
+            <td class="mono nw">{{ l.starts_on or '' }}</td>
+            <td class="mono nw">{{ l.ends_on or '' }}</td>
+            <td class="nw">{{ l.buyer }}</td></tr>
+      {% endfor %}</tbody></table></div>
+  {% endif %}
 </section>
 {% endblock %}

@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = ""
     aws_session_token: str = ""
 
+    # TapClicks sends one email per client, so eighteen reports arrive as
+    # eighteen deliveries. Reports landing within this window for the same
+    # market and month join one batch instead of each making their own.
+    batch_window_minutes: int = 240
+    # ...and the digest waits until nothing new has arrived for this long, so
+    # one market gets one Slack post and one email rather than eighteen.
+    batch_quiet_minutes: int = 12
+
     # device breakout legitimately excludes these products
     device_excluded_products: str = "Mobile Conquesting,PPC,YouTube,LinkedIn,Performance Max"
     # creative types that never carry a preview image

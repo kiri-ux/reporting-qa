@@ -1,4 +1,5 @@
 """Regression tests pinned to real reports whose answers were verified by hand."""
+import datetime as dt
 import sys
 from pathlib import Path
 
@@ -322,3 +323,147 @@ def test_s3_fingerprint_fits_its_column():
     a = hashlib.sha256(b"orders/x.csv:aaa").hexdigest()[:40]
     b = hashlib.sha256(b"orders/x.csv:bbb").hexdigest()[:40]
     assert a != b
+
+
+def test_one_email_per_client_makes_one_batch(tmp_path, monkeypatch):
+    """Eighteen deliveries for one market must be one batch, not eighteen.
+
+    TapClicks mails a separate report per client, so the naive handler creates
+    a batch, a dashboard row and a Slack post for every single one, and the
+    completeness check never sees a whole market at once.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'t.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("INBOUND_SECRET", "s3cret")
+
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod, ingest as ingest_mod
+    importlib.reload(db_mod); importlib.reload(ingest_mod)
+    db_mod.init_db()
+
+    db = db_mod.SessionLocal()
+    pdf = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    subject = "7 Mountains PA State College - July 2026 report"
+
+    batches = []
+    for client in ["Benton Rodeo", "Centre Hills", "Watsontown", "Salem RV", "Keystone"]:
+        b = ingest_mod.process_batch(
+            db, [(f"July 2026_{client}.pdf", pdf)], source="zapier",
+            subject=subject, notify=False, coalesce=True)
+        batches.append(b.id)
+
+    assert len(set(batches)) == 1, f"expected one batch, got {sorted(set(batches))}"
+    batch = db.get(db_mod.Batch, batches[0])
+    assert len(batch.reports) == 5
+
+    # a retried delivery must not double-count
+    ingest_mod.process_batch(db, [("July 2026_Benton Rodeo.pdf", pdf)], source="zapier",
+                             subject=subject, notify=False, coalesce=True)
+    db.refresh(batch)
+    assert len(batch.reports) == 5
+
+    # and once the digest is out, the next report starts a fresh batch
+    batch.notified_at = dt.datetime.utcnow()
+    db.commit()
+    later = ingest_mod.process_batch(db, [("July 2026_Nittany Motors.pdf", pdf)],
+                                     source="zapier", subject=subject,
+                                     notify=False, coalesce=True)
+    assert later.id != batch.id
+
+
+def test_digest_waits_for_quiet(tmp_path, monkeypatch):
+    """A batch still receiving reports must not fire its digest early."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'q.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod, ingest as ingest_mod
+    importlib.reload(db_mod); importlib.reload(ingest_mod)
+    db_mod.init_db()
+
+    db = db_mod.SessionLocal()
+    b = db_mod.Batch(market="M", period="2026-07", status="done",
+                     last_report_at=dt.datetime.utcnow())
+    db.add(b); db.commit()
+
+    ingest_mod.finish_batch(db, b.id, respect_quiet=True)
+    db.refresh(b)
+    assert b.notified_at is None, "digest went out while reports were still arriving"
+
+    # now let it go quiet
+    b.last_report_at = dt.datetime.utcnow() - dt.timedelta(hours=1)
+    db.commit()
+    assert ingest_mod.sweep_stale(db) == 1
+    db.refresh(b)
+    assert b.notified_at is not None, "a quiet batch never got its digest"
+
+
+def test_roster_import_stops_at_the_issue_log(tmp_path, monkeypatch):
+    """The roster workbook has a second twelve-column table under the first.
+
+    It is the report-issue log, where column B is a client and column C is a
+    bug description. Reading straight through merged the two and, because the
+    log repeats partner names, it overwrote real roster rows - "7 Mountains
+    KY" came out with Buyer "Expree Credit Union". A blank partner row is the
+    boundary and must end the read.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'p.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import partners as pmod
+    importlib.reload(pmod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    csv_text = (
+        "Partner,Buyer,Email,SEO,Email,Manager,Reporting Team,To:,Trainer,"
+        "Reporting Notes,Buyer Notes\n"
+        "7 Mountains KY,Lauren,laurenhunter@vicimediainc.com,Lauren,"
+        "laurenhunter@vicimediainc.com,Amin,Paulina,wendy@7m.com,Katie,,\n"
+        "3-Piece Media,Hanna,hannaw@vicimediainc.com,Matt,matt@vicimediainc.com,"
+        "Mallory,Paulina,rgs@3piecemedia.com,Jennaya,,\n"
+        ",,,,,,,,,,\n"
+        "7 Mountains KY,Expree Credit Union,https://reporting.zone/x,"
+        "Impressions not matching,,in progress,Paulina,,Katie,,\n"
+    )
+    n = pmod.import_partners(db, csv_text)
+    assert n == 2, f"read {n} rows, so the issue log leaked in"
+
+    ky = pmod.find(db, "7 Mountains KY")
+    assert ky.buyer == "Lauren", f"issue log overwrote the roster: buyer={ky.buyer!r}"
+    assert ky.reporting_team == "Paulina"
+    assert ky.recipients == ["wendy@7m.com"]
+
+
+def test_bundled_roster_is_clean():
+    """Every row in the shipped roster must look like a roster row."""
+    import csv as _csv
+    from app.partners import SEED
+    assert SEED.exists()
+    rows = list(_csv.DictReader(SEED.open(encoding="utf-8-sig")))
+    assert len(rows) > 150, f"only {len(rows)} partners shipped"
+    for r in rows:
+        assert "@" in r["buyer_email"], f"{r['partner']}: buyer_email={r['buyer_email']!r}"
+        assert "@" in r["seo_email"], f"{r['partner']}: seo_email={r['seo_email']!r}"
+        assert "http" not in r["buyer"], f"{r['partner']}: buyer is a URL"
+
+
+def test_seo_falls_back_to_the_seo_person():
+    """A blank campaign manager takes the partner's buyer - except on SEO."""
+    from app.db import Partner
+    from app.partners import resolve_owner
+    p = Partner(partner="X", buyer="Amin", buyer_email="amin@v.com",
+                seo="Lauren", seo_email="lauren@v.com")
+    assert resolve_owner(p, "Display Ads", "") == ("Amin", "amin@v.com")
+    assert resolve_owner(p, "Search Engine Optimization+", "") == ("Lauren", "lauren@v.com")
+    assert resolve_owner(p, "SEO", "") == ("Lauren", "lauren@v.com")
+    # an actual campaign manager always wins
+    assert resolve_owner(p, "SEO", "Jane", "jane@v.com") == ("Jane", "jane@v.com")
+    assert resolve_owner(None, "Display Ads", "") == ("", "")

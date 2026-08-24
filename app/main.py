@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 
 from . import brand, version
 from .config import settings
-from .db import Batch, OrderLine, OrderSync, Report, SessionLocal, init_db
-from .ingest import finish_batch, parse_postmark, process_batch
+from .db import Batch, OrderLine, OrderSync, Partner, Report, SessionLocal, init_db
+from .ingest import (finish_batch, parse_postmark, process_batch, sweep_stale)
 from .orders_s3 import last_sync, sync as sync_orders
 from .roster import completeness, import_orders
 
@@ -44,6 +44,16 @@ def get_db():
 @app.on_event("startup")
 def _startup():
     init_db()
+    # The roster ships in the repo, so a fresh deploy has owners and
+    # recipients without anyone importing anything.
+    db = SessionLocal()
+    try:
+        from .partners import seed_if_empty
+        seed_if_empty(db)
+    except Exception:
+        import traceback; traceback.print_exc(); db.rollback()
+    finally:
+        db.close()
 
 
 @app.get("/healthz")
@@ -63,6 +73,28 @@ def _finish(batch_id: int) -> None:
     db = SessionLocal()
     try:
         finish_batch(db, batch_id)
+    finally:
+        db.close()
+
+
+async def _finish_when_quiet(batch_id: int) -> None:
+    """Wait out the quiet period, then send the digest if nothing else landed.
+
+    Reports arrive one email per client, so every one of them schedules one of
+    these. All but the last find a newer report and return without sending;
+    the last one finds silence and sends. That is the whole debounce - no
+    scheduler, no extra service, and a lost timer is caught by sweep_stale on
+    the next page load.
+    """
+    import asyncio
+    await asyncio.sleep(settings.batch_quiet_minutes * 60)
+    db = SessionLocal()
+    try:
+        finish_batch(db, batch_id, respect_quiet=True)
+    except Exception:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
+        db.rollback()
     finally:
         db.close()
 
@@ -87,9 +119,41 @@ async def inbound_mailgun(request: Request, background: BackgroundTasks,
     if not files:
         return {"ok": True, "skipped": "no attachments"}
     batch = process_batch(db, files, source="mailgun", email_from=sender,
-                          subject=subject, notify=False)
-    background.add_task(_finish, batch.id)
+                          subject=subject, notify=False, coalesce=True)
+    background.add_task(_finish_when_quiet, batch.id)
     return {"ok": True, "batch": batch.id, "reports": len(batch.reports)}
+
+
+@app.post("/inbound/zapier")
+async def inbound_zapier(request: Request, background: BackgroundTasks,
+                         k: str | None = Query(None), db: Session = Depends(get_db)):
+    """Zapier's "Webhooks by Zapier - POST" action, Payload Type = Form.
+
+    Any form field carrying a file is treated as an attachment, because Zapier
+    names that field whatever you called it in the Zap. `subject` and `from`
+    are optional and only help guess the market; the filename is what actually
+    identifies the client.
+
+    Reports coalesce into one batch per market per month - see open_batch.
+    """
+    _guard(k)                      # reject before reading the upload, not after
+    form = await request.form()
+    sender = str(form.get("from") or form.get("sender") or form.get("email") or "")
+    subject = str(form.get("subject") or "")
+    market = str(form.get("market") or "")
+    files: list[tuple[str, bytes]] = []
+    for _key, value in form.multi_items():
+        if hasattr(value, "filename") and value.filename:
+            files.append((value.filename, await value.read()))
+    if not files:
+        return {"ok": True, "skipped": "no file on the request",
+                "hint": "In the Zap, set Payload Type to Form and map the "
+                        "attachment into the File field."}
+    batch = process_batch(db, files, source="zapier", email_from=sender,
+                          subject=subject, market=market, notify=False, coalesce=True)
+    background.add_task(_finish_when_quiet, batch.id)
+    return {"ok": True, "batch": batch.id, "market": batch.market,
+            "period": batch.period, "reports": len(batch.reports)}
 
 
 @app.post("/inbound/postmark")
@@ -101,14 +165,15 @@ async def inbound_postmark(request: Request, background: BackgroundTasks,
     if not files:
         return {"ok": True, "skipped": "no attachments"}
     batch = process_batch(db, files, source="postmark", email_from=sender,
-                          subject=subject, notify=False)
-    background.add_task(_finish, batch.id)
+                          subject=subject, notify=False, coalesce=True)
+    background.add_task(_finish_when_quiet, batch.id)
     return {"ok": True, "batch": batch.id, "reports": len(batch.reports)}
 
 
 # ---------------------------------------------------------------- dashboard
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
+    sweep_stale(db)
     batches = db.scalars(select(Batch).order_by(desc(Batch.received_at)).limit(40)).all()
     latest = batches[0] if batches else None
     comp = completeness(db, latest.market, latest.period) if latest else None
@@ -147,15 +212,89 @@ async def upload(files: list[UploadFile] = File(...), market: str = Form(""),
     return RedirectResponse(f"/batch/{batch.id}", status_code=303)
 
 
+def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
+    """One row per client, with a chip per product.
+
+    A client with nine line items is nine rows in the raw list and one thing
+    to check in real life, which is what makes the raw list hard to read. The
+    flight is the widest across that client's products, since that is the
+    window a report has to cover.
+    """
+    from .product_codes import pill
+    from .partners import find as find_partner
+
+    by: dict[tuple[str, str], dict] = {}
+    partner_cache: dict[str, Partner | None] = {}
+    for l in lines:
+        key = (l.market, l.client)
+        row = by.get(key)
+        if row is None:
+            if l.market not in partner_cache:
+                partner_cache[l.market] = find_partner(db, l.market)
+            p = partner_cache[l.market]
+            row = by[key] = {
+                "partner": l.market, "client": l.client, "orders": set(),
+                "products": [], "codes": set(), "starts": None, "ends": None,
+                "buyers": [], "reporter": p.reporting_team if p else "",
+                "trainer": p.trainer if p else "",
+                "in_roster": p is not None,
+                "lifetime": False,
+            }
+        pl = pill(l.product)
+        if pl["code"] and pl["code"] not in row["codes"]:
+            row["codes"].add(pl["code"])
+            row["products"].append(pl)
+        if l.account_ids:
+            row["orders"].add(l.account_ids)
+        if l.buyer and l.buyer not in row["buyers"]:
+            row["buyers"].append(l.buyer)
+        if l.starts_on and (row["starts"] is None or l.starts_on < row["starts"]):
+            row["starts"] = l.starts_on
+        if l.ends_on and (row["ends"] is None or l.ends_on > row["ends"]):
+            row["ends"] = l.ends_on
+        row["lifetime"] = row["lifetime"] or bool(l.needs_lifetime)
+
+    out = list(by.values())
+    for r in out:
+        r["products"].sort(key=lambda p: p["code"])
+        r["orders"] = ", ".join(sorted(r["orders"]))
+        r["buyer"] = ", ".join(r["buyers"])
+    out.sort(key=lambda r: (r["partner"].lower(), r["client"].lower()))
+    return out
+
+
 @app.get("/orders", response_class=HTMLResponse)
-def orders_view(request: Request, db: Session = Depends(get_db)):
+def orders_view(request: Request, view: str = Query("clients"),
+                db: Session = Depends(get_db)):
     lines = db.scalars(select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
+    from .product_codes import PRODUCTS, ink_on
+    legend = [{"code": c, "bg": h, "fg": ink_on(h), "name": n} for c, h, n, _ in PRODUCTS]
+    clients = _client_rollup(db, lines) if view == "clients" else []
+    # A partner in the order export with no roster row has no reporter, no
+    # trainer and no fallback owner, which is worth seeing rather than reading
+    # as an empty cell.
+    no_roster = sorted({c["partner"] for c in clients if not c["in_roster"] and c["partner"]})
     return templates.TemplateResponse(request, "orders.html", {
         "lines": lines, "sync": last_sync(db), "s3": settings.s3_configured,
-        "nav": "orders",
+        "nav": "orders", "view": view, "legend": legend,
+        "clients": clients, "no_roster": no_roster,
         "env_report": settings.env_report(),
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})
+
+
+@app.get("/partners", response_class=HTMLResponse)
+def partners_view(request: Request, db: Session = Depends(get_db)):
+    from .partners import all_partners
+    return templates.TemplateResponse(request, "partners.html", {
+        "partners": all_partners(db), "nav": "partners"})
+
+
+@app.post("/partners/import")
+async def partners_import(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    from .partners import import_partners
+    import_partners(db, await file.read())
+    return RedirectResponse("/partners", status_code=303)
 
 
 @app.post("/orders/import")
