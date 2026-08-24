@@ -4,11 +4,13 @@ from pathlib import Path
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, HTTPException,
                      Query, Request, UploadFile)
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from . import brand, version
 from .config import settings
 from .db import Batch, OrderLine, OrderSync, Report, SessionLocal, init_db
 from .ingest import finish_batch, parse_postmark, process_batch
@@ -16,7 +18,19 @@ from .orders_s3 import last_sync, sync as sync_orders
 from .roster import completeness, import_orders
 
 app = FastAPI(title="Report QA")
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+_HERE = Path(__file__).parent
+app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
+
+templates = Jinja2Templates(directory=str(_HERE / "templates"))
+# Chrome that every page needs and no view should have to remember to pass.
+templates.env.globals.update(
+    head_tags=brand.HEAD_TAGS,
+    build_label=version.label(),
+    build_notes=version.BUILD_NOTES,
+    build_service=version.service(),
+    nav="",
+)
 
 
 def get_db():
@@ -34,7 +48,14 @@ def _startup():
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    """Includes the build so you can confirm what is actually live without
+    trusting the dashboard, which looks identical either way."""
+    return {"ok": True, **version.info()}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(content=brand.FAVICON_SVG, media_type="image/svg+xml")
 
 
 def _finish(batch_id: int) -> None:
@@ -92,7 +113,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     latest = batches[0] if batches else None
     comp = completeness(db, latest.market, latest.period) if latest else None
     return templates.TemplateResponse(request, "dashboard.html", {
-        "batches": batches, "latest": latest, "comp": comp,
+        "batches": batches, "latest": latest, "comp": comp, "nav": "dash",
         "orders": db.query(OrderLine).count(),
     })
 
@@ -106,7 +127,7 @@ def batch_view(batch_id: int, request: Request, db: Session = Depends(get_db)):
     order = {"fail": 0, "warn": 1, "pass": 2}
     reports = sorted(batch.reports, key=lambda r: (order.get(r.severity, 3), r.client.lower()))
     return templates.TemplateResponse(request, "batch.html", {
-        "batch": batch, "reports": reports, "comp": comp})
+        "batch": batch, "reports": reports, "comp": comp, "nav": "dash"})
 
 
 @app.get("/report/{report_id}/file")
@@ -131,6 +152,7 @@ def orders_view(request: Request, db: Session = Depends(get_db)):
     lines = db.scalars(select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
     return templates.TemplateResponse(request, "orders.html", {
         "lines": lines, "sync": last_sync(db), "s3": settings.s3_configured,
+        "nav": "orders",
         "env_report": settings.env_report(),
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})

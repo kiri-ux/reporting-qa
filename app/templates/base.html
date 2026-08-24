@@ -2,67 +2,209 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}Report QA{% endblock %}</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+{{ head_tags|safe }}
 <style>
-:root{--ground:#F4F6F9;--surface:#fff;--surface-2:#EDF0F5;--ink:#161D28;--ink-2:#4A5666;--ink-3:#75808F;
---rule:#D9DFE8;--rule-strong:#B9C3D1;--accent:#33507D;--crit:#A9382A;--crit-bg:#F6E7E3;
---warn:#8A5F13;--warn-bg:#F6EEDC;--ok:#1F5F50;--ok-bg:#E2EEEA;
---shadow:0 1px 2px rgba(22,29,40,.06),0 8px 24px -12px rgba(22,29,40,.18)}
-@media(prefers-color-scheme:dark){:root{--ground:#0E1218;--surface:#161C25;--surface-2:#1E2632;
---ink:#E6EAF1;--ink-2:#A8B3C2;--ink-3:#7C879A;--rule:#28313E;--rule-strong:#3A4553;--accent:#8AA8DA;
---crit:#E6907F;--crit-bg:#33201C;--warn:#D9AC5C;--warn-bg:#2E2617;--ok:#6FBBA6;--ok-bg:#172A26;
---shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7)}}
+/*
+ * Vici design system - Color Palette 2025 plus the brand typeface pairing.
+ *
+ * Every value below is out of the brand book, not matched by eye. Atlas Blue
+ * carries the chrome, Velocity Blue is the interactive hue, Parchment is the
+ * page behind white cards. The secondary colors do status work only -
+ * Cardinal for a failure, Gold for a warning, Teal for a pass - so the
+ * palette never turns decorative on a screen whose whole job is telling you
+ * what is wrong.
+ *
+ * Single theme on purpose. The site audit tool and the quote tool are both
+ * light-only and these sit in adjacent tabs; a dark variant here would make
+ * the family read as three products instead of one. Nothing is inherited from
+ * the host, so the page holds up on either ground.
+ */
+@font-face{font-family:Agdasima;src:url('/static/fonts/Agdasima-Regular.woff2') format('woff2');
+ font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:Agdasima;src:url('/static/fonts/Agdasima-Bold.woff2') format('woff2');
+ font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'GT Walsheim Pro';src:url('/static/fonts/GTWalsheimPro-Regular.woff2') format('woff2');
+ font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'GT Walsheim Pro';src:url('/static/fonts/GTWalsheimPro-Bold.woff2') format('woff2');
+ font-weight:700;font-style:normal;font-display:swap}
+
+:root{
+ /* primary */
+ --atlas:#002D58; --velocity:#0066B3; --parchment:#FDFBF7; --ink:#212121; --white:#fff;
+ /* fades, straight off the fade chart */
+ --atlas-50:#8096AC; --atlas-10:#E6EAEE;
+ --velocity-50:#80B2D9; --velocity-10:#E6F0F7;
+ --ink-50:#909090; --ink-10:#E9E9E9;
+ /* secondary, status only */
+ --gold:#F1B434; --cardinal:#A6192E; --plum:#78286E; --teal:#4FD4E0;
+ /* roles */
+ --plane:var(--parchment); --surface:var(--white);
+ --line:var(--atlas-10); --line-2:#F0F2F5;
+ --ink-2:#4A5560; --muted:#7A8894;
+ --crit:#A6192E; --crit-bg:#FAE8EA;
+ --warn:#8A6212; --warn-bg:#FDF3E0;
+ --ok:#0E6E78;   --ok-bg:#E4F8FA;
+ --rail:60px;
+ --shadow:0 1px 2px rgba(0,45,88,.06),0 10px 26px -16px rgba(0,45,88,.28);
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--ground);color:var(--ink);font-family:"Source Serif 4",Georgia,serif;
-font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
-h1,h2,h3,th,nav a,button,.btn{font-family:"Archivo",system-ui,sans-serif}
-.mono,.acct,.pill,code{font-family:"IBM Plex Mono",ui-monospace,monospace}
-nav{border-bottom:2px solid var(--ink);background:var(--surface)}
-nav .in{max-width:1120px;margin:0 auto;padding:16px 24px;display:flex;gap:22px;align-items:baseline}
-nav b{font-family:"Archivo",sans-serif;font-size:17px;letter-spacing:-.01em}
-nav a{color:var(--ink-2);text-decoration:none;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
-nav a:hover{color:var(--ink)}
-main{max-width:1120px;margin:0 auto;padding:34px 24px 80px;display:flex;flex-direction:column;gap:32px}
-h1{font-size:32px;margin:0;letter-spacing:-.02em;line-height:1.1}
-h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px;
-padding-bottom:8px;border-bottom:1px solid var(--rule-strong)}
-.sub{color:var(--ink-2);margin:6px 0 0}
+body{margin:0;background:var(--plane);color:var(--ink);
+ font-family:'GT Walsheim Pro',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+ font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+
+/* ---- chrome ---- */
+.rail{position:fixed;left:0;top:0;bottom:0;width:var(--rail);background:var(--atlas);
+ display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px;z-index:20}
+.rail a{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;
+ justify-content:center;color:#B9CBDC;text-decoration:none;transition:background .12s,color .12s}
+.rail a:hover{background:rgba(255,255,255,.09);color:#fff}
+.rail a.on{background:var(--gold);color:var(--atlas)}
+.rail a:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.rail svg{width:20px;height:20px;display:block}
+.rail .mark{margin-bottom:10px;width:32px;height:32px}
+
+.topbar{position:sticky;top:0;z-index:15;background:var(--surface);
+ border-bottom:1px solid var(--line);min-height:58px;display:flex;align-items:center;
+ gap:16px;padding:0 28px;margin-left:var(--rail)}
+.topbar h1{font-family:Agdasima,'GT Walsheim Pro',sans-serif;font-size:26px;font-weight:700;
+ letter-spacing:.02em;margin:0;color:var(--atlas);text-transform:uppercase;line-height:1}
+.topbar .where{font-size:13px;color:var(--muted);border-left:1px solid var(--line);
+ padding-left:16px}
+.topbar .right{margin-left:auto;font-size:12px;color:var(--muted);
+ font-variant-numeric:tabular-nums;white-space:nowrap}
+.topbar::after{content:'';position:absolute;left:0;right:0;bottom:-3px;height:3px;
+ background:linear-gradient(90deg,var(--atlas) 0%,var(--velocity) 46%,var(--teal) 100%)}
+
+main{margin-left:var(--rail);padding:26px 28px 40px;display:flex;flex-direction:column;gap:28px;
+ max-width:1260px}
+
+/* ---- type ---- */
+h1{font-family:Agdasima,sans-serif;font-size:38px;font-weight:700;margin:0;
+ letter-spacing:.01em;line-height:1.05;color:var(--atlas);text-wrap:balance}
+h2{font-family:Agdasima,sans-serif;font-size:15px;font-weight:700;letter-spacing:.12em;
+ text-transform:uppercase;color:var(--atlas-50);margin:0 0 12px;padding-bottom:7px;
+ border-bottom:1px solid var(--line)}
+h3{font-family:Agdasima,sans-serif;font-size:19px;font-weight:700;letter-spacing:.01em;
+ margin:0 0 6px;color:var(--atlas)}
+.sub{color:var(--ink-2);margin:6px 0 0;max-width:70ch}
+a{color:var(--velocity);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2)}
+
+/* ---- cards ---- */
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
-background:var(--rule);border:1px solid var(--rule);border-radius:3px;overflow:hidden}
-.cards div{background:var(--surface);padding:16px 18px}
-.cards b{display:block;font-family:"Archivo",sans-serif;font-size:34px;line-height:1;letter-spacing:-.03em;
-font-variant-numeric:tabular-nums}
-.cards span{font-size:12px;color:var(--ink-2)}
-.c-fail b{color:var(--crit)}.c-warn b{color:var(--warn)}.c-ok b{color:var(--ok)}
+ background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+ box-shadow:var(--shadow)}
+.cards div{background:var(--surface);padding:15px 18px}
+.cards b{display:block;font-family:Agdasima,sans-serif;font-size:40px;font-weight:700;
+ line-height:1;font-variant-numeric:tabular-nums;color:var(--atlas)}
+.cards span{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.c-fail b{color:var(--cardinal)}.c-warn b{color:var(--warn)}.c-ok b{color:var(--ok)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+ box-shadow:var(--shadow);padding:18px 20px}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface);
+ box-shadow:var(--shadow)}
 table{border-collapse:collapse;width:100%;font-size:14px;background:var(--surface)}
-.tw{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;box-shadow:var(--shadow)}
-th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);text-align:left;
-padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--rule);white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
-tr:last-child td{border-bottom:none}
-td.n{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
-a{color:var(--accent)}
-.acct{font-size:12px;color:var(--ink-3)}
-.pill{display:inline-block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;font-weight:600;
-padding:3px 8px;border-radius:2px;white-space:nowrap}
+th{font-family:Agdasima,sans-serif;font-size:13px;font-weight:700;letter-spacing:.09em;
+ text-transform:uppercase;color:#DCE6F0;text-align:left;padding:9px 14px;
+ background:var(--atlas);white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid var(--line-2);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:var(--velocity-10)}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---- status ---- */
+.pill{display:inline-block;font-family:Agdasima,sans-serif;font-size:12.5px;font-weight:700;
+ letter-spacing:.08em;text-transform:uppercase;padding:2px 9px;border-radius:20px;
+ white-space:nowrap;line-height:1.5}
 .p-fail{background:var(--crit-bg);color:var(--crit)}
 .p-warn{background:var(--warn-bg);color:var(--warn)}
 .p-pass{background:var(--ok-bg);color:var(--ok)}
-.p-info{background:var(--surface-2);color:var(--ink-2)}
+.p-info{background:var(--atlas-10);color:#3D5468}
+
 .find{margin:0;padding-left:16px}
 .find li{margin-bottom:5px}
-.find b{font-weight:600}
+.find b{font-weight:700}
 .find span{color:var(--ink-2)}
-.panel{background:var(--surface);border:1px solid var(--rule);border-radius:4px;box-shadow:var(--shadow);
-padding:20px 22px}
-.btn{display:inline-block;background:var(--accent);color:#fff;border:0;border-radius:3px;
-padding:9px 16px;font-size:13px;cursor:pointer;text-decoration:none}
-input[type=file],input[type=text]{font:inherit;font-size:14px;padding:7px;border:1px solid var(--rule);
-border-radius:3px;background:var(--surface);color:var(--ink)}
-.note{background:var(--surface-2);border-left:3px solid var(--accent);padding:14px 18px;
-border-radius:0 3px 3px 0;color:var(--ink-2);font-size:15px}
-.empty{color:var(--ink-3);font-style:italic}
+
+/* ---- controls ---- */
+.btn{display:inline-block;background:var(--atlas);color:#fff;border:0;border-radius:22px;
+ padding:9px 20px;font-family:'GT Walsheim Pro',sans-serif;font-size:14px;font-weight:700;
+ cursor:pointer;text-decoration:none;transition:background .12s}
+.btn:hover{background:var(--velocity);text-decoration:none}
+.btn.gold{background:var(--gold);color:var(--atlas)}
+.btn.gold:hover{background:#DCA028}
+.btn:focus-visible{outline:2px solid var(--velocity);outline-offset:2px}
+input[type=file],input[type=text]{font:inherit;font-size:14px;padding:8px 12px;
+ border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)}
+input[type=text]:focus{outline:none;border-color:var(--velocity);
+ box-shadow:0 0 0 3px var(--velocity-10)}
+
+.note{background:var(--velocity-10);border-left:3px solid var(--velocity);padding:13px 17px;
+ border-radius:0 9px 9px 0;color:var(--ink-2);font-size:14.5px}
+.empty{color:var(--muted);font-style:italic}
+.acct{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
+ font-size:.93em}
+details summary{cursor:pointer}
+
+footer{margin-left:var(--rail);padding:16px 28px 34px;border-top:1px solid var(--line);
+ display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+footer .b{font-family:Agdasima,sans-serif;font-size:14px;font-weight:700;letter-spacing:.08em;
+ text-transform:uppercase;color:var(--atlas-50)}
+footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
+
+@media(max-width:760px){
+ :root{--rail:0px}
+ .rail{position:static;width:100%;height:52px;flex-direction:row;justify-content:flex-start;
+  padding:6px 12px;gap:4px}
+ .rail .mark{margin:0 8px 0 0}
+ .topbar{padding:12px 16px;flex-wrap:wrap;gap:8px}
+ .topbar .where{border-left:0;padding-left:0}
+ main,footer{padding-left:16px;padding-right:16px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
-<nav><div class="in"><b>Report QA</b>
-<a href="/">Dashboard</a><a href="/orders">Order list</a></div></nav>
-<main>{% block body %}{% endblock %}</main></body></html>
+
+<nav class="rail" aria-label="Sections">
+  <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M18 15h18l10 10v24a2 2 0 0 1-2 2H18a2 2 0 0 1-2-2V17a2 2 0 0 1 2-2z" fill="#FDFBF7"/>
+    <path d="M36 15l10 10H38a2 2 0 0 1-2-2z" fill="#8096AC"/>
+    <rect x="22" y="30" width="14" height="3" rx="1.5" fill="#8096AC"/>
+    <rect x="22" y="37" width="10" height="3" rx="1.5" fill="#8096AC"/>
+    <circle cx="43" cy="43" r="11" fill="#F1B434"/>
+    <path d="M38.4 43.2l3.2 3.4 6-6.6" fill="none" stroke="#002D58" stroke-width="3.4"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <a href="/" class="{% if nav == 'dash' %}on{% endif %}" title="Dashboard" aria-label="Dashboard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
+      <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
+    </svg></a>
+  <a href="/orders" class="{% if nav == 'orders' %}on{% endif %}" title="Order list" aria-label="Order list">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.4" fill="currentColor"/>
+      <circle cx="3.5" cy="12" r="1.4" fill="currentColor"/>
+      <circle cx="3.5" cy="18" r="1.4" fill="currentColor"/>
+    </svg></a>
+</nav>
+
+<header class="topbar">
+  <h1>Report QA</h1>
+  <span class="where">{% block where %}{% endblock %}</span>
+  <span class="right">{{ build_label }}</span>
+</header>
+
+<main>{% block body %}{% endblock %}</main>
+
+<footer>
+  <span class="b">Vici</span>
+  <span>Report QA · {{ build_label }}{% if build_service and build_service != 'local' %} · {{ build_service }}{% endif %}</span>
+  <span class="n">{{ build_notes }}</span>
+</footer>
+</body></html>

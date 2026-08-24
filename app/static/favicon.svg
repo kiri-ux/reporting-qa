@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
+     aria-label="Vici Report QA">
+  <!-- House style shared with the site audit tool and the SEO quote tool:
+       Atlas Blue field (#002D58), rx=14 rounded square, Parchment (#FDFBF7)
+       primary mark, Vici Gold (#F1B434) on the payoff.
+
+       Each tool owns a different mark so they are separable at 16px in a row
+       of tabs. site-scan has the check-in-a-ring, the quote tool has the
+       magnifier, the audit has the 270 degree dial. This one is the report
+       page with a gold tick, which is literally what it does. -->
+  <rect width="64" height="64" rx="14" fill="#002D58"/>
+
+  <!-- the report, corner folded -->
+  <path d="M18 15h18l10 10v24a2 2 0 0 1-2 2H18a2 2 0 0 1-2-2V17a2 2 0 0 1 2-2z"
+        fill="#FDFBF7"/>
+  <path d="M36 15l10 10H38a2 2 0 0 1-2-2z" fill="#8096AC"/>
+
+  <!-- the lines it checks -->
+  <rect x="22" y="30" width="14" height="3" rx="1.5" fill="#8096AC"/>
+  <rect x="22" y="37" width="10" height="3" rx="1.5" fill="#8096AC"/>
+
+  <!-- the verdict -->
+  <circle cx="43" cy="43" r="11" fill="#F1B434"/>
+  <path d="M38.4 43.2l3.2 3.4 6-6.6" fill="none" stroke="#002D58"
+        stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
