@@ -31,6 +31,18 @@ services:
         sync: false
       - key: DIGEST_TO
         sync: false
+      - key: ORDERS_S3_BUCKET
+        sync: false
+      - key: ORDERS_S3_KEY
+        sync: false
+      - key: ORDERS_S3_REGION
+        value: us-east-1
+      - key: ORDERS_S3_SHEET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
 
 databases:
   - name: report-qa-db

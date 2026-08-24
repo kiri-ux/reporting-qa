@@ -54,9 +54,38 @@ def _date(v):
 ACC = re.compile(r"\b\d{4,6}\b")
 
 
-def import_order_csv(db: Session, raw: bytes, replace: bool = True) -> int:
+def _rows_from_csv(raw: bytes) -> list[list[str]]:
     text = raw.decode("utf-8-sig", errors="replace")
-    rows = list(csv.reader(io.StringIO(text)))
+    return [[(c or "") for c in r] for r in csv.reader(io.StringIO(text))]
+
+
+def _rows_from_xlsx(raw: bytes, sheet: str | None = None) -> list[list[str]]:
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    ws = wb[sheet] if sheet and sheet in wb.sheetnames else wb[wb.sheetnames[0]]
+    out = []
+    for row in ws.iter_rows(values_only=True):
+        out.append(["" if v is None else (v.strftime("%Y-%m-%d")
+                                          if hasattr(v, "strftime") else str(v))
+                    for v in row])
+    return out
+
+
+def import_orders(db: Session, raw: bytes, filename: str = "orders.csv",
+                  sheet: str | None = None, replace: bool = True) -> int:
+    """Accepts CSV or XLSX. The order list lives in S3 as one or the other."""
+    if filename.lower().endswith((".xlsx", ".xlsm")):
+        rows = _rows_from_xlsx(raw, sheet)
+    else:
+        rows = _rows_from_csv(raw)
+    return _import_rows(db, rows, replace=replace)
+
+
+def import_order_csv(db: Session, raw: bytes, replace: bool = True) -> int:
+    return import_orders(db, raw, "orders.csv", replace=replace)
+
+
+def _import_rows(db: Session, rows: list[list[str]], replace: bool = True) -> int:
     if not rows:
         return 0
     header_idx = 0

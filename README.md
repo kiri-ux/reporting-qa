@@ -43,7 +43,8 @@ rejoins them before testing. Change the exclusion list with
 
 ## Completeness
 
-Import an order-level CSV on `/orders` and the tool also answers:
+The order list is the second half of the tool. Point it at your S3 object and
+it also answers:
 
 - **Which reports should have arrived and did not**, with the buyer and P&A team
   member attached so it routes itself.
@@ -56,6 +57,37 @@ P&A Team Member, Buyer Email, Team Email`.
 
 Reports match order lines by account number first, then by normalised client
 name.
+
+### The order list in S3
+
+Set `ORDERS_S3_BUCKET` and `ORDERS_S3_KEY` and the bucket becomes the source of
+truth. CSV or XLSX both work; for a workbook, `ORDERS_S3_SHEET` picks the tab,
+or it takes the first one.
+
+Every incoming batch refreshes the list before judging completeness, so a
+campaign added or ended since the last run is already reflected. Two things stop
+that being wasteful or fragile:
+
+- The object is only re-downloaded when its **ETag changes**, and re-checked at
+  most once an hour (`ORDERS_REFRESH_MINUTES`).
+- If S3 is unreachable or the file will not parse, **the last good list is kept**
+  and the failure is shown on `/orders`. A bad deploy of the spreadsheet cannot
+  make the tool forget which reports it expects.
+
+`Sync from S3 now` on `/orders` forces a refresh. Manual upload still works and
+is useful for testing a change before it goes in the bucket, but the next batch
+re-syncs and overwrites it.
+
+Credentials come from the standard `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+env vars, since boto3 picks those up on its own. The IAM policy needs only
+`s3:GetObject` and `s3:HeadObject` on that one key:
+
+```json
+{"Version":"2012-10-17","Statement":[{
+  "Effect":"Allow",
+  "Action":["s3:GetObject"],
+  "Resource":"arn:aws:s3:::YOUR-BUCKET/reporting/order-list.xlsx"}]}
+```
 
 ## Deploying to Render
 

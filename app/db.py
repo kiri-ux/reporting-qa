@@ -97,5 +97,20 @@ class OrderLine(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class OrderSync(Base):
+    """Records the last successful pull of the order list, so a batch does not
+    re-download an object that has not changed."""
+    __tablename__ = "order_sync"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(512), default="")
+    etag: Mapped[str] = mapped_column(String(255), default="")
+    last_modified: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    synced_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    rows: Mapped[int] = mapped_column(Integer, default=0)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    message: Mapped[str] = mapped_column(Text, default="")
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)

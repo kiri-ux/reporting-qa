@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import Batch, OrderLine, Report, SessionLocal, init_db
 from .ingest import parse_postmark, process_batch
-from .roster import completeness, import_order_csv
+from .orders_s3 import last_sync, sync as sync_orders
+from .roster import completeness, import_orders
 
 app = FastAPI(title="Report QA")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -115,13 +116,23 @@ async def upload(files: list[UploadFile] = File(...), market: str = Form(""),
 @app.get("/orders", response_class=HTMLResponse)
 def orders_view(request: Request, db: Session = Depends(get_db)):
     lines = db.scalars(select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
-    return templates.TemplateResponse(request, "orders.html", {"lines": lines})
+    return templates.TemplateResponse(request, "orders.html", {
+        "lines": lines, "sync": last_sync(db), "s3": settings.s3_configured,
+        "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
+                  if settings.s3_configured else ""})
 
 
 @app.post("/orders/import")
 async def orders_import(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    n = import_order_csv(db, await file.read(), replace=True)
+    n = import_orders(db, await file.read(), filename=file.filename or "orders.csv",
+                      replace=True)
     return RedirectResponse(f"/orders?imported={n}", status_code=303)
+
+
+@app.post("/orders/sync")
+def orders_sync(db: Session = Depends(get_db)):
+    sync_orders(db, force=True)
+    return RedirectResponse("/orders", status_code=303)
 
 
 @app.post("/batch/{batch_id}/renotify")

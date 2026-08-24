@@ -117,6 +117,14 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     db.refresh(batch)
 
     if notify:
+        # refresh the order list from S3 before judging completeness, so a
+        # campaign added or ended since the last batch is already reflected
+        if settings.s3_configured:
+            try:
+                from .orders_s3 import sync as sync_orders
+                sync_orders(db)
+            except Exception:
+                pass
         comp = completeness(db, batch.market, batch.period)
         owners = [e for r in batch.reports if r.severity in ("fail", "warn")
                   for e in (r.owner_buyer, r.owner_team) if e and "@" in e]

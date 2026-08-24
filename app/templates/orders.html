@@ -5,17 +5,51 @@
 </div>
 
 <section>
-  <h2>Import</h2>
+  <h2>Source</h2>
+  {% if s3 %}
+    <div class="panel">
+      <p style="margin:0 0 10px"><b>S3</b> <code class="acct">{{ s3_uri }}</code></p>
+      {% if sync %}
+        <p class="sub" style="margin:0 0 12px;font-size:14px">
+          {% if sync.ok %}
+            Last synced {{ sync.synced_at.strftime('%b %d, %Y at %H:%M') }} UTC ·
+            {{ sync.rows }} lines
+            {% if sync.last_modified %} · object last modified
+              {{ sync.last_modified.strftime('%b %d, %Y %H:%M') }} UTC{% endif %}
+          {% else %}
+            <span style="color:var(--crit)"><b>Last sync failed:</b> {{ sync.message }}</span>
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="sub" style="margin:0 0 12px;font-size:14px">Not synced yet.</p>
+      {% endif %}
+      <form action="/orders/sync" method="post" style="display:inline">
+        <button class="btn" type="submit">Sync from S3 now</button>
+      </form>
+      <p class="sub" style="font-size:13px;margin-top:12px">
+        Every incoming batch refreshes this first, so a campaign added or ended since the
+        last run is already reflected. The object is only re-downloaded when its ETag
+        changes, and at most once an hour unless you force it here.</p>
+    </div>
+  {% else %}
+    <div class="note">No S3 bucket configured. Set <code>ORDERS_S3_BUCKET</code> and
+    <code>ORDERS_S3_KEY</code> to make the bucket the source of truth, or upload by hand below.</div>
+  {% endif %}
+</section>
+
+<section>
+  <h2>{% if s3 %}Override by hand{% else %}Import{% endif %}</h2>
   <div class="panel">
     <form action="/orders/import" method="post" enctype="multipart/form-data"
           style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <input type="file" name="file" accept=".csv" required>
+      <input type="file" name="file" accept=".csv,.xlsx,.xlsm" required>
       <button class="btn" type="submit">Replace order list</button>
     </form>
     <p class="sub" style="font-size:13px;margin-top:12px">
-      CSV. Recognised headers: Market, Client, Account, Campaign, Start Date, End Date,
-      Buyer, P&amp;A Team Member, Buyer Email, Team Email. Column order does not matter and
-      extra columns are ignored.</p>
+      CSV or XLSX. Recognised headers: Market, Client, Account, Campaign, Start Date,
+      End Date, Buyer, P&amp;A Team Member, Buyer Email, Team Email. Column order does not
+      matter and extra columns are ignored.
+      {% if s3 %}<br><b>Note:</b> the next batch will re-sync from S3 and overwrite this.{% endif %}</p>
   </div>
 </section>
 

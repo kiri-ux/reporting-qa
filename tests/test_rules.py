@@ -71,3 +71,80 @@ def test_headline_parses_impressions_only_reports():
     """DOOH reports print impressions with no clicks or CTR block."""
     imps, clicks, ctr = headline(pdf_text(FIXTURES / "independence_ford.pdf"))
     assert imps and clicks is None and ctr is None
+
+
+# ---------------------------------------------------------------- order list
+def test_xlsx_order_list_imports_with_dates():
+    """The list lives in S3 as xlsx, so dates arrive as datetimes, not strings."""
+    import datetime as dt
+    import io
+
+    from openpyxl import Workbook
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db import Base, OrderLine
+    from app.roster import import_orders
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Market", "Client", "Account", "Campaign Start Date",
+               "Campaign End Date", "Buyer", "P&A Team Member"])
+    ws.append(["7 Mountains PA Selinsgrove", "Benton Rodeo", "53915",
+               dt.date(2026, 5, 1), dt.date(2026, 7, 31), "Alyssa Aileo", "Taylor"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    assert import_orders(db, buf.getvalue(), filename="order-list.xlsx") == 1
+    line = db.query(OrderLine).one()
+    assert line.ends_on == dt.date(2026, 7, 31)
+    assert line.buyer == "Alyssa Aileo" and line.team_member == "Taylor"
+
+
+def test_lifetime_due_when_campaign_ends_in_period():
+    import datetime as dt
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db import Base, OrderLine, Report
+    from app.roster import completeness
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    db.add(OrderLine(market="M", client="Benton Rodeo", account_ids="53915",
+                     starts_on=dt.date(2026, 5, 1), ends_on=dt.date(2026, 7, 31)))
+    db.add(OrderLine(market="M", client="Never Arrives", account_ids="99999",
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 12, 31)))
+    db.add(Report(batch_id=1, filename="x.pdf", client="Benton Rodeo",
+                  account_ids="53915", market="M", period="2026-07"))
+    db.commit()
+
+    comp = completeness(db, "M", "2026-07")
+    assert [m["client"] for m in comp["missing"]] == ["Never Arrives"]
+    assert [m["client"] for m in comp["lifetime_due"]] == ["Benton Rodeo"]
+
+
+def test_sync_keeps_the_old_list_when_s3_is_unreachable():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import app.orders_s3 as s3mod
+    from app.config import settings
+    from app.db import Base, OrderLine
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    db.add(OrderLine(market="M", client="Kept", account_ids="1234"))
+    db.commit()
+
+    settings.orders_s3_bucket, settings.orders_s3_key = "b", "k"
+    s3mod._client = lambda: (_ for _ in ()).throw(RuntimeError("AccessDenied"))
+    rec = s3mod.sync(db, force=True)
+    assert rec.ok is False and "AccessDenied" in rec.message
+    assert db.query(OrderLine).count() == 1

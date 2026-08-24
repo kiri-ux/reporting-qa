@@ -58,8 +58,9 @@
   <h2>Order list</h2>
   <div class="note">
     {% if orders %}{{ orders }} order lines loaded. Completeness and lifetime-due checks are active.
+    <a href="/orders">View or re-sync</a>.
     {% else %}No order list loaded yet, so the tool cannot tell which reports are missing.
-    <a href="/orders">Import one</a>.{% endif %}
+    <a href="/orders">Point it at your S3 bucket</a>.{% endif %}
   </div>
 </section>
 {% endblock %}
