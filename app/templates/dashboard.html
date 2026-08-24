@@ -1,0 +1,65 @@
+{% extends "base.html" %}{% block body %}
+<div>
+  <h1>Report QA</h1>
+  <p class="sub">Monthly reports are checked the moment they land. Newest batch first.</p>
+</div>
+
+{% if latest %}
+<div class="cards">
+  <div class="c-fail"><b>{{ latest.failed }}</b><span>Failed in the latest batch</span></div>
+  <div class="c-warn"><b>{{ latest.warned }}</b><span>Warnings</span></div>
+  <div class="c-ok"><b>{{ latest.clean }}</b><span>Clean</span></div>
+  <div class="c-fail"><b>{{ comp.missing|length if comp else 0 }}</b><span>Expected, not received</span></div>
+  <div class="c-warn"><b>{{ comp.lifetime_due|length if comp else 0 }}</b><span>Lifetime reports due</span></div>
+</div>
+{% endif %}
+
+<section>
+  <h2>Batches</h2>
+  {% if batches %}
+  <div class="tw"><table>
+    <thead><tr><th>Received</th><th>Market</th><th>Period</th><th>Source</th>
+    <th class="n">Reports</th><th class="n">Failed</th><th class="n">Warn</th><th class="n">Clean</th><th></th></tr></thead>
+    <tbody>
+    {% for b in batches %}
+      <tr>
+        <td class="mono">{{ b.received_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ b.market or '—' }}</td>
+        <td class="mono">{{ b.period }}</td>
+        <td class="acct">{{ b.source }}</td>
+        <td class="n">{{ b.reports|length }}</td>
+        <td class="n">{% if b.failed %}<span class="pill p-fail">{{ b.failed }}</span>{% else %}0{% endif %}</td>
+        <td class="n">{% if b.warned %}<span class="pill p-warn">{{ b.warned }}</span>{% else %}0{% endif %}</td>
+        <td class="n">{{ b.clean }}</td>
+        <td><a href="/batch/{{ b.id }}">open</a></td>
+      </tr>
+    {% endfor %}
+    </tbody></table></div>
+  {% else %}
+  <p class="empty">Nothing yet. Forward a report email to the inbound address, or upload a batch below.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Check a batch by hand</h2>
+  <div class="panel">
+    <form action="/upload" method="post" enctype="multipart/form-data"
+          style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <input type="file" name="files" multiple accept=".pdf,.zip" required>
+      <input type="text" name="market" placeholder="Market (optional)">
+      <button class="btn" type="submit">Run checks</button>
+    </form>
+    <p class="sub" style="font-size:13px;margin-top:12px">PDFs or a zip of PDFs. Same checks as the
+    email path, and it will not re-notify anyone twice for the same batch.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Order list</h2>
+  <div class="note">
+    {% if orders %}{{ orders }} order lines loaded. Completeness and lifetime-due checks are active.
+    {% else %}No order list loaded yet, so the tool cannot tell which reports are missing.
+    <a href="/orders">Import one</a>.{% endif %}
+  </div>
+</section>
+{% endblock %}

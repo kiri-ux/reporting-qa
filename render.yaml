@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: report-qa
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: report-store
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: report-qa-db
+          property: connectionString
+      - key: DATA_DIR
+        value: /data
+      - key: INBOUND_SECRET
+        generateValue: true
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: DIGEST_FROM
+        sync: false
+      - key: DIGEST_TO
+        sync: false
+
+databases:
+  - name: report-qa-db
+    plan: basic-256mb

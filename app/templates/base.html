@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Report QA{% endblock %}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+:root{--ground:#F4F6F9;--surface:#fff;--surface-2:#EDF0F5;--ink:#161D28;--ink-2:#4A5666;--ink-3:#75808F;
+--rule:#D9DFE8;--rule-strong:#B9C3D1;--accent:#33507D;--crit:#A9382A;--crit-bg:#F6E7E3;
+--warn:#8A5F13;--warn-bg:#F6EEDC;--ok:#1F5F50;--ok-bg:#E2EEEA;
+--shadow:0 1px 2px rgba(22,29,40,.06),0 8px 24px -12px rgba(22,29,40,.18)}
+@media(prefers-color-scheme:dark){:root{--ground:#0E1218;--surface:#161C25;--surface-2:#1E2632;
+--ink:#E6EAF1;--ink-2:#A8B3C2;--ink-3:#7C879A;--rule:#28313E;--rule-strong:#3A4553;--accent:#8AA8DA;
+--crit:#E6907F;--crit-bg:#33201C;--warn:#D9AC5C;--warn-bg:#2E2617;--ok:#6FBBA6;--ok-bg:#172A26;
+--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"Source Serif 4",Georgia,serif;
+font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3,th,nav a,button,.btn{font-family:"Archivo",system-ui,sans-serif}
+.mono,.acct,.pill,code{font-family:"IBM Plex Mono",ui-monospace,monospace}
+nav{border-bottom:2px solid var(--ink);background:var(--surface)}
+nav .in{max-width:1120px;margin:0 auto;padding:16px 24px;display:flex;gap:22px;align-items:baseline}
+nav b{font-family:"Archivo",sans-serif;font-size:17px;letter-spacing:-.01em}
+nav a{color:var(--ink-2);text-decoration:none;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+nav a:hover{color:var(--ink)}
+main{max-width:1120px;margin:0 auto;padding:34px 24px 80px;display:flex;flex-direction:column;gap:32px}
+h1{font-size:32px;margin:0;letter-spacing:-.02em;line-height:1.1}
+h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px;
+padding-bottom:8px;border-bottom:1px solid var(--rule-strong)}
+.sub{color:var(--ink-2);margin:6px 0 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+background:var(--rule);border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.cards div{background:var(--surface);padding:16px 18px}
+.cards b{display:block;font-family:"Archivo",sans-serif;font-size:34px;line-height:1;letter-spacing:-.03em;
+font-variant-numeric:tabular-nums}
+.cards span{font-size:12px;color:var(--ink-2)}
+.c-fail b{color:var(--crit)}.c-warn b{color:var(--warn)}.c-ok b{color:var(--ok)}
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--surface)}
+.tw{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;box-shadow:var(--shadow)}
+th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);text-align:left;
+padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.n{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+a{color:var(--accent)}
+.acct{font-size:12px;color:var(--ink-3)}
+.pill{display:inline-block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;font-weight:600;
+padding:3px 8px;border-radius:2px;white-space:nowrap}
+.p-fail{background:var(--crit-bg);color:var(--crit)}
+.p-warn{background:var(--warn-bg);color:var(--warn)}
+.p-pass{background:var(--ok-bg);color:var(--ok)}
+.p-info{background:var(--surface-2);color:var(--ink-2)}
+.find{margin:0;padding-left:16px}
+.find li{margin-bottom:5px}
+.find b{font-weight:600}
+.find span{color:var(--ink-2)}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:4px;box-shadow:var(--shadow);
+padding:20px 22px}
+.btn{display:inline-block;background:var(--accent);color:#fff;border:0;border-radius:3px;
+padding:9px 16px;font-size:13px;cursor:pointer;text-decoration:none}
+input[type=file],input[type=text]{font:inherit;font-size:14px;padding:7px;border:1px solid var(--rule);
+border-radius:3px;background:var(--surface);color:var(--ink)}
+.note{background:var(--surface-2);border-left:3px solid var(--accent);padding:14px 18px;
+border-radius:0 3px 3px 0;color:var(--ink-2);font-size:15px}
+.empty{color:var(--ink-3);font-style:italic}
+</style></head><body>
+<nav><div class="in"><b>Report QA</b>
+<a href="/">Dashboard</a><a href="/orders">Order list</a></div></nav>
+<main>{% block body %}{% endblock %}</main></body></html>
