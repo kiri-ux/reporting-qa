@@ -5,11 +5,12 @@ Severity drives the dashboard colour and whether anyone gets pinged.
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
 from pathlib import Path
 
 from ..config import settings
-from .parser import (SKIP_LINE, Table, extract_tables, headline, meta_from_filename,
+from .parser import (date_range, SKIP_LINE, Table, extract_tables, headline, meta_from_filename,
                      meta_from_text, page_count, page_ink_pct, pdf_text, tokens)
 from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
 
@@ -292,6 +293,66 @@ def check_products(ctx) -> list[dict]:
     return out
 
 
+
+def check_date_range(ctx) -> list[dict]:
+    """The printed date range has to match what the report claims to be.
+
+    A monthly covers exactly its month. A LIFETIME covers the campaign's whole
+    flight, and that is where this earns its keep: a lifetime pulled with the
+    default monthly range looks completely normal - right client, right
+    numbers, right products - and silently reports one month of a two-year
+    campaign. Nothing else on the page gives it away.
+
+    The expected flight is the FIRST start and the LAST end across every one
+    of that client's orders, because overlapping orders are one continuous
+    campaign to the client even though the export lists them separately.
+    """
+    got = ctx.get("date_range")
+    if not got:
+        return [_f("date_range_missing", "warn", "No date range printed on the report",
+                   "Page one usually carries \"Date range ... to ...\". Without it "
+                   "there is no way to tell which period this covers.")]
+    start, end = got
+    fmt = "%b %d, %Y"
+    printed = f"{start.strftime(fmt)} to {end.strftime(fmt)}"
+
+    if ctx.get("is_lifetime"):
+        want = ctx.get("flight")            # (first start, last end) across all orders
+        if not want or not want[0]:
+            return []
+        w_start, w_end = want
+        out = []
+        # A lifetime that starts at the month boundary while the campaign began
+        # earlier is the classic wrong-range pull.
+        if (w_start - start).days < -3:
+            out.append(_f(
+                "lifetime_short", "fail", "Lifetime report does not go back to the campaign start",
+                f"Printed {printed}, but this client's earliest order starts "
+                f"{w_start.strftime(fmt)}. Re-pull with the range set to the full flight."))
+        if w_end and (end - w_end).days < -3:
+            out.append(_f(
+                "lifetime_cut", "fail", "Lifetime report stops before the campaign ends",
+                f"Printed {printed}, but the latest order runs to {w_end.strftime(fmt)}."))
+        if not out:
+            out.append(_f("lifetime_range_ok", "info", "Lifetime covers the full flight",
+                          f"{printed}, against orders running "
+                          f"{w_start.strftime(fmt)} to "
+                          f"{w_end.strftime(fmt) if w_end else 'open'}."))
+        return out
+
+    period = ctx.get("period")              # "2026-07"
+    if not period:
+        return []
+    y, m = (int(x) for x in period.split("-"))
+    first = dt.date(y, m, 1)
+    last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+    if start == first and end == last:
+        return []
+    return [_f("date_range_wrong", "fail", "Date range is not the report month",
+               f"Printed {printed}. This is the {first.strftime('%B %Y')} report, "
+               f"so it should read {first.strftime(fmt)} to {last.strftime(fmt)}.")]
+
+
 RULES = [
     check_headline_ctr,
     check_line_items,
@@ -303,14 +364,17 @@ RULES = [
     check_blank_pages,
     check_geofence_names,
     check_products,
+    check_date_range,
 ]
 
 SEV_ORDER = {"fail": 2, "warn": 1, "info": 0}
 
 
 def run_all(path: Path, filename: str | None = None,
-            expected_products: set[str] | None = None) -> dict:
+            expected_products: set[str] | None = None,
+            flight: tuple | None = None, period: str | None = None) -> dict:
     text = pdf_text(path)
+    is_lifetime = meta_from_filename(filename or path.name)["is_lifetime"]
     imps, clicks, ctr = headline(text)
     tables = extract_tables(text, strict=True)
     ctx = {
@@ -321,6 +385,10 @@ def run_all(path: Path, filename: str | None = None,
         "products": detect_products(text, tables),
         "expected_products": expected_products,
         "imps": imps, "clicks": clicks, "ctr": ctr,
+        "date_range": date_range(text),
+        "is_lifetime": bool(is_lifetime),
+        "period": period,
+        "flight": flight,
     }
     findings: list[dict] = []
     for rule in RULES:

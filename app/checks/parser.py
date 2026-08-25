@@ -6,6 +6,7 @@ line of each page, and wrapped line-item names that look like section headings.
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
 import shutil
 import subprocess
@@ -190,6 +191,18 @@ def headline(text: str) -> tuple[float | None, float | None, float | None]:
 
 CLIENT_RE = re.compile(r"Digital Marketing Report for (.+?)\s*$", re.M)
 PERIOD_RE = re.compile(r"Date range (\w{3} \d{2}, \d{4}) to (\w{3} \d{2}, \d{4})")
+
+
+def date_range(text: str) -> tuple[dt.date, dt.date] | None:
+    """The "Date range Jul 01, 2026 to Jul 31, 2026" line off page one."""
+    m = PERIOD_RE.search(text)
+    if not m:
+        return None
+    from dateutil import parser as dp
+    try:
+        return dp.parse(m.group(1)).date(), dp.parse(m.group(2)).date()
+    except Exception:
+        return None
 
 
 def meta_from_text(text: str) -> dict:

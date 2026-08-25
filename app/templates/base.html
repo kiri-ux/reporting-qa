@@ -226,6 +226,26 @@ tr[hidden]{display:none}
 .colf select:focus{outline:none;border-color:var(--velocity);
  box-shadow:0 0 0 3px var(--velocity-10)}
 .colf select.set{border-color:var(--velocity);background:var(--velocity-10);font-weight:700}
+.multi{position:relative}
+.multibtn{font:inherit;font-size:13.5px;padding:6px 26px 6px 11px;border:1px solid var(--line);
+ border-radius:16px;background:var(--surface);color:var(--ink);cursor:pointer;
+ min-width:150px;max-width:230px;text-align:left;overflow:hidden;text-overflow:ellipsis;
+ white-space:nowrap}
+.multibtn::after{content:'';position:absolute;right:11px;top:50%;margin-top:-2px;
+ border:4px solid transparent;border-top-color:var(--atlas-50);pointer-events:none}
+.multibtn:hover{border-color:var(--velocity)}
+.multibtn.set{border-color:var(--velocity);background:var(--velocity-10);font-weight:700}
+.multimenu{position:absolute;z-index:50;top:calc(100% + 5px);left:0;min-width:240px;
+ max-height:320px;overflow:auto;background:var(--surface);border:1px solid var(--line);
+ border-radius:10px;box-shadow:0 10px 30px rgba(0,45,88,.2);padding:5px}
+.multirow{display:flex;align-items:center;gap:9px;padding:5px 9px;border-radius:7px;
+ font-size:13.5px;cursor:pointer;margin:0;font-weight:400;color:var(--ink)}
+.multirow:hover{background:var(--velocity-10)}
+.multirow span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.multirow i{font-style:normal;font-size:12px;color:var(--muted);
+ font-variant-numeric:tabular-nums}
+.multirow input{margin:0;accent-color:var(--velocity);width:15px;height:15px}
+
 .mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
  padding:6px 12px;border-radius:16px;border:1px solid var(--line);cursor:pointer;
  background:var(--surface);color:var(--ink-2)}
@@ -348,6 +368,71 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
   // rows. The dropdowns exist because free text cannot tell one column from
   // another - there is a Katie who is a trainer and a Katie who is a buyer, and
   // typing her name finds both.
+  // A multi-select that stays readable. A native <select multiple> is a tall
+  // scrolling box that pushes the content off screen and needs ctrl-click to
+  // add a second value, which nobody discovers. This is a button that opens a
+  // list of checkboxes and closes again, and reports its picks as .chosen.
+  function buildMulti(names, counts, id, label, onChange) {
+    var wrap = document.createElement('div');
+    wrap.className = 'multi';
+    wrap.id = id;
+    label.htmlFor = id;
+
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'multibtn';
+    var menu = document.createElement('div');
+    menu.className = 'multimenu'; menu.hidden = true;
+
+    var chosen = [];
+    var paint = function () {
+      btn.textContent = chosen.length === 0
+        ? 'All (' + names.length + ')'
+        : (chosen.length === 1 ? chosen[0] : chosen.length + ' selected');
+      btn.classList.toggle('set', chosen.length > 0);
+    };
+
+    names.forEach(function (n) {
+      var row = document.createElement('label');
+      row.className = 'multirow';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = n;
+      var txt = document.createElement('span');
+      txt.textContent = n;
+      var ct = document.createElement('i');
+      ct.textContent = counts[n];
+      row.appendChild(cb); row.appendChild(txt); row.appendChild(ct);
+      menu.appendChild(row);
+      cb.addEventListener('change', function () {
+        var at = chosen.indexOf(n);
+        if (cb.checked && at === -1) chosen.push(n);
+        if (!cb.checked && at !== -1) chosen.splice(at, 1);
+        paint();
+        onChange();
+      });
+    });
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      // one menu open at a time, or they overlap each other
+      document.querySelectorAll('.multimenu').forEach(function (m) {
+        if (m !== menu) m.hidden = true;
+      });
+      menu.hidden = !menu.hidden;
+    });
+    menu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { menu.hidden = true; });
+
+    wrap.appendChild(btn); wrap.appendChild(menu);
+    wrap.chosen = chosen;
+    wrap.reset = function () {
+      chosen.length = 0;
+      menu.querySelectorAll('input').forEach(function (cb) { cb.checked = false; });
+      paint();
+    };
+    paint();
+    return wrap;
+  }
+
   // Card filtering. Same idea as the table filter, but cards carry their
   // values as data- attributes rather than living in columns.
   document.querySelectorAll('[data-cards]').forEach(function (box) {
@@ -362,13 +447,14 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
 
     var run = function () {
       var terms = box.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
-      var picks = selects.filter(function (s) { return s.el.value; });
+      var picks = selects.filter(function (s) { return s.el.chosen.length; });
       var shown = 0;
       cards.forEach(function (c) {
         var hit = terms.every(function (w) { return c.hay.indexOf(w) !== -1; })
           && picks.every(function (s) {
+            var want = s.el.chosen;
             return (c.d[s.key] || '').split(/\s*,\s*/)
-              .some(function (v) { return v.trim() === s.el.value; });
+              .some(function (v) { return want.indexOf(v.trim()) !== -1; });
           });
         c.el.hidden = !hit;
         if (hit) shown++;
@@ -392,16 +478,9 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
         if (names.length < 2) return;     // a filter with one option filters nothing
         var f = document.createElement('div'); f.className = 'colf';
         var lb = document.createElement('label'); lb.textContent = pair[1];
-        var sel = document.createElement('select');
-        sel.appendChild(new Option('All (' + names.length + ')', ''));
-        names.forEach(function (n) { sel.appendChild(new Option(n + '  (' + vals[n] + ')', n)); });
-        lb.htmlFor = sel.id = 'cardf-' + key;
+        var sel = buildMulti(names, vals, 'cardf-' + key, lb, run);
         f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
         selects.push({ key: key, el: sel });
-        sel.addEventListener('change', function () {
-          sel.classList.toggle('set', !!sel.value);
-          run();
-        });
       });
       if (selects.length) {
         var clear = document.createElement('button');
@@ -409,7 +488,7 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
         clear.style.alignSelf = 'flex-end'; clear.style.marginBottom = '1px';
         clear.addEventListener('click', function () {
           box.value = '';
-          selects.forEach(function (s) { s.el.value = ''; s.el.classList.remove('set'); });
+          selects.forEach(function (s) { s.el.reset(); });
           run();
         });
         wrap.appendChild(clear);
@@ -441,13 +520,14 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
       // "7 mountains ctv" narrows instead of finding nothing.
       var q = box.value.toLowerCase().trim();
       var terms = q ? q.split(/\s+/) : [];
-      var picks = selects.filter(function (s) { return s.el.value; });
+      var picks = selects.filter(function (s) { return s.el.chosen.length; });
       var shown = 0;
       rows.forEach(function (r) {
         var hit = terms.every(function (w) { return r.hay.indexOf(w) !== -1; })
           && picks.every(function (s) {
+            var want = s.el.chosen;                     // a set of picks, any of which counts
             return (r.cells[s.i] || '').split(/\s*,\s*/)
-              .some(function (v) { return v.trim() === s.el.value; });
+              .some(function (v) { return want.indexOf(v.trim()) !== -1; });
           });
         r.tr.hidden = !hit;
         if (hit) shown++;
@@ -473,16 +553,9 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
         if (!names.length) return;
         var f = document.createElement('div'); f.className = 'colf';
         var lb = document.createElement('label'); lb.textContent = th.dataset.col;
-        var sel = document.createElement('select');
-        sel.appendChild(new Option('All (' + names.length + ')', ''));
-        names.forEach(function (n) { sel.appendChild(new Option(n + '  (' + vals[n] + ')', n)); });
-        lb.htmlFor = sel.id = 'colf-' + box.dataset.filter + '-' + i;
+        var sel = buildMulti(names, vals, 'colf-' + box.dataset.filter + '-' + i, lb, run);
         f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
         selects.push({ i: i, el: sel });
-        sel.addEventListener('change', function () {
-          sel.classList.toggle('set', !!sel.value);
-          run();
-        });
       });
       if (selects.length) {
         var clear = document.createElement('button');
@@ -490,7 +563,7 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
         clear.style.alignSelf = 'flex-end'; clear.style.marginBottom = '1px';
         clear.addEventListener('click', function () {
           box.value = '';
-          selects.forEach(function (s) { s.el.value = ''; s.el.classList.remove('set'); });
+          selects.forEach(function (s) { s.el.reset(); });
           run();
         });
         wrap.appendChild(clear);

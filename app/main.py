@@ -522,13 +522,13 @@ def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
     from .cycle import current_period
     period = period or current_period()
     rows = [[e.market, e.client, e.kind, ", ".join(e.products),
-             e.account_ids, e.ends_on or "", e.buyer, e.reporter,
+             e.account_ids, e.starts_on or "", e.ends_on or "", e.buyer, e.reporter,
              e.state, e.report.reviewed_by if e.report else "",
              e.report.review_note if e.report else ""]
             for e in expected_for(db, period)]
     return _csv_response(f"report-qa-cycle-{period}.csv",
                          ["Market", "Client", "Kind", "Products",
-                          "Order", "Ends", "Buyer", "Reporter", "Status",
+                          "Order", "Starts", "Ends", "Buyer", "Reporter", "Status",
                           "Reviewed by", "Note"], rows)
 
 

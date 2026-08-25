@@ -40,6 +40,11 @@ class Expected:
     kind: str                      # "monthly" | "lifetime"
     account_ids: str = ""
     products: list = field(default_factory=list)
+    # The client's whole flight: FIRST start and LAST end across every order,
+    # because two overlapping orders are one continuous campaign even though
+    # the export lists them separately. This is the range a lifetime has to
+    # cover, so the reporter needs both dates, not just the end.
+    starts_on: dt.date | None = None
     ends_on: dt.date | None = None
     buyer: str = ""
     reporter: str = ""
@@ -114,8 +119,34 @@ def expected_for(db: Session, period: str) -> list[Expected]:
                     reporter=(p.reporting_team if p else ""))
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
+            if l.starts_on and (e.starts_on is None or l.starts_on < e.starts_on):
+                e.starts_on = l.starts_on
             if l.ends_on and (e.ends_on is None or l.ends_on > e.ends_on):
                 e.ends_on = l.ends_on
+
+    # THE FLIGHT SPANS EVERY ORDER, not just the one that ended.
+    #
+    # A lifetime entry is created by the order line that ended inside the
+    # window, so taking its dates gives the flight of that ONE order. A client
+    # with two overlapping orders - one 2024-2025, one 2025-2026 - would then
+    # be told to pull from 2025, losing the first year. The range is the
+    # earliest start and the latest end across everything that client runs.
+    span: dict[tuple[str, str], list] = {}
+    for l in db.scalars(select(OrderLine)).all():
+        if excluded(l.market):
+            continue
+        k = (_key(l.market), _key(l.client))
+        cur = span.get(k)
+        if cur is None:
+            span[k] = [l.starts_on, l.ends_on]
+            continue
+        if l.starts_on and (cur[0] is None or l.starts_on < cur[0]):
+            cur[0] = l.starts_on
+        if l.ends_on and (cur[1] is None or l.ends_on > cur[1]):
+            cur[1] = l.ends_on
+    for (mk, ck, kind), e in rows.items():
+        if kind == "lifetime" and (mk, ck) in span:
+            e.starts_on, e.ends_on = span[(mk, ck)]
 
     _attach_reports(db, period, rows)
     out = list(rows.values())

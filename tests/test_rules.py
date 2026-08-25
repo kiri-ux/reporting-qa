@@ -1098,3 +1098,91 @@ def test_accepting_a_finding_clears_the_flag_but_keeps_the_note():
     # un-accepting puts it back
     f.acked = []
     assert not f.ready
+
+
+def test_date_range_is_read_off_the_report():
+    from app.checks.parser import date_range, pdf_text
+    text = pdf_text(FIXTURES / "salem_rv.pdf", 1, 1)
+    assert date_range(text) == (dt.date(2026, 7, 1), dt.date(2026, 7, 31))
+    assert date_range("no such line here") is None
+
+
+def test_a_lifetime_pulled_with_a_monthly_range_is_caught():
+    """The failure this exists for.
+
+    A lifetime pulled with the default monthly range looks completely normal -
+    right client, right products, plausible numbers - and silently reports one
+    month of a two-year campaign. Nothing else on the page gives it away.
+    """
+    from app.checks.rules import check_date_range
+
+    july = (dt.date(2026, 7, 1), dt.date(2026, 7, 31))
+    flight = (dt.date(2024, 3, 1), dt.date(2026, 7, 31))
+
+    bad = check_date_range({"date_range": july, "is_lifetime": True,
+                            "flight": flight, "period": "2026-07"})
+    assert [f["severity"] for f in bad] == ["fail"]
+    assert "does not go back to the campaign start" in bad[0]["title"]
+    assert "Mar 01, 2024" in bad[0]["detail"]
+
+    good = check_date_range({"date_range": (dt.date(2024, 3, 1), dt.date(2026, 7, 31)),
+                             "is_lifetime": True, "flight": flight, "period": "2026-07"})
+    assert [f["severity"] for f in good] == ["info"]
+
+    # cut short at the end
+    short = check_date_range({"date_range": (dt.date(2024, 3, 1), dt.date(2026, 5, 31)),
+                              "is_lifetime": True, "flight": flight, "period": "2026-07"})
+    assert any("stops before the campaign ends" in f["title"] for f in short)
+
+    # a monthly covering its own month is silent
+    assert check_date_range({"date_range": july, "is_lifetime": False,
+                             "flight": flight, "period": "2026-07"}) == []
+    # ...and one covering the wrong month is not
+    wrong = check_date_range({"date_range": (dt.date(2026, 6, 1), dt.date(2026, 6, 30)),
+                              "is_lifetime": False, "flight": flight, "period": "2026-07"})
+    assert wrong[0]["severity"] == "fail"
+    assert "Jul 01, 2026 to Jul 31, 2026" in wrong[0]["detail"]
+
+    # no date range printed at all
+    none = check_date_range({"date_range": None, "is_lifetime": False, "period": "2026-07"})
+    assert none[0]["severity"] == "warn"
+
+
+def test_overlapping_orders_become_one_flight(tmp_path, monkeypatch):
+    """Two overlapping orders are one continuous campaign to the client, so
+    the flight runs from the FIRST start to the LAST end across all of them -
+    not the bounds of whichever single order happened to be looked up."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'fl.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import ingest as imod, board as bmod
+    importlib.reload(imod); importlib.reload(bmod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    D = dt.date.fromisoformat
+    for oid, product, s_, e_ in [
+        ("50001", "Display Ads", "2024-03-01", "2025-06-30"),   # first order
+        ("50002", "Connected TV Ads", "2025-01-15", "2026-07-31"),  # overlaps, runs later
+        ("50003", "Video Ads", "2025-09-01", "2026-02-28"),      # sits inside
+    ]:
+        db.add(db_mod.OrderLine(market="7 Mountains KY", client="Awaken Bakery",
+                                account_ids=oid, product=product,
+                                starts_on=D(s_), ends_on=D(e_)))
+    db.commit()
+
+    assert imod.client_flight(db, "Awaken Bakery", "50002") == (D("2024-03-01"),
+                                                                D("2026-07-31"))
+    # found by name alone, no account id on the filename
+    assert imod.client_flight(db, "Awaken Bakery", "") == (D("2024-03-01"), D("2026-07-31"))
+    assert imod.client_flight(db, "Nobody At All", "") is None
+
+    # and the board carries both dates so the reporter knows what to pull
+    life = [e for e in bmod.expected_for(db, "2026-07") if e.kind == "lifetime"]
+    assert life, "an order ending in July owes a lifetime"
+    assert life[0].starts_on == D("2024-03-01")
+    assert life[0].ends_on == D("2026-07-31")

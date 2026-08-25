@@ -181,7 +181,11 @@
         {% endfor %}</span><span class="sr">{% for p in chips.get(e.ident, []) %}{{ p.name }} {% endfor %}</span></td>
         <td class="nw">{% if e.kind == 'lifetime' %}
           <span class="pill p-info">lifetime</span>
-          {% if e.ends_on %}<br><span class="acct">ended {{ e.ends_on }}</span>{% endif %}
+          {# Both dates: this is the range the report has to cover, and the end
+             date alone does not tell the reporter what to pull. #}
+          {% if e.starts_on or e.ends_on %}<br>
+            <span class="acct">{{ e.starts_on or '?' }} &rarr; {{ e.ends_on or 'open' }}</span>
+          {% endif %}
           {% else %}<span class="acct">monthly</span>{% endif %}</td>
         <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
         <td style="font-size:13px;color:var(--ink-2);max-width:38ch">

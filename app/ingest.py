@@ -94,6 +94,34 @@ def open_batch(db: Session, market: str, period: str) -> Batch | None:
     ).first()
 
 
+def client_flight(db: Session, client: str, accounts: str) -> tuple | None:
+    """(first start, last end) across every one of this client's order lines.
+
+    Two overlapping orders are one continuous campaign to the client, so the
+    range a lifetime report has to cover runs from the earliest start of any
+    of them to the latest end - not the bounds of whichever single order
+    happened to be looked up.
+    """
+    from .roster import _keyify
+    from .db import OrderLine
+    from sqlalchemy import select
+
+    ids = _keyify(client, accounts)
+    norm = re.sub(r"[^a-z0-9]", "", (client or "").lower())
+    starts, ends = [], []
+    for l in db.scalars(select(OrderLine)).all():
+        if not ((ids and ids & _keyify(l.client, l.account_ids))
+                or (norm and norm == re.sub(r"[^a-z0-9]", "", l.client.lower()))):
+            continue
+        if l.starts_on:
+            starts.append(l.starts_on)
+        if l.ends_on:
+            ends.append(l.ends_on)
+    if not starts:
+        return None
+    return (min(starts), max(ends) if ends else None)
+
+
 def market_from_orders(db: Session, filenames: list[str]) -> str:
     """Look the market up from the order list using the client on the filename.
 
@@ -173,8 +201,10 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         path.write_bytes(blob)
         meta_guess = meta_from_filename(name)
         exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"])
+        flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
         try:
-            result = run_all(path, filename=name, expected_products=exp)
+            result = run_all(path, filename=name, expected_products=exp,
+                             flight=flight, period=batch.period)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},
