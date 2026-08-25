@@ -53,6 +53,9 @@
               </button>
               <span class="fbody">
                 <span class="pill p-{{ 'fail' if f.severity == 'fail' else 'warn' }}">{{ f.severity }}</span>
+                {# Where to look. "1 site clicking above 5%" is true and
+                   unhelpful until you know which of forty-one pages. #}
+                {% if f.where %}<span class="wpill" title="Where to find it">{{ f.where }}</span>{% endif %}
                 <b>{{ f.title or f.code }}</b>
                 {% if f.detail and f.detail != f.title %}
                   <span class="fdetail">{{ f.detail }}</span>{% endif %}
@@ -274,6 +277,11 @@ details[open] > .cksum::before{content:'▾ '}
  box-shadow:0 0 0 3px var(--velocity-10)}
 /* Investigate: shut by default, because most findings are read and acted on
    without anyone needing the arithmetic. */
+.wpill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:10.5px;letter-spacing:.01em;padding:2px 8px;border-radius:10px;
+ background:var(--atlas-10);color:var(--ink-2);margin-left:6px;
+ vertical-align:1px;white-space:nowrap;max-width:26ch;overflow:hidden;
+ text-overflow:ellipsis}
 .probe{margin:2px 0 0 30px}
 .probe summary{font-size:12px;font-weight:700;color:var(--velocity);cursor:pointer;
  list-style:none;padding:2px 0;font-family:'GT Walsheim Pro',sans-serif}

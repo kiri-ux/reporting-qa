@@ -51,8 +51,8 @@
          not soon enough - a fix has gone out and somebody wants the board right
          before they hand a link over. #}
       {% if jobs.all %}
-        <span class="sync busy" title="Reload to see where it got to">
-          <span class="spin"></span>{{ jobs.all.done }} of {{ jobs.all.total or '?' }}</span>
+        <span class="sync busy" data-job="*"><span class="spin"></span><b
+          >{{ jobs.all.done }} of {{ jobs.all.total or '?' }}</b></span>
       {% elif stale.total %}
         <form method="post" action="/cycle/recheck" style="display:inline">
           <input type="hidden" name="period" value="{{ period }}">
@@ -147,8 +147,8 @@
           {% if job %}
             {# It runs in the background and the redirect comes straight back,
                so without this the button looked untouched after being pressed. #}
-            <span class="mini busy"><span class="spin"></span>{{ job.done }} of
-              {{ job.total or '?' }}</span>
+            <span class="mini busy" data-job="{{ g.group }}"><span class="spin"></span><b
+              >{{ job.done }} of {{ job.total or '?' }}</b></span>
           {% elif have %}
             {# No count on the label. "Re-check 2" under a heading that says
                "14 reports" reads as a bug, even when 2 is the true number of
@@ -246,7 +246,8 @@
                thing wrong, which is the opposite of what it means. #}
             {% set open = e.report.open_findings %}
             {% if open %}
-              {% for f in open[:3] %}{{ f.title or f.detail }}<br>{% endfor %}
+              {% for f in open[:3] %}{{ f.title or f.detail }}{% if f.where %}
+                <span class="wpill">{{ f.where }}</span>{% endif %}<br>{% endfor %}
               {% if open|length > 3 %}
                 <span class="acct">+{{ open|length - 3 }} more</span><br>{% endif %}
             {% elif e.report.acked %}
@@ -384,6 +385,9 @@
 .sync.busy:hover{background:var(--surface);color:var(--velocity)}
 .secbar .tabs form{margin:0;display:inline-flex}
 .gfoot form{display:inline}
+.wpill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:10px;padding:1px 6px;border-radius:9px;background:var(--atlas-10);
+ color:var(--ink-2);white-space:nowrap}
 .donebox summary{font-family:'GT Walsheim Pro',sans-serif;font-size:13.5px;
  font-weight:700;color:var(--ok);cursor:pointer;padding:8px 0;list-style:none}
 .donebox summary::-webkit-details-marker{display:none}
@@ -432,5 +436,45 @@
 .mini.ok:hover:not(:disabled){background:var(--ok);color:#fff}
 .mini.warn{border-color:var(--warn);color:var(--warn)}
 .mini.warn:hover:not(:disabled){background:var(--warn);color:#fff}
+.sync.busy.stalled,.mini.busy.stalled{border-color:var(--crit);color:var(--crit)}
 </style>
+<script>
+// The counter only moved when somebody reloaded, so a job that had stopped and
+// a job that was working looked exactly the same. This asks every few seconds
+// and reloads once when the work is finished.
+(function () {
+  var slots = document.querySelectorAll('[data-job]');
+  if (!slots.length) return;
+  var period = new URLSearchParams(location.search).get('period') || '';
+  var misses = 0;
+
+  var tick = function () {
+    fetch('/cycle/recheck/status?period=' + encodeURIComponent(period),
+          {headers: {'Accept': 'application/json'}})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var byGroup = {}, all = null;
+        (d.jobs || []).forEach(function (j) {
+          if (j.group) byGroup[j.group] = j; else all = j;
+        });
+        var live = 0;
+        slots.forEach(function (el) {
+          var j = el.dataset.job === '*' ? all : byGroup[el.dataset.job];
+          if (!j) return;
+          live++;
+          el.querySelector('b').textContent = j.done + ' of ' + (j.total || '?');
+          el.classList.toggle('stalled', !!j.stalled);
+          el.title = j.stalled
+            ? 'No progress for two minutes. Press the button again to restart it.'
+            : 'Re-checking ' + (j.group || 'this cycle');
+        });
+        // Finished: one reload, so the board shows the new answers.
+        if (!live && ++misses > 1) location.reload();
+      })
+      .catch(function () {});
+  };
+  setInterval(tick, 4000);
+  tick();
+})();
+</script>
 {% endblock %}

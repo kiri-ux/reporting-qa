@@ -75,7 +75,7 @@ def test_site_ctr_findings_are_absent_from_every_real_fixture():
 
     bad = {}
     for f in sorted((_P(__file__).parent / "fixtures").glob("*.pdf")):
-        for _t, name, imps, clicks, printed in site_rows(pdf_text(f)):
+        for _t, name, imps, clicks, printed, _at in site_rows(pdf_text(f)):
             if printed is None or not imps:
                 continue
             if abs(clicks / imps * 100 - printed) > 0.05:
@@ -107,7 +107,16 @@ def test_a_partner_card_shows_its_own_job_not_just_the_board_wide_one():
     so the button looked untouched after being pressed."""
     cycle = (TPL / "cycle.html").read_text()
     assert "jobs.by_group.get(g.group)" in cycle
-    assert '<span class="mini busy">' in cycle
+    assert 'class="mini busy" data-job="{{ g.group }}"' in cycle
+
+
+def test_the_progress_updates_without_a_reload():
+    """The counter only moved when somebody reloaded, so a job that had stopped
+    and a job that was working looked exactly the same."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert "/cycle/recheck/status" in cycle
+    assert "setInterval(tick" in cycle
+    assert "stalled" in cycle
 
 
 def test_the_partner_button_carries_no_count():

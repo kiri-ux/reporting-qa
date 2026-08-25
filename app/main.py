@@ -539,7 +539,7 @@ def _stale_here(db: Session, period: str, groups) -> dict:
     return out
 
 
-def _recheck_jobs() -> dict:
+def _recheck_jobs(db: Session) -> dict:
     """Running re-checks, keyed by the group they are working on.
 
     The card needs to know its OWN job. Without that the button sat there
@@ -548,7 +548,7 @@ def _recheck_jobs() -> dict:
     """
     from .recheck import running_jobs
     out = {"all": {}, "by_group": {}}
-    for j in running_jobs().values():
+    for j in running_jobs(db).values():
         if j.get("group"):
             out["by_group"][j["group"]] = j
         else:
@@ -606,7 +606,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # How many reports on this board still carry an older answer, and per
         # partner so a card can offer to fix just that one.
         "stale": _stale_here(db, period, groups),
-        "jobs": _recheck_jobs(),
+        "jobs": _recheck_jobs(db),
         "notify": settings.notify_status,
         "configured": settings.delivery_configured,
         "today": dt.date.today(),
@@ -649,7 +649,7 @@ def delivery_file(delivery_id: int, db: Session = Depends(get_db)):
 
 @app.post("/cycle/recheck")
 def cycle_recheck(period: str = Form(""), group: str = Form(""),
-                  scope: str = Form("stale")):
+                  scope: str = Form("stale"), db: Session = Depends(get_db)):
     """Re-check a partner, or the whole cycle, now.
 
     The background sweep gets to everything on its own; this is for when
@@ -662,7 +662,7 @@ def cycle_recheck(period: str = Form(""), group: str = Form(""),
     # A partner button means "make this partner right", which is every report
     # it has - "Re-check 2" on a card headed "14 reports" reads as a bug even
     # when 2 is the true number of stale ones.
-    start_job(key, group=group or None, period=period or None,
+    start_job(db, key, group=group or None, period=period or None,
               stale_only=(scope != "all"))
     back = f"/cycle?period={period}" + (f"&group={quote(group)}" if group else "")
     return RedirectResponse(back, status_code=303)
@@ -884,6 +884,22 @@ def report_recheck(report_id: int, db: Session = Depends(get_db)):
                       f"{settings.keep_pdf_months} months. Upload it again below."}]
         db.commit()
     return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+
+
+@app.get("/cycle/recheck/status")
+def cycle_recheck_status(period: str = Query(""), db: Session = Depends(get_db)):
+    """What the running re-checks are doing, for the page to poll.
+
+    Without this the count only moved when somebody reloaded, so a job that had
+    stopped and a job that was working looked exactly the same.
+    """
+    from .recheck import running_jobs, stale_count
+    period = period or settings.default_period or ""
+    jobs = running_jobs(db)
+    if period:
+        jobs = {k: v for k, v in jobs.items() if not v["period"] or v["period"] == period}
+    return {"jobs": list(jobs.values()),
+            "stale": stale_count(db, period=period or None)}
 
 
 @app.get("/partners", response_class=HTMLResponse)

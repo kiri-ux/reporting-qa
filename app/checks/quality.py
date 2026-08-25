@@ -153,11 +153,25 @@ def widget_rows(text: str, title_test) -> list[tuple[str, str, int]]:
 
 
 # ---------------------------------------------------------------- findings
-def _f(code, sev, title, detail, trace=None) -> dict:
+def _f(code, sev, title, detail, trace=None, where="") -> dict:
+    """A finding. `where` is a pill on the report page - the page number and
+    the widget - because "1 site clicking above 5%" is true and unhelpful until
+    you know which of forty-one pages to open."""
     out = {"code": code, "severity": sev, "title": title, "detail": detail}
+    if where:
+        out["where"] = where
     if trace:
         out["trace"] = [{"label": l, "value": v} for l, v in trace]
     return out
+
+
+def _where(ctx, offset: int, widget: str = "") -> str:
+    page_of = ctx.get("page_of")
+    page = page_of(offset) if page_of and offset is not None and offset >= 0 else 0
+    bits = [f"p{page}"] if page else []
+    if widget:
+        bits.append(widget)
+    return " · ".join(bits)
 
 
 def _sample(items: list[str], n: int = 8) -> str:
@@ -245,8 +259,8 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
 def check_strategy_categorized(ctx) -> list[dict]:
     """Every strategy line has to name the product it runs."""
     text = ctx.get("text") or ""
-    bad, seen = [], set()
-    for name, _at in line_item_names(text):
+    bad, seen, first_at = [], set(), -1
+    for name, at in line_item_names(text):
         low = name.lower()
         if any(w in low for w in PRODUCT_WORDS):
             continue
@@ -254,15 +268,17 @@ def check_strategy_categorized(ctx) -> list[dict]:
             continue
         seen.add(name)
         bad.append(name)
+        if first_at < 0:
+            first_at = at
     if not bad:
         return []
     return [_f("strategy_uncategorized", "fail",
                f"{len(bad)} strategy line{'s' if len(bad) > 1 else ''} not "
                f"categorised to a product",
-               "TapClicks reads the product out of the line item name, and "
-               "these carry no product word - so each one lands on the product "
-               "breakout as its own slice instead of joining its product. The "
-               "fix is the name, in the order: " + _sample(sorted(bad), 30))]
+               "No product word in the name, so each lands on the product "
+               "breakout as its own slice. Fix in the order: "
+               + _sample(sorted(bad), 30),
+               where=_where(ctx, first_at, "Line Item Performance"))]
 
 
 # ------------------------------------------------------ 2. truncated text
@@ -278,34 +294,38 @@ def check_truncated_text(ctx) -> list[dict]:
     text = ctx.get("text") or ""
     out = []
 
-    cut = []
+    cut, cut_at = [], -1
+    at = 0
     for line in text.split("\n"):
+        here, at = at, at + len(line) + 1
         if _is_chrome(line):
             continue
         for m in ELLIPSIS.finditer(line):
             frag = line[max(0, m.start() - 40):m.end() + 8].strip()
             if frag not in cut:
                 cut.append(frag)
+                if cut_at < 0:
+                    cut_at = here
     if cut:
         out.append(_f("text_truncated", "fail",
                       f"{len(cut)} label{'s' if len(cut) > 1 else ''} cut off",
-                      "The text runs past the space it was given and ends in "
-                      "an ellipsis. Widen the column or turn wrap text on: "
-                      + _sample(cut)))
+                      "Runs past the space it was given. Widen the column or "
+                      "turn wrap text on: " + _sample(cut),
+                      where=_where(ctx, cut_at)))
 
-    clipped = _clipped_cells(text)
+    clipped, clipped_at = _clipped_cells(text)
     if clipped:
         out.append(_f("text_truncated", "fail",
                       f"{len(clipped)} grid cell{'s' if len(clipped) > 1 else ''} "
                       f"cut off mid-word",
-                      "The same value appears in full elsewhere on the report, "
-                      "so this one lost its last characters to the column "
-                      "width: " + _sample([f"{a!r} (should be {b!r})"
-                                           for a, b in clipped])))
+                      "The same value appears in full elsewhere, so this one "
+                      "lost its last characters to the column width: "
+                      + _sample([f"{a!r} (should be {b!r})" for a, b in clipped]),
+                      where=_where(ctx, clipped_at, "Line Item Performance")))
     return out
 
 
-def _clipped_cells(text: str) -> list[tuple[str, str]]:
+def _clipped_cells(text: str) -> tuple[list[tuple[str, str]], int]:
     """Names that are one or two characters short of another name.
 
     "...Behavioral Social Mirro" against "...Behavioral Social Mirror" is a
@@ -313,7 +333,12 @@ def _clipped_cells(text: str) -> list[tuple[str, str]]:
     "Social Mirror" starts matching "Social Mirror CTV", which is a different
     line item, not a truncation of this one.
     """
-    names = sorted({n for n, _ in line_item_names(text)})
+    # A name is rebuilt from lines that wrapped, so it does not appear in the
+    # text verbatim - the offset has to come from where its row started.
+    at_of: dict[str, int] = {}
+    for n, at in line_item_names(text):
+        at_of.setdefault(n, at)
+    names = sorted(at_of)
     hits = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
@@ -327,7 +352,7 @@ def _clipped_cells(text: str) -> list[tuple[str, str]]:
             if extra.startswith((" ", "\t")) and re.search(r"[A-Za-z0-9]", extra):
                 continue
             hits.append((a, b))
-    return hits
+    return hits, (at_of.get(hits[0][0], -1) if hits else -1)
 
 
 # ------------------------------------------------- 3. blank ad screenshots
@@ -430,8 +455,7 @@ def check_blank_screenshots(ctx) -> list[dict]:
                f"{len(blank)} ad screenshot did not render"
                if len(blank) == 1 else
                f"{len(blank)} ad screenshots did not render",
-               "The cell is there and named, but there is no image in it - the "
-               "partner sees an empty blue box: " + _sample(blank))]
+               "Named, but no image in the cell: " + _sample(blank))]
 
 
 def is_blank(crop) -> bool:
@@ -507,15 +531,12 @@ def check_conversion_names(ctx) -> list[dict]:
     if blank:
         out.append(_f("conversion_name_blank", "fail",
                       f"{len(blank)} conversion{'s' if len(blank) > 1 else ''} with no name",
-                      "The row has numbers but no label, so nobody reading the "
-                      "report can tell what converted. On " + _sample(blank)))
+                      "Numbers but no label, on " + _sample(blank)))
     if retg:
         out.append(_f("conversion_name_retargeting", "fail",
                       f"{len(retg)} conversion{'s' if len(retg) > 1 else ''} named "
                f"after a targeting strategy",
-                      "A conversion is named for what the user did, not how "
-                      "they were reached - \"Retargeting\" here is the line "
-                      "item's name in the wrong field: " + _sample(retg)))
+                      "Named for how they were reached, not what they did: " + _sample(retg)))
     return out
 
 
@@ -540,8 +561,7 @@ def check_creative_names(ctx) -> list[dict]:
         return []
     return [_f("creative_name_blank", "fail",
                f"{len(blank)} creative{'s' if len(blank) > 1 else ''} with no name",
-               "The row carries impressions and clicks but no file name, so "
-               "there is no way to say which ad it was. On " + _sample(blank))]
+               "Impressions and clicks but no file name, on " + _sample(blank))]
 
 
 # --------------------------------------- 6. Social Mirror creatives with sizes
@@ -574,9 +594,7 @@ def check_social_mirror_sizes(ctx) -> list[dict]:
     return [_f("social_mirror_ad_size", "fail",
                f"{len(bad)} Social Mirror creative"
                f"{'s' if len(bad) > 1 else ''} named with an ad size",
-               "A Social Mirror ad renders into a social feed, so a display "
-               "size in the name is left over from a display build and means "
-               "nothing to the client: " + _sample(bad))]
+               _sample(bad))]
 
 
 # ------------------------------------------------- 7. widgets that errored
@@ -596,24 +614,29 @@ def check_widget_errors(ctx) -> list[dict]:
     """No widget may print an error where its table should be."""
     text = ctx.get("text") or ""
     low = text.lower()
-    hits = []
+    hits, first = [], None
     for line in text.split("\n"):
         l = line.strip()
         if not l:
             continue
         ll = l.lower()
         if any(e in ll for e in WIDGET_ERRORS):
-            where = section_at(text, low.index(ll) if ll in low else 0)
-            frag = f"{where}: {l.lstrip('0123456789. ')[:120]}"
+            off = low.index(ll) if ll in low else 0
+            sec = section_at(text, off)
+            frag = f"{sec}: {l.lstrip('0123456789. ')[:120]}"
             if frag not in hits:
                 hits.append(frag)
+                if first is None:
+                    first = (off, sec)
     if not hits:
         return []
     return [_f("widget_error", "fail",
                f"{len(hits)} widget{'s' if len(hits) > 1 else ''} printed an "
                f"error instead of its data",
-               "TapClicks could not build the widget and wrote the reason into "
-               "the page. Re-pull the report: " + _sample(hits))]
+               "TapClicks wrote the reason into the page instead. Re-pull the "
+               "report: " + _sample(hits),
+               where=_where(ctx, first[0] if first else -1,
+                            first[1] if first else ""))]
 
 
 # ------------------------------------------- 8. social placement vs its totals
@@ -792,8 +815,8 @@ GLUED_TITLE = re.compile(
     r"(?:Performance|Publishers|Breakout|Screenshots|Conversions)$")
 
 
-def site_rows(text: str) -> list[tuple[str, str, float, float, float | None]]:
-    """(widget, name, impressions, clicks, printed CTR) per site."""
+def site_rows(text: str) -> list[tuple[str, str, float, float, float | None, int]]:
+    """(widget, name, impressions, clicks, printed CTR, offset) per site."""
     out = []
     for m in SITE_GRID.finditer(text):
         title = m.group(1).strip()
@@ -815,38 +838,41 @@ def site_rows(text: str) -> list[tuple[str, str, float, float, float | None]]:
                     nums.append(v)
             if len(nums) >= 2:
                 out.append((title, GLUED_TITLE.sub("", name).strip(),
-                            nums[0], nums[1], pct))
+                            nums[0], nums[1], pct, at))
     return out
 
 
 def check_site_ctr(ctx) -> list[dict]:
-    """No site should be clicking at a rate a person would not."""
+    """No site should be clicking at a rate a person would not.
+
+    A double-digit rate on one placement is a click farm, not an audience -
+    usually a game or utility app where the ad sits under a button people are
+    trying to press. That explanation belongs here, in the code, rather than on
+    the report page every month: the people reading it know what it means and
+    are there for the numbers.
+    """
     text = ctx.get("text") or ""
     bad = []
-    for _title, name, imps, clicks, printed in site_rows(text):
+    for title, name, imps, clicks, printed, at in site_rows(text):
         if imps < 50:
             continue                # a handful of impressions makes any rate
         real = clicks / imps * 100 if imps else 0.0
         worst = max(real, printed or 0.0)
         if worst <= SITE_CTR_CEILING:
             continue
+        shown = (f"{name}: {clicks:,.0f} clicks on {imps:,.0f} impressions "
+                 f"is {real:.2f}%")
         if printed is not None and abs(printed - real) > 0.05:
-            shown = (f"{name}: {clicks:,.0f} clicks on {imps:,.0f} impressions "
-                     f"is {real:.2f}% (the report prints {printed:.2f}%)")
-        else:
-            shown = (f"{name}: {clicks:,.0f} clicks on {imps:,.0f} impressions "
-                     f"is {real:.2f}%")
-        bad.append((worst, shown))
+            shown += f" (the report prints {printed:.2f}%)"
+        bad.append((worst, shown, at, title))
     if not bad:
         return []
-    bad.sort(reverse=True)
+    bad.sort(key=lambda b: -b[0])
     return [_f("site_ctr_high", "fail",
                f"{len(bad)} site{'s' if len(bad) > 1 else ''} clicking above "
                f"{SITE_CTR_CEILING:.0f}%",
-               "A double-digit rate on one placement is a click farm, not an "
-               "audience - usually a game or utility app where the ad sits "
-               "under a button people are trying to press: "
-               + _sample([s for _w, s in bad], 10))]
+               _sample([b[1] for b in bad], 10),
+               where=_where(ctx, bad[0][2], bad[0][3]))]
 
 
 # ------------------------------------------- 10. video and audio owe a rate
@@ -929,9 +955,7 @@ def check_completion_present(ctx) -> list[dict]:
     return [_f("completion_missing", "fail",
                f"{len(missing)} product{'s' if len(missing) > 1 else ''} with no "
                f"completion rate",
-               "The client is paying for the watching and listening, and this "
-               "report does not say how much of it happened. No completion "
-               "figures anywhere in the section for: " + _sample(missing) + ".",
+               "No completion figures anywhere in the section for: " + _sample(missing) + ".",
                trace)]
 
 
@@ -949,8 +973,7 @@ def _completion_without_sections(ctx, text: str) -> list[dict]:
     return [_f("completion_missing", "fail",
                f"{len(watched)} product{'s' if len(watched) > 1 else ''} with no "
                f"completion rate",
-               "The client is paying for the watching and listening, and this "
-               "report does not mention completion anywhere. On the report: "
+               "No completion figures anywhere on the report. It runs: "
                + ", ".join(watched) + ".",
                [("Video and audio products on the report", ", ".join(watched)),
                 ("The word \"Completion\" anywhere on the report", "no"),

@@ -249,50 +249,70 @@ def start_sweeper() -> None:
 
 
 # ------------------------------------------------------ re-check on demand
-# What each on-demand run is doing, so the page can say more than "working".
-_jobs: dict[str, dict] = {}
-_jobs_lock = threading.Lock()
+def job_row(db: Session, key: str):
+    from .db import RecheckJob
+    return db.scalar(select(RecheckJob).where(RecheckJob.key == key))
 
 
-def job_state(key: str) -> dict | None:
-    with _jobs_lock:
-        j = _jobs.get(key)
-        return dict(j) if j else None
+def running_jobs(db: Session) -> dict[str, dict]:
+    """Every re-check currently going, readable from either worker.
+
+    Held in process memory this was invisible to the other gunicorn worker, so
+    pressing the button and landing on the wrong one showed no job at all.
+    """
+    from .db import RecheckJob
+    out = {}
+    for j in db.scalars(select(RecheckJob).where(RecheckJob.state == "running")).all():
+        out[j.key] = {"group": j.partner_group, "period": j.period,
+                      "done": j.done, "total": j.total, "changed": j.changed,
+                      "stalled": j.stalled, "note": j.note}
+    return out
 
 
-def running_jobs() -> dict[str, dict]:
-    with _jobs_lock:
-        return {k: dict(v) for k, v in _jobs.items() if v.get("state") == "running"}
+def _touch(db: Session, key: str, **fields) -> None:
+    from .db import RecheckJob
+    row = db.scalar(select(RecheckJob).where(RecheckJob.key == key))
+    if row is None:
+        return
+    for k, v in fields.items():
+        setattr(row, k, v)
+    row.updated_at = dt.datetime.utcnow()
+    db.commit()
 
 
-def start_job(key: str, *, group: str | None = None, period: str | None = None,
-              stale_only: bool = True) -> dict:
+def start_job(db: Session, key: str, *, group: str | None = None,
+              period: str | None = None, stale_only: bool = True) -> dict:
     """Re-check a partner, or a whole cycle, now.
 
     The sweep gets to everything eventually; this is for when eventually is not
     soon enough - after a fix has gone out and somebody wants that partner's
     board right rather than right in twenty minutes.
     """
-    with _jobs_lock:
-        cur = _jobs.get(key)
-        if cur and cur.get("state") == "running":
-            return dict(cur)
-        _jobs[key] = {"state": "running", "done": 0, "total": 0,
-                      "group": group, "period": period, "changed": 0}
+    from .db import RecheckJob
+
+    row = db.scalar(select(RecheckJob).where(RecheckJob.key == key))
+    if row is not None and row.state == "running" and not row.stalled:
+        return {"done": row.done, "total": row.total}
+    if row is None:
+        row = RecheckJob(key=key)
+        db.add(row)
+    row.partner_group = group or ""
+    row.period = period or ""
+    row.state = "running"
+    row.total = stale_count(db, group=group, period=period, stale_only=stale_only)
+    row.done = row.changed = 0
+    row.note = ""
+    row.started_at = row.updated_at = dt.datetime.utcnow()
+    db.commit()
+    total = row.total
 
     def run():
-        db = SessionLocal()
+        own = SessionLocal()
+        after = 0
+        done = changed = 0
         try:
-            total = stale_count(db, group=group, period=period,
-                                stale_only=stale_only)
-            with _jobs_lock:
-                _jobs[key]["total"] = total
-            # When re-reading everything rather than only the stale ones, the
-            # query cannot shrink as it goes - a re-checked report still
-            # matches it - so walk the ids forward instead of looping forever.
-            after = 0
             while True:
-                batch = _stale_batch(db, BATCH, scoped=False, group=group,
+                batch = _stale_batch(own, BATCH, scoped=False, group=group,
                                      period=period, stale_only=stale_only,
                                      after=0 if stale_only else after)
                 if not batch:
@@ -302,22 +322,27 @@ def start_job(key: str, *, group: str | None = None, period: str | None = None,
                 for rep in batch:
                     was = rep.severity
                     try:
-                        out = recheck(db, rep)
+                        out = recheck(own, rep)
                     except Exception as exc:                     # noqa: BLE001
                         log.warning("recheck failed for %s: %s", rep.id, exc)
                         rep.rules_version = rules_version()
-                        db.commit()
+                        own.commit()
                         out = {"ok": False}
-                    with _jobs_lock:
-                        _jobs[key]["done"] += 1
-                        if out.get("ok") and out.get("now") != was:
-                            _jobs[key]["changed"] += 1
+                    done += 1
+                    if out.get("ok") and out.get("now") != was:
+                        changed += 1
+                    # Written every report, not every batch: a job that stops
+                    # halfway has to be able to say where it got to.
+                    _touch(own, key, done=done, changed=changed)
+            _touch(own, key, state="done", done=done, changed=changed)
         except Exception as exc:                                 # noqa: BLE001
             log.warning("recheck job %s stopped: %s", key, exc)
+            try:
+                _touch(own, key, state="failed", note=f"{type(exc).__name__}: {exc}"[:255])
+            except Exception:                                    # noqa: BLE001
+                pass
         finally:
-            db.close()
-            with _jobs_lock:
-                _jobs[key]["state"] = "done"
+            own.close()
 
     threading.Thread(target=run, name=f"recheck-{key}", daemon=True).start()
-    return job_state(key) or {}
+    return {"done": 0, "total": total}

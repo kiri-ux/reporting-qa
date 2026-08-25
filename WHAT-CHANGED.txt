@@ -1,0 +1,19 @@
+Report QA - build 2026.08.25-33
+Changed files only. Drop these over your checkout, keeping the same paths.
+
+app/db.py                  new RecheckJob table (progress readable by both workers)
+app/recheck.py             job state moved into the database; stall detection
+app/main.py                /cycle/recheck/status endpoint; row cap; done split
+app/board.py               markets_by_group; SEO excluded from the buyer tag
+app/config.py              default_period, recheck_periods, auto_recheck
+app/version.py             build number and the rules fingerprint
+app/orders_io.py           a live line item rescues a pending order header
+app/orders_s3.py           reports how many headers were overruled
+app/checks/parser.py       pdf_pages (one call, not one per page); "(1)" filenames
+app/checks/rules.py        page finder; per-finding traces; DOOH; device ceiling
+app/checks/quality.py      where-pills; trimmed wording; site CTR; store visits
+app/checks/products.py     YouTube+ mapping; DOOH tails
+app/templates/cycle.html   row cap, Good to go section, live job progress
+app/templates/viewer.html  where-pill, Investigate panel, drop zone
+app/templates/base.html    filter counts, card toggles
+tests/                     235 tests

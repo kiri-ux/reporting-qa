@@ -272,6 +272,39 @@ class OrderLine(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class RecheckJob(Base):
+    """Progress of an on-demand re-check.
+
+    In the process, not the database, this was invisible to the other gunicorn
+    worker - press the button, get redirected to the worker that knows nothing
+    about it, and the card shows no job at all. Worse, a job that died left
+    "0 of 6" on screen forever with nothing able to say so. A row can be read
+    by either worker and carries the time of its last progress, which is what
+    tells a slow job from a stopped one.
+    """
+    __tablename__ = "recheck_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    partner_group: Mapped[str] = mapped_column(String(255), default="")
+    period: Mapped[str] = mapped_column(String(16), default="")
+    state: Mapped[str] = mapped_column(String(16), default="running")
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    changed: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(String(255), default="")
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    @property
+    def stalled(self) -> bool:
+        """No progress for two minutes. A big report takes ten seconds, so this
+        is long enough to be a real stop rather than a slow one."""
+        if self.state != "running":
+            return False
+        return (dt.datetime.utcnow() - (self.updated_at or self.started_at)).total_seconds() > 120
+
+
 class OrderSync(Base):
     """Records the last successful pull of the order list, so a batch does not
     re-download an object that has not changed."""

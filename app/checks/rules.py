@@ -58,7 +58,7 @@ def _short_name(name: str, limit: int = 28) -> str:
     return n if len(n) <= limit else n[:limit - 1].rstrip() + "\u2026"
 
 
-def _f(code, sev, title, detail, trace=None):
+def _f(code, sev, title, detail, trace=None, where=""):
     """A finding, optionally carrying the arithmetic behind it.
 
     `trace` is a list of (label, value) pairs - the numbers the rule actually
@@ -67,6 +67,8 @@ def _f(code, sev, title, detail, trace=None):
     that figure come from" and the answer should not require reading the code.
     """
     out = {"code": code, "severity": sev, "title": title, "detail": detail}
+    if where:
+        out["where"] = _clean(where)
     if trace:
         out["trace"] = [{"label": _clean(l), "value": _clean(v)} for l, v in trace]
     return out
@@ -622,11 +624,13 @@ def check_completion_rates(ctx) -> list[dict]:
             if key in seen:
                 continue
             seen.add(key)
+            page_of = ctx.get("page_of")
             out.append(_f("completion_over_100", "fail",
                           "Completion rate above 100%",
-                          f"{m.group(0).strip()}: {label} shows "
-                          f"{', '.join(v + '%' for v in bad)}. More completions "
-                          f"than impressions is not possible."))
+                          f"{label} shows {', '.join(v + '%' for v in bad)}. "
+                          f"More completions than impressions is not possible.",
+                          where=(f"p{page_of(m.start())} · " if page_of else "")
+                                + m.group(0).strip()))
     return out
 
 
@@ -928,17 +932,42 @@ def _rule_applies(rule, ctx) -> bool:
     return True
 
 
+def _page_finder(pages: list[str]):
+    """offset in the joined text -> page number, 1-based.
+
+    "1 site clicking above 5%" is true and unhelpful on its own; "page 31" is
+    the difference between checking it and taking it on trust.
+    """
+    import bisect
+    ends, at = [], 0
+    for p in pages:
+        at += len(p)
+        ends.append(at)
+
+    def page_of(offset: int) -> int:
+        if offset < 0 or not ends:
+            return 0
+        return min(bisect.bisect_right(ends, offset) + 1, len(ends))
+    return page_of
+
+
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
             flight: tuple | None = None, period: str | None = None,
             market: str = "") -> dict:
-    text = pdf_text(path)
+    from .parser import pdf_pages
+    # One call, and it gives the page boundaries for free - which is what lets
+    # a finding say WHERE on a forty-one page report to look.
+    per_page = pdf_pages(path)
+    text = "".join(per_page)
     is_lifetime = meta_from_filename(filename or path.name)["is_lifetime"]
     imps, clicks, ctr = headline(text)
     tables = extract_tables(text, strict=True)
     ctx = {
         "path": path,
         "text": text,
+        "page_text": per_page,
+        "page_of": _page_finder(per_page),
         "pages": page_count(path),
         "tables": tables,
         "products": detect_products(text, tables),

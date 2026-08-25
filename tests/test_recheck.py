@@ -267,15 +267,51 @@ def test_stale_count_can_be_asked_about_one_partner(live):
     assert stale_count(s, period="2026-07", group="Somebody Else") == 0
 
 
-def test_a_second_job_for_the_same_scope_does_not_start_twice():
-    from app import recheck as rc
-    with rc._jobs_lock:
-        rc._jobs["k"] = {"state": "running", "done": 3, "total": 9}
-    try:
-        assert rc.start_job("k")["done"] == 3
-    finally:
-        with rc._jobs_lock:
-            rc._jobs.pop("k", None)
+def test_a_second_job_for_the_same_scope_does_not_start_twice(live):
+    """Two clicks must not put two threads on the same reports."""
+    import datetime as _dt
+    from app.db import RecheckJob
+    from app.recheck import start_job
+    s, _rep, _ = live
+    s.add(RecheckJob(key="k", state="running", done=3, total=9,
+                     started_at=_dt.datetime.utcnow(),
+                     updated_at=_dt.datetime.utcnow()))
+    s.commit()
+    assert start_job(s, "k")["done"] == 3
+
+
+def test_a_stalled_job_can_be_restarted(live):
+    """A job that died left "0 of 6" on screen forever, and pressing the button
+    again did nothing because a row said it was still running."""
+    import datetime as _dt
+    from app.db import RecheckJob
+    from app.recheck import start_job
+    s, _rep, _ = live
+    old = _dt.datetime.utcnow() - _dt.timedelta(minutes=10)
+    row = RecheckJob(key="k2", state="running", done=0, total=6,
+                     started_at=old, updated_at=old)
+    s.add(row); s.commit()
+    assert row.stalled is True
+    start_job(s, "k2", period="2026-07")
+    assert row.done == 0 and row.total >= 0 and row.state == "running"
+    assert row.stalled is False          # restarted, so the clock reset
+
+
+def test_a_running_job_is_visible_to_the_other_worker(live):
+    """Held in process memory it was not - press the button, land on the other
+    gunicorn worker, and the card showed no job at all."""
+    import datetime as _dt
+    from app.db import RecheckJob
+    from app.recheck import running_jobs
+    s, _rep, _ = live
+    s.add(RecheckJob(key="2026-07:Acme", partner_group="Acme", period="2026-07",
+                     state="running", done=2, total=5,
+                     started_at=_dt.datetime.utcnow(),
+                     updated_at=_dt.datetime.utcnow()))
+    s.commit()
+    jobs = running_jobs(s)
+    assert jobs["2026-07:Acme"]["done"] == 2
+    assert jobs["2026-07:Acme"]["group"] == "Acme"
 
 
 def test_a_partner_run_covers_every_report_not_only_the_stale_ones(live):

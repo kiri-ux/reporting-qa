@@ -12,12 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-32"
-BUILD_NOTES = ("The board renders 150 report rows instead of 1,244, which "
-               "took the browser from four seconds to under one. Signed-off "
-               "reports moved to a Good to go section at the bottom. A "
-               "\"(1)\" on a re-downloaded filename no longer invents a new "
-               "client. Checks run in one pdftotext call, not one per page.")
+BUILD = "2026.08.25-33"
+BUILD_NOTES = ("Re-check progress lives in the database, so both workers see "
+               "it and a job that stopped says so instead of sitting on '0 of "
+               "6' forever. Findings carry a page pill saying where to look, "
+               "and lost the paragraph explaining what they already mean.")
 # ---------------------------------------------------------------------------
 
 
