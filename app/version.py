@@ -12,13 +12,14 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-61"
-BUILD_NOTES = ("Reports are NAMED now - July 2026_Client 53908.pdf - built from "
-               "the cycle, the client the report itself prints, and the order "
-               "ids, instead of keeping whatever the file was called. A report "
-               "with no market gets one on its next check, so it stops belonging "
-               "to no partner. And a lifetime is recognised by the range it "
-               "prints, not only by its name.")
+BUILD = "2026.08.25-62"
+BUILD_NOTES = ("A lifetime now follows the ORDER's campaign dates, not its line "
+               "items - line items are re-flighted inside an order that runs for "
+               "years, which is why a lifetime showed 2024-07-17 to 2026-12-31 on "
+               "an order sold as 2023-05-05 to 2026-07-31, and why one turned up "
+               "on the board that nobody owed. Plus two new checks: the printed "
+               "lifetime range against the order, and whether the data on the "
+               "report belongs to the client it names.")
 
 # ---------------------------------------------------------------------------
 

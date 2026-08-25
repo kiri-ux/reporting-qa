@@ -124,8 +124,14 @@ def expected_for(db: Session, period: str) -> list[Expected]:
     cols = db.execute(select(
         OrderLine.market, OrderLine.client, OrderLine.account_ids,
         OrderLine.line_ids, OrderLine.buyer, OrderLine.product,
-        OrderLine.starts_on, OrderLine.ends_on).where(
-            or_(OrderLine.ends_on.is_(None), OrderLine.ends_on >= cyc.starts_on),
+        OrderLine.starts_on, OrderLine.ends_on,
+        OrderLine.order_starts_on, OrderLine.order_ends_on).where(
+            # The ORDER's end counts as well as the line item's: a lifetime is
+            # owed on an order that finishes this cycle even when the line item
+            # behind it stopped in May.
+            or_(OrderLine.ends_on.is_(None),
+                OrderLine.ends_on >= cyc.starts_on,
+                OrderLine.order_ends_on >= cyc.starts_on),
             or_(OrderLine.starts_on.is_(None),
                 OrderLine.starts_on <= cyc.ends_on))).all()
 
@@ -133,9 +139,18 @@ def expected_for(db: Session, period: str) -> list[Expected]:
     # walking every line again in Python. This is the only reason the finished
     # lines are read at all, and there are a lot of them.
     from sqlalchemy import func
+    # THE ORDER'S DATES, NOT THE LINE ITEM'S.
+    #
+    # A lifetime report covers the campaign the client bought, and that is the
+    # order: 5 May 2023 to 31 July 2026. Its line items are re-flighted, paused
+    # and restarted inside that - so reading them gave a lifetime range of
+    # 17 July 2024 to 31 December 2026 on the same order, which is neither end
+    # of what was sold. COALESCE, because an order loaded before these columns
+    # existed has only the line item's dates to offer.
     spans = db.execute(select(
         OrderLine.market, OrderLine.client,
-        func.min(OrderLine.starts_on), func.max(OrderLine.ends_on))
+        func.min(func.coalesce(OrderLine.order_starts_on, OrderLine.starts_on)),
+        func.max(func.coalesce(OrderLine.order_ends_on, OrderLine.ends_on)))
         .group_by(OrderLine.market, OrderLine.client)).all()
     span: dict[tuple[str, str], list] = {}
     for market, client, first, last in spans:
@@ -164,7 +179,12 @@ def expected_for(db: Session, period: str) -> list[Expected]:
         if excluded(l.market):
             continue
         live = cyc.was_live(l.starts_on, l.ends_on)
-        life = cyc.needs_lifetime(l.ends_on)
+        # A lifetime is owed when the ORDER ends inside the window. The line
+        # item ending is not the campaign ending - River Valley Builders'
+        # Performance Max was re-flighted to run to the end of the year, and
+        # the old flight's 31 July end was putting a lifetime on the board that
+        # nobody owes.
+        life = cyc.needs_lifetime(l.order_ends_on or l.ends_on)
         if not live and not life:
             continue
         if l.market in pcache:

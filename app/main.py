@@ -1269,7 +1269,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     "Not received" while the PDF was on somebody's desktop.
     """
     from .checks import run_all
-    from .ingest import client_flight, open_batch
+    from .ingest import client_flight, flight_lines, open_batch
     from .roster import (attach_owners, expected_any, expected_products,
                      expected_why, quiet_products,
                      budgets_for)
@@ -1321,7 +1321,9 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     flight = client_flight(db, client, account_ids)
     try:
         result = run_all(path, filename=file.filename, expected_products=exp,
-                         flight=flight, period=period, market=market,
+                         flight=flight,
+                         flight_lines=flight_lines(db, client, account_ids),
+                         period=period, market=market,
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
@@ -1373,7 +1375,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     somebody's manual upload without asking.
     """
     from .checks import run_all
-    from .ingest import client_flight
+    from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
                      expected_why, quiet_products)
     from .version import rules_version as _rv
@@ -1467,7 +1469,7 @@ async def replace_report(report_id: int, request: Request,
     """
     from .checks import run_all
     from .checks.parser import meta_from_filename
-    from .ingest import client_flight
+    from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
                      expected_why, quiet_products)
 
@@ -1526,7 +1528,9 @@ async def replace_report(report_id: int, request: Request,
     flight = client_flight(db, rep.client, rep.account_ids)
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,
-                         flight=flight, period=rep.period, market=rep.market or "",
+                         flight=flight,
+                         flight_lines=flight_lines(db, rep.client, rep.account_ids),
+                         period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,

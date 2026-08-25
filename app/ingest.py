@@ -153,24 +153,36 @@ def client_flight(db: Session, client: str, accounts: str) -> tuple | None:
     of them to the latest end - not the bounds of whichever single order
     happened to be looked up.
     """
-    from .roster import _keyify
-    from .db import OrderLine
-    from sqlalchemy import select
-
-    ids = _keyify(client, accounts)
-    norm = re.sub(r"[^a-z0-9]", "", (client or "").lower())
-    starts, ends = [], []
-    for l in db.scalars(select(OrderLine)).all():
-        if not ((ids and ids & _keyify(l.client, l.account_ids))
-                or (norm and norm == re.sub(r"[^a-z0-9]", "", l.client.lower()))):
-            continue
-        if l.starts_on:
-            starts.append(l.starts_on)
-        if l.ends_on:
-            ends.append(l.ends_on)
+    out = flight_lines(db, client, accounts)
+    starts = [l["starts"] for l in out if l["starts"]]
+    ends = [l["ends"] for l in out if l["ends"]]
     if not starts:
         return None
     return (min(starts), max(ends) if ends else None)
+
+
+def flight_lines(db: Session, client: str, accounts: str) -> list[dict]:
+    """Every line item behind that flight, so a wrong date can be traced.
+
+    "This is telling me the wrong lifetime end date" is not answerable from a
+    pair of dates. It is answerable from the row that supplied them - which
+    order, which line item, and whether it is still live - and that took a
+    screenshot of the IO tool and a guess every time.
+    """
+    from .roster import client_lines
+
+    out = []
+    for l in client_lines(db, client, accounts) or []:
+        # The order's window when the export carried it - that is what a
+        # lifetime has to cover - and the line item's when it did not.
+        out.append({"order": l.account_ids or "", "lines": l.line_ids or "",
+                    "product": l.product or "",
+                    "starts": getattr(l, "order_starts_on", None) or l.starts_on,
+                    "ends": getattr(l, "order_ends_on", None) or l.ends_on,
+                    "line_starts": l.starts_on, "line_ends": l.ends_on,
+                    "live": bool(getattr(l, "live", True))})
+    out.sort(key=lambda r: (r["ends"] or dt.date.min), reverse=True)
+    return out
 
 
 def market_from_orders(db: Session, filenames: list[str]) -> str:
@@ -281,9 +293,11 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         logo_bad = is_generic(db, logo)
         logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
+        flines = flight_lines(db, meta_guess["client"], meta_guess["account_ids"])
         try:
             result = run_all(path, filename=name, expected_products=exp,
-                             flight=flight, period=batch.period,
+                             flight=flight, flight_lines=flines,
+                             period=batch.period,
                              market=batch.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,

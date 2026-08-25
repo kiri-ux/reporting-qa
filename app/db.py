@@ -351,6 +351,16 @@ class OrderLine(Base):
     # What the order says should be SERVED in a month. None means the export
     # did not carry the column - a different claim from zero.
     impressions: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # THE ORDER'S OWN CAMPAIGN DATES, as distinct from the line item's.
+    #
+    # A line item is re-flighted, paused and restarted inside an order that
+    # runs for years, so the two answer different questions: the line item says
+    # whether the product was delivering this month, and the ORDER says what a
+    # lifetime report has to cover. Reading the line item for both is why a
+    # lifetime showed 2024-07-17 to 2026-12-31 on an order that runs 2023-05-05
+    # to 2026-07-31.
+    order_starts_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    order_ends_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     needs_lifetime: Mapped[bool] = mapped_column(Boolean, default=True)
     buyer: Mapped[str] = mapped_column(String(255), default="")
     team_member: Mapped[str] = mapped_column(String(255), default="")
@@ -507,6 +517,8 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "budget", "DOUBLE PRECISION"),
     ("order_lines", "spend", "DOUBLE PRECISION"),
     ("order_lines", "impressions", "DOUBLE PRECISION"),
+    ("order_lines", "order_starts_on", "DATE"),
+    ("order_lines", "order_ends_on", "DATE"),
 ]
 
 

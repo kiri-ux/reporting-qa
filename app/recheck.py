@@ -122,7 +122,7 @@ def _orders_current(db: Session) -> bool:
 def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     """Re-read this report's PDF with today's rules. Returns what changed."""
     from .checks.rules import run_all
-    from .ingest import client_flight
+    from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
                      expected_why, quiet_products)
 
@@ -171,7 +171,9 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(path, filename=rep.filename, expected_products=exp,
-                     flight=flight, period=rep.period, market=rep.market or "",
+                     flight=flight,
+                     flight_lines=flight_lines(db, rep.client, rep.account_ids),
+                     period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,

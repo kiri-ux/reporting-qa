@@ -272,7 +272,17 @@ def import_io_export(db: Session, sources, period: str | None = None,
 
             order_id = _txt(r.get("orders_id"))
             line_id = _txt(r.get("id"))
-            key = (order_id, line_id)
+            # A LINE ITEM CAN HAVE MORE THAN ONE FLIGHT, and the export carries
+            # a row per flight. Deduping on the line item alone kept whichever
+            # flight came first and dropped the rest - so River Valley Builders'
+            # Performance Max, re-flighted to run 1 Aug to 31 Dec, was still
+            # stored as ending 31 July, which is inside the lifetime window. It
+            # was owed a lifetime report it does not owe.
+            #
+            # The daily grain still has to collapse, so the key is the flight:
+            # same order, same line item, same dates.
+            key = (order_id, line_id, str(r.get("start_date") or "")[:10],
+                   str(r.get("end_date") or "")[:10])
             if key in seen:              # daily grain, and exports may overlap
                 dupes += 1
                 continue
@@ -349,6 +359,10 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
                         "live": False, "budget": None, "impressions": None,
+                        # The ORDER's own campaign window, kept apart from the
+                        # line item's. A lifetime report covers the order; the
+                        # line item only says what was delivering this month.
+                        "order_starts": None, "order_ends": None,
                     }
                 else:                    # widest flight across that client's orders
                     cur = kept[k]
@@ -359,6 +373,14 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Live if ANY line item behind this row is. A client running one
                 # product across a live order and a paused one is running it.
                 kept[k]["live"] = kept[k]["live"] or line_live
+
+                # The widest campaign window across the orders behind this row.
+                cur = kept[k]
+                if os_ and (cur["order_starts"] is None or os_ < cur["order_starts"]):
+                    cur["order_starts"] = os_
+                if order_end and (cur["order_ends"] is None
+                                  or order_end > cur["order_ends"]):
+                    cur["order_ends"] = order_end
 
                 # ONE LINE ITEM'S MONEY COUNTS ONCE, against the first product
                 # it maps to. "CTV + Video Ads" is one buy with one budget, and
@@ -432,6 +454,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
             flights=v["flights"], live=bool(v["live"]),
             budget=v["budget"], impressions=v["impressions"],
+            order_starts_on=v["order_starts"], order_ends_on=v["order_ends"],
             buyer=buyer, buyer_email=buyer_email,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))

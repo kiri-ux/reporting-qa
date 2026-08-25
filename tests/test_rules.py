@@ -1974,3 +1974,76 @@ def test_fourteen_percent_under_is_no_longer_a_warning():
     """The one on screen: 15,066 against 17,535 eligible, -14.1%."""
     from app.checks.rules import check_device
     assert 15066 / 17535 - 1 > -0.20
+
+
+# ------------------------------------------- the data belongs to this client
+def test_a_report_pulled_against_the_wrong_client_is_caught():
+    """It passes everything else - the numbers are consistent, the widgets are
+    all there, the products match somebody's orders. The only thing that gives
+    it away is that the line items name a different company."""
+    from app.checks.rules import check_client_data
+    text = (" Line Item Performance\n"
+            " Benton Rodeo - Horseback Riding Mobile     51,359    120   0.23%\n"
+            " Benton Rodeo - Site Retargeting Mobile      1,865     12   0.64%\n")
+    assert check_client_data({"client": "Benton Rodeo", "text": text}) == []
+    out = check_client_data({"client": "Awaken Bakery", "text": text})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert "different client" in out[0]["title"]
+
+
+def test_a_parent_and_its_store_are_one_client():
+    from app.checks.rules import check_client_data
+    text = (" Line Item Performance\n"
+            " The Home Store - Keyword Mobile      40,000   100   0.25%\n"
+            " The Home Store - Retargeting Mobile  10,000    20   0.20%\n")
+    assert check_client_data(
+        {"client": "River Valley Builders/The Home Store", "text": text}) == []
+
+
+def test_a_report_covering_everybody_is_not_the_wrong_client():
+    """An internal pull spread across a dozen clients is not "the wrong
+    client" - it takes one other client owning the report to say that."""
+    import pytest as _pt
+    from pathlib import Path as _P
+    from app.checks.rules import check_client_data
+    sample = _P("/root/work/sample.txt")
+    if not sample.exists():
+        _pt.skip("everything-sample not present")
+    assert check_client_data({"client": "Matt Heilala",
+                              "text": sample.read_text()}) == []
+
+
+def test_a_lifetime_that_runs_past_the_campaign_is_flagged():
+    """Both directions now. A range that reaches past the campaign is not
+    missing data, but a lifetime printed to the end of the month on a campaign
+    that stopped on the 9th tells the client it ran three weeks it did not."""
+    import datetime as dt
+    from app.checks.rules import check_date_range
+    D = dt.date
+    out = check_date_range({"date_range": (D(2026, 6, 9), D(2026, 7, 31)),
+                            "is_lifetime": True,
+                            "flight": (D(2026, 6, 9), D(2026, 7, 9)),
+                            "period": "2026-07"})
+    assert [f["code"] for f in out] == ["lifetime_overrun"]
+    assert out[0]["severity"] == "warn"
+    # And it says which line item supplied the end it was checked against.
+    out = check_date_range({"date_range": (D(2026, 6, 9), D(2026, 7, 31)),
+                            "is_lifetime": True,
+                            "flight": (D(2026, 6, 9), D(2026, 7, 9)),
+                            "flight_lines": [{"order": "54671", "lines": "132215",
+                                              "product": "Social Mirror",
+                                              "starts": D(2026, 6, 9),
+                                              "ends": D(2026, 7, 9), "live": True}],
+                            "period": "2026-07"})
+    labels = " ".join(t["label"] for t in out[0]["trace"])
+    assert "54671" in labels and "132215" in labels
+
+
+def test_a_lifetime_inside_its_campaign_says_nothing():
+    import datetime as dt
+    from app.checks.rules import check_date_range
+    D = dt.date
+    assert check_date_range({"date_range": (D(2023, 5, 5), D(2026, 7, 31)),
+                             "is_lifetime": True,
+                             "flight": (D(2023, 5, 5), D(2026, 7, 31)),
+                             "period": "2026-07"}) == []

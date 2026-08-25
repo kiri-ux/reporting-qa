@@ -669,3 +669,53 @@ def test_the_everything_report_is_almost_entirely_attributed():
     got = served_impressions(sample.read_text())
     assert got["unattributed"] / got["total"] < 0.02
     assert got["by_product"]["Mobile Conquesting"] > 1_000_000
+
+
+# ------------------------------------------- the order's dates, not the line's
+def test_a_lifetime_follows_the_order_not_the_line_item(db):
+    """A line item is re-flighted, paused and restarted inside an order that
+    runs for years. Reading the line item for both questions put a lifetime on
+    the board that nobody owed - River Valley Builders' Performance Max, moved
+    to run 1 Aug to 31 Dec, was still stored as ending 31 July."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="7 Mountains PA", client="River Valley Builders",
+                     account_ids="52182", line_ids="134665",
+                     product="Performance Max", campaign="Performance Max Ads",
+                     # the old flight is what the export still carries
+                     starts_on=D("2026-02-01"), ends_on=D("2026-07-31"),
+                     order_starts_on=D("2026-02-01"),
+                     order_ends_on=D("2026-12-31"), live=True))
+    db.commit()
+
+    rows = expected_for(db, "2026-07")
+    kinds = {e.kind for e in rows}
+    assert "monthly" in kinds
+    # NO LIFETIME. The order runs to the end of the year.
+    assert "lifetime" not in kinds
+
+
+def test_the_lifetime_range_is_the_orders_range(db):
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="7 Mountains PA",
+                     client="River Valley Builders/The Home Store",
+                     account_ids="31050", line_ids="96645, 96647",
+                     product="Meta", campaign="Meta Display & Video Ads",
+                     starts_on=D("2024-07-17"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2023-05-05"),
+                     order_ends_on=D("2026-07-31"), live=True))
+    db.commit()
+
+    life = [e for e in expected_for(db, "2026-07") if e.kind == "lifetime"]
+    assert len(life) == 1
+    assert life[0].starts_on == D("2023-05-05")
+    assert life[0].ends_on == D("2026-07-31")

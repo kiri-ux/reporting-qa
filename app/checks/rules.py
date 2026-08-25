@@ -693,6 +693,81 @@ def check_market_logo(ctx) -> list[dict]:
                "", where="p1")]
 
 
+def _client_of(line_item: str) -> str:
+    """The client a line item name starts with.
+
+    TapClicks names every line item "<Client> - <strategy> <product>", so the
+    part before the first dash says which client the DATA belongs to.
+    """
+    head = (line_item or "").split(" - ")[0]
+    return re.sub(r"[^a-z0-9]", "", head.lower())
+
+
+def check_client_data(ctx) -> list[dict]:
+    """The data on the report has to belong to the client it names.
+
+    A report pulled against the wrong client passes everything else: the
+    numbers are internally consistent, every widget is there, the products
+    match somebody's orders - just not this client's. The one thing that gives
+    it away is that the line items are named for a different company than the
+    cover page.
+
+    It takes a clear majority to say so, and it stays quiet when the line item
+    names carry no client at all.
+    """
+    from .quality import line_item_totals
+
+    named = _client_of((ctx.get("client") or "") + " - x")
+    if not named or len(named) < 5:
+        return []
+    rows = line_item_totals(ctx.get("text") or "")
+    if len(rows) < 2:
+        return []
+
+    hits: dict[str, float] = {}
+    total = 0.0
+    for name, imps, _clicks in rows:
+        if " - " not in (name or ""):
+            continue                       # no client on this row to read
+        who = _client_of(name)
+        if not who or len(who) < 5:
+            continue
+        weight = max(imps, 1.0)
+        total += weight
+        hits[who] = hits.get(who, 0.0) + weight
+    if not hits or not total:
+        return []
+
+    # "The Home Store" and "River Valley Builders/The Home Store" are one
+    # client written two ways, so containment counts as a match.
+    def same(a: str, b: str) -> bool:
+        return a == b or (len(a) >= 6 and len(b) >= 6 and (a in b or b in a))
+
+    mine = sum(v for k, v in hits.items() if same(k, named))
+    if mine / total >= 0.5:
+        return []
+
+    top = sorted(hits.items(), key=lambda kv: -kv[1])
+    # ONE OTHER CLIENT HAS TO OWN IT. A report pulled against the wrong client
+    # is that client's whole report; a spread across a dozen names is an
+    # internal pull covering everybody, and calling that "the wrong client"
+    # would be a finding nobody can act on.
+    if not top or top[0][1] / total < 0.5 or same(top[0][0], named):
+        return []
+    biggest = max(rows, key=lambda r: r[1])[0]
+    return [_f("wrong_client", "fail",
+               "The data on this report is for a different client",
+               f"This is {ctx.get('client')}'s report, but "
+               f"{(1 - mine / total) * 100:.0f}% of the impressions sit on line "
+               f"items named for somebody else - \"{_short_name(biggest, 60)}\" "
+               f"for one. Check which client was picked in TapClicks before "
+               f"this goes anywhere.",
+               trace=[("Report is for", ctx.get("client") or "?"),
+                      ("Line items name", ", ".join(k for k, _ in top[:3])),
+                      ("Impressions on this client",
+                       f"{mine:,.0f} of {total:,.0f}")])]
+
+
 def check_date_range(ctx) -> list[dict]:
     """The printed date range has to match what the report claims to be.
 
@@ -720,6 +795,18 @@ def check_date_range(ctx) -> list[dict]:
         if not want or not want[0]:
             return []
         w_start, w_end = want
+        # WHERE EACH OF THOSE DATES CAME FROM. A lifetime's expected range is
+        # built out of the client's line items, so when it looks wrong the only
+        # useful question is which line item supplied it - and answering that
+        # took a screenshot of the IO tool and a guess. It goes on the finding.
+        trace = [("Printed on the report", printed),
+                 ("Expected", f"{w_start.strftime(fmt)} to "
+                              f"{w_end.strftime(fmt) if w_end else 'open'}")]
+        for l in (ctx.get("flight_lines") or [])[:12]:
+            trace.append((f"Order {l.get('order') or '?'} · line {l.get('lines') or '?'}"
+                          f" · {l.get('product') or ''}".strip(),
+                          f"{l.get('starts') or '?'} to {l.get('ends') or 'open'}"
+                          + ("" if l.get("live", True) else " · paused")))
         out = []
         # A lifetime that starts at the month boundary while the campaign began
         # earlier is the classic wrong-range pull.
@@ -727,11 +814,30 @@ def check_date_range(ctx) -> list[dict]:
             out.append(_f(
                 "lifetime_short", "fail", "Lifetime report does not go back to the campaign start",
                 f"Printed {printed}, but this client's earliest order starts "
-                f"{w_start.strftime(fmt)}. Re-pull with the range set to the full flight."))
+                f"{w_start.strftime(fmt)}. Re-pull with the range set to the full flight.",
+                trace=trace))
         if w_end and (end - w_end).days < -3:
             out.append(_f(
                 "lifetime_cut", "fail", "Lifetime report stops before the campaign ends",
-                f"Printed {printed}, but the latest order runs to {w_end.strftime(fmt)}."))
+                f"Printed {printed}, but the latest order runs to {w_end.strftime(fmt)}.",
+                trace=trace))
+        # AND THE OTHER DIRECTION. A range that reaches past the campaign is not
+        # missing data, but it is not what the order says either - a lifetime
+        # printed to the end of the month on a campaign that stopped on the 9th
+        # tells the client it ran three weeks it did not.
+        if (w_start - start).days > 3:
+            out.append(_f(
+                "lifetime_late_start", "warn", "Lifetime report starts after the campaign did",
+                f"Printed {printed}, but the earliest order starts "
+                f"{w_start.strftime(fmt)}. Either the range is wrong or an order "
+                f"is missing from the pull.", trace=trace))
+        if w_end and (end - w_end).days > 3:
+            out.append(_f(
+                "lifetime_overrun", "warn", "Lifetime report runs past the campaign end",
+                f"Printed {printed}, but the last order ends {w_end.strftime(fmt)}. "
+                f"Check the range against the order - and if the order list is "
+                f"the one that is out of date, the trace below says which line "
+                f"item supplied that end date.", trace=trace))
         return out
 
     period = ctx.get("period")              # "2026-07"
@@ -1044,6 +1150,7 @@ CHECKS: list[tuple] = [
     (check_geofence_names, "Every geo-fencing row has a business name"),
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
+    (check_client_data,    "The data on the report belongs to the client it names"),
     (check_market_logo,    "Page one carries the partner's logo, not a generic one"),
     (check_pacing,         "A full month's spend is close to a full month's budget"),
     (check_completion_rates, "No completion rate is above 100%"),
@@ -1118,6 +1225,9 @@ def _rule_applies(rule, ctx) -> bool:
                 and ctx.get("orders_current", True))
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
+    if name == "check_client_data":
+        # Needs a client to compare against and line items that name one.
+        return bool(ctx.get("client")) and bool(ctx.get("text"))
     if name == "check_pacing":
         # Needs a budget on the order AND a spend on the report. Most products
         # print no spend at all, and most orders have no budget loaded yet.
@@ -1227,7 +1337,8 @@ def looks_like_lifetime(printed) -> bool:
 
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
-            flight: tuple | None = None, period: str | None = None,
+            flight: tuple | None = None, flight_lines: list | None = None,
+            period: str | None = None,
             market: str = "", expected_why: list | None = None,
             expected_any: list | None = None,
             quiet_products: set | None = None,
@@ -1285,6 +1396,9 @@ def run_all(path: Path, filename: str | None = None,
         "is_lifetime": bool(is_lifetime),
         "period": period,
         "flight": flight,
+        # The line items that flight was built from, so a date that looks wrong
+        # can be traced to the row that supplied it.
+        "flight_lines": flight_lines or [],
         # Needed by the Social Mirror ad-size rule, which Curtis is exempt from.
         "market": market,
         "client": meta_from_filename(filename or path.name).get("client", ""),
