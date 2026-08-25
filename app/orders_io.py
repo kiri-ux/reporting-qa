@@ -30,6 +30,23 @@ RFP = re.compile(r"\bRFP\b", re.I)
 DEAD_LINE_STATUS = re.compile(r"^(Cancelled)$", re.I)
 HTML = re.compile(r"<[^>]+>")
 
+# Order 55216 sat at "IO Pending Launch" with an IO Live line item under it, so
+# the whole order was dropped, the product never joined the expected set, and
+# the report was failed for carrying a product with no live order. The header
+# was the only thing that was wrong.
+#
+# The line item can now rescue an order the header would have dropped. It
+# deliberately cannot do the reverse: W&L Subaru's Meta lines sit at "IO
+# Paused" under a live order, and a line paused halfway through the month still
+# delivered for half of it and still owes a report. So this rule only ever adds
+# line items, never removes one that used to be expected.
+LIVE_STATUS = {"io live", "io complete"}
+
+# Two things the order header IS authoritative about, because both are
+# deliberate acts rather than a state nobody updated. An RFP was never sold,
+# and cancelling an order cancels what is under it.
+DEAD_ORDER_STATUS = re.compile(r"^(Cancelled)$", re.I)
+
 
 def looks_like_io_export(headers: list[str]) -> bool:
     return SIGNATURE.issubset({(h or "").strip().lower() for h in headers})
@@ -134,6 +151,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
 
     seen: set[tuple] = set()
     kept: dict[tuple[str, str], dict] = {}
+    # Line items kept on their own status while their order header disagreed.
+    # Worth counting: a handful is housekeeping, a hundred is a process problem.
+    header_overruled = 0
     dupes = 0
     rows_read = 0
     date_min = date_max = None        # kept as raw strings, compared lexically
@@ -180,8 +200,15 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 skip("starts after the period"); continue
             if DEAD_LINE_STATUS.match(line_status):
                 skip("line item cancelled"); continue
-            if order_status.lower() not in {"io live", "io complete"}:
-                skip(f"order status {order_status or 'blank'}"); continue
+            if DEAD_ORDER_STATUS.match(order_status):
+                skip("order cancelled"); continue
+            if order_status.lower() not in LIVE_STATUS:
+                if line_status.lower() in LIVE_STATUS:
+                    header_overruled += 1        # the line item rescued it
+                else:
+                    skip(f"order status {order_status or 'blank'}"
+                         + (f", line item {line_status}" if line_status else ""))
+                    continue
 
             product = map_order_product(product_raw)
             if not product:
@@ -256,6 +283,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,
+            "header_overruled": header_overruled,
             "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}
 
 

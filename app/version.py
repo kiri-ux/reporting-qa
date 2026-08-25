@@ -12,11 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-29"
-BUILD_NOTES = ("The store visits page is reconciled against its own table - "
-               "the locations count against the rows, and the Visits figure "
-               "against what those rows add up to. A clipped table is not "
-               "asked to add up.")
+BUILD = "2026.08.25-30"
+BUILD_NOTES = ("A line item that says IO Live is reported even when its order "
+               "header still says pending. The board's stale counts are two "
+               "queries rather than two per partner, which is what had slowed "
+               "it down. A partner's Re-check button shows its own progress "
+               "instead of sitting there looking untouched.")
 # ---------------------------------------------------------------------------
 
 

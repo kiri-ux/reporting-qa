@@ -9,7 +9,7 @@ from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, HTTPExceptio
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import desc, select
+from sqlalchemy import case, desc, select
 from sqlalchemy.orm import Session
 
 from . import brand, version
@@ -498,22 +498,56 @@ def partners_csv(db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------- cycle board
 def _stale_here(db: Session, period: str, groups) -> dict:
-    """How many reports this board has, and how many carry an older answer."""
-    from .recheck import stale_count
-    out = {"total": stale_count(db, period=period), "by_group": {}, "have": {}}
+    """How many reports this board has, and how many carry an older answer.
+
+    Two grouped queries, not two per partner. Asking per group was 290 COUNT
+    queries on a 145-partner board and it was the reason the page had started
+    taking a moment to come up.
+    """
+    from sqlalchemy import func
+    from .board import markets_by_group
+    from .version import rules_version
+
+    rows = db.execute(
+        select(Report.market,
+               func.count(Report.id),
+               func.sum(case((Report.rules_version != rules_version(), 1), else_=0)))
+        .where(Report.period == period)
+        .group_by(Report.market)).all()
+    have_by_market = {m or "": int(n or 0) for m, n, _s in rows}
+    stale_by_market = {m or "": int(st or 0) for m, _n, st in rows}
+
+    index = markets_by_group(db)
+    out = {"total": sum(stale_by_market.values()), "by_group": {}, "have": {}}
     for g in groups:
-        have = stale_count(db, period=period, group=g.group, stale_only=False)
-        if have:
-            out["have"][g.group] = have
-            n = stale_count(db, period=period, group=g.group)
-            if n:
-                out["by_group"][g.group] = n
+        markets = index.get(g.group) or [g.group]
+        if g.group not in markets:
+            markets = markets + [g.group]
+        have = sum(have_by_market.get(m, 0) for m in markets)
+        if not have:
+            continue
+        out["have"][g.group] = have
+        n = sum(stale_by_market.get(m, 0) for m in markets)
+        if n:
+            out["by_group"][g.group] = n
     return out
 
 
 def _recheck_jobs() -> dict:
+    """Running re-checks, keyed by the group they are working on.
+
+    The card needs to know its OWN job. Without that the button sat there
+    looking untouched after it had been pressed, because the work happens in
+    the background and the redirect comes back instantly.
+    """
     from .recheck import running_jobs
-    return running_jobs()
+    out = {"all": {}, "by_group": {}}
+    for j in running_jobs().values():
+        if j.get("group"):
+            out["by_group"][j["group"]] = j
+        else:
+            out["all"] = j
+    return out
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -855,6 +889,9 @@ async def orders_import(file: UploadFile = File(...), period: str = Form(""),
                f"{res.get('rows_read', 0):,} rows read")
         if res.get("duplicate_rows"):
             msg += f", {res['duplicate_rows']:,} duplicate rows ignored"
+        if res.get("header_overruled"):
+            msg += (f", {res['header_overruled']:,} line item(s) kept on their "
+                    f"own status against an order header that disagreed")
         db.add(OrderSync(source=f"upload: {file.filename}", rows=n, ok=True,
                          message=msg + ".", guidance=res.get("guidance") or {}))
         db.commit()

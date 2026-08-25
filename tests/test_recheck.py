@@ -109,19 +109,23 @@ def test_changing_a_check_changes_the_fingerprint(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------- the whole loop
 @pytest.fixture()
-def live(tmp_path, monkeypatch):
-    """A real database, a real PDF, one real report."""
-    import importlib
+def live(tmp_path):
+    """A real database, a real PDF, one real report.
+
+    Built on its own engine rather than by reloading app.config and app.db.
+    Reloading rebinds the settings object while every module that did
+    "from .config import settings" keeps the old one, and the tests that run
+    afterwards fail in ways that have nothing to do with them.
+    """
     import shutil
     from pathlib import Path
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
 
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'t.db'}")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    from app import config as cfg
-    importlib.reload(cfg)
     from app import db as dbm
-    importlib.reload(dbm)
-    dbm.init_db()
+
+    engine = create_engine(f"sqlite:///{tmp_path/'t.db'}")
+    dbm.Base.metadata.create_all(engine)
 
     src = Path(__file__).parent / "fixtures" / "centre_hills.pdf"
     if not src.exists():
@@ -129,7 +133,7 @@ def live(tmp_path, monkeypatch):
     dst = tmp_path / "centre_hills.pdf"
     shutil.copy(src, dst)
 
-    s = dbm.SessionLocal()
+    s = sessionmaker(bind=engine)()
     rep = dbm.Report(batch_id=1, period="2026-07", client="Centre Hills",
                      account_ids="1", market="7 Mountains PA State College",
                      filename="centre_hills.pdf", stored_path=str(dst),
@@ -140,6 +144,7 @@ def live(tmp_path, monkeypatch):
     s.add(rep); s.commit()
     yield s, rep, dbm
     s.close()
+    engine.dispose()
 
 
 def test_a_stale_report_is_found_and_rechecked(live):

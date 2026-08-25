@@ -243,18 +243,27 @@ class GroupRow:
         return seen
 
 
-def market_names_for_group(db: Session, group: str) -> list[str]:
-    """Every market filed under this partner group.
+def markets_by_group(db: Session) -> dict[str, list[str]]:
+    """group -> its markets, in one pass over the roster.
 
     A group is a set of markets - "7 Mountains PA" and "7 Mountains PA Altoona"
     are one partner - and reports are stored against the market, so acting on a
     whole partner means acting on all of them.
     """
-    out = []
+    out: dict[str, list[str]] = {}
     for p in _partner_index(db).values():
         g = p.group or p.partner
-        if g == group and p.partner not in out:
-            out.append(p.partner)
+        names = out.setdefault(g, [])
+        if p.partner not in names:
+            names.append(p.partner)
+    return out
+
+
+def market_names_for_group(db: Session, group: str) -> list[str]:
+    """The markets under one group. Building the whole index for each of 145
+    groups in turn is what made the board slow, so callers in a loop should ask
+    for markets_by_group() once instead."""
+    out = list(markets_by_group(db).get(group, []))
     if group not in out:
         out.append(group)
     return out

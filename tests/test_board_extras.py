@@ -99,7 +99,15 @@ def test_the_recheck_control_is_a_button_not_a_banner():
 def test_the_button_becomes_a_progress_readout_while_it_runs():
     cycle = (TPL / "cycle.html").read_text()
     assert 'class="sync busy"' in cycle
-    assert "{{ j.done }} of {{ j.total or '?' }}" in cycle
+    assert "{{ jobs.all.done }} of {{ jobs.all.total or '?' }}" in cycle
+
+
+def test_a_partner_card_shows_its_own_job_not_just_the_board_wide_one():
+    """The work happens in the background and the redirect comes straight back,
+    so the button looked untouched after being pressed."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert "jobs.by_group.get(g.group)" in cycle
+    assert '<span class="mini busy">' in cycle
 
 
 def test_the_partner_button_carries_no_count():
@@ -110,3 +118,19 @@ def test_the_partner_button_carries_no_count():
     assert ">\n                Re-check</button>" in cycle
     assert "Re-check {{ stale.by_group[g.group] }}" not in cycle
     assert 'name="scope" value="all"' in cycle
+
+
+def test_the_stale_counts_are_two_queries_not_two_per_partner():
+    """290 COUNT queries on a 145-partner board is why it had started taking a
+    moment to come up."""
+    import inspect
+    from app import main
+    src = inspect.getsource(main._stale_here)
+    assert "group_by(Report.market)" in src
+    assert "market_names_for_group" not in src        # that one rebuilt the index
+
+
+def test_markets_by_group_builds_the_index_once():
+    import inspect
+    from app import board
+    assert "def markets_by_group" in inspect.getsource(board)

@@ -50,10 +50,9 @@
       {# The sweep gets to everything on its own. This is for when eventually is
          not soon enough - a fix has gone out and somebody wants the board right
          before they hand a link over. #}
-      {% if jobs %}
-        {% set j = (jobs.values()|list)[0] %}
+      {% if jobs.all %}
         <span class="sync busy" title="Reload to see where it got to">
-          <span class="spin"></span>{{ j.done }} of {{ j.total or '?' }}</span>
+          <span class="spin"></span>{{ jobs.all.done }} of {{ jobs.all.total or '?' }}</span>
       {% elif stale.total %}
         <form method="post" action="/cycle/recheck" style="display:inline">
           <input type="hidden" name="period" value="{{ period }}">
@@ -144,7 +143,13 @@
              nothing left to do - it stayed blue and clicking it reloaded the
              same page, which reads as broken. It becomes the way back out. #}
           {% set have = stale.have.get(g.group, 0) %}
-          {% if have %}
+          {% set job = jobs.by_group.get(g.group) %}
+          {% if job %}
+            {# It runs in the background and the redirect comes straight back,
+               so without this the button looked untouched after being pressed. #}
+            <span class="mini busy"><span class="spin"></span>{{ job.done }} of
+              {{ job.total or '?' }}</span>
+          {% elif have %}
             {# No count on the label. "Re-check 2" under a heading that says
                "14 reports" reads as a bug, even when 2 is the true number of
                stale ones - so the button does the whole partner and the
@@ -337,6 +342,8 @@
 .sync.busy:hover{background:var(--surface);color:var(--velocity)}
 .secbar .tabs form{margin:0;display:inline-flex}
 .gfoot form{display:inline}
+.mini.busy{display:inline-flex;align-items:center;gap:6px;border-color:var(--velocity);
+ color:var(--velocity);cursor:default}
 .gfoot .showing{color:var(--velocity);font-weight:700;background:var(--velocity-10);
  padding:2px 9px;border-radius:12px;text-decoration:none}
 .gfoot .showing:hover{background:var(--velocity);color:#fff}

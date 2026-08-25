@@ -244,6 +244,11 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
         msg += f" from {result.get('files', 1)} file(s), {result.get('rows_read', 0):,} rows read"
         if result.get("duplicate_rows"):
             msg += f", {result['duplicate_rows']:,} duplicate rows ignored"
+        if result.get("header_overruled"):
+            # Silent, this would just look like the numbers moving. It is the
+            # only sign that somebody's order headers are out of date.
+            msg += (f", {result['header_overruled']:,} line item(s) kept on "
+                    f"their own status against an order header that disagreed")
     rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],
                     etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + ".",
                     guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {})
