@@ -305,11 +305,11 @@ def _remap_orders_if_stale() -> None:
         if (prev.map_version or "") == product_map_version():
             return
         from .orders_s3 import begin_sync, sync as sync_orders
-        claim = begin_sync(db)
+        claim = begin_sync(db, trigger="rules")
         if claim is None:
             return                        # the other worker has it
         log.info("re-reading the order export: the product mapping changed")
-        rec = sync_orders(db, force=True, claim_id=claim.id)
+        rec = sync_orders(db, force=True, claim_id=claim.id, trigger="rules")
         log.info("order re-read: %s", getattr(rec, "message", ""))
     except Exception as exc:              # noqa: BLE001
         log.warning("could not re-read the order export: %s", exc)

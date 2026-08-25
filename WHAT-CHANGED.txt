@@ -1,52 +1,56 @@
-build 2026.08.25-55
+build 2026.08.25-56
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/roster.py
-app/templates/cycle.html
-app/templates/viewer.html
-tests/test_board_extras.py
-tests/test_expected_products.py
+app/db.py
+app/main.py
+app/ingest.py
+app/recheck.py
+app/orders_s3.py
+app/templates/orders.html
 tests/test_order_remap.py
 
 
-1. The yellow bar is gone
----------------------------
-Off both the board and the report page. The orders button in the top right
-turns amber and says the same thing on hover, which is enough - a full-width
-banner for a condition that clears itself was shouting.
+A running sync now says what started it
+-----------------------------------------
+Short answer to your question: yes, it is normal, and yes, pressing the orders
+button is one of the things that does it - but not the only one. THREE
+different things can start a sync and none of them said so, which is why
+opening the page and finding one running looked like the tool deciding to do
+something on its own.
 
-Both syncs are labelled now and sit together:
+  1. You pressed the button - the one in the top right of the board, or Sync
+     from S3 now on this page.
+  2. The import rules changed on this deploy. The export is parsed once and
+     only the answer is kept, so when the code that interprets it changes, the
+     loaded orders are answering from an older version of it and the file has
+     to be read again. This fires once per deploy that touches that code -
+     which, while I have been shipping several builds a day, has been most of
+     them.
+  3. A batch of reports arrived. The order list is refreshed before
+     completeness runs, so a campaign added or ended since the last run is
+     already reflected. Reports have been arriving all day.
 
-    [refresh] 642 checks   [swap] orders   Download CSV
+The page now says which:
 
-"checks" re-reads the reports, "orders" re-reads the order list. Each says
-which on hover, and each spins in place while it runs.
+    Sync running since 5:52 PM, because the import rules changed on this
+    deploy, so the loaded orders were answering from an older version of them.
 
+And the finished line says it too - "Last synced 6:04 PM (you pressed the
+button) · 2,081 lines".
 
-2. Share moved down
----------------------
-It is on the filter row now, beside Save view, and it is just "Share" with the
-link icon. The saved views, the save box and the share button are all the same
-thought - "this set of filters" - and split across two rows they read as two
-unrelated toolbars.
+Nothing about the behaviour changed. It was always doing this; it just never
+told you, and "is that normal?" is a question the page should have been able to
+answer on its own.
 
+Two things worth knowing while you are looking at it:
 
-3. Investigate: the flight that settles it, not all of them
--------------------------------------------------------------
-    Meta · order 43279
-    2024-12-13 to 2026-12-31; 2026-02-06 to 2026-12-31 · counted
-
-That is a wall of dates you have to subtract in your head, and you were right
-that it is not useful. The question is always the same one: which flight covers
-this month, or if none does, how close the nearest came. So:
-
-    Meta · order 43279          2024-12-13 to 2026-12-31 (+1 more covering 2026-07) · counted
-    Social Mirror · order 43279 ran to 2026-06-30 · not running in 2026-07
-    TikTok · order 43279        starts 2026-08-01 · not running in 2026-07
-
-One line, one fact, and the two that are NOT running now say why in three words
-instead of asking you to compare four date ranges against July.
+  - A sync that has been running more than 30 minutes is treated as dead - a
+    deploy or restart mid-import - and stops blocking the next one. So a stuck
+    claim cannot wedge it permanently.
+  - Reason 2 stops happening once it has run successfully after a deploy. If
+    you see it every time you open the page, that is reason 3, and it will
+    settle when the reports stop arriving.
 
 
-Tests: 407 passing.
+Tests: 408 passing.

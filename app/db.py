@@ -447,6 +447,13 @@ class OrderSync(Base):
     # Which version of the product mapping read this export. An unchanged file
     # still has to be read again when the code interpreting it changes.
     map_version: Mapped[str] = mapped_column(String(32), default="")
+    # WHO OR WHAT STARTED THIS ONE.
+    #
+    # Three different things can begin a sync - a button, a deploy whose import
+    # rules changed, a batch of reports arriving - and none of them said so. So
+    # opening the page and finding one running looked like the tool doing
+    # something on its own for no reason anybody could name.
+    trigger: Mapped[str] = mapped_column(String(32), default="")
 
 
 # --------------------------------------------------------------------------
@@ -493,6 +500,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "flights", "JSON"),
     ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("reports", "logo_hash", "VARCHAR(32) DEFAULT '' NOT NULL"),
+    ("order_sync", "trigger", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_lines", "budget", "DOUBLE PRECISION"),
     ("order_lines", "spend", "DOUBLE PRECISION"),
 ]

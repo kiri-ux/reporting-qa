@@ -70,7 +70,17 @@ def running_sync(db: Session) -> OrderSync | None:
     return rec
 
 
-def begin_sync(db: Session) -> OrderSync | None:
+# What started a sync, in the words the page shows.
+TRIGGERS = {
+    "button": "you pressed the button",
+    "rules": "the import rules changed on this deploy, so the loaded orders "
+             "were answering from an older version of them",
+    "batch": "a batch of reports arrived, and the order list is refreshed "
+             "first so a campaign added or ended since the last run is there",
+}
+
+
+def begin_sync(db: Session, trigger: str = "") -> OrderSync | None:
     """Claim the sync. Returns None if one is already in flight.
 
     The claim is a row rather than an in-process flag because there are two
@@ -81,6 +91,7 @@ def begin_sync(db: Session) -> OrderSync | None:
     now = dt.datetime.utcnow()
     rec = OrderSync(source=f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}",
                     state="running", started_at=now, synced_at=now, ok=True,
+                    trigger=trigger,
                     message="Downloading and parsing the export...")
     db.add(rec)
     db.commit()
@@ -184,19 +195,20 @@ def _fail(db: Session, source: str, message: str, prev: OrderSync | None,
     return rec
 
 
-def sync(db: Session, *, force: bool = False, claim_id: int | None = None) -> OrderSync:
+def sync(db: Session, *, force: bool = False, claim_id: int | None = None,
+         trigger: str = "") -> OrderSync:
     """Refresh the order list from S3. Returns the sync record either way."""
     source = f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
     prev = db.scalars(select(OrderSync).where(OrderSync.state != "running")
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     try:
-        return _sync(db, source, prev, force=force)
+        return _sync(db, source, prev, force=force, trigger=trigger)
     finally:
         _close(db, claim_id)
 
 
 def _sync(db: Session, source: str, prev: OrderSync | None, *,
-          force: bool = False) -> OrderSync:
+          force: bool = False, trigger: str = "") -> OrderSync:
 
     if not settings.s3_configured:
         return _fail(db, "", "No S3 bucket configured.", None)
@@ -265,7 +277,7 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
         msg += ", re-read because the product mapping changed"
     rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],
                     etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + ".",
-                    map_version=mapv,
+                    map_version=mapv, trigger=trigger,
                     guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {})
     db.add(rec); db.commit()
     if tmpdir:

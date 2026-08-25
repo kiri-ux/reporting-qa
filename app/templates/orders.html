@@ -19,14 +19,17 @@
         <p class="sub" style="margin:0 0 12px;font-size:14px">
           <span class="spin" aria-hidden="true"></span>
           <b>Sync running</b> since
-          {{ (running.started_at or running.synced_at)|et('%-I:%M %p') }}.
+          {{ (running.started_at or running.synced_at)|et('%-I:%M %p') }}{%
+            if triggers.get(running.trigger) %}, because
+            {{ triggers[running.trigger] }}{% endif %}.
           It downloads the whole export and parses a couple of million rows, so
           give it a minute or two. This page refreshes itself - you can leave it
           or close the tab, the sync keeps going either way.</p>
       {% elif sync %}
         <p class="sub" style="margin:0 0 12px;font-size:14px">
           {% if sync.ok %}
-            Last synced {{ sync.synced_at|et('%b %-d, %Y at %-I:%M %p') }} ·
+            Last synced {{ sync.synced_at|et('%b %-d, %Y at %-I:%M %p') }}{%
+              if triggers.get(sync.trigger) %} ({{ triggers[sync.trigger] }}){% endif %} ·
             {{ sync.rows }} lines
             {% if sync.last_modified %} · object last modified
               {{ sync.last_modified|et('%b %-d, %Y %-I:%M %p') }}{% endif %}

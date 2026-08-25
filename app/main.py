@@ -499,6 +499,10 @@ def orders_view(request: Request, view: str = Query("clients"),
         "clients": clients, "no_roster": no_roster,
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
+        # Three different things can start a sync, and none of them used to
+        # say so - which is why finding one running looked like the tool
+        # deciding to do something on its own.
+        "triggers": _sync_triggers(),
         "strategy": pull_strategy(db),
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})
@@ -1616,6 +1620,11 @@ def pull_plan(db: Session, today: dt.date | None = None,
     return out
 
 
+def _sync_triggers() -> dict:
+    from .orders_s3 import TRIGGERS
+    return TRIGGERS
+
+
 def pull_strategy(db: Session, today: dt.date | None = None,
                   max_days: int = TAP_MAX_DAYS) -> dict:
     """The cheapest way to pull everything, given the tool's two options.
@@ -1757,7 +1766,7 @@ def _run_sync(claim_id: int) -> None:
     """The actual work, off the request."""
     db = SessionLocal()
     try:
-        sync_orders(db, force=True, claim_id=claim_id)
+        sync_orders(db, force=True, claim_id=claim_id, trigger="button")
     except Exception as exc:  # noqa: BLE001
         import traceback
         traceback.print_exc()
@@ -1785,7 +1794,7 @@ def orders_sync(background: BackgroundTasks, back: str = Form(""),
     now shows a running state and refreshes itself.
     """
     from .orders_s3 import begin_sync
-    claim = begin_sync(db)
+    claim = begin_sync(db, trigger="button")
     # Only a path on this app, so the button cannot be turned into an open
     # redirect by anybody who can post a form at it.
     home = back if back.startswith("/") and not back.startswith("//") else "/orders"

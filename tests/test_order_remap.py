@@ -153,11 +153,14 @@ def test_the_sweeper_re_reads_the_orders_when_the_mapping_moved(monkeypatch):
     called = []
     monkeypatch.setattr(rmod, "SessionLocal", Session)
     monkeypatch.setattr("app.orders_s3.begin_sync",
-                        lambda db: type("C", (), {"id": 1})())
+                        lambda db, **k: type("C", (), {"id": 1})())
     monkeypatch.setattr("app.orders_s3.sync",
                         lambda db, **k: called.append(k) or type("R", (), {"message": "ok"})())
     rmod._remap_orders_if_stale()
     assert called and called[0].get("force") is True
+    # And it says who started it, because three different things can and none
+    # of them used to say so.
+    assert called[0].get("trigger") == "rules"
 
 
 def test_an_unreachable_bucket_does_not_stop_the_report_sweep(monkeypatch):
@@ -176,7 +179,7 @@ def test_an_unreachable_bucket_does_not_stop_the_report_sweep(monkeypatch):
 
     monkeypatch.setattr(rmod, "SessionLocal", Session)
     monkeypatch.setattr("app.orders_s3.begin_sync",
-                        lambda db: (_ for _ in ()).throw(RuntimeError("no s3")))
+                        lambda db, **k: (_ for _ in ()).throw(RuntimeError("no s3")))
     rmod._remap_orders_if_stale()          # must not raise
 
 
@@ -524,3 +527,16 @@ def test_a_recheck_does_not_re_fingerprint_the_logo():
     import inspect
     from app import recheck as rmod
     assert "rep.logo_hash or header_logo_hash(path)" in inspect.getsource(rmod.recheck)
+
+
+def test_every_way_of_starting_a_sync_says_which_it_was():
+    """Opening the page and finding one running looked like the tool doing
+    something on its own for no reason anybody could name. Three different
+    things can start one."""
+    from pathlib import Path as _P
+    from app.orders_s3 import TRIGGERS
+    assert set(TRIGGERS) == {"button", "rules", "batch"}
+    assert 'trigger="button"' in _P("app/main.py").read_text()
+    assert 'trigger="rules"' in _P("app/recheck.py").read_text()
+    assert 'trigger="batch"' in _P("app/ingest.py").read_text()
+    assert "triggers[running.trigger]" in _P("app/templates/orders.html").read_text()

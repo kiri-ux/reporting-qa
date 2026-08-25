@@ -12,11 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-55"
-BUILD_NOTES = ("The yellow bar is gone - the orders button in the top bar says "
-               "it. Both syncs are labelled, Share moved down to the filter "
-               "row, and Investigate shows the one flight that settles it "
-               "rather than every flight on the order.")
+BUILD = "2026.08.25-56"
+BUILD_NOTES = ("A running sync now says what started it - the button, a deploy "
+               "whose import rules changed, or a batch of reports arriving. "
+               "Three things can begin one and none of them used to say so.")
 
 # ---------------------------------------------------------------------------
 

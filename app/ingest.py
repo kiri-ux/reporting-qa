@@ -474,7 +474,7 @@ def finish_batch(db: Session, batch_id: int, *, respect_quiet: bool = False) -> 
     if settings.s3_configured:
         try:
             from .orders_s3 import sync as sync_orders
-            sync_orders(db)
+            sync_orders(db, trigger="batch")
         except Exception:
             pass
     comp = completeness(db, batch.market, batch.period)
