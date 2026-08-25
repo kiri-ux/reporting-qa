@@ -939,3 +939,38 @@ def test_retention_frees_the_disk_but_keeps_the_record(tmp_path, monkeypatch):
     # 0 means keep everything
     monkeypatch.setattr(imod.settings, "keep_pdf_months", 0)
     assert imod.prune_old_pdfs(db)["files"] == 0
+
+
+def test_inbound_key_survives_url_encoding(monkeypatch):
+    """A base64 secret containing "+" arrives with spaces where the + were.
+
+    A query string decodes "+" as a space - form-encoding semantics, applied
+    to the query part whether or not anyone intended it. The value therefore
+    arrives the right LENGTH with the right last four characters and simply
+    is not the same string, which is about the most confusing way for a shared
+    secret to fail.
+    """
+    import app.main as m
+    from fastapi import HTTPException
+
+    secret = "aB3+xY7/kP2mQ9nR4tV6wZ1cD8eF5gH0jL/sT+uXwLSg="
+    monkeypatch.setattr(m.settings, "inbound_secret", secret)
+
+    m._guard(secret)                                    # exact
+    m._guard(secret.replace("+", " "))                  # what a URL delivers
+    m._guard(secret + " ")                              # copy-paste picked up a space
+    m._guard(secret.replace("+", " ") + " ")            # both at once
+
+    # a genuinely different secret is still refused
+    with pytest.raises(HTTPException) as err:
+        m._guard(secret[:-4] + "WRO=")
+    assert err.value.status_code == 403
+    with pytest.raises(HTTPException):
+        m._guard(None)
+    with pytest.raises(HTTPException):
+        m._guard("")
+
+    # and the message points at the real cause rather than just "bad key"
+    with pytest.raises(HTTPException) as err:
+        m._guard(secret.replace("+", " ").replace("LSg=", "WRO="))
+    assert "%2B" in err.value.detail, err.value.detail

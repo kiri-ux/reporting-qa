@@ -131,22 +131,47 @@ def _log_inbound(db: Session, *, source: str, sender: str, subject: str,
         import traceback; traceback.print_exc(); db.rollback()
 
 
-def _guard(k: str | None, db: Session | None = None, source: str = "") -> None:
-    """Check the shared secret on the inbound URL.
+def _key_matches(sent: str | None) -> bool:
+    """Compare the inbound key, tolerating what a URL does to it.
 
-    The message names the two things to compare, because "bad key" on its own
-    sends people looking at the wrong end - the value on the Zap's URL, or the
-    one in Render, and there is no way to tell which is stale.
+    A query string decodes "+" as a SPACE - that is form-encoding semantics,
+    and it applies to the query part of a URL whether or not anyone intended
+    it. Render's generated secrets are base64, which contains "+" about half
+    the time, so the value arrives the right length with the right last four
+    characters and simply is not the same string. Undoing that here costs
+    nothing: a real secret never contains a space.
     """
+    if sent is None:
+        return False
     want = settings.inbound_secret
-    if k == want:
+    for candidate in (sent, sent.strip(), sent.replace(" ", "+"),
+                      sent.strip().replace(" ", "+")):
+        if candidate == want or candidate == want.strip():
+            return True
+    return False
+
+
+def _guard(k: str | None, db: Session | None = None, source: str = "",
+           request: Request | None = None) -> None:
+    """Check the shared secret on the inbound URL, or the X-Inbound-Key header.
+
+    The header is there because it is not query-encoded, so a secret with "+"
+    or "/" in it needs no escaping at all.
+    """
+    if request is not None and _key_matches(request.headers.get("x-inbound-key")):
         return
-    if k and k.strip() == want.strip():
-        return                       # a copy-paste picked up a trailing space
-    got = "missing" if not k else f"{len(k)} characters ending {k[-4:]!r}"
+    if _key_matches(k):
+        return
+
+    want = settings.inbound_secret
+    got = "nothing" if not k else f"{len(k)} characters ending {k[-4:]!r}"
     detail = (f"The ?k= value on the URL does not match INBOUND_SECRET. "
               f"Render holds {len(want)} characters ending {want[-4:]!r}; "
               f"the request sent {got}.")
+    if k and len(k) == len(want) and " " in k and "+" in want:
+        detail += (" They are the same length because the secret contains '+', "
+                   "which a URL turns into a space. Replace every '+' with "
+                   "'%2B' in the webhook URL.")
     if db is not None:
         _log_inbound(db, source=source, sender="", subject="", files=[],
                      accepted=False, outcome=detail)
@@ -157,7 +182,7 @@ def _guard(k: str | None, db: Session | None = None, source: str = "") -> None:
 @app.post("/inbound/mailgun")
 async def inbound_mailgun(request: Request, background: BackgroundTasks,
                           k: str | None = Query(None), db: Session = Depends(get_db)):
-    _guard(k, db, "mailgun")
+    _guard(k, db, "mailgun", request)
     form = await request.form()
     sender = str(form.get("sender") or form.get("from") or "")
     subject = str(form.get("subject") or "")
@@ -190,7 +215,7 @@ async def inbound_zapier(request: Request, background: BackgroundTasks,
 
     Reports coalesce into one batch per market per month - see open_batch.
     """
-    _guard(k, db, "zapier")        # reject before reading the upload, not after
+    _guard(k, db, "zapier", request)   # reject before reading the upload, not after
     form = await request.form()
     sender = str(form.get("from") or form.get("sender") or form.get("email") or "")
     subject = str(form.get("subject") or "")

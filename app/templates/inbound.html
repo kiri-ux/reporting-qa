@@ -61,7 +61,9 @@
           editor.</li>
         <li><b>Wrong URL.</b> It must be
           <code>https://qa.reporting.zone/inbound/zapier?k=YOUR_SECRET</code> - the path is
-          <code>/inbound/zapier</code>, not <code>/inbound/mailgun</code>.</li>
+          <code>/inbound/zapier</code>, not <code>/inbound/mailgun</code>. If the secret
+          contains <code>+</code>, either send it as the <code>X-Inbound-Key</code> header
+          instead or write it as <code>%2B</code> in the URL.</li>
         <li><b>The deploy is older than this page.</b> This log only records attempts made
           after this build went live. Anything sent before it is not here.</li>
       </ol>
