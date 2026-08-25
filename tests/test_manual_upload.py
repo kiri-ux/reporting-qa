@@ -120,7 +120,7 @@ def test_only_the_newest_waiting_file_is_kept(app_db):
 
 def test_protected_says_which_kind_of_deliberate_it_was(app_db):
     db, dbm, _ = app_db
-    r = dbm.Report(batch_id=1, period="2026-07", client="c", review_state="new")
+    r = dbm.Report(batch_id=1, filename="x.pdf", period="2026-07", client="c", review_state="new")
     assert r.protected == ""
     r.source = "manual"
     assert r.protected == "uploaded by hand"
@@ -685,3 +685,62 @@ def test_the_sync_button_cannot_be_pointed_off_this_app(client):
     for evil in ("https://example.com/", "//example.com/", "javascript:alert(1)"):
         r = c.post("/orders/sync", data={"back": evil}, follow_redirects=False)
         assert r.headers["location"].startswith("/orders?sync=")
+
+
+# ------------------------------------------- marking a logo reaches the rest
+def test_marking_a_logo_re_checks_every_report_that_carries_it(client, monkeypatch):
+    """Clearing the stamp only queued them, and the sweep skips signed-off
+    reports and stops running once its queue drains - so marking a logo could
+    sit there doing nothing visible until the next deploy."""
+    c, (db, dbm, imod) = client
+    from app import main as mmod
+
+    started = {}
+    monkeypatch.setattr("app.recheck.start_job",
+                        lambda db, key, **kw: started.update(kw, key=key) or {})
+    rep = dbm.Report(batch_id=1, filename="x.pdf", period="2026-07", client="Awaken Bakery",
+                     market="7 Mountains KY", review_state="reviewed",
+                     reviewed_by="k", rules_version="abc",
+                     logo_hash="deadbeef")
+    other = dbm.Report(batch_id=1, filename="x.pdf", period="2026-07", client="Other Client",
+                       market="7 Mountains PA", review_state="new",
+                       rules_version="abc", logo_hash="deadbeef")
+    db.add_all([rep, other]); db.commit()
+
+    r = c.post("/logo/deadbeef/mark", data={"kind": "generic"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert "logo_queued=2" in r.headers["location"]
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).rules_version == ""
+    assert db.get(dbm.Report, other.id).rules_version == ""
+    # Signed off ones included: a newly marked generic logo is exactly the case
+    # where a sign-off deserves another look.
+    assert started["logo"] == "deadbeef" and not started.get("skip_signed")
+
+
+def test_the_report_names_who_else_carries_the_same_logo(client):
+    c, (db, dbm, imod) = client
+    rep = dbm.Report(batch_id=1, filename="x.pdf", period="2026-07", client="Awaken Bakery",
+                     market="7 Mountains KY", review_state="new",
+                     logo_hash="deadbeef")
+    other = dbm.Report(batch_id=1, filename="x.pdf", period="2026-07", client="Second Client",
+                       market="7 Mountains PA", review_state="reviewed",
+                       logo_hash="deadbeef")
+    db.add_all([rep, other]); db.commit()
+    html = c.get(f"/report/{rep.id}/view").text
+    assert "Second Client" in html
+    assert "carry this same logo" in html or "carries this same logo" in html
+
+
+def test_order_lines_come_back_as_a_fragment_for_the_sheet(client):
+    c, (db, dbm, imod) = client
+    rep = dbm.Report(batch_id=1, filename="x.pdf", period="2026-07", client="Awaken Bakery",
+                     market="7 Mountains KY", review_state="new",
+                     account_ids="52746")
+    db.add(rep); db.commit()
+    full = c.get(f"/report/{rep.id}/orders").text
+    frag = c.get(f"/report/{rep.id}/orders?frag=1").text
+    assert "<html" in full.lower()
+    assert "<html" not in frag.lower()
+    assert "Social Mirror" in frag

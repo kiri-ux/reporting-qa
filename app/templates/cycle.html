@@ -160,7 +160,24 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
      all the same thought ("this set of filters"), and split across two rows
      they read as two unrelated toolbars. The JS appends the dropdowns into
      .colfilters and this rides along at its end. #}
+  {# NAMED, AND IT DOES NOT GO AWAY.
+     There are two filter rows on this page - this one narrows the partner
+     cards, the one under Still open narrows the report rows - and they looked
+     identical. Worse, filtering to one partner leaves this row with nothing to
+     offer (a dropdown with one option filters nothing), so it emptied out and
+     the row further down looked like the same controls had moved. Now each row
+     says what it filters, and this one keeps its place by showing what the
+     board is already narrowed to. #}
   <div class="colfilters" data-cardfilters-for="glist">
+    <span class="frow">Partners</span>
+    {% if filter_group %}
+      <span class="chip">{{ filter_group }}<a title="Show every partner again"
+        href="/cycle?period={{ period }}{% if filter_state %}&state={{ filter_state }}{% endif %}">&times;</a></span>
+    {% endif %}
+    {% if filter_state %}
+      <span class="chip">{{ state_label[filter_state] }}<a title="Drop this filter"
+        href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}">&times;</a></span>
+    {% endif %}
   </div>
 
   {# Saved views. The filters have been shareable since they went into the URL;
@@ -168,6 +185,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
      every month. The period is not saved - a view made in July should open on
      whatever cycle you are on. #}
   <div class="views">
+    <span class="frow">Views</span>
     {% for v in views %}
       <a class="view{% if v.query and v.query in request.url.query %} on{% endif %}"
          href="/cycle?period={{ period }}{% if v.query %}&{{ v.query }}{% endif %}"
@@ -483,7 +501,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
            placeholder="Search everything...">
     <span class="count" id="cnt-cycle"></span>
   </div>
-  <div class="colfilters" data-filters-for="tbl-cycle"></div>
+  <div class="colfilters" data-filters-for="tbl-cycle"><span class="frow">Reports</span></div>
 
   {# Bulk sign-off. Most of a cycle is reports where everything passed, and
      ticking those one at a time is the longest single job on this board. #}

@@ -139,7 +139,7 @@ def previous_period(today: dt.date | None = None) -> str:
 # matters at a couple of million rows.
 WANTED = ("orders_id", "id", "orders_status", "status", "client", "product",
           "client_business_unit", "orders_start_date", "orders_end_date",
-          "start_date", "start_date.1", "end_date", "end_date.1", "date",
+          "start_date", "end_date", "date",
           "campaign_manager",
           # Money. Not on the report and not derivable from it - pacing is the
           # comparison of what the order says to spend against what it spent.
@@ -161,21 +161,39 @@ def _open_source(src):
         header = next(reader, None)
         if not header:
             return
-        # LAST ONE WINS on a repeated column name, which is what this did
-        # before the headers were normalised and what the date handling has
-        # always been calibrated against. The export carries two end_date
-        # columns and the second is the one that has been read all along;
-        # quietly switching to the first changes which rows survive the date
-        # filter, and the only sign of it is a different set of skip reasons.
-        idx = {}
+        # A REPEATED COLUMN IS READ FIRST-NON-EMPTY, NOT LAST.
+        #
+        # The export carries two start_date columns and two end_date columns,
+        # and which of the pair holds the value is not the same for both: over
+        # 5,034 rows of the real file the SECOND start_date is populated every
+        # time and the FIRST end_date is populated every time. Their partners
+        # are always blank.
+        #
+        # This used to take the last one for both. That is right for the start
+        # and wrong for the end - so every line item's end date came back blank
+        # and fell through to the order header's end date, which is the last
+        # day of the whole order. A line item that finished in June 2025 on an
+        # order running to the end of 2026 therefore looked live all the way
+        # through, and its product was expected on reports for months after it
+        # stopped. Blair Regional YMCA was reported four times for exactly
+        # this: two Social Mirror line items, ended 6/30/25 and 6/30/26, both
+        # stored as ending 2026-12-31.
+        idx: dict[str, list[int]] = {}
         for i, name in enumerate(header):
             key = normalise_header(name)
             if key in WANTED:
-                idx[key] = i
-        blank = ""
+                idx.setdefault(key, []).append(i)
         for row in reader:
             n = len(row)
-            yield {k: (row[i] if i < n else blank) for k, i in idx.items()}
+            out = {}
+            for k, cols in idx.items():
+                v = ""
+                for i in cols:
+                    if i < n and row[i].strip():
+                        v = row[i]
+                        break
+                out[k] = v
+            yield out
     finally:
         if close:
             fh.close()
@@ -242,19 +260,26 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 skip("RFP"); continue
 
             order_end = _date(r.get("orders_end_date"))
-            line_end = _date(r.get("end_date")) or _date(r.get("end_date.1"))
+            # The line item's own end, and only if it has one. Falling back to
+            # the order header keeps a finished line item alive for the rest of
+            # the order - which is how a Social Mirror that stopped in June was
+            # still being expected on a July report a year later.
+            line_end = _date(r.get("end_date"))
             end = line_end or order_end
-            start = (_date(r.get("start_date.1")) or _date(r.get("start_date"))
-                     or _date(r.get("orders_start_date")))
+            start = _date(r.get("start_date")) or _date(r.get("orders_start_date"))
 
-            if end and end < p_start:
-                skip("ended before the period"); continue
-            if start and start > p_end:
-                skip("starts after the period"); continue
+            # Status before dates, so the reason a row was dropped is the
+            # interesting one. A cancelled line item has almost always ended as
+            # well, and "ended before the period" is the less useful of the two
+            # things you can say about it.
             if DEAD_LINE_STATUS.match(line_status):
                 skip("line item cancelled"); continue
             if DEAD_ORDER_STATUS.match(order_status):
                 skip("order cancelled"); continue
+            if end and end < p_start:
+                skip("ended before the period"); continue
+            if start and start > p_end:
+                skip("starts after the period"); continue
             if order_status.lower() not in LIVE_STATUS:
                 if line_status.lower() in LIVE_STATUS:
                     header_overruled += 1        # the line item rescued it

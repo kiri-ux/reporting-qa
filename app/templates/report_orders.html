@@ -4,70 +4,9 @@
   <a href="/report/{{ rep.id }}/view">{{ rep.client }}</a> / Order lines{% endblock %}
 {% block body %}
 
-<div>
-  <h1>Order lines as stored</h1>
-  <p class="sub">
-    Every row {{ rep.client }}'s {{ rep.period }} report is judged against - not
-    the summary a finding prints, the actual rows. <b>Would be</b> is what
-    today's code would map the raw product name to; where that differs from
-    <b>Product</b>, the row was written by an older import and that is the whole
-    answer.
-  </p>
-</div>
+<div><h1>Order lines as stored</h1></div>
 
 <section>
-  {% if stale %}
-    <div class="stalebar">
-      <b>These rows were written by older import code.</b>
-      Last read {{ sync.synced_at|et('%b %-d at %-I:%M %p') }} with map
-      <code>{{ sync.map_version or 'none' }}</code>; the code running now is
-      <code>{{ map_now }}</code>. The product check abstains while that is true.
-      <form method="post" action="/orders/sync" style="display:inline">
-        <input type="hidden" name="back" value="/report/{{ rep.id }}/orders">
-        <button class="mini" type="submit">Re-read the orders</button>
-      </form>
-    </div>
-  {% endif %}
-
-  {% if rows %}
-    <div class="tw"><table>
-      <thead><tr><th>Product</th><th>Would be</th><th>Raw name on the order</th>
-        <th>Order</th><th>Line items</th><th>Live</th>
-        <th>Ran in {{ rep.period }}</th><th>Flights</th>
-        <th style="text-align:right">Budget</th></tr></thead>
-      <tbody>
-        {% for r in rows %}
-          <tr>
-            <td><b>{{ r.product }}</b></td>
-            <td{% if r.would_be != r.product %} style="color:var(--crit);font-weight:600"{% endif %}>
-              {{ r.would_be }}</td>
-            <td class="acct">{{ r.raw }}</td>
-            <td class="mono nw">{{ r.orders }}</td>
-            <td class="mono nw" style="font-size:11px">{{ r.lines }}</td>
-            <td>{{ 'yes' if r.live else 'PAUSED' }}</td>
-            <td>{% if r.ran is none %}—{% elif r.ran %}yes{% else %}<span style="color:var(--muted)">no</span>{% endif %}</td>
-            <td class="mono" style="font-size:11px">
-              {% if r.flights %}
-                {% for w in r.flights %}{{ w[0] or '?' }} &rarr; {{ w[1] or 'open' }}{% if not loop.last %}<br>{% endif %}{% endfor %}
-              {% else %}
-                <span style="color:var(--crit)">none recorded</span> —
-                {{ r.starts or '?' }} &rarr; {{ r.ends or 'open' }}
-              {% endif %}
-            </td>
-            <td class="mono nw" style="text-align:right">
-              {% if r.budget %}${{ '{:,.2f}'.format(r.budget) }}{% endif %}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table></div>
-    <p class="sub" style="font-size:12.5px">
-      <b>Flights: none recorded</b> means the row predates build 42, which is
-      when each order's own window started being kept. Until it is re-read, the
-      period test falls back to the merged span and a gap between two flights is
-      invisible.
-    </p>
-  {% else %}
-    <p class="empty">No order lines match this client at all.</p>
-  {% endif %}
+  {% include "report_orders_body.html" %}
 </section>
 {% endblock %}

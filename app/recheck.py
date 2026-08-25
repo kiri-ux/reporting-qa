@@ -203,10 +203,16 @@ def recent_periods(n: int) -> list[str]:
 
 def _stale_query(db: Session, periods: list[str] | None, group: str | None,
                  period: str | None, stale_only: bool = True,
-                 skip_signed: bool = False, signed_only: bool = False):
+                 skip_signed: bool = False, signed_only: bool = False,
+                 logo: str | None = None):
     q = select(Report)
     if stale_only:
         q = q.where(Report.rules_version != rules_version())
+    if logo:
+        # Marking a logo changes the answer for every report that carries it,
+        # wherever it is and whoever has signed it off. That is a scope of its
+        # own - not a partner, not a cycle.
+        q = q.where(Report.logo_hash == logo)
     if skip_signed:
         # A REPORT SOMEBODY HAS SIGNED OFF IS NOT WHAT THE BUTTON IS FOR.
         #
@@ -236,11 +242,12 @@ def _stale_query(db: Session, periods: list[str] | None, group: str | None,
 
 def stale_count(db: Session, *, scoped: bool = False, group: str | None = None,
                 period: str | None = None, stale_only: bool = True,
-                skip_signed: bool = False, signed_only: bool = False) -> int:
+                skip_signed: bool = False, signed_only: bool = False,
+                logo: str | None = None) -> int:
     from sqlalchemy import func
     periods = recent_periods(settings.recheck_periods) if scoped else None
     q = _stale_query(db, periods, group, period, stale_only, skip_signed,
-                     signed_only)
+                     signed_only, logo)
     return db.scalar(select(func.count()).select_from(q.subquery())) or 0
 
 
@@ -248,12 +255,13 @@ def _stale_batch(db: Session, limit: int, *, scoped: bool = True,
                  group: str | None = None, period: str | None = None,
                  stale_only: bool = True, after: int = 0,
                  skip_signed: bool = False,
-                 signed_only: bool = False) -> list[Report]:
+                 signed_only: bool = False,
+                 logo: str | None = None) -> list[Report]:
     """Newest cycles first. The month somebody is working on is the one where a
     stale answer is actually in the way."""
     periods = recent_periods(settings.recheck_periods) if scoped else None
     q = _stale_query(db, periods, group, period, stale_only, skip_signed,
-                     signed_only)
+                     signed_only, logo)
     if after:
         q = q.where(Report.id > after)
     # Stale-only runs shrink their own queue, so newest-first is right. A run
@@ -417,7 +425,8 @@ def _touch(db: Session, key: str, **fields) -> None:
 
 def start_job(db: Session, key: str, *, group: str | None = None,
               period: str | None = None, stale_only: bool = True,
-              skip_signed: bool = False, signed_only: bool = False) -> dict:
+              skip_signed: bool = False, signed_only: bool = False,
+              logo: str | None = None) -> dict:
     """Re-check a partner, or a whole cycle, now.
 
     The sweep gets to everything eventually; this is for when eventually is not
@@ -437,7 +446,7 @@ def start_job(db: Session, key: str, *, group: str | None = None,
     row.state = "running"
     row.total = stale_count(db, group=group, period=period,
                             stale_only=stale_only, skip_signed=skip_signed,
-                            signed_only=signed_only)
+                            signed_only=signed_only, logo=logo)
     row.done = row.changed = 0
     row.note = ""
     row.started_at = row.updated_at = dt.datetime.utcnow()
@@ -454,7 +463,7 @@ def start_job(db: Session, key: str, *, group: str | None = None,
                                      period=period, stale_only=stale_only,
                                      after=0 if stale_only else after,
                                      skip_signed=skip_signed,
-                                     signed_only=signed_only)
+                                     signed_only=signed_only, logo=logo)
                 if not batch:
                     break
                 if not stale_only:

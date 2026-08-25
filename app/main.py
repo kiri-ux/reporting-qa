@@ -888,8 +888,19 @@ def mark_logo(logo: str, request: Request, kind: str = Form("generic"),
         n += 1
     if n:
         db.commit()
-    return RedirectResponse(request.headers.get("referer") or "/cycle",
-                            status_code=303)
+    # AND RE-CHECK THEM NOW, RATHER THAN CLEARING A STAMP AND HOPING.
+    #
+    # Clearing rules_version only put them in the sweep's queue, and the sweep
+    # skips anything already signed off and stops running once its queue drains
+    # - so marking a logo could sit there doing nothing visible until the next
+    # deploy. The mark is the whole point: it should reach the other reports
+    # that carry it while you are still looking at the screen.
+    from .recheck import start_job
+    start_job(db, key=f"logo:{logo}", stale_only=True, logo=logo)
+    back = request.headers.get("referer") or "/cycle"
+    back = back.split("#")[0]
+    back += ("&" if "?" in back else "?") + f"logo_queued={n}"
+    return RedirectResponse(back + "#logo", status_code=303)
 
 
 @app.post("/reports/review")
@@ -1517,8 +1528,14 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     rep = db.get(Report, report_id)
     if not rep:
         raise HTTPException(404)
+    from .checks.logo import logo_reports
     from .checks.rules import SKIP_WHY
     from .version import rules_version
+    peers = logo_reports(db, rep.logo_hash or "", exclude_id=rep.id)
+    try:
+        queued = int(request.query_params.get("logo_queued") or 0)
+    except ValueError:
+        queued = 0
     return templates.TemplateResponse(request, "viewer.html",
                                       {"nav": "cycle", "rep": rep,
                                        "skip_why": SKIP_WHY,
@@ -1527,6 +1544,11 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                        # judged by somebody looking at it.
                                        "logo_hash": rep.logo_hash or "",
                                        "logo_generic": _logo_is_generic(db, rep),
+                                       # Who else carries it. A mark is a
+                                       # statement about all of them, so they
+                                       # are named on the page that takes it.
+                                       "logo_peers": peers,
+                                       "logo_queued": queued,
                                        # Said HERE as well as on the board. A
                                        # product finding is disputed on this
                                        # page, so the one fact that settles it
@@ -1726,14 +1748,26 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
             "budget": l.budget,
             "ran": _ran_during(l, rep.period) if rep.period else None,
         })
+    from .orders_s3 import running_sync
     sync = db.scalars(select(OrderSync).where(OrderSync.state != "running")
                       .order_by(desc(OrderSync.id)).limit(1)).first()
-    return templates.TemplateResponse(request, "report_orders.html", {
+    ctx = {
         "nav": "cycle", "rep": rep, "rows": rows, "sync": sync,
         "map_now": product_map_version(),
         "stale": bool(sync and sync.ok and
                       (sync.map_version or "") != product_map_version()),
-    })
+        # Pressing Re-read the orders used to land back on a page that looked
+        # exactly the same, because the sync takes minutes. These two say what
+        # happened.
+        "running": running_sync(db),
+        "started": request.query_params.get("sync") in ("started", "already"),
+        "frag": bool(request.query_params.get("frag")),
+    }
+    # frag=1 is the same content with no page around it, for the modal on the
+    # report. One template, so the two cannot drift apart.
+    if request.query_params.get("frag"):
+        return templates.TemplateResponse(request, "report_orders_body.html", ctx)
+    return templates.TemplateResponse(request, "report_orders.html", ctx)
 
 
 @app.get("/orders/pull-range.csv")

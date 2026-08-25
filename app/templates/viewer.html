@@ -121,8 +121,13 @@
       </details>
     {% endif %}
 
+    {# Opens over the report rather than replacing it. Checking a product
+       finding means reading the finding and the order rows together, and
+       leaving the page to do it meant going back and forth. The href still
+       works - middle-click, or no JS, and it is the full page. #}
     <p class="sub" style="font-size:12.5px;margin-top:14px">
-      <a href="/report/{{ rep.id }}/orders">Order lines as stored</a> - what a
+      <a href="/report/{{ rep.id }}/orders" data-sheet="/report/{{ rep.id }}/orders?frag=1"
+         data-sheet-title="Order lines as stored">Order lines as stored</a> - what a
       product finding is actually being judged against.
     </p>
 
@@ -222,7 +227,7 @@
     </form>
 
     {% if logo_hash %}
-      <h2 style="margin-top:22px">Page-one logo</h2>
+      <h2 id="logo" style="margin-top:22px">Page-one logo</h2>
       {# The picture, not the fingerprint. Marking a logo is a decision about
          what it looks like, and this is the exact crop the check compares. #}
       <div class="logobox">
@@ -240,6 +245,32 @@
           {% endif %}
         </form>
       </div>
+
+      {# WHO ELSE THIS LANDS ON. Marking a logo is a statement about every
+         report that carries it, and the question it always raises is "which
+         ones?". They are named here, and marking one re-checks all of them
+         straight away rather than leaving them to a sweep that skips anything
+         already signed off. #}
+      {% if logo_queued %}
+        <p class="sub okline">Marked. {{ logo_queued }} report{{ '' if logo_queued == 1 else 's' }}
+          carrying this logo {{ 'is' if logo_queued == 1 else 'are' }} being
+          re-checked now, signed-off ones included. Refresh in a moment to see
+          them change.</p>
+      {% endif %}
+      {% if logo_peers %}
+        <details class="peers"{% if logo_queued %} open{% endif %}>
+          <summary>{{ logo_peers|length }} other report{{ '' if logo_peers|length == 1 else 's' }}
+            on the board {{ 'carries' if logo_peers|length == 1 else 'carry' }} this same logo</summary>
+          <ul class="peerlist">
+            {% for p in logo_peers %}
+              <li><a href="/report/{{ p.id }}/view">{{ p.market or 'no market' }} · {{ p.client }}</a>
+                <span class="sub">{{ p.period }}{% if p.review_state in ('reviewed', 'waived') %} · signed off{% endif %}</span></li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% else %}
+        <p class="sub">No other report on the board carries this logo.</p>
+      {% endif %}
     {% endif %}
 
     <h2 style="margin-top:22px">Notes</h2>

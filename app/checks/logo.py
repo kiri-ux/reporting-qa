@@ -81,6 +81,26 @@ def logo_markets(db, logo: str, exclude_id: int | None = None) -> list[str]:
     return sorted({(m or "").strip() for m in db.scalars(q).all() if (m or "").strip()})
 
 
+def logo_reports(db, logo: str, exclude_id: int | None = None, limit: int = 200):
+    """Every report carrying this logo, newest cycle first.
+
+    Marking a logo is a statement about all of them, so the page that takes the
+    mark shows which ones it lands on by name, rather than leaving you to guess
+    who else in the partner is about to change.
+    """
+    from sqlalchemy import select
+
+    from ..db import Report
+    if not logo:
+        return []
+    q = select(Report).where(Report.logo_hash == logo)
+    if exclude_id:
+        q = q.where(Report.id != exclude_id)
+    return list(db.scalars(q.order_by(Report.period.desc(),
+                                      Report.market.asc(),
+                                      Report.client.asc()).limit(limit)).all())
+
+
 def is_generic(db, logo: str) -> bool:
     """Has somebody marked this mark as the reporting tool's default?"""
     from sqlalchemy import select

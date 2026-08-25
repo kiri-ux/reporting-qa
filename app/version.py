@@ -12,11 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-57"
-BUILD_NOTES = ("The product check now refuses to answer while the loaded orders "
-               "were read by older import code, instead of saying the same "
-               "wrong thing again. And every report has an Order lines as "
-               "stored page, so this stops being guesswork from a screenshot.")
+BUILD = "2026.08.25-58"
+BUILD_NOTES = ("Line items were being given their ORDER's end date, so anything "
+               "that finished mid-order still counted as live - 24 of the 57 "
+               "line items in the sample. That is the Blair Regional YMCA "
+               "failure, and a lot of others. Marking a logo now re-checks "
+               "every report carrying it straight away and names them.")
 
 # ---------------------------------------------------------------------------
 

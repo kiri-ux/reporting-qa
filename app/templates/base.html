@@ -153,12 +153,41 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .plan ul{padding-left:18px}
 .plan .sub{max-width:78ch}
 
+/* ---- side sheet ----
+   Opens over the right of the page, so whatever is on the left - the findings
+   list, the sign-off - stays readable next to it. */
+.sheet{position:fixed;inset:0;z-index:60}
+.sheet-scrim{position:absolute;inset:0;background:rgba(11,26,45,.28)}
+.sheet-panel{position:absolute;top:0;right:0;bottom:0;width:min(1000px,72vw);
+ background:var(--surface);border-left:1px solid var(--line);
+ box-shadow:-18px 0 40px rgba(11,26,45,.18);display:flex;flex-direction:column;
+ animation:sheetin .16s ease-out}
+@keyframes sheetin{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.sheet-panel{animation:none}}
+.sheet-head{display:flex;align-items:center;gap:12px;padding:14px 18px;
+ border-bottom:1px solid var(--line)}
+.sheet-head h2{margin:0;border:0;padding:0;flex:1;font-size:19px}
+.sheet-full{font-size:12.5px}
+.sheet-x{background:none;border:0;font-size:24px;line-height:1;cursor:pointer;
+ color:var(--muted);padding:0 4px}
+.sheet-x:hover{color:var(--ink)}
+.sheet-body{padding:16px 18px 26px;overflow:auto}
+body.sheet-open{overflow:hidden}
+@media (max-width:900px){.sheet-panel{width:100vw}}
+
 /* ---- the page-one logo ---- */
 .logobox{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
 .logobox img{max-width:190px;border:1px solid var(--line);border-radius:8px;
  background:#fff;padding:4px}
 .logobox form{flex:1;min-width:200px}
 .logobox .sub{margin:0 0 8px;font-size:12.5px}
+.okline{margin:10px 0 0;color:var(--ok);font-weight:600}
+.peers{margin-top:10px;font-size:12.5px}
+.peers summary{cursor:pointer;color:var(--muted)}
+.peerlist{list-style:none;margin:8px 0 0;padding:0;max-height:220px;overflow:auto}
+.peerlist li{padding:3px 0;border-bottom:1px solid var(--line)}
+.peerlist li:last-child{border-bottom:0}
+.peerlist .sub{margin-left:6px;font-size:11.5px}
 
 /* ---- the order list is out of date ---- */
 .stalebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
@@ -310,7 +339,17 @@ tr[hidden]{display:none}
 @media(max-width:760px){.rail a::after,.rail a::before{display:none}}
 
 /* ---- per-column filters ---- */
-.colfilters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.colfilters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px;align-items:flex-end}
+/* Which of the two rows this is. Both of them filter, and unlabelled they
+   read as one toolbar that jumps down the page when the top one empties. */
+.frow{font-family:Agdasima,sans-serif;font-size:12px;font-weight:700;
+ letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+ padding:7px 10px 7px 0;border-right:1px solid var(--line);margin-right:2px}
+.colfilters .chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;
+ padding:5px 10px;border-radius:16px;border:1px solid var(--velocity);
+ background:var(--velocity-10);font-weight:700}
+.colfilters .chip a{text-decoration:none;color:var(--muted);font-size:15px;line-height:1}
+.colfilters .chip a:hover{color:var(--cardinal)}
 .colf{display:flex;flex-direction:column;gap:3px}
 .colf label{font-family:Agdasima,sans-serif;font-size:12px;font-weight:700;
  letter-spacing:.09em;text-transform:uppercase;color:var(--atlas-50);margin:0}
@@ -933,7 +972,10 @@ body.fit .pdfwrap object{height:100%}
           });
         });
         var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
-        if (!names.length) return;
+        // A dropdown with one option filters nothing. Narrow the board to one
+        // partner and this row still offered "Partner: All (1)", which is a
+        // control that cannot change what is on screen.
+        if (names.length < 2) return;
         var f = document.createElement('div'); f.className = 'colf';
         var lb = document.createElement('label'); lb.textContent = th.dataset.col;
         var sel = buildMulti(names, vals, 'colf-' + box.dataset.filter + '-' + i, lb, run);
@@ -945,11 +987,11 @@ body.fit .pdfwrap object{height:100%}
         clear.type = 'button'; clear.className = 'mini'; clear.textContent = 'Clear';
         clear.style.alignSelf = 'flex-end'; clear.style.marginBottom = '1px';
         clear.addEventListener('click', function () {
+          // NO `toggles` HERE. It is a variable from the card filter above, and
+          // naming it in this handler threw a ReferenceError before run() was
+          // ever reached - so Clear on a table simply did nothing.
           box.value = '';
           selects.forEach(function (s) { s.el.reset(); });
-          toggles.forEach(function (t) {
-            t.classList.remove('on'); t.setAttribute('aria-pressed', 'false');
-          });
           run();
         });
         wrap.appendChild(clear);
@@ -958,6 +1000,73 @@ body.fit .pdfwrap object{height:100%}
 
     box.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 90); });
     run();
+  });
+
+  // ---- side sheet -----------------------------------------------------
+  // A link marked data-sheet opens its content beside what you are reading
+  // instead of replacing it. Checking a product finding means holding the
+  // finding and the order rows in view at the same time, and a separate page
+  // made that a round trip. The href is left alone, so cmd-click still opens
+  // the full page and nothing breaks with JS off.
+  var sheet = null, sheetTimer = null;
+
+  function closeSheet() {
+    clearTimeout(sheetTimer);
+    if (sheet) { sheet.remove(); sheet = null; }
+    document.body.classList.remove('sheet-open');
+  }
+
+  function loadSheet(url, body) {
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        body.innerHTML = html;
+        // The sync takes minutes, so while one is running the sheet keeps
+        // itself current rather than showing the state it opened with.
+        if (body.querySelector('[data-orders-running]')) {
+          sheetTimer = setTimeout(function () { loadSheet(url, body); }, 10000);
+        }
+        body.querySelectorAll('form').forEach(function (f) {
+          f.addEventListener('submit', function (e) {
+            e.preventDefault();
+            fetch(f.getAttribute('action'), {
+              method: 'POST', credentials: 'same-origin', body: new FormData(f)
+            }).then(function () { loadSheet(url, body); });
+          });
+        });
+      })
+      .catch(function () {
+        body.innerHTML = '<p class="empty">Could not load this. '
+          + '<a href="' + url.replace('?frag=1', '') + '">Open the full page</a>.</p>';
+      });
+  }
+
+  function openSheet(url, title) {
+    closeSheet();
+    sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    sheet.innerHTML = '<div class="sheet-scrim"></div><div class="sheet-panel" role="dialog"'
+      + ' aria-modal="true" aria-label="' + (title || 'Details') + '">'
+      + '<div class="sheet-head"><h2>' + (title || '') + '</h2>'
+      + '<a class="sheet-full" href="' + url.replace('?frag=1', '') + '">Full page</a>'
+      + '<button type="button" class="sheet-x" aria-label="Close">&times;</button></div>'
+      + '<div class="sheet-body"><p class="empty">Loading...</p></div></div>';
+    document.body.appendChild(sheet);
+    document.body.classList.add('sheet-open');
+    sheet.querySelector('.sheet-scrim').addEventListener('click', closeSheet);
+    sheet.querySelector('.sheet-x').addEventListener('click', closeSheet);
+    loadSheet(url, sheet.querySelector('.sheet-body'));
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('[data-sheet]');
+    if (!a) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+    e.preventDefault();
+    openSheet(a.dataset.sheet, a.dataset.sheetTitle || '');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeSheet();
   });
 })();
 </script>

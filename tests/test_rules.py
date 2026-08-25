@@ -277,7 +277,12 @@ def test_io_export_eligibility():
     assert len({(r.client, r.product) for r in rows}) == len(rows)
 
     subaru = {r.product for r in rows if r.client == "W&L Subaru"}
-    assert subaru == {"Meta", "Mobile Conquesting", "Social Mirror", "Video"}
+    # NO META, AND THAT IS THE POINT. It used to be in this set and should not
+    # have been: the line item is paused and ended 2026-06-30, on an order that
+    # runs to 2026-12-31. The order's end date was standing in for the line
+    # item's own, so a finished line item on a long order stayed "live" and its
+    # product went on being expected on reports for months.
+    assert subaru == {"Mobile Conquesting", "Social Mirror", "Video"}
 
 
 def test_concurrent_init_db_does_not_crash(tmp_path):

@@ -333,16 +333,37 @@ def test_a_sheet_ahead_of_the_board_is_reported_not_dropped(db):
     assert res["not_on_the_board"] == 1
 
 
-def test_a_repeated_column_still_reads_the_last_one():
-    """The export carries two end_date columns and the second is the one that
-    has been read all along. Normalising the headers quietly switched it to the
-    first, which changed which rows survived the date filter - and the only
-    sign of it was a different set of skip reasons."""
-    import inspect
-    from app import orders_io as mod
-    src = inspect.getsource(mod._open_source)
-    assert "LAST ONE WINS" in src
-    assert 'key = key + ".1"' not in src
+def test_a_repeated_column_reads_whichever_one_has_the_value():
+    """The export repeats start_date and end_date, and the populated one is not
+    the same of the pair for both: the second start_date carries the value, the
+    first end_date does. Reading the last of each left every line item's end
+    date blank, so it fell through to the order header - and a line item that
+    finished in June looked live to the end of the order."""
+    from app.orders_io import _open_source
+    csv = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,start_date,end_date,end_date,"
+           "orders_end_date\n"
+           "BU,IO Live,Blair,31449,Social Mirror OTT Ads,96533,IO Complete,"
+           "2025-01-01,,2025-01-03,2025-06-30,,2026-12-31\n")
+    row = next(iter(_open_source(csv.encode())))
+    assert row["start_date"] == "2025-01-03"
+    assert row["end_date"] == "2025-06-30"
+    assert row["orders_end_date"] == "2026-12-31"
+
+
+def test_a_line_item_that_finished_is_not_kept_alive_by_its_order(db):
+    """The whole Blair Regional YMCA run of false failures in one row."""
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    csv = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,start_date,end_date,end_date,"
+           "orders_end_date\n"
+           "7 Mountains PA,IO Live,Blair Regional YMCA,31449,"
+           "Social Mirror OTT Ads,96533,IO Complete,"
+           "2025-01-01,,2025-01-03,2025-06-30,,2026-12-31\n")
+    res = import_io_export(db, csv.encode(), period="2026-07")
+    assert res["skipped"].get("ended before the period") == 1
+    assert db.query(OrderLine).count() == 0
 
 
 # ------------------------------------------- pacing: a full month vs the budget
@@ -560,7 +581,7 @@ def test_the_report_page_can_show_the_rows_it_is_judged_against(db):
     rows being older than the code, and there was no way to look at them
     without me guessing from a screenshot."""
     from pathlib import Path as _P
-    tpl = _P("app/templates/report_orders.html").read_text()
+    tpl = _P("app/templates/report_orders_body.html").read_text()
     assert "Would be" in tpl and "none recorded" in tpl
     assert "/report/{{ rep.id }}/orders" in _P("app/templates/viewer.html").read_text()
     assert '@app.get("/report/{report_id}/orders")' in _P("app/main.py").read_text()
