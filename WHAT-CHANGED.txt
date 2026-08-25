@@ -1,11 +1,13 @@
-Report QA - build 2026.08.25-34
-Changed since 2026.08.25-33. Four files.
+Report QA - build 2026.08.25-35
+Changed since 2026.08.25-34. Five files, one of them new.
 
-app/main.py               canonical_filename + file_token; the replace route
-                          files an upload under the report's own name, refuses
-                          one named for a different order, and the PDF is
-                          served no-store
-app/templates/viewer.html "Saved as ..." under the drop zone; the embedded
-                          viewer and both download links carry ?v=<token>
+app/pace.py               NEW. Arrival rate and the projection, with the
+                          honesty guards - several windows, the shortest one
+                          with enough arrivals in it wins, and it stays quiet
+                          when there is not enough to go on.
+app/main.py               passes pace to the board; humanhours/workingdays
+                          template filters
+app/templates/cycle.html  the estimate under Not received, and the
+                          "How that is worked out" panel
 app/version.py            build number
-tests/test_quality.py     6 more tests
+tests/test_pace.py        NEW. 8 tests

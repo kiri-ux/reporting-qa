@@ -34,7 +34,33 @@
   <div class="cards">
     <div><b>{{ summary.total }}</b><span>Expected{% if summary.lifetimes %}
       · {{ summary.lifetimes }} lifetime{% endif %}</span></div>
-    <div class="c-fail"><b>{{ summary.missing }}</b><span>Not received</span></div>
+    <div class="c-fail"><b>{{ summary.missing }}</b><span>Not received</span>
+      {% if pace.hours %}<p class="eta">{{ pace.hours|humanhours }} to go</p>{% endif %}
+      {% if pace.rate %}
+        <p class="pacenote">
+          {{ '%.0f'|format(pace.rate) if pace.rate >= 1 else '%.1f'|format(pace.rate) }} an hour
+          over {{ pace.basis }}{% if pace.hours|workingdays %} ·
+          {{ pace.hours|workingdays }}{% endif %}
+        </p>
+        <details class="pacedetail">
+          <summary>How that is worked out</summary>
+          <dl>
+            {% for w in pace.windows %}
+              <dt>{{ w.label|capitalize }}</dt>
+              <dd>{{ w.count }} report{{ 's' if w.count != 1 }}
+                ({{ '%.1f'|format(w.per_hour) }} an hour)</dd>
+            {% endfor %}
+            <dt>Last one arrived</dt><dd>{{ pace.last|et('%b %-d, %-I:%M %p') }}</dd>
+            <dt>At that rate the last one lands</dt>
+            <dd>{{ pace.eta|et('%a %b %-d, %-I:%M %p') }}</dd>
+          </dl>
+          <p class="sub" style="font-size:11px;margin:6px 0 0">
+            Reports arrive in bursts - forty in ten minutes, then nothing for
+            three hours - so this is the shortest window with enough arrivals
+            in it to mean anything, not a measurement.</p>
+        </details>
+      {% endif %}
+    </div>
     <div><b>{{ summary['in'] + summary.warnings }}</b><span>In, awaiting review</span></div>
     <div class="c-fail"><b>{{ summary.errors + summary.needs_fix }}</b><span>Errors or needs fix</span></div>
     <div class="c-ok"><b>{{ summary.ready }}</b><span>Good to go</span></div>
@@ -385,6 +411,18 @@
 .sync.busy:hover{background:var(--surface);color:var(--velocity)}
 .secbar .tabs form{margin:0;display:inline-flex}
 .gfoot form{display:inline}
+.cards .eta{margin:2px 0 0;font-family:'GT Walsheim Pro',sans-serif;
+ font-size:15px;font-weight:700;color:var(--ink)}
+.pacenote{margin:3px 0 0;font-size:11.5px;color:var(--ink-2);line-height:1.35}
+.pacedetail summary{font-size:11px;color:var(--velocity);cursor:pointer;
+ margin-top:5px;list-style:none;font-weight:700}
+.pacedetail summary::-webkit-details-marker{display:none}
+/* Stacked, not two columns: the tile is narrow and a label like "At that rate
+   the last one lands" takes the whole width on its own. */
+.pacedetail dl{margin:7px 0 0;font-size:11.5px}
+.pacedetail dt{color:var(--muted);margin-top:5px;line-height:1.3}
+.pacedetail dt:first-child{margin-top:0}
+.pacedetail dd{margin:0;font-variant-numeric:tabular-nums;color:var(--ink-2)}
 .wpill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
  font-size:10px;padding:1px 6px;border-radius:9px;background:var(--atlas-10);
  color:var(--ink-2);white-space:nowrap}

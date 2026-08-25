@@ -12,12 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-34"
-BUILD_NOTES = ("A replacement is filed under the report's own name whatever "
-               "the file is called on your machine, and the viewer stops "
-               "showing the copy it cached before the replacement. A file "
-               "named for a different order is refused rather than silently "
-               "replacing the wrong report.")
+BUILD = "2026.08.25-35"
+BUILD_NOTES = ("The Not received tile now says how long the rest will take, "
+               "worked out from how fast reports are actually arriving, with "
+               "every window it measured on show so you can judge the estimate "
+               "rather than take it.")
 # ---------------------------------------------------------------------------
 
 

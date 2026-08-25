@@ -47,6 +47,20 @@ def _eastern(value, fmt: str = "%b %-d at %-I:%M %p"):
 
 
 templates.env.filters["et"] = _eastern
+
+
+def _human_hours(h):
+    from .pace import humanise
+    return humanise(h)
+
+
+def _working_days(h):
+    from .pace import working_days
+    return working_days(h)
+
+
+templates.env.filters["humanhours"] = _human_hours
+templates.env.filters["workingdays"] = _working_days
 # Chrome that every page needs and no view should have to remember to pass.
 templates.env.globals.update(
     head_tags=brand.HEAD_TAGS,
@@ -570,6 +584,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     from .board import STATE_LABEL, by_group, expected_for, summary
     from .cycle import current_period, cycle_for, recent_periods
     from .delivery import latest_deliveries
+    from .pace import pace
 
     show_all = rows_ == "all"
     period = period or settings.default_period or current_period()
@@ -607,6 +622,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "done": done_shown, "done_total": len(done),
         "show_all": show_all, "row_cap": ROW_CAP,
         "summary": summary(exp), "state_label": STATE_LABEL,
+        # "763 not received" does not answer the question anybody has, which is
+        # whether that is a morning's work or the rest of the week.
+        "pace": pace(db, period, summary(exp)["missing"]),
         "filter_group": group, "filter_state": state,
         "deliveries": latest_deliveries(db, period),
         # How many reports on this board still carry an older answer, and per
