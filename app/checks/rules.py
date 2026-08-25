@@ -125,6 +125,13 @@ def _ctv_totals(ctx) -> tuple[float, float]:
 # impressions, and the line item grid is where that breakdown lives.
 CTR_EXCLUDED = re.compile(r"\bCTV\b|\bOTT\b|YouTube|Performance Max|\bPMax\b", re.I)
 
+# The CLICKS tile is a different filter, and the footnote does not describe it.
+# Service One settled it: line items 3,111, tile 3,008, difference 103 - and
+# the CTV and OTT lines carry exactly 103 (61 + 41 + 1 + 0). The YouTube+ line
+# carries the other 8 and is plainly IN the tile, so YouTube must not be taken
+# out of this side of the arithmetic even though the CTR footnote excludes it.
+CLICKS_EXCLUDED = re.compile(r"\bCTV\b|\bOTT\b", re.I)
+
 CTR_FOOTNOTE = "do not include impressions or view-throughs"
 
 
@@ -253,14 +260,14 @@ def check_line_items(ctx) -> list[dict]:
     # leave out CTV, OTT, YouTube and PMax. So the question is not whether the
     # two numbers differ but how much of the difference those products explain,
     # and whether what is left over is worth anybody's time.
-    excluded = [r for r in rows if CTR_EXCLUDED.search(r[0])]
+    excluded = [r for r in rows if CLICKS_EXCLUDED.search(r[0])]
     excl = sum(r[2] for r in excluded)
     unexplained = gap - excl
     ctrace = [("Top-line clicks", f"{clicks:,.0f}"),
               ("Line items counted", f"{len(rows)}"),
               ("Their clicks", f"{sc:,.0f}"),
               ("Difference", f"{gap:+,.0f} clicks"),
-              ("Clicks on CTV / OTT / YouTube / PMax line items", f"{excl:,.0f}"),
+              ("Clicks on CTV and OTT line items", f"{excl:,.0f}"),
               # Named, not just totalled. A remainder of eight clicks is only
               # findable if you can see which lines were taken out and for how
               # much - the total on its own says "trust me".
@@ -278,12 +285,12 @@ def check_line_items(ctx) -> list[dict]:
         return out
     if unexplained == 0:
         out.append(_f("clicks_exclude_products", "info",
-                      "The top-line clicks leave CTV, YouTube and PMax out",
+                      "The top-line clicks leave CTV and OTT out",
                       f"Line items total {sc:,.0f} clicks against a stated "
-                      f"{clicks:,.0f}. The CTV, OTT, YouTube and PMax line items "
-                      f"carry {excl:,.0f} clicks, which that tile excludes and "
-                      f"which accounts for all {abs(gap):,.0f} of the "
-                      f"difference. Expected.", ctrace))
+                      f"{clicks:,.0f}. The CTV and OTT line items carry {excl:,.0f} "
+                      f"clicks, which that tile excludes and which accounts "
+                      f"for all {abs(gap):,.0f} of the difference. Expected.",
+                      ctrace))
     elif abs(unexplained) <= material:
         # Small, but not nothing. Saying "expected" would be a claim the
         # arithmetic does not support, and the remainder is worth a look even
@@ -292,9 +299,9 @@ def check_line_items(ctx) -> list[dict]:
                       f"{abs(unexplained):,.0f} click"
                       f"{'s' if abs(unexplained) != 1 else ''} unaccounted for",
                       f"Line items total {sc:,.0f} clicks against a stated "
-                      f"{clicks:,.0f}. The CTV, OTT, YouTube and PMax line items "
-                      f"carry {excl:,.0f}, which that tile excludes - that "
-                      f"explains all but {abs(unexplained):,.0f} of the "
+                      f"{clicks:,.0f}. The CTV and OTT line items carry {excl:,.0f}, "
+                      f"which that tile excludes - that explains all but "
+                      f"{abs(unexplained):,.0f} of the "
                       f"{abs(gap):,.0f} difference. Small enough not to hold the "
                       f"report up, but it is not nothing. Investigate lists the "
                       f"lines that were taken out.", ctrace))
@@ -302,9 +309,9 @@ def check_line_items(ctx) -> list[dict]:
         out.append(_f("line_items_clicks", "fail",
                       "Line item clicks do not sum to the top line",
                       f"Line items total {sc:,.0f} clicks against a stated "
-                      f"{clicks:,.0f} ({gap:+,.0f}). The CTV, OTT, YouTube and "
-                      f"PMax line items carry {excl:,.0f}, which that tile can "
-                      f"exclude - that still leaves {abs(unexplained):,.0f} "
+                      f"{clicks:,.0f} ({gap:+,.0f}). The CTV and OTT line items carry "
+                      f"{excl:,.0f}, which that tile can exclude - that still "
+                      f"leaves {abs(unexplained):,.0f} "
                       f"clicks unaccounted for.", ctrace))
     return out
 

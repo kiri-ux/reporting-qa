@@ -185,7 +185,6 @@ def test_sync_keeps_the_old_list_when_s3_is_unreachable():
     from sqlalchemy.orm import sessionmaker
 
     import app.orders_s3 as s3mod
-    from app.config import settings
     from app.db import Base, OrderLine
 
     engine = create_engine("sqlite://")
@@ -194,6 +193,11 @@ def test_sync_keeps_the_old_list_when_s3_is_unreachable():
     db.add(OrderLine(market="M", client="Kept", account_ids="1234"))
     db.commit()
 
+    # The object orders_s3 actually reads, not the one app.config currently
+    # exports. Any test that reloads app.config leaves the two different, and
+    # setting the wrong one made this fail with "No S3 bucket configured" -
+    # a failure that had nothing to do with what it was testing.
+    settings = s3mod.settings
     settings.orders_s3_bucket, settings.orders_s3_key = "b", "k"
     s3mod._client = lambda: (_ for _ in ()).throw(RuntimeError("AccessDenied"))
     rec = s3mod.sync(db, force=True)
@@ -1855,15 +1859,13 @@ def test_a_corrected_report_replaces_the_broken_one(tmp_path, monkeypatch):
     assert len(b1.reports) == 1
     rep_id = b1.reports[0].id
 
-    # a reviewer signs it off and leaves a note
     r = db.get(db_mod.Report, rep_id)
-    r.review_state, r.reviewed_by = "reviewed", "Jacob"
-    r.reviewed_at = dt.datetime.utcnow()
     r.acked = [0]
     r.review_note = "Chased Tap for a re-pull"
     db.commit()
 
-    # the corrected report arrives - SAME filename, different content
+    # the corrected report arrives - SAME filename, different content. Nobody
+    # has signed this one off, so it is superseded in place.
     fixed = (FIXTURES / "salem_rv.pdf").read_bytes()
     b2 = imod.process_batch(db, [(name, fixed)], source="zapier", notify=False,
                             coalesce=True, subject="FW: Daily report")
@@ -1875,8 +1877,9 @@ def test_a_corrected_report_replaces_the_broken_one(tmp_path, monkeypatch):
     assert Path(r.stored_path).read_bytes() == fixed, "the new file was dropped"
     assert r.batch_id == b2.id, "it should sit with the batch that corrected it"
     assert r.acked == [] and r.review_state == "new" and r.reviewed_at is None, \
-        "sign-off on the broken copy carried over to the corrected one"
+        "acceptances on the broken copy carried over to the corrected one"
     assert r.review_note == "Chased Tap for a re-pull", "the note was lost"
+    assert not r.has_pending, "nothing was waiting on it, so nothing should be"
 
     # a lifetime for the same client is a different report, not a replacement
     life = "Lifetime_Awaken Bakery_52746.pdf"

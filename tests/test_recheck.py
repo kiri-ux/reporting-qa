@@ -394,12 +394,12 @@ def test_the_trace_names_the_lines_that_were_taken_out():
             "Line Item Name        Impressions   Clicks   CTR\n"
             "Acme - Auto Loans        64,242   500   0.78%\n"
             "Acme - AI CTV            36,057   103   0.31%\n"
-            "Acme - YouTube+           5,000     8   0.16%\n"
+            "Acme - Retargeting OTT    5,000     8   0.16%\n"
             "Acme - Facebook          61,790   2,500   4.05%\n")
     out = check_line_items({"text": text, "imps": 167089.0, "clicks": 3008.0})
     f = next(x for x in out if "clicks" in x["code"])
     named = next(t["value"] for t in f["trace"] if t["label"] == "Which lines those are")
-    assert "AI CTV: 103" in named and "YouTube+: 8" in named
+    assert "AI CTV: 103" in named and "Retargeting OTT: 8" in named
 
 
 def test_a_remainder_that_matters_is_still_a_failure():
@@ -413,3 +413,38 @@ def test_a_remainder_that_matters_is_still_a_failure():
     f = next(x for x in out if "clicks" in x["code"])
     assert f["severity"] == "fail"
     assert "unaccounted for" in f["detail"]
+
+
+def test_youtube_clicks_are_not_taken_out_of_the_clicks_tile():
+    """The footnote says the CTR excludes YouTube. It says nothing about the
+    Clicks tile, and Service One settled it: line items 3,111, tile 3,008, and
+    the CTV and OTT lines carry exactly 103. The YouTube+ line carries the
+    other 8 and is plainly in the tile."""
+    from app.checks.rules import check_line_items
+    text = ("Line Item Performance\n"
+            "Line Item Name                       Impressions   Clicks   CTR\n"
+            "Acme - Auto Loans/Car Financing YouTube+   64,242     8   0.01%\n"
+            "Acme - Facebook/Instagram                  61,790   714   1.16%\n"
+            "Acme - Personal Finance Behavioral CTV     36,314    61   0.17%\n"
+            "Acme - AI CTV                              36,057    41   0.11%\n"
+            "Acme - Retargeting Amazon CTV               7,612     1   0.01%\n"
+            "Acme - Dynamic PPC                          4,331  2286  52.78%\n")
+    out = check_line_items({"text": text, "imps": 210346.0, "clicks": 3008.0})
+    f = next(x for x in out if "clicks" in x["code"])
+    assert f["severity"] == "info", f["detail"]
+    excl = next(t["value"] for t in f["trace"]
+                if t["label"] == "Clicks on CTV and OTT line items")
+    assert excl == "103"
+    named = next(t["value"] for t in f["trace"] if t["label"] == "Which lines those are")
+    assert "YouTube" not in named
+
+
+def test_the_ctr_side_still_excludes_youtube():
+    """Two different filters. The footnote is explicit about the CTR one."""
+    from app.checks.rules import CLICKS_EXCLUDED, CTR_EXCLUDED
+    assert CTR_EXCLUDED.search("Acme - AI YouTube+")
+    assert not CLICKS_EXCLUDED.search("Acme - AI YouTube+")
+    assert CTR_EXCLUDED.search("Acme - Performance Max")
+    assert not CLICKS_EXCLUDED.search("Acme - Performance Max")
+    for both in ("Acme - AI CTV", "Acme - Retargeting OTT"):
+        assert CTR_EXCLUDED.search(both) and CLICKS_EXCLUDED.search(both)

@@ -100,7 +100,38 @@ class Report(Base):
     # findings are written once and a fixed rule does not reach back on its own.
     rules_version: Mapped[str] = mapped_column(String(32), default="", index=True)
 
+    # How this copy got here. A report somebody uploaded by hand was put there
+    # deliberately, and the automatic feed arriving later with its own copy is
+    # not automatically an improvement on it.
+    source: Mapped[str] = mapped_column(String(16), default="")   # "" | manual
+
+    # A newer file that arrived for a report nobody wants overwritten - one
+    # already signed off, or one uploaded by hand. It waits here until somebody
+    # says which copy is the real one, rather than replacing work silently.
+    pending_path: Mapped[str] = mapped_column(String(1024), default="")
+    pending_name: Mapped[str] = mapped_column(String(255), default="")
+    pending_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
     batch: Mapped["Batch"] = relationship(back_populates="reports")
+
+    @property
+    def has_pending(self) -> bool:
+        return bool(self.pending_path and self.pending_at)
+
+    @property
+    def protected(self) -> str:
+        """Why a newer file must not just overwrite this one, or "" if it may.
+
+        Two cases, and they are different kinds of deliberate: somebody read
+        this copy and signed it off, or somebody put this copy here by hand.
+        Either way the automatic feed turning up later with its own version is
+        a question, not an answer.
+        """
+        if self.review_state in ("reviewed", "waived"):
+            return f"signed off by {self.reviewed_by or 'someone'}"
+        if self.source == "manual":
+            return "uploaded by hand"
+        return ""
 
     def is_acked(self, i: int) -> bool:
         return i in (self.acked or [])
@@ -356,6 +387,10 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("deliveries", "archive_url", "TEXT"),
     ("reports", "acked", "JSON"),
     ("reports", "rules_version", "VARCHAR(32) DEFAULT '' NOT NULL"),
+    ("reports", "source", "VARCHAR(16) DEFAULT '' NOT NULL"),
+    ("reports", "pending_path", "VARCHAR(1024) DEFAULT '' NOT NULL"),
+    ("reports", "pending_name", "VARCHAR(255) DEFAULT '' NOT NULL"),
+    ("reports", "pending_at", "TIMESTAMP"),
     ("reports", "checks", "JSON"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),

@@ -1,13 +1,94 @@
-Report QA - build 2026.08.25-35
-Changed since 2026.08.25-34. Five files, one of them new.
+build 2026.08.25-36
+Changed files only. Drop these over your copy, keeping the paths.
 
-app/pace.py               NEW. Arrival rate and the projection, with the
-                          honesty guards - several windows, the shortest one
-                          with enough arrivals in it wins, and it stays quiet
-                          when there is not enough to go on.
-app/main.py               passes pace to the board; humanhours/workingdays
-                          template filters
-app/templates/cycle.html  the estimate under Not received, and the
-                          "How that is worked out" panel
-app/version.py            build number
-tests/test_pace.py        NEW. 8 tests
+app/version.py
+app/db.py
+app/main.py
+app/ingest.py
+app/checks/rules.py
+app/checks/products.py
+app/templates/cycle.html
+app/templates/viewer.html
+tests/test_manual_upload.py
+tests/test_product_map.py
+tests/test_recheck.py
+tests/test_rules.py
+
+
+1. Upload a report by hand to an order that is still pending
+------------------------------------------------------------
+Every "Not received" row on the cycle board now has an Upload button. Pick a
+PDF and it lands against that order the same as a mailed one: checked, scored,
+on the board, openable. It is stamped source="manual" so the tool knows a
+person put it there.
+
+The file is renamed to the name the order says it should have, so a hand upload
+does not break folder matching or delivery later.
+
+
+2. The feed no longer quietly overwrites your work
+---------------------------------------------------
+Before, a second PDF for the same client and month replaced the first one on
+disk. If you had already reviewed that report, or uploaded it yourself, it was
+gone and the findings were re-run against a file you never chose.
+
+Now a report is protected once it is either:
+  - reviewed or waived (signed off by somebody), or
+  - uploaded by hand.
+
+A new file arriving for a protected report is held to one side instead. The
+report page shows a block saying a new file came in, when, and what it was
+called, with three things you can do:
+
+  Open it        - view the waiting PDF before deciding
+  Use the new file - swap it in, re-check, and clear the sign-off
+  Keep this one    - throw the new file away
+
+Unprotected reports still get replaced automatically, as before. Nothing about
+the normal path changed.
+
+Under the hood this needed a fix in ingest: a batch that coalesces a whole
+market writes several PDFs at once, and writing straight to the final filename
+overwrote a copy already sitting there - including, in one case, one that had
+been signed off. Files now land under a unique temporary name and are only
+moved into place once it is clear they are allowed to.
+
+
+3. YouTube clicks - false positive, fixed
+-------------------------------------------
+"8 clicks unaccounted for" was wrong. The CTR tile and the CLICKS tile do not
+filter the same way, and I had them sharing one filter.
+
+  CTR tile:    excludes CTV, OTT, YouTube, Performance Max
+  Clicks tile: excludes CTV and OTT only
+
+Service One settles it: line items 3,111, tile 3,008, difference 103. The CTV
+and OTT lines carry 61 + 41 + 1 + 0 = 103 exactly. The YouTube+ line's 8 clicks
+are in the tile, which is why they looked unaccounted for.
+
+
+4. DOOH orders read as Video - false negative, fixed
+------------------------------------------------------
+Order 52753 reported "2 products on the report with no live order: DOOH,
+YouTube" when the DOOH order was right there.
+
+The IO tool writes DOOH as "Digital Out-Of-Home (DOOH) Display & Video Ads".
+The hyphens and brackets meant the DOOH key never matched, and the generic
+"video ads" key matched inside the "Display & Video Ads" tail - so a billboard
+order came through as Video. That double-counted Video and left the report's
+real DOOH pages looking like a product nobody ordered.
+
+Three fixes in products.py:
+  - punctuation is flattened before matching, so hyphens and brackets cannot
+    hide a product name
+  - added the plain "digital out of home", "dooh", "connected tv" and "ctv"
+    spellings
+  - when a name contains two product words, the earliest one wins rather than
+    the longest. "DOOH Display & Video Ads" leads with the product; "Display &
+    Video Ads" is the format that follows it.
+
+Verified against all six line items of order 52753 and 20 product names in
+total: no mismatches.
+
+
+Tests: 265 passing.

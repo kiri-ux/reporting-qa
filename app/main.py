@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -862,6 +863,169 @@ def _names_another_report(rep, uploaded: str) -> str:
             f"report is order {', '.join(sorted(mine))} - "
             f"{rep.client}. Open the right report, or rename the file if the "
             f"name is the thing that is wrong.")
+
+
+@app.post("/cycle/upload")
+async def upload_for_expected(period: str = Form(""), market: str = Form(""),
+                              client: str = Form(""), account_ids: str = Form(""),
+                              kind: str = Form("monthly"),
+                              file: UploadFile = File(...),
+                              db: Session = Depends(get_db)):
+    """Put a report against a row that is still waiting for one.
+
+    Some reports never come through the feed - pulled by hand, sent to the
+    wrong address, rebuilt after a fix. Without this the only way to get one
+    onto the board was to have it re-mailed through Zapier, and the row sat at
+    "Not received" while the PDF was on somebody's desktop.
+    """
+    from .checks import run_all
+    from .ingest import client_flight, open_batch
+    from .roster import attach_owners, expected_products
+    from .version import rules_version as _rv
+
+    blob = await file.read()
+    if not blob[:5] == b"%PDF-":
+        raise HTTPException(400, "That is not a PDF.")
+    period = period or settings.default_period or ""
+    is_lifetime = kind == "lifetime"
+
+    # If one already exists for this client and cycle, this is a replacement
+    # and should go through the route that knows how to handle one.
+    from .ingest import _rkey
+    for r in db.scalars(select(Report).where(Report.period == period)).all():
+        if bool(r.is_lifetime) != is_lifetime:
+            continue
+        ids, _n = _rkey(client, account_ids, is_lifetime)
+        mine, _m = _rkey(r.client, r.account_ids, bool(r.is_lifetime))
+        if ids & mine:
+            return RedirectResponse(f"/report/{r.id}/view", status_code=303)
+
+    batch = open_batch(db, market, period)
+    if batch is None:
+        batch = Batch(market=market, period=period, source="manual",
+                      status="done", email_subject=f"Uploaded by hand · {market}")
+        db.add(batch)
+        db.flush()
+
+    store = settings.data_dir / f"batch-{batch.id}"
+    store.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9._ -]", "_", file.filename or "")[:180] or f"{client}.pdf"
+    path = store / safe
+    path.write_bytes(blob)
+
+    exp = expected_products(db, client, account_ids, period=period)
+    flight = client_flight(db, client, account_ids)
+    try:
+        result = run_all(path, filename=file.filename, expected_products=exp,
+                         flight=flight, period=period, market=market)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"That PDF could not be read: {exc}")
+
+    meta = result["meta"]
+    rep = Report(
+        batch_id=batch.id, period=period, source="manual",
+        filename=file.filename or safe, stored_path=str(path),
+        # The row it was uploaded against wins over what the filename says -
+        # somebody chose this row on purpose.
+        client=client or meta.get("client", ""),
+        account_ids=account_ids or meta.get("account_ids", ""),
+        market=market, is_lifetime=is_lifetime,
+        pages=result["pages"], impressions=result["impressions"],
+        clicks=result["clicks"],
+        products=", ".join(result.get("products") or []),
+        severity=result["severity"], findings=result["findings"],
+        checks=result.get("checks") or [], acked=[], review_state="new",
+        rules_version=_rv())
+    db.add(rep)
+    db.flush()
+    attach_owners(db, rep)
+    db.commit()
+    return RedirectResponse(f"/report/{rep.id}/view", status_code=303)
+
+
+@app.get("/report/{report_id}/pending/file")
+def pending_file(report_id: int, db: Session = Depends(get_db)):
+    """The waiting file, so a decision can be made by looking at it."""
+    rep = db.get(Report, report_id)
+    if not rep or not rep.has_pending or not Path(rep.pending_path).exists():
+        raise HTTPException(404)
+    return FileResponse(rep.pending_path, media_type="application/pdf",
+                        headers={"Content-Disposition":
+                                 f'inline; filename="{rep.pending_name}"',
+                                 "Cache-Control": "no-store"})
+
+
+@app.post("/report/{report_id}/pending/{action}")
+def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
+    """Take the newer file that arrived, or throw it away.
+
+    One of the two has to happen deliberately: the whole reason it is waiting
+    is that overwriting this report would have thrown away a sign-off or
+    somebody's manual upload without asking.
+    """
+    from .checks import run_all
+    from .ingest import client_flight
+    from .roster import expected_products
+    from .version import rules_version as _rv
+
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    if not rep.has_pending:
+        return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+
+    incoming = Path(rep.pending_path)
+    if action == "discard":
+        try:
+            incoming.unlink()
+        except OSError:
+            pass
+        rep.pending_path = rep.pending_name = ""
+        rep.pending_at = None
+        db.commit()
+        return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+
+    if action != "accept":
+        raise HTTPException(404)
+    if not incoming.exists():
+        rep.pending_path = rep.pending_name = ""
+        rep.pending_at = None
+        db.commit()
+        raise HTTPException(400, "That file is no longer on disk.")
+
+    # Overwrite in place, under the name this report already has, so every
+    # link to it keeps working.
+    target = Path(rep.stored_path) if rep.stored_path else incoming
+    if target != incoming:
+        target.write_bytes(incoming.read_bytes())
+        try:
+            incoming.unlink()
+        except OSError:
+            pass
+
+    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    flight = client_flight(db, rep.client, rep.account_ids)
+    result = run_all(target, filename=rep.filename, expected_products=exp,
+                     flight=flight, period=rep.period, market=rep.market or "")
+    rep.stored_path = str(target)
+    rep.pages = result["pages"]
+    rep.impressions = result["impressions"]
+    rep.clicks = result["clicks"]
+    rep.products = ", ".join(result.get("products") or [])
+    rep.severity = result["severity"]
+    rep.findings = result["findings"]
+    rep.checks = result.get("checks") or []
+    rep.rules_version = _rv()
+    # A different file, so the sign-off and the acceptances describe something
+    # that is no longer on screen.
+    rep.acked = []
+    rep.review_state = "new"
+    rep.reviewed_at = None
+    rep.source = ""                       # it is the feed's copy now
+    rep.pending_path = rep.pending_name = ""
+    rep.pending_at = None
+    db.commit()
+    return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 
 
 @app.post("/report/{report_id}/replace")

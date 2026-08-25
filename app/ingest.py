@@ -246,9 +246,14 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     # and its place on the board.
     existing = _reports_for_period(db, batch.period)
 
+    held = 0
     for name, blob in pdfs:
         safe = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:180] or f"{uuid.uuid4().hex}.pdf"
-        path = store / safe
+        # Land it somewhere of its own first. Coalescing puts a market's whole
+        # month in one batch directory, so writing straight to the final name
+        # overwrote the copy already there - including one somebody had signed
+        # off, which is the exact thing the guard below exists to prevent.
+        path = store / f".incoming-{uuid.uuid4().hex}.pdf"
         path.write_bytes(blob)
         meta_guess = meta_from_filename(name)
         exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"],
@@ -268,6 +273,30 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                       "checks": []}
         meta = result["meta"]
         rep = _match_existing(existing, meta)
+
+        # A copy somebody signed off, or put there by hand, is not overwritten
+        # by the feed turning up later with its own version. The new file is
+        # kept beside it and somebody says which one is real. Silently
+        # replacing a reviewed report means the sign-off now belongs to a file
+        # nobody has read.
+        if rep is not None and rep.protected:
+            if rep.pending_path and rep.pending_path != str(path):
+                # An older waiting copy is superseded by this one - the queue
+                # is one deep, and the newest arrival is the one worth judging.
+                try:
+                    Path(rep.pending_path).unlink()
+                except OSError:
+                    pass
+            waiting = store / f"waiting-{rep.id}-{safe}"
+            path.replace(waiting)
+            rep.pending_path = str(waiting)
+            rep.pending_name = name
+            rep.pending_at = dt.datetime.utcnow()
+            db.flush()
+            log.info("held a newer file for report %s (%s)", rep.id, rep.protected)
+            held += 1
+            continue
+
         replaced = rep is not None
         if rep is None:
             rep = Report(batch_id=batch.id, period=meta.get("period") or batch.period)
@@ -283,6 +312,12 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
             rep.reviewed_at = None
             log.info("superseded report %s for %s %s", rep.id, rep.client, rep.period)
 
+        # Now it can take its real name: either this is a new report, or it is
+        # superseding one nobody had claimed.
+        final = store / safe
+        if path != final:
+            path.replace(final)
+            path = final
         rep.filename = name
         rep.stored_path = str(path)
         rep.client = meta.get("client", "") or rep.client

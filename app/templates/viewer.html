@@ -147,6 +147,31 @@
         {{ rep.reviewed_at|et('%b %-d at %-I:%M %p') }}.</p>
     {% endif %}
 
+    {% if rep.has_pending %}
+      {# It is waiting rather than applied because overwriting this report
+         would have thrown away a sign-off or somebody's manual upload without
+         asking. One of the two has to happen deliberately. #}
+      <h2 style="margin-top:22px">A newer file arrived</h2>
+      <div class="pending">
+        <p><b>{{ rep.pending_name }}</b><br>
+          <span class="acct">arrived {{ rep.pending_at|et('%b %-d at %-I:%M %p') }}</span></p>
+        <p class="sub" style="font-size:12px;margin:6px 0 10px">
+          This report was {{ rep.protected }}, so it was not overwritten.
+          <a href="/report/{{ rep.id }}/pending/file" target="_blank">Open the new file</a>
+          before you decide.</p>
+        <div class="verdicts">
+          <form method="post" action="/report/{{ rep.id }}/pending/accept">
+            <button class="mini ok"
+                    title="Replace this report with the new file and re-run every check. The sign-off resets.">Use the new file</button>
+          </form>
+          <form method="post" action="/report/{{ rep.id }}/pending/discard">
+            <button class="mini"
+                    title="Throw the new file away and keep this one.">Keep this one</button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+
     <h2 style="margin-top:22px">Re-run the checks</h2>
     {% if stale %}
       <p class="sub" style="font-size:12px;margin:0 0 8px;color:var(--warn)">
@@ -323,6 +348,10 @@ details[open] > .cksum::before{content:'▾ '}
  border-radius:5px;overflow-wrap:anywhere}
 .drop.has .dtext{color:var(--ink);font-weight:600}
 
+.pending{border:1px solid var(--warn);background:var(--warn-bg,var(--atlas-10));
+ border-radius:11px;padding:12px 14px}
+.pending p{margin:0;font-size:13px}
+.pending .verdicts form{margin:0;display:inline-flex}
 .signoff{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .verdicts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .signoff input{font:inherit;font-size:13px;padding:6px 11px;border:1px solid var(--line);

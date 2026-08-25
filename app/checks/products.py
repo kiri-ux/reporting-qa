@@ -67,6 +67,8 @@ ORDER_PRODUCT_MAP = {
     "video ads": "Video",
     "online audio ads": "Online Audio",
     "connected tv ads": "CTV",
+    "connected tv": "CTV",
+    "ctv": "CTV",
     "amazon premium ctv + video ads": "CTV",
     "youtube video ads": "YouTube",
     # All three are the YouTube section of the report. Without them the
@@ -78,7 +80,14 @@ ORDER_PRODUCT_MAP = {
     "pay-per-click ads": "PPC",
     "performance max ads": "Performance Max",
     "tiktok ads": "TikTok",
+    # The IO tool writes this one as "Digital Out-Of-Home (DOOH) Display &
+    # Video Ads". Hyphens, brackets, and a "Display & Video Ads" tail that the
+    # generic Video key matched first - so a billboard order came through as
+    # Video, the report's DOOH read as a product with no live order, and Video
+    # was counted twice over.
     "digital out of home ads": "DOOH",
+    "digital out of home": "DOOH",
+    "dooh": "DOOH",
     "live chat": "Live Chat",
     "seo": "SEO",
 }
@@ -86,6 +95,18 @@ ORDER_PRODUCT_MAP = {
 # Products that never appear in the standard monthly report, so their absence is
 # not a finding. SEO is delivered as its own report.
 NOT_IN_MONTHLY_REPORT = {"SEO"}
+
+
+PUNCT = re.compile(r"[^a-z0-9+]+")
+
+
+def _flat(s: str) -> str:
+    """Lowercase, punctuation to single spaces.
+
+    "Digital Out-Of-Home (DOOH) Display & Video Ads" and "digital out of home"
+    only meet each other once the hyphens and brackets are gone.
+    """
+    return PUNCT.sub(" ", (s or "").lower()).strip()
 
 
 def map_order_product(name: str) -> str | None:
@@ -101,15 +122,33 @@ def map_order_product(name: str) -> str | None:
     on whole words. "video ads" no longer wins inside "youtube+ video ads",
     because "youtube+ video ads" is longer and is tried first.
     """
-    key = re.sub(r"\s+", " ", (name or "").strip().lower())
+    key = _flat(name)
     if not key:
         return None
-    if key in ORDER_PRODUCT_MAP:
-        return ORDER_PRODUCT_MAP[key]
-    for order_name in sorted(ORDER_PRODUCT_MAP, key=len, reverse=True):
-        if _whole(order_name, key) or _whole(key, order_name):
-            return ORDER_PRODUCT_MAP[order_name]
-    return None
+    flat = {_flat(k): v for k, v in ORDER_PRODUCT_MAP.items()}
+    if key in flat:
+        return flat[key]
+    # Earliest match wins, longest breaks the tie. Specificity is not length:
+    # "DOOH Display & Video Ads" contains both "dooh" and "video ads", and
+    # sorting by length alone handed a billboard order to Video. The product
+    # leads the name; "Display & Video Ads" is the format that follows it.
+    best = None
+    for order_name in flat:
+        at = _at(order_name, key)
+        if at is None:
+            at = 0 if _whole(key, order_name) else None
+        if at is None:
+            continue
+        rank = (at, -len(order_name))
+        if best is None or rank < best[0]:
+            best = (rank, flat[order_name])
+    return best[1] if best else None
+
+
+def _at(needle: str, haystack: str):
+    """Where `needle` starts in `haystack` on word boundaries, or None."""
+    m = re.search(r"(?<![a-z0-9])" + re.escape(needle) + r"(?![a-z0-9])", haystack)
+    return m.start() if m else None
 
 
 def _whole(needle: str, haystack: str) -> bool:

@@ -12,11 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-35"
-BUILD_NOTES = ("The Not received tile now says how long the rest will take, "
-               "worked out from how fast reports are actually arriving, with "
-               "every window it measured on show so you can judge the estimate "
-               "rather than take it.")
+BUILD = "2026.08.25-36"
+BUILD_NOTES = ("You can now upload a report by hand against an order that is "
+               "still waiting, and the feed no longer overwrites a report you "
+               "signed off or uploaded yourself - the new file waits for you to "
+               "pick. Also: YouTube clicks are no longer excluded from the "
+               "clicks total, and DOOH orders read as DOOH instead of Video.")
 # ---------------------------------------------------------------------------
 
 
