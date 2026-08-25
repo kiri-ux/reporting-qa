@@ -335,10 +335,16 @@ def report_file(report_id: int, db: Session = Depends(get_db)):
     rep = db.get(Report, report_id)
     if not rep or not rep.stored_path or not Path(rep.stored_path).exists():
         raise HTTPException(404)
-    # inline, not attachment: these get looked at far more often than saved
+    # inline, not attachment: these get looked at far more often than saved.
+    #
+    # And never cached. The URL does not change when a corrected PDF replaces
+    # the old one, so the browser kept showing the file that had just been
+    # fixed - findings updated, page did not.
     return FileResponse(rep.stored_path, media_type="application/pdf",
                         headers={"Content-Disposition":
-                                 f'inline; filename="{rep.filename}"'})
+                                 f'inline; filename="{rep.filename}"',
+                                 "Cache-Control": "no-store, must-revalidate",
+                                 "Pragma": "no-cache"})
 
 
 # ---------------------------------------------------------------- manual paths
@@ -786,6 +792,60 @@ def ack_finding(report_id: int, request: Request, index: int = Form(...),
     return RedirectResponse(back, status_code=303)
 
 
+def file_token(rep) -> str:
+    """A token that changes when the stored PDF does.
+
+    The viewer embeds /report/<id>/file, and that URL is identical before and
+    after a replacement - so the browser showed the old file next to the new
+    findings until somebody hard-refreshed.
+    """
+    if not rep.stored_path:
+        return "0"                  # Path("") stats the working directory
+    try:
+        st = Path(rep.stored_path).stat()
+        return f"{int(st.st_mtime)}-{st.st_size}"
+    except OSError:
+        return "0"
+
+
+def canonical_filename(rep) -> str:
+    """The name this report should be filed under.
+
+    Its own, with any "(1)" or " copy" a browser added stripped off - those
+    made "Service One Credit Union (1)" a different client from "Service One
+    Credit Union", so the corrected file filed itself as a new report instead
+    of replacing the one it corrects.
+    """
+    from .checks.parser import DUPLICATE_SUFFIX
+    name = (rep.filename or f"report-{rep.id}.pdf").strip()
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, "pdf"
+    clean = DUPLICATE_SUFFIX.sub("", stem).strip()
+    return f"{clean or f'report-{rep.id}'}.{ext or 'pdf'}"
+
+
+def _names_another_report(rep, uploaded: str) -> str:
+    """A refusal message if the uploaded file is named for a different report.
+
+    Only when the name actually carries order ids and none of them are this
+    report's. "download.pdf" says nothing about which client it is, and
+    refusing it would defeat the point.
+    """
+    if not uploaded:
+        return ""
+    from .checks.parser import meta_from_filename
+    meta = meta_from_filename(uploaded)
+    ids = {i for i in (meta.get("account_ids") or "").split() if i}
+    mine = {i for i in (rep.account_ids or "").replace(",", " ").split() if i}
+    if not ids or not mine or (ids & mine):
+        return ""
+    return (f"That file is named for order {', '.join(sorted(ids))}, and this "
+            f"report is order {', '.join(sorted(mine))} - "
+            f"{rep.client}. Open the right report, or rename the file if the "
+            f"name is the thing that is wrong.")
+
+
 @app.post("/report/{report_id}/replace")
 async def replace_report(report_id: int, request: Request,
                          file: UploadFile = File(...), who: str = Form(""),
@@ -810,11 +870,23 @@ async def replace_report(report_id: int, request: Request,
     if not blob[:5] == b"%PDF-":
         raise HTTPException(400, "That is not a PDF.")
 
+    # Whatever the file is called on your machine, it is filed under the name
+    # this report already has. A corrected copy comes back as "... (1).pdf" or
+    # "download.pdf" or whatever Acrobat felt like, and none of that should
+    # decide which client the report belongs to.
+    #
+    # The one thing worth objecting to is a file named for a DIFFERENT report,
+    # because replacing the wrong one silently is the expensive mistake here.
+    wrong = _names_another_report(rep, file.filename or "")
+    if wrong:
+        raise HTTPException(400, wrong)
+
+    rep.filename = canonical_filename(rep)
     path = Path(rep.stored_path) if rep.stored_path else None
     if path is None:
         store = settings.data_dir / f"batch-{rep.batch_id}"
         store.mkdir(parents=True, exist_ok=True)
-        path = store / (rep.filename or f"report-{rep.id}.pdf")
+        path = store / rep.filename
     path.write_bytes(blob)
 
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
@@ -862,6 +934,11 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     return templates.TemplateResponse(request, "viewer.html",
                                       {"nav": "cycle", "rep": rep,
                                        "skip_why": SKIP_WHY,
+                                       "saved_as": canonical_filename(rep),
+                                       # Changes when the file does, so the
+                                       # embedded viewer cannot show a copy it
+                                       # cached before the replacement.
+                                       "file_v": file_token(rep),
                                        "stale": bool(rep.rules_version)
                                        and rep.rules_version != rules_version()})
 

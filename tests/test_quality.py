@@ -718,3 +718,81 @@ def test_pdf_pages_reads_the_whole_document_in_one_call():
     pages = pdf_pages(f)
     assert len(pages) == page_count(f)
     assert "Watsontown" in "".join(pages)
+
+
+# --------------------------------------------------- replacing a report's file
+def test_a_replacement_is_filed_under_the_reports_own_name():
+    """Whatever Acrobat or the browser called it. "(1)" and " copy" are the
+    machine's business, not a client name."""
+    from app.main import canonical_filename
+
+    class R:
+        id = 1
+        account_ids = "52750, 52753"
+        client = "Service One Credit Union"
+        filename = "July 2026_Service One Credit Union 52750 52753 (1).pdf"
+
+    r = R()
+    assert canonical_filename(r) == "July 2026_Service One Credit Union 52750 52753.pdf"
+    r.filename = "July 2026_Awaken Bakery 52746 copy 2.pdf"
+    assert canonical_filename(r) == "July 2026_Awaken Bakery 52746.pdf"
+    r.filename = None
+    assert canonical_filename(r) == "report-1.pdf"
+
+
+def test_any_upload_name_is_accepted():
+    """The point of the field: bring back whatever came out of Acrobat."""
+    from app.main import _names_another_report
+
+    class R:
+        account_ids = "52750, 52753"
+        client = "Service One Credit Union"
+
+    for name in ("download.pdf", "Corrected.pdf", "",
+                 "July 2026_Service One Credit Union 52750 52753 (1).pdf",
+                 "July 2026_Service One 52753.pdf"):
+        assert _names_another_report(R(), name) == "", name
+
+
+def test_a_file_named_for_a_different_order_is_refused():
+    """Replacing the wrong report silently is the expensive mistake here."""
+    from app.main import _names_another_report
+
+    class R:
+        account_ids = "52750, 52753"
+        client = "Service One Credit Union"
+
+    msg = _names_another_report(R(), "July 2026_Awaken Bakery 52746.pdf")
+    assert "52746" in msg and "Service One Credit Union" in msg
+
+
+def test_the_viewer_url_changes_when_the_file_does():
+    """The URL is identical before and after a replacement, so the browser kept
+    showing the file that had just been fixed - findings updated, page did not.
+    """
+    import time
+    from pathlib import Path as _P
+    from app.main import file_token
+
+    class R:
+        stored_path = ""
+
+    r = R()
+    assert file_token(r) == "0"                     # nothing stored yet
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        f = _P(d) / "a.pdf"
+        f.write_bytes(b"%PDF-1.4 one")
+        r.stored_path = str(f)
+        first = file_token(r)
+        time.sleep(1.05)                            # mtime has one-second grain
+        f.write_bytes(b"%PDF-1.4 a different length of file")
+        assert file_token(r) != first
+
+
+def test_the_pdf_is_served_uncacheable():
+    import inspect
+    from app import main
+    src = inspect.getsource(main.report_file)
+    assert "no-store" in src

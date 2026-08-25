@@ -12,11 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-33"
-BUILD_NOTES = ("Re-check progress lives in the database, so both workers see "
-               "it and a job that stopped says so instead of sitting on '0 of "
-               "6' forever. Findings carry a page pill saying where to look, "
-               "and lost the paragraph explaining what they already mean.")
+BUILD = "2026.08.25-34"
+BUILD_NOTES = ("A replacement is filed under the report's own name whatever "
+               "the file is called on your machine, and the viewer stops "
+               "showing the copy it cached before the replacement. A file "
+               "named for a different order is refused rather than silently "
+               "replacing the wrong report.")
 # ---------------------------------------------------------------------------
 
 

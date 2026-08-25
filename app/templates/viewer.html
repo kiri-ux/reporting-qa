@@ -18,7 +18,7 @@
   {% endif %}
   {% if rep.is_lifetime %}<span class="pill p-info">lifetime</span>{% endif %}
   <span class="pill p-{{ rep.board_state }}">{{ rep.board_state|replace('_',' ')|title }}</span>
-  <a class="btn" href="/report/{{ rep.id }}/file" download="{{ rep.filename }}">Download</a>
+  <a class="btn" href="/report/{{ rep.id }}/file?v={{ file_v }}" download="{{ rep.filename }}">Download</a>
 </div>
 
 {# Side by side. Stacked, the findings pushed the report below the fold and
@@ -175,6 +175,10 @@
         </svg>
         <span class="dtext">Drop the corrected PDF here, or <u>choose a file</u></span>
       </label>
+      {# What it will be called once it is here, so nobody has to wonder
+         whether "(1)" or "download.pdf" matters. It does not. #}
+      <p class="sub asname">Saved as <code>{{ saved_as }}</code> whatever the
+        file is called on your machine.</p>
       <button class="mini" type="submit" title="Re-runs every check. Accepted findings and the sign-off reset, since they described the old file. Your note is kept.">Upload the corrected PDF</button>
     </form>
 
@@ -192,11 +196,11 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
     {% if rep.stored_path %}
       {# The browser's own viewer. No library to load, and it prints, searches
          and scrolls the way people already expect a PDF to. #}
-      <object data="/report/{{ rep.id }}/file#zoom=page-width" type="application/pdf">
+      <object data="/report/{{ rep.id }}/file?v={{ file_v }}#zoom=page-width" type="application/pdf">
         <div class="panel">
           <h3>Your browser will not display PDFs inline</h3>
           <p class="sub">Some browsers, and most mobile ones, refuse to embed a PDF.</p>
-          <p><a class="btn" href="/report/{{ rep.id }}/file" target="_blank"
+          <p><a class="btn" href="/report/{{ rep.id }}/file?v={{ file_v }}" target="_blank"
                 rel="noopener">Open it in a new tab</a></p>
         </div>
       </object>
@@ -314,6 +318,9 @@ details[open] > .cksum::before{content:'▾ '}
 .drop input[type=file]{position:absolute;width:1px;height:1px;opacity:0;
  pointer-events:none}
 .dtext{font-size:13px}
+.asname{font-size:11.5px;margin:6px 0 0;max-width:46ch}
+.asname code{font-size:11px;background:var(--atlas-10);padding:1px 5px;
+ border-radius:5px;overflow-wrap:anywhere}
 .drop.has .dtext{color:var(--ink);font-weight:600}
 
 .signoff{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
