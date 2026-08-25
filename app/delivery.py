@@ -24,6 +24,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from .board import Expected, GroupRow, by_group
+from .folder_match import best as pick_folder
 from .config import settings
 from .db import Delivery
 
@@ -102,6 +103,35 @@ def _drive_credentials():
         "service account keys, GOOGLE_SERVICE_ACCOUNT_JSON).")
 
 
+def _list_folders(svc, parent: str) -> dict[str, str]:
+    """Every folder under `parent`, name -> id."""
+    q = (f"'{parent}' in parents and mimeType = "
+         f"'application/vnd.google-apps.folder' and trashed = false")
+    out, token = {}, None
+    while True:
+        kw = dict(q=q, fields="nextPageToken, files(id, name)", pageSize=1000,
+                  supportsAllDrives=True, includeItemsFromAllDrives=True,
+                  corpora="allDrives")
+        if token:
+            kw["pageToken"] = token
+        page = svc.files().list(**kw).execute()
+        for f in page.get("files", []):
+            out[f["name"]] = f["id"]
+        token = page.get("nextPageToken")
+        if not token:
+            break
+    return out
+
+
+def _has_files(svc, folder_id: str) -> bool:
+    q = (f"'{folder_id}' in parents and trashed = false and "
+         f"mimeType != 'application/vnd.google-apps.folder'")
+    return bool(svc.files().list(q=q, fields="files(id)", pageSize=1,
+                                 supportsAllDrives=True,
+                                 includeItemsFromAllDrives=True,
+                                 corpora="allDrives").execute().get("files"))
+
+
 def _drive_folder(svc, name: str, parent: str) -> str:
     """Find a folder by name under `parent`, or make one.
 
@@ -171,9 +201,40 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
             log.warning("no stored file for %s / %s", e.market, e.client)
             continue
         if e.market not in market_folders:
-            market_folders[e.market] = _drive_folder(svc, e.market, parent)
-            cycle_folders[e.market] = _drive_folder(svc, cycle_label,
-                                                    market_folders[e.market])
+            # MATCH THE FOLDER THAT IS ALREADY THERE.
+            #
+            # The drive's folders were named by hand over ten years and do not
+            # match the roster exactly - "Results Media Solutions Chico" lives
+            # in "Results Radio Chico". Matching refuses rather than guesses,
+            # so an unmatched partner gets a new folder under its own name
+            # instead of its reports landing in a sibling's.
+            existing = _list_folders(svc, parent)
+            hit, why = pick_folder(e.market, existing)
+            log.info("drive: %s -> %s", e.market, why)
+            market_folders[e.market] = (existing[hit] if hit
+                                        else _drive_folder(svc, e.market, parent))
+
+            # A cycle folder that already holds files means this month has
+            # already gone out. Re-sending corrected reports into it would
+            # overwrite what the partner has already seen, so revisions go in
+            # their own subfolder and the original stays intact.
+            cyc_id = _drive_folder(svc, cycle_label, market_folders[e.market])
+            if _has_files(svc, cyc_id):
+                inner = _list_folders(svc, cyc_id)
+                n = 2
+                while True:
+                    name = f"v{n} updates"
+                    fid = inner.get(name)
+                    if fid is None:
+                        cyc_id = _drive_folder(svc, name, cyc_id)
+                        break
+                    if not _has_files(svc, fid):
+                        cyc_id = fid
+                        break
+                    n += 1
+                log.info("drive: %s %s already delivered, using v%d", e.market,
+                         cycle_label, n)
+            cycle_folders[e.market] = cyc_id
         suffix = " - Lifetime" if e.kind == "lifetime" else ""
         name = f"{_safe(e.client)}{suffix}.pdf"
         dest = cycle_folders[e.market]
@@ -213,8 +274,13 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
 
 # ---------------------------------------------------------------- Dropbox
 def upload_dropbox_folder(group, period: str, cycle_label: str) -> tuple[str, str, int]:
-    """Same tree as Drive: <base>/<Market>/<cycle>/<Client>.pdf, share the
-    cycle folder."""
+    """A zip per market, flat in one Dropbox folder.
+
+    Unlike Drive, 7 Mountains keep everything in a single folder named by the
+    zip itself - "7 Mountains KY August reports.zip" beside "7 Mountains Media
+    PA January 2026 Reports.zip". So this builds one zip and shares the FILE,
+    rather than making a folder tree nobody there uses.
+    """
     import dropbox
     from dropbox.files import WriteMode
     from dropbox.sharing import SharedLinkSettings, RequestedVisibility
@@ -230,47 +296,40 @@ def upload_dropbox_folder(group, period: str, cycle_label: str) -> tuple[str, st
     dbx = dropbox.Dropbox(app_key=app_key, app_secret=app_secret,
                           oauth2_refresh_token=refresh)
 
+    tmp = settings.data_dir / "deliveries" / period
+    path, n = build_zip(group, period, tmp)
+    if n == 0:
+        raise RuntimeError("Nothing to upload - no report has a stored PDF.")
+
     base = settings.dropbox_folder.strip().rstrip("/")
     if base and not base.startswith("/"):
         base = "/" + base
+    month = dt.date.fromisoformat(period + "-01").strftime("%B %Y")
+    dest = f"{base}/{_safe(group.group)} {month} Reports.zip"
 
-    n, folders = 0, {}
-    for e in group.expected:
-        r = e.report
-        if not r or not r.stored_path or not Path(r.stored_path).exists():
-            continue
-        folder = f"{base}/{_safe(e.market)}/{cycle_label}"
-        folders[e.market] = folder
-        suffix = " - Lifetime" if e.kind == "lifetime" else ""
-        dest = f"{folder}/{_safe(e.client)}{suffix}.pdf"
-        data = Path(r.stored_path).read_bytes()
-        # 150 MB is Dropbox's single-request ceiling. A report is a fraction of
-        # that, so anything near it is a bug worth surfacing rather than
-        # silently chunking around.
-        if len(data) > 140 * 1024 * 1024:
-            raise RuntimeError(f"{dest} is {len(data) / 1048576:.0f} MB, which is "
-                               f"too large for one upload and far larger than a "
-                               f"report should ever be.")
-        dbx.files_upload(data, dest, mode=WriteMode("overwrite"))
-        n += 1
+    data = path.read_bytes()
+    # 150 MB is Dropbox's single-request ceiling. A market's reports are a
+    # fraction of that, so anything near it is a bug worth surfacing rather
+    # than silently chunking around.
+    if len(data) > 140 * 1024 * 1024:
+        raise RuntimeError(f"{dest} is {len(data) / 1048576:.0f} MB, which is too "
+                           f"large for one upload and far larger than a month of "
+                           f"reports should ever be.")
+    dbx.files_upload(data, dest, mode=WriteMode("overwrite"))
 
-    if not folders:
-        raise RuntimeError("Nothing to upload - no report has a stored PDF.")
-
-    share = list(folders.values())[0]
     try:
         link = dbx.sharing_create_shared_link_with_settings(
-            share, SharedLinkSettings(
+            dest, SharedLinkSettings(
                 requested_visibility=RequestedVisibility.public)).url
     except Exception:
         # Already shared: Dropbox refuses to mint a second link, so read the
         # existing one rather than treating this as a failure.
-        links = dbx.sharing_list_shared_links(path=share, direct_only=True).links
+        links = dbx.sharing_list_shared_links(path=dest, direct_only=True).links
         if not links:
             raise
         link = links[0].url
-    return link, (f"{n} report{'s' if n != 1 else ''} filed under "
-                  f"{share}, folder shared by link."), n
+    return link, (f"{n} report{'s' if n != 1 else ''} zipped to {dest}, "
+                  f"public link created."), n
 
 
 # ---------------------------------------------------------------- orchestration

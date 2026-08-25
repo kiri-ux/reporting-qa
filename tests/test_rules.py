@@ -1511,3 +1511,244 @@ def test_replacing_a_pdf_rechecks_it_and_resets_sign_off(tmp_path, monkeypatch):
                  files={"file": ("notes.txt", b"hello", "text/plain")},
                  follow_redirects=False)
     assert bad.status_code == 400
+
+
+def test_folder_matching_refuses_to_guess_between_siblings():
+    """The dangerous failure is not a missed match - that just creates a new
+    folder. It is matching the WRONG one, which files a client's reports in
+    another client's folder where nobody looks for them."""
+    from app.folder_match import best
+
+    drive = {n: n for n in [
+        "Summit Media Knoxville", "Summit Media Wichita", "Summit Media Honolulu",
+        "Summit Media Louisville", "Summit Media Birmingham", "Summit Media Richmond",
+        "Lotus Boise", "Lotus Reno", "Lotus Fresno", "Lotus Tucson", "Lotus Las Vegas",
+        "Woof Boom Lima, OH", "Woof Boom Muncie, IN",
+        "Sarkes Tarzian Bloomington", "Sarkes Tarzian Indianapolis",
+        "Sarkes Tarzian Ft. Wayne",
+        "Original Company Central", "Original Company North", "Original Company South",
+        "Results Radio Chico", "Results Radio Redding", "Results Radio Sacramento",
+        "Results Radio Yuba-Marysville",
+        "Stephens Media Group Merced, CA (previously Mapleton)",
+        "Stephens Media Group Monroe, LA (previously Lagniappe)",
+        "Black Diamond Broadcasting Traverse City", "Moxii", "Cape Cod Broadcasting",
+        "7 Mountains PA", "7 Mountains PA State College", "7 Mountains PA Selinsgrove",
+    ]}
+
+    # --- the folder is named differently but is unmistakably the same partner
+    for partner, want in [
+        ("Results Media Solutions Chico", "Results Radio Chico"),
+        ("Results Media Solutions Redding", "Results Radio Redding"),
+        ("Results Media Solutions Yuba-Marysville", "Results Radio Yuba-Marysville"),
+        ("Black Diamond Traverse City", "Black Diamond Broadcasting Traverse City"),
+        ("Stephens Merced, CA", "Stephens Media Group Merced, CA (previously Mapleton)"),
+        ("Moxi", "Moxii"),
+        ("7 Mountains PA State College", "7 Mountains PA State College"),
+    ]:
+        got, why = best(partner, drive)
+        assert got == want, f"{partner!r} -> {got!r} ({why}), wanted {want!r}"
+
+    # --- siblings that share everything but the city must NEVER cross over
+    for partner in ["Summit Media Nashville", "Lotus Denver", "Woof Boom Toledo, OH",
+                    "Sarkes Tarzian Evansville", "Original Company East",
+                    "Results Media Solutions Fresno", "Stephens Media Group Tulsa, OK"]:
+        got, why = best(partner, drive)
+        assert got is None, f"{partner!r} wrongly matched {got!r} ({why})"
+
+    # --- a partner with no folder at all
+    assert best("Awaken Bakery", drive)[0] is None
+    assert best("Cape Cod Broadcasting", drive)[0] == "Cape Cod Broadcasting"
+
+    # --- two folders that fit equally well are refused rather than picked
+    tie = {"Acme Marketing Denver": "1", "Acme Advertising Denver": "2"}
+    got, why = best("Acme Denver", tie)
+    assert got is None and "ambiguous" in why, why
+
+
+def test_folder_matching_never_mismatches_the_real_roster():
+    """Run the whole roster against the real folder list. Any match that is
+    not a genuine rename is a bug that misfiles a client."""
+    import csv as _csv
+    from app.folder_match import best
+    from app.partners import SEED
+
+    drive = {n: n for n in [
+        "7 Mountains PA", "7 Mountains PA State College", "7 Mountains PA Selinsgrove",
+        "Summit Media Knoxville", "Summit Media Wichita", "Summit Media Honolulu",
+        "Summit Media Louisville", "Summit Media Birmingham", "Summit Media Richmond",
+        "Lotus Boise", "Lotus Reno", "Lotus Fresno", "Lotus Tucson", "Lotus Las Vegas",
+        "Woof Boom Lima, OH", "Woof Boom Muncie, IN", "Moxii", "Cape Cod Broadcasting",
+        "Sarkes Tarzian Bloomington", "Sarkes Tarzian Indianapolis",
+        "Sarkes Tarzian Ft. Wayne", "Original Company Central", "Original Company North",
+        "Original Company South", "Results Radio Chico", "Results Radio Redding",
+        "Results Radio Sacramento", "Results Radio Yuba-Marysville", "Whitfield Media",
+        "A-Train Marketing", "Curio Haus", "Vici Direct", "Manning Media",
+    ]}
+    expected_renames = {
+        "Results Media Solutions Chico": "Results Radio Chico",
+        "Results Media Solutions Redding": "Results Radio Redding",
+        "Results Media Solutions Sacramento": "Results Radio Sacramento",
+        "Results Media Solutions Yuba-Marysville": "Results Radio Yuba-Marysville",
+    }
+    for row in _csv.DictReader(SEED.open(encoding="utf-8-sig")):
+        p = row["partner"]
+        got, why = best(p, drive)
+        if got is None:
+            continue
+        if got.strip().lower() == p.strip().lower():
+            continue                       # exact, fine
+        assert expected_renames.get(p) == got, (
+            f"{p!r} matched {got!r} ({why}) - not a known rename")
+
+
+def test_a_month_already_delivered_goes_into_a_v2_folder(monkeypatch, tmp_path):
+    """July already went out. Corrected reports must not overwrite what the
+    partner has already seen, so a revision lands in its own subfolder and the
+    original stays intact. A month that has never been delivered just uses the
+    cycle folder."""
+    import importlib
+    from app import delivery as dmod
+    importlib.reload(dmod)
+    from app import board as bmod, db as db_mod
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
+
+    folders = {("PARENT", "7 Mountains KY"): "MKT"}
+    files: dict[str, set] = {}
+    shared, counter = [], {"n": 0}
+
+    class FakeFiles:
+        def list(self, q="", **kw):
+            self._q = q; return self
+
+        def create(self, body=None, media_body=None, **kw):
+            counter["n"] += 1
+            new_id = f"ID{counter['n']}"
+            parent = body["parents"][0]
+            if body.get("mimeType", "").endswith("folder"):
+                folders[(parent, body["name"])] = new_id
+            else:
+                files.setdefault(parent, set()).add(body["name"])
+            self._r = {"id": new_id}; return self
+
+        def update(self, fileId=None, **kw):
+            self._r = {"id": fileId}; return self
+
+        def execute(self):
+            if hasattr(self, "_r"):
+                r = self._r; del self._r; return r
+            q, parent = self._q, self._q.split("'")[1]
+            if "!=" in q:                       # "does this folder hold files"
+                return {"files": [{"id": "f"}] if files.get(parent) else []}
+            if "folder" in q:
+                return {"files": [{"id": i, "name": n}
+                                  for (p, n), i in folders.items() if p == parent]}
+            name = q.split("name = '")[1].split("'")[0]
+            return {"files": [{"id": "x"}] if name in files.get(parent, set()) else []}
+
+    class FakePerms:
+        def create(self, fileId=None, **kw): shared.append(fileId); return self
+        def execute(self): return {}
+
+    class FakeSvc:
+        def files(self): return FakeFiles()
+        def permissions(self): return FakePerms()
+
+    monkeypatch.setattr(dmod, "_drive_credentials", lambda: object())
+    import googleapiclient.discovery as disc, googleapiclient.http as ghttp
+    monkeypatch.setattr(disc, "build", lambda *a, **k: FakeSvc())
+    monkeypatch.setattr(ghttp, "MediaFileUpload", lambda *a, **k: object())
+    monkeypatch.setattr(dmod.settings, "drive_parent_folder_id", "PARENT")
+
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+    group = GroupRow("7 Mountains KY", "drive", [
+        Expected(market="7 Mountains KY", group="7 Mountains KY", client="Awaken Bakery",
+                 kind="monthly", report=Report(severity="pass", review_state="reviewed",
+                                               findings=[], stored_path=str(pdf)))])
+
+    # --- first delivery: straight into the cycle folder
+    url, msg, n = dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
+    july = folders[("MKT", "2026-07 July")]
+    assert n == 1 and shared == [july]
+    assert "Awaken Bakery.pdf" in files[july]
+    assert ("MKT", "v2 updates") not in folders, "made a v2 on a fresh month"
+
+    # --- re-deliver: July already holds files, so this is a revision
+    shared.clear()
+    url2, msg2, _ = dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
+    v2 = folders[(july, "v2 updates")]
+    assert shared == [v2], "the shared link should point at the revision folder"
+    assert "Awaken Bakery.pdf" in files[v2]
+    assert files[july] == {"Awaken Bakery.pdf"}, "the original was disturbed"
+    assert url2.endswith(v2)
+
+    # --- and again: v2 now has files too, so v3
+    shared.clear()
+    dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
+    v3 = folders[(july, "v3 updates")]
+    assert shared == [v3]
+    assert "Awaken Bakery.pdf" in files[v3]
+
+
+def test_drive_reuses_a_folder_named_differently(monkeypatch, tmp_path):
+    """Results Media Solutions Chico lives in a folder called Results Radio
+    Chico. Creating a second folder under the roster name would split ten
+    years of history in two."""
+    import importlib
+    from app import delivery as dmod
+    importlib.reload(dmod)
+    from app import board as bmod, db as db_mod
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
+
+    folders = {("PARENT", "Results Radio Chico"): "OLD",
+               ("PARENT", "Results Radio Redding"): "OTHER"}
+    files: dict[str, set] = {}
+    counter = {"n": 0}
+
+    class FakeFiles:
+        def list(self, q="", **kw): self._q = q; return self
+        def create(self, body=None, media_body=None, **kw):
+            counter["n"] += 1
+            i = f"ID{counter['n']}"; p = body["parents"][0]
+            if body.get("mimeType", "").endswith("folder"):
+                folders[(p, body["name"])] = i
+            else:
+                files.setdefault(p, set()).add(body["name"])
+            self._r = {"id": i}; return self
+        def update(self, fileId=None, **kw): self._r = {"id": fileId}; return self
+        def execute(self):
+            if hasattr(self, "_r"):
+                r = self._r; del self._r; return r
+            q, parent = self._q, self._q.split("'")[1]
+            if "!=" in q:
+                return {"files": [{"id": "f"}] if files.get(parent) else []}
+            if "folder" in q:
+                return {"files": [{"id": i, "name": n}
+                                  for (p, n), i in folders.items() if p == parent]}
+            return {"files": []}
+
+    class FakeSvc:
+        def files(self): return FakeFiles()
+        def permissions(self):
+            class P:
+                def create(self, **kw): return self
+                def execute(self): return {}
+            return P()
+
+    monkeypatch.setattr(dmod, "_drive_credentials", lambda: object())
+    import googleapiclient.discovery as disc, googleapiclient.http as ghttp
+    monkeypatch.setattr(disc, "build", lambda *a, **k: FakeSvc())
+    monkeypatch.setattr(ghttp, "MediaFileUpload", lambda *a, **k: object())
+    monkeypatch.setattr(dmod.settings, "drive_parent_folder_id", "PARENT")
+
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+    group = GroupRow("Results Media Solutions Chico", "drive", [
+        Expected(market="Results Media Solutions Chico",
+                 group="Results Media Solutions Chico", client="A Client",
+                 kind="monthly", report=Report(severity="pass", review_state="reviewed",
+                                               findings=[], stored_path=str(pdf)))])
+    dmod.upload_drive_folder(group, "2026-08", "2026-08 August")
+
+    assert ("PARENT", "Results Media Solutions Chico") not in folders, \
+        "created a duplicate folder instead of using the one already there"
+    assert ("OLD", "2026-08 August") in folders, "filed under the wrong partner"
+    assert "OTHER" not in [p for (p, _) in folders]
