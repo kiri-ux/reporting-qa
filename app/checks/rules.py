@@ -251,13 +251,21 @@ def check_line_items(ctx) -> list[dict]:
     # leave out CTV, OTT, YouTube and PMax. So the question is not whether the
     # two numbers differ but how much of the difference those products explain,
     # and whether what is left over is worth anybody's time.
-    excl = sum(r[2] for r in rows if CTR_EXCLUDED.search(r[0]))
+    excluded = [r for r in rows if CTR_EXCLUDED.search(r[0])]
+    excl = sum(r[2] for r in excluded)
     unexplained = gap - excl
     ctrace = [("Top-line clicks", f"{clicks:,.0f}"),
               ("Line items counted", f"{len(rows)}"),
               ("Their clicks", f"{sc:,.0f}"),
               ("Difference", f"{gap:+,.0f} clicks"),
               ("Clicks on CTV / OTT / YouTube / PMax line items", f"{excl:,.0f}"),
+              # Named, not just totalled. A remainder of eight clicks is only
+              # findable if you can see which lines were taken out and for how
+              # much - the total on its own says "trust me".
+              ("Which lines those are",
+               "; ".join(f"{_short_name(n, 44)}: {c:,.0f}"
+                         for n, _i, c in sorted(excluded, key=lambda r: -r[2]))
+               or "none"),
               ("Left unexplained", f"{unexplained:+,.0f} clicks")]
 
     # Material is measured against the campaign, not against the excluded
@@ -266,16 +274,28 @@ def check_line_items(ctx) -> list[dict]:
     material = max(5.0, clicks * 0.005)
     if abs(gap) <= max(2.0, clicks * 0.005):
         return out
-    if abs(unexplained) <= material:
+    if unexplained == 0:
         out.append(_f("clicks_exclude_products", "info",
                       "The top-line clicks leave CTV, YouTube and PMax out",
                       f"Line items total {sc:,.0f} clicks against a stated "
                       f"{clicks:,.0f}. The CTV, OTT, YouTube and PMax line items "
                       f"carry {excl:,.0f} clicks, which that tile excludes and "
-                      f"which accounts for "
-                      + ("all of the " if unexplained == 0 else
-                         f"all but {abs(unexplained):,.0f} of the ")
-                      + f"{abs(gap):,.0f} difference. Expected.", ctrace))
+                      f"which accounts for all {abs(gap):,.0f} of the "
+                      f"difference. Expected.", ctrace))
+    elif abs(unexplained) <= material:
+        # Small, but not nothing. Saying "expected" would be a claim the
+        # arithmetic does not support, and the remainder is worth a look even
+        # when it is too small to hold a report up.
+        out.append(_f("clicks_part_explained", "warn",
+                      f"{abs(unexplained):,.0f} click"
+                      f"{'s' if abs(unexplained) != 1 else ''} unaccounted for",
+                      f"Line items total {sc:,.0f} clicks against a stated "
+                      f"{clicks:,.0f}. The CTV, OTT, YouTube and PMax line items "
+                      f"carry {excl:,.0f}, which that tile excludes - that "
+                      f"explains all but {abs(unexplained):,.0f} of the "
+                      f"{abs(gap):,.0f} difference. Small enough not to hold the "
+                      f"report up, but it is not nothing. Investigate lists the "
+                      f"lines that were taken out.", ctrace))
     else:
         out.append(_f("line_items_clicks", "fail",
                       "Line item clicks do not sum to the top line",
@@ -404,9 +424,16 @@ def check_thumbnails(ctx) -> list[dict]:
 # ---------------------------------------------------------------- empty widgets
 def check_blank_pages(ctx) -> list[dict]:
     path, pages = ctx["path"], ctx["pages"]
+    # One pdftotext call for the whole document rather than one per page. On a
+    # forty-one page report that was forty-one subprocesses and most of the
+    # wait after uploading a corrected PDF.
+    from .parser import pdf_pages
+    per_page = ctx.get("page_text")
+    if per_page is None:
+        per_page = ctx["page_text"] = pdf_pages(path)
     hits = []
-    for pg in range(1, pages + 1):
-        txt = pdf_text(path, pg, pg)
+    for pg in range(1, min(pages, len(per_page)) + 1):
+        txt = per_page[pg - 1]
         body = [l.strip() for l in txt.split("\n") if l.strip() and not SKIP_LINE.search(l)]
         if not body:
             continue

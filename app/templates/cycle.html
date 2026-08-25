@@ -214,24 +214,8 @@
   </div>
 </section>
 
-{% if rows %}
-<section id="reports">
-  <div class="secbar">
-    <h2 style="border:0;margin:0;padding:0">
-      Reports{% if filter_group %} · {{ filter_group }}{% endif %}
-      {%- if filter_state %} · {{ state_label[filter_state] }}{% endif %}</h2>
-  </div>
-  <div class="tools">
-    <input type="search" data-filter="tbl-cycle" data-count="cnt-cycle"
-           placeholder="Search everything...">
-    <span class="count" id="cnt-cycle"></span>
-  </div>
-  <div class="colfilters" data-filters-for="tbl-cycle"></div>
-  <div class="tw"><table id="tbl-cycle">
-    <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
-    <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
-    <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
-    <tbody>{% for e in rows %}
+{% if rows or done %}
+{% macro reportrows(items) %}{% for e in items %}
       <tr>
         <td class="nw">{{ e.market }}</td>
         <td><b>{{ e.client }}</b>
@@ -297,8 +281,66 @@
           {% else %}<span class="empty">—</span>{% endif %}
         </td>
       </tr>
-    {% endfor %}</tbody></table></div>
+    {% endfor %}{% endmacro %}
+{% macro capnote(shown, total) %}
+  {% if total > shown %}
+    <p class="sub" style="font-size:12.5px;margin:8px 0 0">
+      Showing the first <b>{{ shown }}</b> of {{ total }}. The search and filters
+      above cover the {{ shown }} on screen - narrow to a partner, or
+      <a href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}&rows=all#reports">load all {{ total }}</a>.
+    </p>
+  {% endif %}
+{% endmacro %}
+
+<section id="reports">
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">
+      {% if rows %}Still open{% else %}Reports{% endif %}
+      {%- if filter_group %} · {{ filter_group }}{% endif %}
+      {%- if filter_state %} · {{ state_label[filter_state] }}{% endif %}</h2>
+  </div>
+  {% if rows %}
+  <div class="tools">
+    <input type="search" data-filter="tbl-cycle" data-count="cnt-cycle"
+           placeholder="Search everything...">
+    <span class="count" id="cnt-cycle"></span>
+  </div>
+  <div class="colfilters" data-filters-for="tbl-cycle"></div>
+  <div class="tw"><table id="tbl-cycle">
+    <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
+    <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
+    <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
+    <tbody>{{ reportrows(rows) }}</tbody></table></div>
+  {{ capnote(rows|length, row_total) }}
+  {% else %}
+    <p class="allclear">Nothing open{% if filter_group %} for {{ filter_group }}{% endif %}.</p>
+  {% endif %}
 </section>
+
+{% if done %}
+{# Signed off and nothing failing. Done work is still worth being able to find,
+   but it is not what the page is for, so it sits at the bottom and shut. #}
+<section id="done">
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">Good to go</h2>
+  </div>
+  <details class="donebox">
+    <summary>{{ done_total }} report{{ 's' if done_total != 1 }} signed off and
+      clear{% if filter_group %} for {{ filter_group }}{% endif %}</summary>
+    <div class="tools">
+      <input type="search" data-filter="tbl-done" data-count="cnt-done"
+             placeholder="Search the signed-off reports...">
+      <span class="count" id="cnt-done"></span>
+    </div>
+    <div class="tw"><table id="tbl-done">
+      <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
+    <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
+    <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
+      <tbody>{{ reportrows(done) }}</tbody></table></div>
+    {{ capnote(done|length, done_total) }}
+  </details>
+</section>
+{% endif %}
 {% endif %}
 
 <style>
@@ -342,6 +384,12 @@
 .sync.busy:hover{background:var(--surface);color:var(--velocity)}
 .secbar .tabs form{margin:0;display:inline-flex}
 .gfoot form{display:inline}
+.donebox summary{font-family:'GT Walsheim Pro',sans-serif;font-size:13.5px;
+ font-weight:700;color:var(--ok);cursor:pointer;padding:8px 0;list-style:none}
+.donebox summary::-webkit-details-marker{display:none}
+.donebox summary::before{content:"\25B8";display:inline-block;margin-right:7px;
+ transition:transform .12s}
+.donebox[open] summary::before{transform:rotate(90deg)}
 .mini.busy{display:inline-flex;align-items:center;gap:6px;border-color:var(--velocity);
  color:var(--velocity);cursor:default}
 .gfoot .showing{color:var(--velocity);font-weight:700;background:var(--velocity-10);

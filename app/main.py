@@ -497,6 +497,12 @@ def partners_csv(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- cycle board
+# How many report rows to render before asking. A board of 1,244 expected
+# reports put 24,851 DOM nodes on the page and took the browser four seconds,
+# against a third of a second on the server.
+ROW_CAP = 150
+
+
 def _stale_here(db: Session, period: str, groups) -> dict:
     """How many reports this board has, and how many carry an older answer.
 
@@ -553,11 +559,13 @@ def _recheck_jobs() -> dict:
 @app.get("/", response_class=HTMLResponse)
 @app.get("/cycle", response_class=HTMLResponse)
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
-               state: str = Query(""), db: Session = Depends(get_db)):
+               state: str = Query(""), rows_: str = Query("", alias="rows"),
+               db: Session = Depends(get_db)):
     from .board import STATE_LABEL, by_group, expected_for, summary
     from .cycle import current_period, cycle_for, recent_periods
     from .delivery import latest_deliveries
 
+    show_all = rows_ == "all"
     period = period or settings.default_period or current_period()
     prune_old_pdfs(db)          # cheap, and keeps the disk from filling silently
     cyc = cycle_for(period)
@@ -568,8 +576,19 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     rows = [e for g in groups for e in g.expected]
     if state:
         rows = [e for e in rows if e.state == state]
+    # Signed off and nothing failing: done, and in the way. It goes to its own
+    # section at the bottom so the top of the page is only what is still open.
+    done = [e for e in rows if e.ready]
+    rows = [e for e in rows if not e.ready]
+    # The reports table was 24,851 of the page's 30,342 DOM nodes and four
+    # seconds of browser time. The server was never the slow part.
+    cap = None if show_all else ROW_CAP
+    shown, done_shown = rows[:cap] if cap else rows, done[:cap] if cap else done
     from .product_codes import pill
-    chips = {e.ident: [pill(p) for p in e.products] for e in rows}
+    # Both tables need their pills, and the signed-off one is rendered from the
+    # same macro - built from `rows` alone it came out with no products at all.
+    chips = {e.ident: [pill(p) for p in e.products]
+             for e in list(shown) + list(done_shown)}
     # A pinned period outside the last thirteen months would not be in the
     # dropdown, and the board would show a cycle you could not switch back to.
     periods = recent_periods()
@@ -577,7 +596,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         periods = sorted(set(periods) | {period}, reverse=True)
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
-        "periods": periods, "groups": groups, "rows": rows,
+        "periods": periods, "groups": groups,
+        "rows": shown, "row_total": len(rows),
+        "done": done_shown, "done_total": len(done),
+        "show_all": show_all, "row_cap": ROW_CAP,
         "summary": summary(exp), "state_label": STATE_LABEL,
         "filter_group": group, "filter_state": state,
         "deliveries": latest_deliveries(db, period),

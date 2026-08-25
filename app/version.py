@@ -12,12 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-31"
-BUILD_NOTES = ("DOOH counts in ads served, not impressions, and its rows were "
-               "being thrown away - so a report was failed for a line item sum "
-               "short by exactly its DOOH figure. The two line item findings "
-               "now carry their own working instead of sharing one, and a "
-               "remainder smaller than the rounding is not a failure.")
+BUILD = "2026.08.25-32"
+BUILD_NOTES = ("The board renders 150 report rows instead of 1,244, which "
+               "took the browser from four seconds to under one. Signed-off "
+               "reports moved to a Good to go section at the bottom. A "
+               "\"(1)\" on a re-downloaded filename no longer invents a new "
+               "client. Checks run in one pdftotext call, not one per page.")
 # ---------------------------------------------------------------------------
 
 

@@ -322,9 +322,10 @@ def test_the_impressions_and_clicks_findings_carry_different_working():
     assert "Left unexplained" in labels[1]
 
 
-def test_a_remainder_smaller_than_the_rounding_is_not_a_failure():
+def test_a_remainder_smaller_than_the_rounding_is_a_warning_not_a_failure():
     """Service One: 103 clicks over the top line, 111 of them on CTV. The eight
-    left over is 0.27% of the campaign and was being called a failure."""
+    left over is 0.27% of the campaign - too small to hold the report up, too
+    real to call expected."""
     from app.checks.rules import check_line_items
     text = ("Line Item Performance\n"
             "Line Item Name        Impressions   Clicks   CTR\n"
@@ -333,8 +334,36 @@ def test_a_remainder_smaller_than_the_rounding_is_not_a_failure():
             "Acme - Facebook          61,790   2,500   4.05%\n")
     out = check_line_items({"text": text, "imps": 162089.0, "clicks": 3008.0})
     f = next(x for x in out if "clicks" in x["code"])
-    assert f["severity"] == "info"
+    assert f["severity"] == "warn"
     assert "all but 8" in f["detail"]
+
+
+def test_an_exact_match_after_the_exclusion_is_expected_and_silent():
+    from app.checks.rules import check_line_items
+    text = ("Line Item Performance\n"
+            "Line Item Name        Impressions   Clicks   CTR\n"
+            "Acme - Auto Loans        64,242   500   0.78%\n"
+            "Acme - AI CTV            36,057   103   0.31%\n"
+            "Acme - Facebook          61,790   2,500   4.05%\n")
+    out = check_line_items({"text": text, "imps": 162089.0, "clicks": 3000.0})
+    f = next(x for x in out if "clicks" in x["code"])
+    assert f["severity"] == "info" and "all 103" in f["detail"]
+
+
+def test_the_trace_names_the_lines_that_were_taken_out():
+    """A total on its own says "trust me". Eight clicks are only findable if
+    you can see which lines were excluded and for how much."""
+    from app.checks.rules import check_line_items
+    text = ("Line Item Performance\n"
+            "Line Item Name        Impressions   Clicks   CTR\n"
+            "Acme - Auto Loans        64,242   500   0.78%\n"
+            "Acme - AI CTV            36,057   103   0.31%\n"
+            "Acme - YouTube+           5,000     8   0.16%\n"
+            "Acme - Facebook          61,790   2,500   4.05%\n")
+    out = check_line_items({"text": text, "imps": 167089.0, "clicks": 3008.0})
+    f = next(x for x in out if "clicks" in x["code"])
+    named = next(t["value"] for t in f["trace"] if t["label"] == "Which lines those are")
+    assert "AI CTV: 103" in named and "YouTube+: 8" in named
 
 
 def test_a_remainder_that_matters_is_still_a_failure():

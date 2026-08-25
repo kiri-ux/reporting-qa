@@ -685,3 +685,36 @@ def test_the_samples_line_items_now_include_its_dooh(sample):
     assert sum(r[1] for r in dooh) == 9540
     # and the whole grid now lands within half a percent of the top line
     assert abs(sum(r[1] for r in rows) - 5_168_436) / 5_168_436 < 0.005
+
+
+# ------------------------------------------------------------ file names
+def test_a_duplicate_download_suffix_is_not_part_of_the_client_name():
+    """"... 52753 (1).pdf" made "Service One Credit Union (1)" a different
+    client from "Service One Credit Union" - it matched no order and filed
+    itself as a new report instead of replacing the one it corrects."""
+    from app.checks.parser import meta_from_filename as m
+    plain = m("July 2026_Service One Credit Union 52750 52753.pdf")
+    for name in ("July 2026_Service One Credit Union 52750 52753 (1).pdf",
+                 "July 2026_Service One Credit Union 52750 52753 (12).pdf",
+                 "July 2026_Service One Credit Union 52750 52753 copy.pdf",
+                 "July 2026_Service One Credit Union 52750 52753 copy 2.pdf",
+                 "July 2026_Service One Credit Union 52750 52753 (1) copy.pdf"):
+        assert m(name) == plain, name
+
+
+def test_a_bracketed_number_inside_a_real_name_is_left_alone():
+    """Only a trailing one is a duplicate marker."""
+    from app.checks.parser import meta_from_filename as m
+    assert m("July 2026_Store (1) Ltd 52746.pdf")["client"] == "Store (1) Ltd"
+
+
+def test_pdf_pages_reads_the_whole_document_in_one_call():
+    """The blank-page check ran one pdftotext PER PAGE - forty-one subprocesses
+    on a forty-one page report, and most of the wait after an upload."""
+    from app.checks.parser import pdf_pages, page_count
+    f = Path(__file__).parent / "fixtures" / "watsontown.pdf"
+    if not f.exists():
+        pytest.skip("fixture missing")
+    pages = pdf_pages(f)
+    assert len(pages) == page_count(f)
+    assert "Watsontown" in "".join(pages)

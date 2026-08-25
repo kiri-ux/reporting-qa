@@ -40,6 +40,22 @@ def pdf_text(path: Path, first: int | None = None, last: int | None = None) -> s
     return out.stdout.replace("\x0c", "")
 
 
+def pdf_pages(path: Path) -> list[str]:
+    """Every page's text, in one pdftotext call.
+
+    The blank-page check used to run one subprocess PER PAGE - forty-one of
+    them on a forty-one page report, which was most of the wait after somebody
+    uploaded a corrected PDF. pdftotext already separates pages with a form
+    feed; the only reason nobody used it is that pdf_text strips them.
+    """
+    cmd = [_bin("pdftotext"), "-layout", str(path), "-"]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    pages = out.stdout.split("\x0c")
+    if pages and not pages[-1].strip():
+        pages.pop()
+    return pages
+
+
 def page_count(path: Path) -> int:
     out = subprocess.run([_bin("pdfinfo"), str(path)], capture_output=True, text=True, timeout=60)
     m = re.search(r"Pages:\s+(\d+)", out.stdout)
@@ -222,8 +238,16 @@ FILENAME_RE = re.compile(r"^(?P<prefix>[A-Za-z]+ \d{4}|Lifetime)_(?P<rest>.+)$")
 ACCOUNTS_RE = re.compile(r"\b\d{4,6}\b")
 
 
+# What a browser or Finder adds when the same file is downloaded twice:
+# "... 52753 (1).pdf", "... 52753 copy.pdf", "... copy 2.pdf". Left on, the
+# "(1)" became part of the client name - so "Service One Credit Union (1)" was
+# a different client from "Service One Credit Union", matched no order, and
+# filed itself as a new report rather than replacing the one it corrects.
+DUPLICATE_SUFFIX = re.compile(r"(?:\s*\((\d+)\)|\s+copy(?:\s+\d+)?)+$", re.I)
+
+
 def meta_from_filename(name: str) -> dict:
-    stem = Path(name).stem
+    stem = DUPLICATE_SUFFIX.sub("", Path(name).stem).strip()
     is_lifetime = stem.lower().startswith("lifetime")
     m = FILENAME_RE.match(stem)
     rest = m.group("rest") if m else stem
