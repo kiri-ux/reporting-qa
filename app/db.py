@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import (JSON, Boolean, Date, DateTime, ForeignKey, Integer,
-                        String, Text, create_engine)
+from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, ForeignKey,
+                        Integer, String, Text, create_engine)
 from sqlalchemy.orm import (DeclarativeBase, Mapped, mapped_column,
                             relationship, sessionmaker)
 
@@ -343,6 +343,11 @@ class OrderLine(Base):
     # is neither expected on the report nor a surprise when it turns up - the
     # buy exists, it is just not delivering - so it makes no claim either way.
     live: Mapped[bool] = mapped_column(Boolean, default=True)
+    # What this line item is meant to spend in a month, and what it actually
+    # spent. Pacing is the comparison of the two, and neither number is on the
+    # report - both come off the order.
+    budget: Mapped[float | None] = mapped_column(Float, nullable=True)
+    spend: Mapped[float | None] = mapped_column(Float, nullable=True)
     needs_lifetime: Mapped[bool] = mapped_column(Boolean, default=True)
     buyer: Mapped[str] = mapped_column(String(255), default="")
     team_member: Mapped[str] = mapped_column(String(255), default="")
@@ -488,6 +493,8 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "flights", "JSON"),
     ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("reports", "logo_hash", "VARCHAR(32) DEFAULT '' NOT NULL"),
+    ("order_lines", "budget", "DOUBLE PRECISION"),
+    ("order_lines", "spend", "DOUBLE PRECISION"),
 ]
 
 

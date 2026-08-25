@@ -49,8 +49,46 @@ LIVE_STATUS = {"io live", "io complete"}
 DEAD_ORDER_STATUS = re.compile(r"^(Cancelled)$", re.I)
 
 
+# THE SAME EXPORT COMES IN TWO SPELLINGS.
+#
+# The nightly S3 file uses snake_case column names; a sheet pulled by hand out
+# of the IO tool uses the display names - "Order's Status", "Client Business
+# Unit". Same columns, same meaning, and a reader that only knows one of them
+# rejects a perfectly good file with a confusing message about it not looking
+# like an export.
+HEADER_ALIASES = {
+    "order id": "orders_id",
+    "order's id": "orders_id",
+    "id": "id",
+    "order's status": "orders_status",
+    "status": "status",
+    "client": "client",
+    "product": "product",
+    "client business unit": "client_business_unit",
+    "order's start date": "orders_start_date",
+    "order's end date": "orders_end_date",
+    "start date": "start_date",
+    "end date": "end_date",
+    "campaign manager": "campaign_manager",
+    "monthly campaign budget": "monthly_campaign_budget",
+    "monthly budget": "monthly_campaign_budget",
+    "monthly meta ad spend": "monthly_meta_ad_spend",
+    "monthly ppc ad spend": "monthly_ppc_ad_spend",
+    "monthly linkedin ad spend": "monthly_linkedin_ad_spend",
+    "monthly linked ad spend": "monthly_linkedin_ad_spend",
+}
+
+
+def normalise_header(h: str) -> str:
+    """The snake_case name for a column, whichever spelling arrived."""
+    raw = (h or "").strip()
+    low = raw.lower()
+    return HEADER_ALIASES.get(low, low.replace(" ", "_").replace("'", ""))
+
+
 def looks_like_io_export(headers: list[str]) -> bool:
-    return SIGNATURE.issubset({(h or "").strip().lower() for h in headers})
+    got = {normalise_header(h) for h in headers}
+    return SIGNATURE.issubset(got)
 
 
 def _txt(v) -> str:
@@ -102,7 +140,11 @@ def previous_period(today: dt.date | None = None) -> str:
 WANTED = ("orders_id", "id", "orders_status", "status", "client", "product",
           "client_business_unit", "orders_start_date", "orders_end_date",
           "start_date", "start_date.1", "end_date", "end_date.1", "date",
-          "campaign_manager")
+          "campaign_manager",
+          # Money. Not on the report and not derivable from it - pacing is the
+          # comparison of what the order says to spend against what it spent.
+          "monthly_campaign_budget", "monthly_meta_ad_spend",
+          "monthly_ppc_ad_spend", "monthly_linkedin_ad_spend")
 
 
 def _open_source(src):
@@ -119,7 +161,17 @@ def _open_source(src):
         header = next(reader, None)
         if not header:
             return
-        idx = {name: i for i, name in enumerate(header) if name in WANTED}
+        # LAST ONE WINS on a repeated column name, which is what this did
+        # before the headers were normalised and what the date handling has
+        # always been calibrated against. The export carries two end_date
+        # columns and the second is the one that has been read all along;
+        # quietly switching to the first changes which rows survive the date
+        # filter, and the only sign of it is a different set of skip reasons.
+        idx = {}
+        for i, name in enumerate(header):
+            key = normalise_header(name)
+            if key in WANTED:
+                idx[key] = i
         blank = ""
         for row in reader:
             n = len(row)

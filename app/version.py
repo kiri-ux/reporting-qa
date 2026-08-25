@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-49"
-BUILD_NOTES = ("A widget block used to run on into the NEXT widget, so CTV "
-               "publishers were read as devices - R&R Heating's six "
-               "unrecognised devices were four TV apps and a column header. A "
-               "DOOH-only report no longer owes a site and app breakout.")
+BUILD = "2026.08.25-51"
+BUILD_NOTES = ("Budgets can be filled in from a single-product sheet without "
+               "re-pulling the whole export - it merges rather than replaces, "
+               "so a Performance Max file cannot wipe everything else. The IO "
+               "tool's display column names are now recognised too.")
 
 # ---------------------------------------------------------------------------
 

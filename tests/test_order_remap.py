@@ -227,3 +227,114 @@ def test_a_failed_sync_is_not_reported_as_stale():
                     synced_at=dt.datetime.utcnow(), message="S3 unreachable"))
     s.commit()
     assert mmod._orders_stale(s) is False
+
+
+def test_the_order_re_read_is_not_gated_behind_the_report_sweep(monkeypatch):
+    """Blair Regional YMCA's trace said "Social Mirror · 2025-01-03 to
+    2026-12-31", which is three Social Mirror CTV line items merged by the OLD
+    import - the one that had no Social Mirror CTV key and no per-order flights.
+
+    The re-read that would have fixed it sat behind auto_recheck, so on a deploy
+    with the report sweep off the export was never read again. Re-reading the
+    orders is not the same job as re-reading the PDFs.
+    """
+    import inspect
+    from app import recheck as rmod
+    src = inspect.getsource(rmod.start_sweeper)
+    assert "_remap_orders_if_stale()" in src
+    before = src.index("_remap_orders_if_stale()")
+    after = src.index("if not settings.auto_recheck")
+    assert before < after, "the re-read still runs only when the sweep is on"
+
+
+def test_the_report_page_says_it_too(monkeypatch):
+    """A product finding is disputed on the report page, so the fact that
+    settles it belongs on the report page."""
+    from pathlib import Path as _P
+    tpl = _P("app/templates/viewer.html").read_text()
+    assert "orders_stale" in tpl
+    assert "Re-read the orders" in tpl
+
+
+# ------------------------------------------- budgets, merged in from a sheet
+def test_a_single_product_sheet_never_deletes_anything(db):
+    """A file of 368 Performance Max rows through the normal import would
+    delete every order for every other product and leave PMax standing. This
+    reads, matches and updates - it never deletes a row and never creates one."""
+    from app.budgets import import_budgets
+    db.add_all([
+        OrderLine(market="m", client="Has PMax", account_ids="51033",
+                  line_ids="119990", product="Performance Max"),
+        OrderLine(market="m", client="Has Display", account_ids="900",
+                  line_ids="901", product="Display"),
+    ])
+    db.commit()
+    sheet = ("Order Id,ID,Product,Monthly Campaign Budget\n"
+             "51033,119990,Performance Max Ads,2000\n")
+    res = import_budgets(db, sheet.encode(), "pmax.csv")
+    assert res["lines_updated"] == 1
+    assert db.query(OrderLine).count() == 2, "it deleted something"
+    rows = {l.client: l.budget for l in db.query(OrderLine).all()}
+    assert rows["Has PMax"] == 2000.0
+    assert rows["Has Display"] is None
+
+
+def test_it_matches_on_line_item_id_first_then_the_order(db):
+    from app.budgets import import_budgets
+    db.add_all([
+        OrderLine(market="m", client="By line", account_ids="1", line_ids="777",
+                  product="Performance Max"),
+        OrderLine(market="m", client="By order", account_ids="44807",
+                  line_ids="", product="Performance Max"),
+    ])
+    db.commit()
+    sheet = ("Order Id,ID,Monthly Campaign Budget\n"
+             "1,777,1500\n"
+             "44807,888,1750\n")
+    res = import_budgets(db, sheet.encode(), "b.csv")
+    assert res["matched_on_line_item"] == 1
+    assert res["matched_on_order"] == 1
+    rows = {l.client: l.budget for l in db.query(OrderLine).all()}
+    assert rows["By line"] == 1500.0 and rows["By order"] == 1750.0
+
+
+def test_money_survives_however_it_is_written(db):
+    from app.budgets import _money
+    assert _money("$1,215.08") == 1215.08
+    assert _money(1500) == 1500.0
+    assert _money("-") is None
+    assert _money("") is None and _money(None) is None
+
+
+def test_the_display_spelling_of_the_export_is_recognised():
+    """The nightly S3 file is snake_case; a sheet pulled by hand out of the IO
+    tool uses the display names. Same columns, and a reader that knows only one
+    spelling rejects a good file with a confusing message."""
+    from app.orders_io import looks_like_io_export, normalise_header
+    assert normalise_header("Order's Status") == "orders_status"
+    assert normalise_header("Client Business Unit") == "client_business_unit"
+    assert normalise_header("Monthly Campaign Budget") == "monthly_campaign_budget"
+    assert looks_like_io_export(["Client Business Unit", "Order's Status",
+                                 "Product", "Order's End Date"])
+    assert looks_like_io_export(["client_business_unit", "orders_status",
+                                 "product", "orders_end_date"])
+
+
+def test_a_sheet_ahead_of_the_board_is_reported_not_dropped(db):
+    from app.budgets import import_budgets
+    sheet = ("Order Id,ID,Monthly Campaign Budget\n99999,88888,500\n")
+    res = import_budgets(db, sheet.encode(), "b.csv")
+    assert res["lines_updated"] == 0
+    assert res["not_on_the_board"] == 1
+
+
+def test_a_repeated_column_still_reads_the_last_one():
+    """The export carries two end_date columns and the second is the one that
+    has been read all along. Normalising the headers quietly switched it to the
+    first, which changed which rows survived the date filter - and the only
+    sign of it was a different set of skip reasons."""
+    import inspect
+    from app import orders_io as mod
+    src = inspect.getsource(mod._open_source)
+    assert "LAST ONE WINS" in src
+    assert 'key = key + ".1"' not in src

@@ -122,6 +122,27 @@
 {% endif %}
 
 <section>
+  <h2>Budgets</h2>
+  <div class="panel">
+    <form action="/orders/budgets" method="post" enctype="multipart/form-data"
+          style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <input type="file" name="file" accept=".csv,.xlsx,.xlsm" required>
+      <button class="btn" type="submit">Fill in budgets</button>
+    </form>
+    <p class="sub" style="font-size:13px;margin-top:12px">
+      <b>This one merges, it does not replace.</b> A sheet covering a single
+      product only fills in the money columns on the lines it names - it never
+      deletes an order and never adds one. That is what makes it safe to drop
+      in a Performance Max export without losing everything else.<br>
+      It reads <code>Monthly Campaign Budget</code>, and the per-product spend
+      columns for Meta, PPC and LinkedIn. Rows are matched on line item id,
+      falling back to order id. Anything in the sheet that is not on the board
+      yet is counted and reported rather than quietly dropped.
+    </p>
+  </div>
+</section>
+
+<section>
   <h2>{% if s3 %}Override by hand{% else %}Import{% endif %}</h2>
   <div class="panel">
     <form action="/orders/import" method="post" enctype="multipart/form-data"

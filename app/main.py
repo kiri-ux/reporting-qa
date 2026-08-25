@@ -1476,6 +1476,11 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                        # judged by somebody looking at it.
                                        "logo_hash": rep.logo_hash or "",
                                        "logo_generic": _logo_is_generic(db, rep),
+                                       # Said HERE as well as on the board. A
+                                       # product finding is disputed on this
+                                       # page, so the one fact that settles it
+                                       # belongs on this page.
+                                       "orders_stale": _orders_stale(db),
                                        # Changes when the file does, so the
                                        # embedded viewer cannot show a copy it
                                        # cached before the replacement.
@@ -1532,6 +1537,31 @@ async def partners_import(file: UploadFile = File(...), db: Session = Depends(ge
     from .partners import import_partners
     import_partners(db, await file.read())
     return RedirectResponse("/partners", status_code=303)
+
+
+@app.post("/orders/budgets")
+async def orders_budgets(file: UploadFile = File(...),
+                         db: Session = Depends(get_db)):
+    """Fill in the money columns from a sheet, without touching anything else.
+
+    MERGE, NEVER REPLACE. A file covering one product put through the normal
+    import would delete every order for every other product and leave that one
+    standing. This only ever updates a budget on a line that is already there.
+    """
+    from .budgets import import_budgets
+    res = import_budgets(db, await file.read(), file.filename or "budgets.xlsx")
+    msg = (f"Budgets from {file.filename}: {res['rows_read']:,} rows read, "
+           f"{res['lines_updated']:,} order line(s) updated "
+           f"({res['matched_on_line_item']:,} matched on line item id, "
+           f"{res['matched_on_order']:,} on order id).")
+    if res["not_on_the_board"]:
+        msg += (f" {res['not_on_the_board']:,} line item(s) in the sheet are not "
+                f"on the board - the sheet is ahead of the last sync.")
+    db.add(OrderSync(source=f"budgets: {file.filename}", rows=res["lines_updated"],
+                     ok=True, message=msg))
+    db.commit()
+    return RedirectResponse(f"/orders?budgets={res['lines_updated']}",
+                            status_code=303)
 
 
 @app.post("/orders/import")

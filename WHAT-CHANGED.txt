@@ -1,36 +1,56 @@
-build 2026.08.25-49
+build 2026.08.25-51
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/checks/rules.py
-tests/test_required_widgets.py
+app/db.py
+app/main.py
+app/budgets.py            (new)
+app/orders_io.py
+app/templates/orders.html
+tests/test_order_remap.py
 
 
-1. "6 unrecognised devices" that were not devices
----------------------------------------------------
-R&R Heating's device table has two rows, Connected TV and Streaming Device,
-both real. The six it complained about - Publisher Image, Plex, TCL Channel,
-Sling TV, Tubi - are the TOP CTV PUBLISHERS widget underneath it, plus one of
-its column headers.
+Budgets, without re-pulling the whole export
+----------------------------------------------
+There is a BUDGETS panel on the Orders page now. Drop the Performance Max sheet
+in and it fills the money columns on the lines it names.
 
-The boundary that is supposed to stop a widget at the next widget's title
-anchored on a title starting in COLUMN ONE. pdftotext -layout indents the whole
-page, so it never matched anything - and every widget block ran on until it hit
-the page footer or a fixed character limit. On a report where the device table
-is short and the publishers widget starts right after it, that meant reading
-one widget's rows as the other's.
+IT MERGES, IT DOES NOT REPLACE. That is the whole point and it is worth being
+explicit: your 368-row PMax file put through the normal import would have
+deleted every order for every other product on the board and left PMax
+standing. This one reads, matches and updates - it never deletes a row and
+never creates one, so dropping in a single-product sheet is safe.
 
-This is not only the device check. Every rule that reads a widget block - the
-completion rates, among others - was working with the same runaway boundary and
-is now bounded correctly.
+  - Matched on line item id, falling back to order id.
+  - Reads Monthly Campaign Budget, and the per-product spend columns for Meta,
+    PPC and LinkedIn.
+  - Anything in the sheet that is not on the board yet is counted and reported
+    rather than quietly dropped - that is the sheet being ahead of the sync,
+    and it is worth seeing.
+  - Where one order has several flights, the last row wins. A client running
+    one product across two flights has two rows and the later one is what this
+    month is paced against.
 
-
-2. A DOOH-only report does not owe a site and app breakout
-------------------------------------------------------------
-A billboard has no site and no app. There is nothing for that widget to list
-and TapClicks does not print one, so it is no longer owed when DOOH is the only
-product on the report. A report running DOOH alongside anything else still owes
-it for the rest.
+Run against your file on a scratch database: 368 rows read, every one carrying
+a budget, matching correctly on both paths and leaving unrelated lines alone.
 
 
-Tests: 379 passing.
+The display spelling of the export
+------------------------------------
+Your sheet uses the IO tool's display names - "Order's Status", "Client
+Business Unit", "Monthly Campaign Budget". The nightly S3 file uses snake_case.
+Same columns, and the reader only knew one spelling, so a perfectly good file
+would have been rejected with a confusing message about not looking like an
+export. It now takes either.
+
+The main import also reads the four money columns when they are present, so
+when you do re-pull, the budgets come with it and the panel becomes a
+stopgap you no longer need.
+
+One thing this nearly broke, caught by a test: the export carries two
+`end_date` columns, and the second is the one that has always been read.
+Normalising the headers silently switched it to the first, which changed which
+rows survived the date filter. Last-one-wins is restored and pinned.
+
+
+Tests: 387 passing.
