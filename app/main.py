@@ -24,6 +24,14 @@ from .roster import completeness, import_orders
 
 app = FastAPI(title="Report QA")
 
+# THE BOARD IS A MEGABYTE AND A HALF OF HTML and it was going over the wire raw.
+# A hundred and forty-six partner cards and three hundred report rows is
+# repetitive markup that compresses about fifteen to one, so this is the
+# cheapest second anybody gets back - and it costs the server almost nothing
+# next to building the page in the first place.
+from fastapi.middleware.gzip import GZipMiddleware      # noqa: E402
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 _HERE = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
@@ -480,8 +488,15 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
 @app.get("/orders", response_class=HTMLResponse)
 def orders_view(request: Request, view: str = Query("clients"),
                 sync: str = Query(""), db: Session = Depends(get_db)):
-    lines = [l for l in db.scalars(
-        select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
+    # COLUMNS, NOT OBJECTS. Thirteen thousand order lines built as ORM
+    # instances - each one decoding a JSON flights column that nothing on this
+    # page reads - was most of a second before a row of it was drawn.
+    lines = [l for l in db.execute(
+        select(OrderLine.market, OrderLine.client, OrderLine.product,
+               OrderLine.account_ids, OrderLine.line_ids, OrderLine.buyer,
+               OrderLine.starts_on, OrderLine.ends_on, OrderLine.needs_lifetime,
+               OrderLine.live, OrderLine.budget, OrderLine.impressions)
+        .order_by(OrderLine.market, OrderLine.client)).all()
         if not _excluded(l.market)]
     from .product_codes import PRODUCTS, ink_on
     legend = [{"code": c, "bg": h, "fg": ink_on(h), "name": n} for c, h, n, _ in PRODUCTS]

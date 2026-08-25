@@ -116,6 +116,7 @@ def import_partners(db: Session, raw: bytes | str, *, replace: bool = True) -> i
     for r in rows.values():
         db.add(Partner(**r))
     db.commit()
+    forget_partners()
     return len(rows)
 
 
@@ -169,15 +170,70 @@ def backfill_targets(db: Session) -> int:
             n += 1
     if n:
         db.commit()
+        forget_partners()
         log.info("filled in the delivery target for %d partner(s)", n)
     return n
 
 
-_CACHE: dict[str, Partner] | None = None
+# THE ROSTER IS READ A LOT AND CHANGES ALMOST NEVER.
+#
+# `find` reads the whole table, and the order list calls it once per market -
+# so building the orders page ran two hundred queries returning two hundred
+# rows each, forty thousand rows fetched to answer a question about two
+# hundred. Held for twenty seconds and dropped the moment anything writes to
+# the table, so an uploaded roster shows up straight away.
+_CACHE: dict = {"at": 0.0, "rows": None, "bind": None}
+CACHE_SECONDS = 20.0
 
 
-def all_partners(db: Session) -> list[Partner]:
-    return db.scalars(select(Partner).order_by(Partner.partner)).all()
+def forget_partners() -> None:
+    _CACHE["rows"] = None
+
+
+class Row:
+    """A detached copy of a partner row.
+
+    NOT the ORM object. Those belong to the session that loaded them: it is
+    closed at the end of the request and expired by any commit, so a cached one
+    raises DetachedInstanceError the moment somebody reads a field off it. This
+    carries the same fields and outlives the session it came from.
+    """
+    __slots__ = ("id", "partner", "buyer", "buyer_email", "seo", "seo_email",
+                 "manager", "reporting_team", "to_emails", "trainer",
+                 "reporting_notes", "buyer_notes", "group", "delivery_target")
+
+    def __init__(self, p: Partner):
+        for f in self.__slots__:
+            setattr(self, f, getattr(p, f, ""))
+
+    @property
+    def recipients(self) -> list[str]:
+        """The same reading of the To: cell the ORM row does - one address per
+        part, taken out of whatever name or brackets surround it."""
+        out = []
+        for part in re.split(r"[;,]", self.to_emails or ""):
+            m = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", part)
+            if m:
+                out.append(m.group(0))
+        return out
+
+
+def all_partners(db: Session) -> list[Row]:
+    import time
+    now = time.monotonic()
+    # Keyed on the database as well as the clock. Without that, a test with its
+    # own in-memory database reads the roster the last one cached.
+    try:
+        bind = id(db.get_bind())
+    except Exception:                       # noqa: BLE001
+        bind = None
+    if (_CACHE["rows"] is not None and _CACHE["bind"] == bind
+            and now - _CACHE["at"] < CACHE_SECONDS):
+        return _CACHE["rows"]
+    rows = [Row(p) for p in
+            db.scalars(select(Partner).order_by(Partner.partner)).all()]
+    _CACHE["rows"], _CACHE["at"], _CACHE["bind"] = rows, now, bind
+    return rows
 
 
 def find(db: Session, name: str) -> Partner | None:

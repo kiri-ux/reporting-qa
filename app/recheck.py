@@ -44,8 +44,20 @@ log = logging.getLogger("report-qa.recheck")
 # took, capped at ten seconds. That is still under a 50% duty cycle on a box
 # that is also serving pages, and it drains twelve hundred reports in under
 # twenty minutes.
-BATCH = 25
-MAX_REST_SECONDS = 10.0
+BATCH = 10
+MAX_REST_SECONDS = 20.0
+
+# ONE HEAVY JOB AT A TIME, ACROSS THE WHOLE SERVICE.
+#
+# There are two gunicorn workers and each used to start its own sweeper, so two
+# streams of pdftotext ran against a box that also has to serve the board - and
+# an order sync could be downloading 850 MB and parsing a couple of million
+# rows beside them. Every one of those is defensible on its own; together they
+# are why the dashboard sat there with three spinners going and then stopped
+# responding. The claim below is a database row rather than a process flag,
+# because a lock one worker holds means nothing to the other.
+SWEEP_KEY = "sweep"
+CLAIM_STALE_MINUTES = 4          # a claim not touched in this long is dead
 
 
 def _key(f: dict) -> tuple:
@@ -343,14 +355,61 @@ def _remap_orders_if_stale() -> None:
         db.close()
 
 
+def _claim(db: Session, key: str) -> bool:
+    """Take the one-at-a-time claim for background work, or say no.
+
+    Held as a row so it means something to the other gunicorn worker, and
+    stamped as it goes so a claim left behind by a killed process expires
+    instead of blocking the sweep until somebody notices.
+    """
+    from .db import RecheckJob
+    row = db.scalar(select(RecheckJob).where(RecheckJob.key == key))
+    now = dt.datetime.utcnow()
+    if row is not None and row.state == "running":
+        touched = row.updated_at or row.started_at or now
+        if (now - touched).total_seconds() < CLAIM_STALE_MINUTES * 60:
+            return False
+    if row is None:
+        row = RecheckJob(key=key)
+        db.add(row)
+    row.state = "running"
+    row.started_at = row.updated_at = now
+    row.note = ""
+    db.commit()
+    return True
+
+
+def _release(db: Session, key: str) -> None:
+    from .db import RecheckJob
+    row = db.scalar(select(RecheckJob).where(RecheckJob.key == key))
+    if row is not None:
+        row.state = "done"
+        row.updated_at = dt.datetime.utcnow()
+        db.commit()
+
+
+def _wait_for_the_sync(db: Session) -> None:
+    """Stand aside while the order export is being read.
+
+    That job downloads the whole file and parses a couple of million rows. Two
+    hundred pdftotext calls running beside it is how the box ends up with
+    nothing left for the page somebody is actually looking at.
+    """
+    import time
+    from .orders_s3 import running_sync
+    waited = 0
+    while running_sync(db) is not None and waited < 30 * 60:
+        time.sleep(20)
+        waited += 20
+
+
 def start_sweeper() -> None:
     """Run the sweep in the background until nothing is stale.
 
     A daemon thread rather than a scheduler: it has one job, it finishes, and
-    it must not keep a worker alive at shutdown. Both gunicorn workers start
-    one; they take from the same queue and the row each claims is stamped
-    immediately, so the overlap costs a duplicate read at worst, never a wrong
-    answer.
+    it must not keep a worker alive at shutdown. Both workers start one and
+    exactly one of them gets the claim; the other returns straight away rather
+    than running a second stream of pdftotext against the same box.
     """
     if _running.is_set():
         return
@@ -358,6 +417,7 @@ def start_sweeper() -> None:
 
     def run():
         import time
+        from .proc import background
         time.sleep(5)                     # let the first requests through
         # OUTSIDE THE auto_recheck GATE, deliberately.
         #
@@ -370,23 +430,41 @@ def start_sweeper() -> None:
         if not settings.auto_recheck:
             _running.clear()
             return
-        while True:
-            db = SessionLocal()
-            started = time.monotonic()
+        own = SessionLocal()
+        try:
+            if not _claim(own, SWEEP_KEY):
+                log.info("recheck sweep: another worker has it")
+                _running.clear()
+                return
+        finally:
+            own.close()
+        try:
+            with background():            # low priority: pages come first
+                while True:
+                    db = SessionLocal()
+                    started = time.monotonic()
+                    try:
+                        _wait_for_the_sync(db)
+                        if not stale_count(db, scoped=True, skip_signed=True):
+                            log.info("recheck sweep: nothing stale that is still open")
+                            break
+                        n = sweep_once(db)
+                        _touch(db, SWEEP_KEY, state="running")   # still alive
+                        if not n:
+                            break
+                    except Exception as exc:   # a dead database is not this thread's problem
+                        log.warning("recheck sweep paused: %s", exc)
+                        break
+                    finally:
+                        db.close()
+                    time.sleep(min(time.monotonic() - started, MAX_REST_SECONDS))
+        finally:
+            db2 = SessionLocal()
             try:
-                if not stale_count(db, scoped=True, skip_signed=True):
-                    log.info("recheck sweep: nothing stale that is still open")
-                    break
-                n = sweep_once(db)
-                if not n:
-                    break
-            except Exception as exc:      # a dead database is not this thread's problem
-                log.warning("recheck sweep paused: %s", exc)
-                break
+                _release(db2, SWEEP_KEY)
             finally:
-                db.close()
-            time.sleep(min(time.monotonic() - started, MAX_REST_SECONDS))
-        _running.clear()
+                db2.close()
+            _running.clear()
 
     threading.Thread(target=run, name="recheck-sweeper", daemon=True).start()
 
@@ -405,10 +483,33 @@ def running_jobs(db: Session) -> dict[str, dict]:
     """
     from .db import RecheckJob
     out = {}
+    dead = False
     for j in db.scalars(select(RecheckJob).where(RecheckJob.state == "running")).all():
+        if j.key == SWEEP_KEY:
+            continue          # the background sweep is not a job somebody started
+        # A JOB WHOSE PROCESS IS GONE IS NOT STILL RUNNING.
+        #
+        # The work happens in a thread, and a deploy takes the thread with it -
+        # so the row said "running" and the card sat at "52 of 93" for an hour
+        # with a spinner on it, which reads as the tool being stuck rather than
+        # as the job having been killed mid-way. Anything untouched for four
+        # minutes is closed out here, and the count stops lying.
+        touched = j.updated_at or j.started_at or dt.datetime.utcnow()
+        if (dt.datetime.utcnow() - touched).total_seconds() > CLAIM_STALE_MINUTES * 60:
+            j.state = "stopped"
+            j.note = (f"Stopped after {j.done} of {j.total or '?'} - the process "
+                      f"running it went away, usually a deploy. Press the button "
+                      f"again to pick up where it left off.")[:255]
+            dead = True
+            continue
         out[j.key] = {"group": j.partner_group, "period": j.period,
                       "done": j.done, "total": j.total, "changed": j.changed,
                       "stalled": j.stalled, "note": j.note}
+    if dead:
+        try:
+            db.commit()
+        except Exception:                    # noqa: BLE001
+            db.rollback()
     return out
 
 
@@ -454,10 +555,13 @@ def start_job(db: Session, key: str, *, group: str | None = None,
     total = row.total
 
     def run():
+        from .proc import background
         own = SessionLocal()
         after = 0
         done = changed = 0
         try:
+          with background():           # a button press still yields to a page
+            _wait_for_the_sync(own)
             while True:
                 batch = _stale_batch(own, BATCH, scoped=False, group=group,
                                      period=period, stale_only=stale_only,

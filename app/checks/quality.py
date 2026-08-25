@@ -439,9 +439,9 @@ def page_words(path) -> list[list[tuple]]:
     subprocesses on the everything-sample.
     """
     import html
-    import subprocess
+    from .. import proc as _proc
     from .parser import _bin
-    out = subprocess.run([_bin("pdftotext"), "-bbox-layout", str(path), "-"],
+    out = _proc.run([_bin("pdftotext"), "-bbox-layout", str(path), "-"],
                          capture_output=True, text=True, timeout=300).stdout
     pages = []
     for chunk in out.split("<page ")[1:]:
@@ -529,7 +529,7 @@ def is_blank(crop) -> bool:
 def _empty_cells(path, page_no: int, top: float, bottom: float,
                  cells: list[tuple], page: dict):
     """Yield (ad name, is blank) by looking at the rendered page."""
-    import subprocess
+    from .. import proc as _proc
     import tempfile
     from pathlib import Path as _P
     from PIL import Image
@@ -538,7 +538,7 @@ def _empty_cells(path, page_no: int, top: float, bottom: float,
     dpi = 100
     with tempfile.TemporaryDirectory() as tmp:
         stem = str(_P(tmp) / "p")
-        subprocess.run([_bin("pdftoppm"), "-f", str(page_no), "-l", str(page_no),
+        _proc.run([_bin("pdftoppm"), "-f", str(page_no), "-l", str(page_no),
                         "-r", str(dpi), "-png", str(path), stem],
                        capture_output=True, timeout=120)
         hits = sorted(_P(tmp).glob("p-*.png"))

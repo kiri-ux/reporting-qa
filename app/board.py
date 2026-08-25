@@ -28,8 +28,18 @@ def excluded(market: str) -> bool:
     return (market or "").strip().lower() in EXCLUDED_PARTNERS
 
 
+_KEY_CACHE: dict[str, str] = {}
+
+
 def _key(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+    """Memoised: this is called about seventy thousand times building one board,
+    on a few hundred distinct strings."""
+    hit = _KEY_CACHE.get(s)
+    if hit is None:
+        hit = re.sub(r"[^a-z0-9]", "", (s or "").lower())
+        if len(_KEY_CACHE) < 20000:
+            _KEY_CACHE[s] = hit
+    return hit
 
 
 @dataclass
@@ -99,18 +109,68 @@ def expected_for(db: Session, period: str) -> list[Expected]:
     cyc = cycle_for(period)
     idx = _partner_index(db)
 
+    # ONE PASS, AND ONLY THE COLUMNS THIS NEEDS.
+    #
+    # This used to load every order line as a full ORM object, twice - once for
+    # the expected rows and again for the flight spans. On a board with 13,000
+    # lines that is 26,000 objects built and 13,000 JSON columns decoded that
+    # nothing reads, and it was seven tenths of a second of the page on its own,
+    # every time anybody opened or filtered the board.
+    # The date test is the same one `was_live` and `needs_lifetime` apply, moved
+    # into SQL: a line that ended before this month and is not ending inside the
+    # lifetime window has nothing to say about this cycle. A missing date is
+    # open-ended, so NULL stays in.
+    from sqlalchemy import or_
+    cols = db.execute(select(
+        OrderLine.market, OrderLine.client, OrderLine.account_ids,
+        OrderLine.line_ids, OrderLine.buyer, OrderLine.product,
+        OrderLine.starts_on, OrderLine.ends_on).where(
+            or_(OrderLine.ends_on.is_(None), OrderLine.ends_on >= cyc.starts_on),
+            or_(OrderLine.starts_on.is_(None),
+                OrderLine.starts_on <= cyc.ends_on))).all()
+
+    # The client's whole flight, aggregated by the database rather than by
+    # walking every line again in Python. This is the only reason the finished
+    # lines are read at all, and there are a lot of them.
+    from sqlalchemy import func
+    spans = db.execute(select(
+        OrderLine.market, OrderLine.client,
+        func.min(OrderLine.starts_on), func.max(OrderLine.ends_on))
+        .group_by(OrderLine.market, OrderLine.client)).all()
+    span: dict[tuple[str, str], list] = {}
+    for market, client, first, last in spans:
+        if excluded(market):
+            continue
+        k = (_key(market), _key(client))
+        cur = span.get(k)
+        if cur is None:
+            span[k] = [first, last]
+            continue
+        if first and (cur[0] is None or first < cur[0]):
+            cur[0] = first
+        if last and (cur[1] is None or last > cur[1]):
+            cur[1] = last
+
+    # And the partner match is memoised on the market name. It scans the whole
+    # roster looking for the longest containing name, which is fine 206 times
+    # and not fine 13,000 times.
+    pcache: dict[str, Partner | None] = {}
+
     rows: dict[tuple[str, str, str], Expected] = {}
     # Whether the buyer currently on each Expected came off an SEO line, and is
     # therefore still waiting for a real one.
     seo_buyer: dict[tuple[str, str, str], bool] = {}
-    for l in db.scalars(select(OrderLine)).all():
+    for l in cols:
         if excluded(l.market):
             continue
         live = cyc.was_live(l.starts_on, l.ends_on)
         life = cyc.needs_lifetime(l.ends_on)
         if not live and not life:
             continue
-        p = _match_partner(idx, l.market)
+        if l.market in pcache:
+            p = pcache[l.market]
+        else:
+            p = pcache[l.market] = _match_partner(idx, l.market)
         group = (p.group if p and p.group else l.market) or l.market
         for kind, wanted in (("monthly", live), ("lifetime", life)):
             if not wanted:
@@ -144,26 +204,8 @@ def expected_for(db: Session, period: str) -> list[Expected]:
             if l.ends_on and (e.ends_on is None or l.ends_on > e.ends_on):
                 e.ends_on = l.ends_on
 
-    # THE FLIGHT SPANS EVERY ORDER, not just the one that ended.
-    #
-    # A lifetime entry is created by the order line that ended inside the
-    # window, so taking its dates gives the flight of that ONE order. A client
-    # with two overlapping orders - one 2024-2025, one 2025-2026 - would then
-    # be told to pull from 2025, losing the first year. The range is the
-    # earliest start and the latest end across everything that client runs.
-    span: dict[tuple[str, str], list] = {}
-    for l in db.scalars(select(OrderLine)).all():
-        if excluded(l.market):
-            continue
-        k = (_key(l.market), _key(l.client))
-        cur = span.get(k)
-        if cur is None:
-            span[k] = [l.starts_on, l.ends_on]
-            continue
-        if l.starts_on and (cur[0] is None or l.starts_on < cur[0]):
-            cur[0] = l.starts_on
-        if l.ends_on and (cur[1] is None or l.ends_on > cur[1]):
-            cur[1] = l.ends_on
+    # The span is built in the pass above, from every line the client runs -
+    # including the ones that are neither live nor ending this cycle.
     for (mk, ck, kind), e in rows.items():
         if kind == "lifetime" and (mk, ck) in span:
             e.starts_on, e.ends_on = span[(mk, ck)]
@@ -184,7 +226,12 @@ def _attach_reports(db: Session, period: str,
     Furniture Mart"), and a lifetime and a monthly for the same client are
     distinguished only by the report's own lifetime flag.
     """
-    reports = db.scalars(select(Report).where(Report.period == period)).all()
+    # `checks` is the full 27-line pass/fail list per report and the board never
+    # prints it - it is a JSON column decoded for every report on the cycle for
+    # nothing. Deferred, so the report page still gets it on demand.
+    from sqlalchemy.orm import defer
+    reports = db.scalars(select(Report).where(Report.period == period)
+                         .options(defer(Report.checks))).all()
     by_client = {(_key(e.client), e.kind): e for e in rows.values()}
     by_account: dict[tuple[str, str], Expected] = {}
     for e in rows.values():

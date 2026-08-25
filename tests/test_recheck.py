@@ -224,13 +224,40 @@ def test_sweep_once_works_through_the_ones_still_open(live):
 
 # --------------------------------------------------------- scope and pacing
 def test_the_sweep_rests_no_longer_than_it_worked():
-    """The old pacing rested twenty seconds after four seconds of work, which
-    turned a ten-minute job into two hours - a queue that never drained while
-    builds were going out several times a day."""
+    """The rest is proportional to the work, never a flat wait: the old pacing
+    rested twenty seconds after four seconds of work and turned a ten-minute
+    job into two hours. Smaller batches now, so the pauses come more often and
+    the board is never waiting on twenty-five PDFs in a row."""
     from app import recheck as rc
-    assert rc.BATCH >= 25
-    assert rc.MAX_REST_SECONDS <= 10
+    assert rc.BATCH <= 10
     assert not hasattr(rc, "PAUSE_SECONDS")
+
+
+def test_only_one_sweeper_runs_across_both_workers():
+    """Each gunicorn worker starts one, and two streams of pdftotext against a
+    box that is also serving the board is most of the way to the dashboard
+    hanging. The claim is a row, because a lock one worker holds means nothing
+    to the other."""
+    import datetime as dt
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, RecheckJob
+    from app.recheck import SWEEP_KEY, _claim, _release
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+    assert _claim(s, SWEEP_KEY) is True
+    assert _claim(s, SWEEP_KEY) is False          # the other worker stands down
+    _release(s, SWEEP_KEY)
+    assert _claim(s, SWEEP_KEY) is True           # and can take it next time
+
+    # A claim left behind by a killed process expires rather than blocking the
+    # sweep until somebody notices.
+    row = s.query(RecheckJob).filter_by(key=SWEEP_KEY).one()
+    row.updated_at = dt.datetime.utcnow() - dt.timedelta(hours=2)
+    s.commit()
+    assert _claim(s, SWEEP_KEY) is True
 
 
 def test_the_automatic_sweep_only_covers_recent_cycles():
@@ -599,3 +626,33 @@ def test_there_is_no_button_that_re_reads_signed_off_work():
     from pathlib import Path as _P
     tpl = _P("app/templates/cycle.html").read_text()
     assert 'value="signed"' not in tpl
+
+
+def test_a_job_whose_process_died_stops_claiming_to_be_running():
+    """The work happens in a thread and a deploy takes the thread with it, so
+    the row said "running" and the card sat at "52 of 93" for an hour with a
+    spinner on it - which reads as the tool being stuck rather than as the job
+    having been killed."""
+    import datetime as dt
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, RecheckJob
+    from app.recheck import running_jobs
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+    old = RecheckJob(key="g:7 Mountains PA", partner_group="7 Mountains PA",
+                     state="running", total=93, done=52,
+                     started_at=dt.datetime.utcnow() - dt.timedelta(hours=1),
+                     updated_at=dt.datetime.utcnow() - dt.timedelta(hours=1))
+    live = RecheckJob(key="g:Other", partner_group="Other", state="running",
+                      total=10, done=3, started_at=dt.datetime.utcnow(),
+                      updated_at=dt.datetime.utcnow())
+    s.add_all([old, live]); s.commit()
+
+    jobs = running_jobs(s)
+    assert "g:Other" in jobs and "g:7 Mountains PA" not in jobs
+    s.expire_all()
+    dead = s.query(RecheckJob).filter_by(key="g:7 Mountains PA").one()
+    assert dead.state == "stopped" and "52 of 93" in dead.note

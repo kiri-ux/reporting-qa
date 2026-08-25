@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+
+from .. import proc as _proc
 import tempfile
 from pathlib import Path
 
@@ -52,7 +54,7 @@ def header_logo_hash(path: str | Path) -> str:
         return ""
     try:
         with tempfile.TemporaryDirectory() as d:
-            subprocess.run(
+            _proc.run(
                 ["pdftoppm", "-f", "1", "-l", "1", "-r", str(DPI), "-png",
                  str(path), f"{d}/p"],
                 check=True, capture_output=True, timeout=30)
@@ -126,7 +128,7 @@ def crop_png(path: str | Path) -> bytes:
         return b""
     try:
         with tempfile.TemporaryDirectory() as d:
-            subprocess.run(
+            _proc.run(
                 ["pdftoppm", "-f", "1", "-l", "1", "-r", "150", "-png",
                  str(path), f"{d}/p"],
                 check=True, capture_output=True, timeout=30)

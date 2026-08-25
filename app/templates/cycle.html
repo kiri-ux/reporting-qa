@@ -160,7 +160,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
      says what it filters, and this one keeps its place by showing what the
      board is already narrowed to. #}
   <div class="colfilters" data-cardfilters-for="glist">
-    <span class="frow">Partners</span>
+    <span class="frow">Filters</span>
     {% if filter_group %}
       <span class="chip">{{ filter_group }}<a title="Show every partner again"
         href="/cycle?period={{ period }}{% if filter_state %}&state={{ filter_state }}{% endif %}">&times;</a></span>
@@ -321,6 +321,17 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <a href="{{ d.archive_url }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
             <span class="acct">{{ d.reports }} file{{ 's' if d.reports != 1 }}</span>
+            {# PACKAGE AGAIN. Once a partner had a link there was no way to make
+               another one, so a delivery that went to the wrong place - or one
+               made before a report was corrected - could only be fixed by hand
+               in Drive. This uploads over the same files and mints the link
+               again, to wherever the roster now says this partner delivers. #}
+            <form method="post" action="/cycle/{{ period }}/deliver" style="display:inline">
+              <input type="hidden" name="group" value="{{ g.group }}">
+              <input type="hidden" name="force" value="1">
+              <button class="mini" type="submit"
+                      title="Package this partner again, to {{ (g.target or 'drive')|capitalize }}. The files are replaced in place and a new link is made.">Package again</button>
+            </form>
           {% elif d and d.ok %}
             <a class="btn gold" href="/delivery/{{ d.id }}/file">Download zip</a>
             <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>

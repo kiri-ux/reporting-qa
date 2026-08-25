@@ -12,13 +12,14 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-59"
-BUILD_NOTES = ("Delivered files keep their own name - month at the front, order "
-               "id at the end - instead of being renamed after the client. A "
-               "blank delivery target on the roster meant Drive, which is how a "
-               "Dropbox partner's client got a Drive link; blanks are now filled "
-               "in from the bundled roster and a mismatch is called out on the "
-               "links page. Reports show pacing: served over ordered.")
+BUILD = "2026.08.25-60"
+BUILD_NOTES = ("The board was reading every order line twice as full objects on "
+               "every page load, and the roster once per market - so it built "
+               "itself out of forty thousand rows it did not need. Half the time "
+               "and a twentieth of the bytes now. One background sweep across "
+               "both workers instead of two, and a job whose process died stops "
+               "claiming to be running. Package again is back on a delivered "
+               "partner.")
 
 # ---------------------------------------------------------------------------
 

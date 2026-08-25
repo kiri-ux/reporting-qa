@@ -10,6 +10,8 @@ import datetime as dt
 import re
 import shutil
 import subprocess
+
+from .. import proc as _proc
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,7 +38,7 @@ def pdf_text(path: Path, first: int | None = None, last: int | None = None) -> s
     if last:
         cmd += ["-l", str(last)]
     cmd += [str(path), "-"]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    out = _proc.run(cmd, capture_output=True, text=True, timeout=90)
     return out.stdout.replace("\x0c", "")
 
 
@@ -49,7 +51,9 @@ def pdf_pages(path: Path) -> list[str]:
     feed; the only reason nobody used it is that pdf_text strips them.
     """
     cmd = [_bin("pdftotext"), "-layout", str(path), "-"]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    # 300 seconds meant one unreadable PDF could wedge a background job
+    # for five minutes, which on screen is a counter that has stopped.
+    out = _proc.run(cmd, capture_output=True, text=True, timeout=90)
     pages = out.stdout.split("\x0c")
     if pages and not pages[-1].strip():
         pages.pop()
@@ -57,7 +61,7 @@ def pdf_pages(path: Path) -> list[str]:
 
 
 def page_count(path: Path) -> int:
-    out = subprocess.run([_bin("pdfinfo"), str(path)], capture_output=True, text=True, timeout=60)
+    out = _proc.run([_bin("pdfinfo"), str(path)], capture_output=True, text=True, timeout=60)
     m = re.search(r"Pages:\s+(\d+)", out.stdout)
     return int(m.group(1)) if m else 0
 
@@ -68,7 +72,7 @@ def page_ink_pct(path: Path, page: int, dpi: int = 50) -> float:
     from PIL import Image
 
     with tempfile.TemporaryDirectory() as d:
-        subprocess.run(
+        _proc.run(
             [_bin("pdftoppm"), "-r", str(dpi), "-f", str(page), "-l", str(page), "-png",
              str(path), f"{d}/p"],
             capture_output=True, timeout=120,
