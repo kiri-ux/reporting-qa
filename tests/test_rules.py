@@ -1752,3 +1752,85 @@ def test_drive_reuses_a_folder_named_differently(monkeypatch, tmp_path):
         "created a duplicate folder instead of using the one already there"
     assert ("OLD", "2026-08 August") in folders, "filed under the wrong partner"
     assert "OTHER" not in [p for (p, _) in folders]
+
+
+def test_a_check_with_nothing_to_look_at_is_skipped_not_passed():
+    """A report with no geo-fencing section has not had its business names
+    verified. Claiming a pass asserts something about a table that is not
+    there."""
+    import datetime as _dt
+    from app.checks import run_all
+
+    def geo_state(fixture):
+        r = run_all(FIXTURES / fixture, filename="July 2026_X_1234.pdf",
+                    expected_products={"Display"}, period="2026-07",
+                    flight=(_dt.date(2024, 1, 1), _dt.date(2026, 7, 31)))
+        return [c for c in r["checks"] if c["key"] == "check_geofence_names"][0]["state"]
+
+    assert geo_state("salem_rv.pdf") == "passed"          # has the section
+    assert geo_state("centre_hills.pdf") == "skipped"     # no section at all
+    assert geo_state("keystone_altoona.pdf") == "skipped"
+
+
+def test_a_corrected_report_replaces_the_broken_one(tmp_path, monkeypatch):
+    """Re-running a report in TapClicks and letting it come back through the
+    Zap has to supersede the copy on the board.
+
+    The old code skipped any file whose NAME it had already seen, so a re-pull
+    did nothing at all - the fix was silently dropped and the board went on
+    showing the broken version.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'sup.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import ingest as imod
+    importlib.reload(imod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    D = dt.date.fromisoformat
+    db.add(db_mod.OrderLine(market="7 Mountains KY", client="Awaken Bakery",
+                            account_ids="52746", product="Social Mirror Ads",
+                            starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.commit()
+
+    name = "July 2026_Awaken Bakery_52746.pdf"
+    first = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    b1 = imod.process_batch(db, [(name, first)], source="zapier", notify=False,
+                            coalesce=True, subject="FW: Daily report")
+    assert len(b1.reports) == 1
+    rep_id = b1.reports[0].id
+
+    # a reviewer signs it off and leaves a note
+    r = db.get(db_mod.Report, rep_id)
+    r.review_state, r.reviewed_by = "reviewed", "Jacob"
+    r.reviewed_at = dt.datetime.utcnow()
+    r.acked = [0]
+    r.review_note = "Chased Tap for a re-pull"
+    db.commit()
+
+    # the corrected report arrives - SAME filename, different content
+    fixed = (FIXTURES / "salem_rv.pdf").read_bytes()
+    b2 = imod.process_batch(db, [(name, fixed)], source="zapier", notify=False,
+                            coalesce=True, subject="FW: Daily report")
+
+    all_reports = db.query(db_mod.Report).all()
+    assert len(all_reports) == 1, f"got {len(all_reports)} rows - it duplicated"
+    r = all_reports[0]
+    assert r.id == rep_id, "it replaced the row instead of updating it"
+    assert Path(r.stored_path).read_bytes() == fixed, "the new file was dropped"
+    assert r.batch_id == b2.id, "it should sit with the batch that corrected it"
+    assert r.acked == [] and r.review_state == "new" and r.reviewed_at is None, \
+        "sign-off on the broken copy carried over to the corrected one"
+    assert r.review_note == "Chased Tap for a re-pull", "the note was lost"
+
+    # a lifetime for the same client is a different report, not a replacement
+    life = "Lifetime_Awaken Bakery_52746.pdf"
+    imod.process_batch(db, [(life, fixed)], source="zapier", notify=False,
+                       coalesce=True, subject="FW: Daily report")
+    assert db.query(db_mod.Report).count() == 2, \
+        "a lifetime replaced the monthly, or the other way round"

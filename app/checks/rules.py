@@ -386,6 +386,16 @@ def _rule_applies(rule, ctx) -> bool:
     if name in ("check_line_items", "check_creative", "check_device",
                 "check_row_math", "check_rate_ceiling"):
         return bool(ctx.get("tables"))
+    if name == "check_geofence_names":
+        # No geo-fencing on the report means nothing was verified. Reporting a
+        # pass would claim every business name is filled in on a table that is
+        # not there.
+        text = ctx.get("text") or ""
+        i = text.find("Geo-Fencing Performance")
+        if i < 0:
+            return False
+        return any("Business Name" in l and "Address" in l
+                   for l in text[i:i + 20000].split("\n"))
     return True
 
 

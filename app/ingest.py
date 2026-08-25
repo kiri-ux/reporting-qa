@@ -74,6 +74,53 @@ def expand_attachments(files: list[tuple[str, bytes]]) -> list[tuple[str, bytes]
     return out
 
 
+
+def _rkey(client: str, accounts: str, is_lifetime: bool):
+    """How one report is recognised as the same report as another."""
+    from .roster import _keyify
+    kind = "lifetime" if is_lifetime else "monthly"
+    ids = {(a, kind) for a in _keyify(client, accounts)}
+    name = re.sub(r"[^a-z0-9]", "", (client or "").lower())
+    return ids, ((name, kind) if name else None)
+
+
+def _index(idx: dict, rep) -> None:
+    ids, name = _rkey(rep.client, rep.account_ids, rep.is_lifetime)
+    for k in ids:
+        idx["by_id"][k] = rep
+    if name:
+        idx["by_name"].setdefault(name, rep)
+
+
+def _reports_for_period(db: Session, period: str) -> dict:
+    """Everything already received for this period, by account id and by name.
+
+    Newest last, so a client that has already been superseded once resolves to
+    the most recent copy rather than the original.
+    """
+    from sqlalchemy import select
+    idx = {"by_id": {}, "by_name": {}}
+    for rep in db.scalars(select(Report).where(Report.period == period)
+                          .order_by(Report.id)).all():
+        _index(idx, rep)
+    return idx
+
+
+def _match_existing(idx: dict, meta: dict):
+    """The report this one replaces, if there is one.
+
+    Account id first - clients are typed differently in the two systems - then
+    the name. A monthly never replaces a lifetime or the other way round.
+    """
+    ids, name = _rkey(meta.get("client", ""), meta.get("account_ids", ""),
+                      bool(meta.get("is_lifetime")))
+    for k in ids:
+        hit = idx["by_id"].get(k)
+        if hit is not None:
+            return hit
+    return idx["by_name"].get(name) if name else None
+
+
 def open_batch(db: Session, market: str, period: str) -> Batch | None:
     """The batch these reports should join, if there is one.
 
@@ -189,13 +236,17 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     store = settings.data_dir / f"batch-{batch.id}"
     store.mkdir(parents=True, exist_ok=True)
 
-    # A retried webhook must not double-count a report already in this batch.
-    already = {r.filename for r in batch.reports}
+    # A RE-PULL REPLACES THE REPORT IT CORRECTS.
+    #
+    # The old version skipped any file whose name it had already seen, so
+    # re-running a report in TapClicks and letting it come back through the
+    # Zap did nothing at all - the fix was silently dropped and the board went
+    # on showing the broken copy. Matching on client and kind instead means
+    # the corrected report supersedes the old one in place, keeping its notes
+    # and its place on the board.
+    existing = _reports_for_period(db, batch.period)
 
     for name, blob in pdfs:
-        if name in already:
-            continue
-        already.add(name)
         safe = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:180] or f"{uuid.uuid4().hex}.pdf"
         path = store / safe
         path.write_bytes(blob)
@@ -214,19 +265,40 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                                     "detail": str(exc)}],
                       "checks": []}
         meta = result["meta"]
-        rep = Report(
-            batch_id=batch.id, filename=name, stored_path=str(path),
-            client=meta.get("client", ""), account_ids=meta.get("account_ids", ""),
-            market=batch.market, period=meta.get("period") or batch.period,
-            is_lifetime=bool(meta.get("is_lifetime")),
-            pages=result["pages"], impressions=result["impressions"], clicks=result["clicks"],
-            products=", ".join(result.get("products") or []),
-            severity=result["severity"], findings=result["findings"],
-            checks=result.get("checks") or [],
-        )
-        db.add(rep)
+        rep = _match_existing(existing, meta)
+        replaced = rep is not None
+        if rep is None:
+            rep = Report(batch_id=batch.id, period=meta.get("period") or batch.period)
+            db.add(rep)
+        else:
+            # It moves to this batch, so the board and the digest both show it
+            # against the delivery that actually corrected it.
+            rep.batch_id = batch.id
+            # The findings describe a different file now. An acceptance or a
+            # sign-off given to the old copy cannot carry over to this one.
+            rep.acked = []
+            rep.review_state = "new"
+            rep.reviewed_at = None
+            log.info("superseded report %s for %s %s", rep.id, rep.client, rep.period)
+
+        rep.filename = name
+        rep.stored_path = str(path)
+        rep.client = meta.get("client", "") or rep.client
+        rep.account_ids = meta.get("account_ids", "") or rep.account_ids
+        rep.market = batch.market or rep.market
+        rep.period = meta.get("period") or batch.period
+        rep.is_lifetime = bool(meta.get("is_lifetime"))
+        rep.pages = result["pages"]
+        rep.impressions = result["impressions"]
+        rep.clicks = result["clicks"]
+        rep.products = ", ".join(result.get("products") or [])
+        rep.severity = result["severity"]
+        rep.findings = result["findings"]
+        rep.checks = result.get("checks") or []
         db.flush()
         attach_owners(db, rep)
+        if not replaced:
+            _index(existing, rep)
 
     if not batch.market:
         # attach_owners stamps a market onto each report from its order line,
