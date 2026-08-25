@@ -12,12 +12,13 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-58"
-BUILD_NOTES = ("Line items were being given their ORDER's end date, so anything "
-               "that finished mid-order still counted as live - 24 of the 57 "
-               "line items in the sample. That is the Blair Regional YMCA "
-               "failure, and a lot of others. Marking a logo now re-checks "
-               "every report carrying it straight away and names them.")
+BUILD = "2026.08.25-59"
+BUILD_NOTES = ("Delivered files keep their own name - month at the front, order "
+               "id at the end - instead of being renamed after the client. A "
+               "blank delivery target on the roster meant Drive, which is how a "
+               "Dropbox partner's client got a Drive link; blanks are now filled "
+               "in from the bundled roster and a mismatch is called out on the "
+               "links page. Reports show pacing: served over ordered.")
 
 # ---------------------------------------------------------------------------
 

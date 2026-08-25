@@ -69,7 +69,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
           {{ delivered.ready }} ready to package{% endif %}</p>
       {% endif %}
       {% if delivered.count %}
-        <p class="pacenote"><a href="/cycle/links?period={{ period }}">Client links</a></p>
+        <p class="pacenote"><a href="/cycle/links?period={{ period }}">Packaged links</a></p>
       {% endif %}
     </div>
   </div>
@@ -121,22 +121,13 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
             </svg>orders</button>
         </form>
       {% endif %}
-      {# Signed off, and judged by code that has since changed. Not swept
-         automatically - re-reading finished work while a rule changes three
-         times a day is how the queue never empties and the board keeps
-         un-reviewing itself. Before delivery is the moment that matters. #}
-      {% if stale.signed_stale %}
-        <form method="post" action="/cycle/recheck" style="display:inline">
-          <input type="hidden" name="period" value="{{ period }}">
-          <input type="hidden" name="scope" value="signed">
-          <button class="sync" type="submit"
-                  title="{{ stale.signed_stale }} signed-off report{{ 's' if stale.signed_stale != 1 }} on this cycle {{ 'was' if stale.signed_stale == 1 else 'were' }} judged by older checking code. They are left alone while you work - this re-reads them, which is worth doing before you package anything. A sign-off is only pulled if a failure turns up that was not there when it was signed.">
-            <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
-              <path d="M4 12l5 5L20 6" fill="none" stroke="currentColor"
-                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>{{ stale.signed_stale }} signed off</button>
-        </form>
-      {% endif %}
+      {# THE "N SIGNED OFF" BUTTON IS GONE. It re-read work that was already
+         done - which is the one thing the sweep was changed to stop doing -
+         and having it sit on the toolbar looking like a count made it easy to
+         press by accident. The reports it covered are still re-checked the
+         moment something makes them wrong: a rule change reaches them through
+         the report's own Check this file again, and marking a logo re-checks
+         every report carrying it, signed off or not. #}
       <a href="/cycle.csv?period={{ period }}" class="on">Download CSV</a>
     </span>
   </div>

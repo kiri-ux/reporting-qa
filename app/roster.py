@@ -295,6 +295,31 @@ def budgets_for(db: Session, client: str, account_ids: str,
     return out
 
 
+def ordered_for(db: Session, client: str, account_ids: str,
+                period: str | None = None) -> dict:
+    """What each live product was bought to do this month.
+
+    {product: {"budget": float|None, "impressions": float|None}}, summed over
+    the line items that were actually running. None stays None: "the order
+    does not say" is not "the order says nothing", and a pacing line that
+    treats the two the same reads 100% under on a column that is simply absent.
+    """
+    hit = client_lines(db, client, account_ids) or []
+    if period:
+        hit = [l for l in hit if _ran_during(l, period)]
+    out: dict[str, dict] = {}
+    for l in hit:
+        if not l.product or not getattr(l, "live", True):
+            continue
+        row = out.setdefault(l.product, {"budget": None, "impressions": None})
+        for field in ("budget", "impressions"):
+            v = getattr(l, field, None)
+            if v is None:
+                continue
+            row[field] = float(v) if row[field] is None else row[field] + float(v)
+    return out
+
+
 def expected_any(db: Session, client: str, account_ids: str,
                  period: str | None = None) -> list:
     """Expectations this client's orders satisfy with EITHER product.

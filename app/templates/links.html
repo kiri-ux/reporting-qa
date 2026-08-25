@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Client links · {{ cycle.label }} · Report QA{% endblock %}
+{% block title %}Packaged links · {{ cycle.label }} · Report QA{% endblock %}
 {% block where %}<a href="/cycle?period={{ period }}">Cycle</a> ·
-  {{ cycle.label }} · Client links{% endblock %}
+  {{ cycle.label }} · Packaged links{% endblock %}
 {% block body %}
 
 <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
   <div>
-    <h1>Client links</h1>
+    <h1>Packaged links</h1>
     <p class="sub">
       {{ cycle.label }}.
       {% if delivered.count %}
@@ -62,6 +62,15 @@
               <a href="{{ l.archive }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
             <span class="acct">{{ l.reports }} file{{ 's' if l.reports != 1 }}</span>
+            {# Where it went, and whether that is where this partner takes
+               delivery. A blank target on the roster means Drive, so a Dropbox
+               partner with no target packaged to Drive and looked fine. #}
+            {% if l.mismatch %}
+              <span class="wrongtarget" title="This partner takes delivery on
+{{ l.should|capitalize }}, but this was packaged to {{ l.target|capitalize }}. Package it again once the roster is right - the link above is a {{ l.target|capitalize }} link.">went to {{ l.target|capitalize }}, should be {{ l.should|capitalize }}</span>
+            {% elif l.target %}
+              <span class="acct">{{ l.target|capitalize }}</span>
+            {% endif %}
           </li>
         {% endfor %}
       </ul>

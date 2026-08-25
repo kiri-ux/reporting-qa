@@ -591,12 +591,11 @@ def test_the_deliberate_pass_covers_only_the_signed_off_ones(live):
     assert stale_count(s, signed_only=True) == 1           # the deliberate pass
 
 
-def test_the_signed_off_count_is_on_the_board():
-    """Not swept behind your back, but not invisible either."""
-    import inspect
-    from app import main as mmod
-    assert '"signed_stale"' in inspect.getsource(mmod._stale_here)
+def test_there_is_no_button_that_re_reads_signed_off_work():
+    """It was there so a rule change could be pushed through finished reports
+    before delivery. In practice it re-read work that was already done - the
+    one thing the sweep had just been changed to stop doing - and sat on the
+    toolbar looking like a count, which is easy to press by accident."""
     from pathlib import Path as _P
     tpl = _P("app/templates/cycle.html").read_text()
-    assert 'value="signed"' in tpl
-    assert "signed off" in tpl
+    assert 'value="signed"' not in tpl

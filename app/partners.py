@@ -135,6 +135,44 @@ def seed_if_empty(db: Session) -> int:
     return n
 
 
+def backfill_targets(db: Session) -> int:
+    """Fill in where a partner takes delivery, when the loaded roster is silent.
+
+    A roster exported from the sheet without the Delivery column loads every
+    other field and leaves this one blank, and a blank target means Drive. So
+    7 Mountains NY Elmira/Mansfield - a Dropbox partner - was packaged and the
+    client was handed a Google Drive link, with nothing on screen that looked
+    wrong. The bundled seed knows the answer for all 206 partners; this only
+    fills blanks, so an uploaded roster that DOES say still wins.
+    """
+    if not SEED.exists():
+        return 0
+    blanks = [p for p in db.scalars(select(Partner)).all()
+              if not (p.delivery_target or "").strip()]
+    if not blanks:
+        return 0
+    want: dict[str, str] = {}
+    reader = csv.reader(io.StringIO(SEED.read_text(encoding="utf-8-sig")))
+    header = next(reader, None) or []
+    idx = {(h or "").strip().lower(): i for i, h in enumerate(header)}
+    pi, ti = idx.get("partner"), idx.get("delivery_target")
+    if pi is None or ti is None:
+        return 0
+    for row in reader:
+        if len(row) > max(pi, ti) and row[pi].strip() and row[ti].strip():
+            want[_key(row[pi])] = row[ti].strip()
+    n = 0
+    for p in blanks:
+        t = want.get(_key(p.partner))
+        if t:
+            p.delivery_target = t
+            n += 1
+    if n:
+        db.commit()
+        log.info("filled in the delivery target for %d partner(s)", n)
+    return n
+
+
 _CACHE: dict[str, Partner] | None = None
 
 

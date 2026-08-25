@@ -98,6 +98,22 @@ def _txt(v) -> str:
     return v.strip()
 
 
+def _num(v):
+    """A money or impression figure off the export, or None.
+
+    None and 0 are different answers - "the export does not carry this column"
+    against "the order says nothing is being spent" - and a pacing line that
+    treats a missing column as a budget of nothing reads 100% under.
+    """
+    s = _txt(v).replace(",", "").replace("$", "").strip()
+    if not s or s in {"-", "--", "n/a", "N/A"}:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 
 
@@ -144,7 +160,20 @@ WANTED = ("orders_id", "id", "orders_status", "status", "client", "product",
           # Money. Not on the report and not derivable from it - pacing is the
           # comparison of what the order says to spend against what it spent.
           "monthly_campaign_budget", "monthly_meta_ad_spend",
-          "monthly_ppc_ad_spend", "monthly_linkedin_ad_spend")
+          "monthly_ppc_ad_spend", "monthly_linkedin_ad_spend",
+          "monthly_pm_ad_spend", "monthly_campaign_impressions")
+
+
+# WHICH COLUMN IS THIS PRODUCT'S MONTHLY MONEY.
+#
+# Most products are bought against the campaign budget - client ad cost. The
+# four that are not each have their own column on the order, and comparing one
+# of those against the campaign budget is comparing two different things.
+SPEND_FIELD = {
+    "Performance Max": "monthly_pm_ad_spend",
+    "PPC": "monthly_ppc_ad_spend",
+    "LinkedIn": "monthly_linkedin_ad_spend",
+}
 
 
 def _open_source(src):
@@ -319,7 +348,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "campaign": product_raw, "starts_on": start, "ends_on": end,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
-                        "live": False,
+                        "live": False, "budget": None, "impressions": None,
                     }
                 else:                    # widest flight across that client's orders
                     cur = kept[k]
@@ -330,6 +359,21 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Live if ANY line item behind this row is. A client running one
                 # product across a live order and a paused one is running it.
                 kept[k]["live"] = kept[k]["live"] or line_live
+
+                # ONE LINE ITEM'S MONEY COUNTS ONCE, against the first product
+                # it maps to. "CTV + Video Ads" is one buy with one budget, and
+                # adding it to both halves would say the client is spending
+                # twice what the order says.
+                if product == products[0]:
+                    money = _num(r.get(SPEND_FIELD.get(product,
+                                                       "monthly_campaign_budget")))
+                    if money is not None:
+                        cur = kept[k]["budget"]
+                        kept[k]["budget"] = money if cur is None else cur + money
+                    imps = _num(r.get("monthly_campaign_impressions"))
+                    if imps is not None:
+                        cur = kept[k]["impressions"]
+                        kept[k]["impressions"] = imps if cur is None else cur + imps
                 # Each order's own window as well as the merged one. The merged
                 # span answers "when does this end"; only the individual windows
                 # can answer "was it running in July", and a client who stopped
@@ -387,6 +431,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             campaign=v["campaign"], product=product,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
             flights=v["flights"], live=bool(v["live"]),
+            budget=v["budget"], impressions=v["impressions"],
             buyer=buyer, buyer_email=buyer_email,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))

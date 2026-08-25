@@ -273,11 +273,18 @@ def by_group(db: Session, period: str,
              expected: list[Expected] | None = None) -> list[GroupRow]:
     exp = expected if expected is not None else expected_for(db, period)
     idx = _partner_index(db)
+    # WHERE THE GROUP TAKES DELIVERY. The first partner with an answer used to
+    # win, so a group whose first market said nothing shipped to Drive even
+    # when the market beside it said Dropbox. Anything other than Drive is a
+    # deliberate exception somebody typed, so it wins for the whole group.
     targets: dict[str, str] = {}
     for p in idx.values():
         g = p.group or p.partner
-        if p.delivery_target and g not in targets:
-            targets[g] = p.delivery_target
+        t = (p.delivery_target or "").strip()
+        if not t:
+            continue
+        if g not in targets or (targets[g] == "drive" and t != "drive"):
+            targets[g] = t
 
     # The roster's own entry for the group, so a card can say who owns it
     # without every caller having to look the partner up again.

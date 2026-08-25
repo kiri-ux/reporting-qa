@@ -348,6 +348,9 @@ class OrderLine(Base):
     # report - both come off the order.
     budget: Mapped[float | None] = mapped_column(Float, nullable=True)
     spend: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # What the order says should be SERVED in a month. None means the export
+    # did not carry the column - a different claim from zero.
+    impressions: Mapped[float | None] = mapped_column(Float, nullable=True)
     needs_lifetime: Mapped[bool] = mapped_column(Boolean, default=True)
     buyer: Mapped[str] = mapped_column(String(255), default="")
     team_member: Mapped[str] = mapped_column(String(255), default="")
@@ -503,6 +506,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_sync", "trigger", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_lines", "budget", "DOUBLE PRECISION"),
     ("order_lines", "spend", "DOUBLE PRECISION"),
+    ("order_lines", "impressions", "DOUBLE PRECISION"),
 ]
 
 

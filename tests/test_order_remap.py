@@ -594,3 +594,78 @@ def test_what_todays_code_would_map_a_raw_name_to_is_shown():
     assert map_order_products("Social Mirror CTV Ads") == ["Social Mirror CTV"]
     # The old import had no Social Mirror CTV key, so a row stored as plain
     # "Social Mirror" with this raw name is provably from older code.
+
+
+# ------------------------------------------------- money and impressions
+def test_the_orders_own_money_and_impressions_are_loaded(db):
+    """They were being read off the export and thrown away, so budgets only
+    existed if a spreadsheet was uploaded by hand - and the next full sync
+    deleted the rows and took them with it."""
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_budget,monthly_pm_ad_spend,"
+            "monthly_campaign_impressions\n")
+    rows = ("BU,IO Live,Acme,1,Mobile Conquesting Display & Video Ads,10,IO Live,"
+            "2026-01-01,2026-01-01,2026-12-31,2026-12-31,1500,,250000\n"
+            "BU,IO Live,Acme,1,Performance Max Ads,11,IO Live,"
+            "2026-01-01,2026-01-01,2026-12-31,2026-12-31,999,750,\n")
+    import_io_export(db, (head + rows).encode(), period="2026-07")
+    by = {l.product: l for l in db.query(OrderLine).all()}
+    assert by["Mobile Conquesting"].budget == 1500
+    assert by["Mobile Conquesting"].impressions == 250000
+    # Performance Max paces on its own column, not on the campaign budget.
+    assert by["Performance Max"].budget == 750
+
+
+def test_pacing_is_served_over_ordered(db):
+    from app.checks.served import pacing_pct, pacing_rows
+    assert pacing_pct(50, 100) == 50.0            # half short
+    assert pacing_pct(120, 100) == -20.0          # a fifth over
+    assert pacing_pct(None, 100) is None          # not printed on the report
+    assert pacing_pct(50, None) is None           # not on the order
+
+    text = (" Line Item Performance\n"
+            " Acme - Keyword Social Mirror     40,000      100     0.25%\n"
+            " Acme - a line with no product    10,000       20     0.20%\n")
+    rows = pacing_rows(text, {"Social Mirror": {"budget": None,
+                                                "impressions": 50000}})
+    first = rows[0]
+    assert first["served"] == 40000 and first["ordered"] == 50000
+    assert round(first["pace"]) == 20
+    total = rows[-1]
+    # A line item whose name names no product counts in the total and against
+    # no single product, and the page says so rather than guessing.
+    assert total["total"] and total["served"] == 50000
+    assert total["unattributed"] == 10000
+
+
+def test_report_line_items_are_read_back_to_a_product():
+    """The order says "Mobile Conquesting Display & Video Ads"; the report says
+    "Close Lumber - Geo-Retargeting Mobile". Matching only the order's spelling
+    left every Mobile Conquesting line on every report unattributed."""
+    from app.checks.served import report_product
+    assert report_product("Close Lumber - Geo-Retargeting Mobile") == "Mobile Conquesting"
+    assert report_product("Lookalike Facebook/Instagram Premium") == "Meta"
+    assert report_product("Jeff Stanley - AI Social Mirror CTV") == "Social Mirror CTV"
+    assert report_product("Keyword Social Mirror") == "Social Mirror"
+    # Specificity, not word order: this is a billboard, not a video buy.
+    assert report_product("Carpet Place - Venue Targeting DOOH Video") == "DOOH"
+    assert report_product("Wick Buildings - AI Native") == "Native Display"
+    assert report_product("Matt Heilala - YouTube Channels") == "YouTube"
+    assert report_product("Some Client - a name with no product in it") is None
+
+
+def test_the_everything_report_is_almost_entirely_attributed():
+    """A per-product breakdown that only covers half the impressions is worse
+    than no breakdown, so this is pinned against a real report."""
+    import pytest as _pt
+    from pathlib import Path as _P
+    sample = _P("/root/work/sample.txt")
+    if not sample.exists():
+        _pt.skip("everything-sample not present")
+    from app.checks.served import served_impressions
+    got = served_impressions(sample.read_text())
+    assert got["unattributed"] / got["total"] < 0.02
+    assert got["by_product"]["Mobile Conquesting"] > 1_000_000

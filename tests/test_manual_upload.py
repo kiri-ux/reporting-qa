@@ -744,3 +744,67 @@ def test_order_lines_come_back_as_a_fragment_for_the_sheet(client):
     assert "<html" in full.lower()
     assert "<html" not in frag.lower()
     assert "Social Mirror" in frag
+
+
+# --------------------------------------------------------------- delivery
+def test_a_delivered_report_keeps_its_own_name(app_db):
+    """The partner's copy used to be named after the client - no month, no
+    order id - so what they opened was not what the report page said it was
+    called, and nothing downstream could be filed by it."""
+    from app.delivery import report_filename
+    from app import db as dbm
+
+    rep = dbm.Report(batch_id=1, filename="July 2026_Elmira Downtown Development 53700.pdf",
+                     period="2026-07", client="Elmira Downtown Development",
+                     account_ids="53700")
+    e = type("E", (), {"report": rep, "client": rep.client, "kind": "monthly"})()
+    assert report_filename(e) == "July 2026_Elmira Downtown Development 53700.pdf"
+
+    rep.filename = "July 2026_Elmira Downtown Development 53700 (1).pdf"
+    assert report_filename(e) == "July 2026_Elmira Downtown Development 53700.pdf"
+
+    life = type("E", (), {"report": rep, "client": rep.client, "kind": "lifetime"})()
+    assert report_filename(life).endswith(" - Lifetime.pdf")
+
+    rep.filename = ""
+    assert report_filename(e) == "July 2026_Elmira Downtown Development 53700.pdf"
+
+
+def test_a_blank_delivery_target_is_filled_in_from_the_bundled_roster(app_db):
+    """A roster exported without the Delivery column loads every other field
+    and leaves this blank - and blank means Drive, which is how a Dropbox
+    partner's client was handed a Google Drive link."""
+    from app import db as dbm
+    from app.partners import backfill_targets
+
+    db, _, _ = app_db
+    db.add(dbm.Partner(partner="7 Mountains NY Elmira/Mansfield",
+                       group="7 Mountains NY Elmira/Mansfield", delivery_target=""))
+    db.add(dbm.Partner(partner="Someone Else", group="Someone Else",
+                       delivery_target="drive"))
+    db.commit()
+    assert backfill_targets(db) == 1
+    rows = {p.partner: p.delivery_target for p in db.query(dbm.Partner).all()}
+    assert rows["7 Mountains NY Elmira/Mansfield"] == "dropbox"
+    assert rows["Someone Else"] == "drive"       # an answer already there stands
+
+
+def test_a_group_takes_the_exception_not_the_first_answer(app_db):
+    """Markets ship as a group. The first partner in it used to decide where
+    the group delivers, so a group whose first market said nothing (Drive)
+    shipped to Drive even with a Dropbox market sitting beside it."""
+    from app import db as dbm
+    from app.board import by_group
+
+    db, _, _ = app_db
+    db.add(dbm.Partner(partner="7 Mountains NY Elmira", group="7 Mountains NY",
+                       delivery_target="drive"))
+    db.add(dbm.Partner(partner="7 Mountains NY Mansfield", group="7 Mountains NY",
+                       delivery_target="dropbox"))
+    db.commit()
+    from app.board import Expected
+    rows = by_group(db, "2026-07", expected=[
+        Expected(group="7 Mountains NY", market="7 Mountains NY Elmira",
+                 client="c", account_ids="1", products=["Video"], kind="monthly",
+                 buyer="", report=None)])
+    assert rows[0].target == "dropbox"

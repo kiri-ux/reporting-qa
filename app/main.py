@@ -123,8 +123,12 @@ def _startup():
     # recipients without anyone importing anything.
     db = SessionLocal()
     try:
-        from .partners import seed_if_empty
+        from .partners import backfill_targets, seed_if_empty
         seed_if_empty(db)
+        # A roster uploaded without the Delivery column left every target
+        # blank, and blank means Drive - which is how a Dropbox partner's
+        # client got a Drive link.
+        backfill_targets(db)
     except Exception:
         import traceback; traceback.print_exc(); db.rollback()
     finally:
@@ -994,8 +998,16 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
     # reason this page is open.
     if new:
         delivered["links"].sort(key=lambda l: l["group"] != new)
+    # WHERE EACH PARTNER SHOULD HAVE GONE, beside where it went. A blank
+    # delivery target means Drive, so a Dropbox partner whose roster row had
+    # lost its target was packaged to Drive and the link looked perfectly fine.
+    want = {g.group: (g.target or settings.delivery_target) for g in groups}
+    for l in delivered["links"]:
+        should = want.get(l["group"], "")
+        l["should"] = should
+        l["mismatch"] = bool(should and l["target"] and should != l["target"])
     return templates.TemplateResponse(request, "links.html", {
-        "nav": "cycle", "cycle": cycle_for(period), "period": period,
+        "nav": "links", "cycle": cycle_for(period), "period": period,
         "periods": periods, "delivered": delivered, "new": new,
         "configured": settings.delivery_configured,
     })
@@ -1532,6 +1544,22 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     from .checks.rules import SKIP_WHY
     from .version import rules_version
     peers = logo_reports(db, rep.logo_hash or "", exclude_id=rep.id)
+
+    # PACING: what the month was bought to do, against what the report says it
+    # did. Read here rather than stored with the findings because it is a
+    # number to look at, not a verdict - it says nothing at all on most reports
+    # and should not be another row in the checks list.
+    pacing = []
+    try:
+        if rep.stored_path and Path(rep.stored_path).exists() and not rep.is_lifetime:
+            from .checks.parser import pdf_text
+            from .checks.served import pacing_rows
+            from .roster import ordered_for
+            ordered = ordered_for(db, rep.client, rep.account_ids, rep.period)
+            if ordered:
+                pacing = pacing_rows(pdf_text(Path(rep.stored_path)), ordered)
+    except Exception:                       # a pacing panel is never worth a 500
+        pacing = []
     try:
         queued = int(request.query_params.get("logo_queued") or 0)
     except ValueError:
@@ -1549,6 +1577,7 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                        # are named on the page that takes it.
                                        "logo_peers": peers,
                                        "logo_queued": queued,
+                                       "pacing": pacing,
                                        # Said HERE as well as on the board. A
                                        # product finding is disputed on this
                                        # page, so the one fact that settles it

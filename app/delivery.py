@@ -35,6 +35,41 @@ def _safe(name: str, limit: int = 120) -> str:
     return (re.sub(r"[^A-Za-z0-9._ &,()-]", "_", name).strip() or "untitled")[:limit]
 
 
+def report_filename(e) -> str:
+    """What a report is called when it leaves here.
+
+    ITS OWN NAME. This used to build one from the client - "Elmira Downtown
+    Development.pdf" - so what the partner opened was not what the report page
+    said it was called, and neither carried the month or the order id that
+    everybody downstream files by. The report already has a good name; the only
+    work left is stripping a browser's "(1)" and making sure it is a .pdf.
+    """
+    from .checks.parser import DUPLICATE_SUFFIX
+
+    r = getattr(e, "report", None) or e
+    raw = (getattr(r, "filename", "") or "").strip()
+    stem, dot, ext = raw.rpartition(".")
+    if not dot:
+        stem, ext = raw, "pdf"
+    stem = DUPLICATE_SUFFIX.sub("", stem).strip()
+    if not stem:
+        # No name stored at all - build the one the rest of the system uses.
+        month = ""
+        period = getattr(r, "period", "") or ""
+        if period:
+            try:
+                month = dt.date.fromisoformat(period + "-01").strftime("%B %Y") + "_"
+            except ValueError:
+                month = ""
+        ids = (getattr(r, "account_ids", "") or "").replace(",", " ").split()
+        stem = f"{month}{getattr(e, 'client', '') or 'report'}"
+        if ids:
+            stem += " " + " ".join(ids)
+    if getattr(e, "kind", "") == "lifetime" and "lifetime" not in stem.lower():
+        stem += " - Lifetime"
+    return f"{_safe(stem)}.{(ext or 'pdf').lower()}"
+
+
 def build_zip(group: GroupRow, period: str, out_dir: Path) -> tuple[Path, int]:
     """One zip per group, foldered by market.
 
@@ -56,8 +91,7 @@ def build_zip(group: GroupRow, period: str, out_dir: Path) -> tuple[Path, int]:
             if not src.exists():
                 log.warning("missing file for %s / %s: %s", e.market, e.client, src)
                 continue
-            suffix = " - Lifetime" if e.kind == "lifetime" else ""
-            arc = f"{_safe(e.market)}/{_safe(e.client)}{suffix}.pdf"
+            arc = f"{_safe(e.market)}/{report_filename(e)}"
             z.write(src, arc)
             n += 1
     return path, n
@@ -235,8 +269,7 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
                 log.info("drive: %s %s already delivered, using v%d", e.market,
                          cycle_label, n)
             cycle_folders[e.market] = cyc_id
-        suffix = " - Lifetime" if e.kind == "lifetime" else ""
-        name = f"{_safe(e.client)}{suffix}.pdf"
+        name = report_filename(e)
         dest = cycle_folders[e.market]
 
         # Replace rather than duplicate, so re-running a delivery after a fix
