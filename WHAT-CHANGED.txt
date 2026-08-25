@@ -1,122 +1,61 @@
-build 2026.08.25-39
+build 2026.08.25-40
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
 app/main.py
-app/checks/quality.py
 app/checks/rules.py
 app/templates/base.html
 app/templates/cycle.html
-app/templates/viewer.html
-tests/test_board_extras.py
+app/templates/links.html        (new)
 tests/test_manual_upload.py
 tests/test_quality.py
 
 
-1. Window World - Bowling Green: three findings, one bug
----------------------------------------------------------
-All three came from the same parsing fault, and it is worse than the three
-findings suggested - it has been quietly corrupting line item names on every
-report where a name is long enough to wrap.
+1. Client links, on their own page
+------------------------------------
+/cycle/links?period=2026-07. Every packaged partner, with Open, Copy, and the
+raw URL in view. The cycle board no longer stacks them above the work - the
+Partners delivered tile links across, and each partner's own card keeps its
+Client link where it sits in context.
 
-TapClicks centres a table row vertically, so a name spread over three lines
-prints its NUMBERS on the middle one - the name wraps above its own figures as
-well as below. The parser assumed every text line was the tail of the row
-above it, which did two things at once:
+Package & share now lands you on that page rather than back on the board. It
+is the last step before sending the link to somebody, and going back to 146
+cards with the new one somewhere in them was a find-it-yourself puzzle at
+exactly the wrong moment.
 
-  - it threw away the first line of every wrapped name, the half carrying the
-    client
-  - it glued the next row's opening line onto the previous row's name
-
-On this report that put "Amazon CTV" into BOTH line items. Everything else
-followed:
-
-  "Line item clicks do not sum to the top line" - both lines read as CTV, so
-  both were taken out of the clicks total, leaving 84 clicks "unaccounted for"
-  on a report where 84 is the correct answer. Only the Amazon CTV line's 7
-  clicks come out; 91 - 7 = 84.
-
-  "Check check_headline_ctr could not run - division by zero" - with every line
-  excluded there was nothing left to divide by. A crash is not a verdict; the
-  division is guarded now and says "nothing left to divide" instead.
-
-Rows of one grid all open the same way ("<Client> - ..."), so the opening is
-learned from the first row and used to cut the block of text between two rows
-into the tail of the one above and the head of the one below.
-
-One thing that fell out of fixing it: TapClicks prints a small icon before the
-first row of a grid, which comes out of the PDF as a private-use character. It
-was harmless while the first line of each name was being discarded. It is
-stripped now.
+The one just packaged goes first, whatever the sort, with a gold border and a
+JUST PACKAGED tag. The mark comes off when you copy it, open it, or reload -
+?new= is taken out of the address bar as soon as the page has drawn, so a
+refresh loads a page with nothing marked. A failed package still goes back to
+the board, where the reason and the Try again button are.
 
 
-2. Top CTV Publishers on an Amazon-only report
-------------------------------------------------
-Amazon Premium is bought as "Amazon Premium CTV + Video Ads" and maps to CTV,
-so the CTV rule asked for a Top CTV Publishers widget. Amazon does not print
-one - its publishers arrive as "Amazon Premium Site and App Performance",
-which was on page 8 all along.
+2. Window World, again - and why the fix did not take
+-------------------------------------------------------
+You are right that it should have gone. The parser fix in build 39 handles the
+case I could reconstruct; this report is evidently shaped differently, and I
+cannot see it without the file.
 
-The widget is no longer owed when Amazon is the only CTV on the report. A
-mixed buy still owes it for the half that is not Amazon.
+What I can fix without the file is the part that was indefensible either way.
+The check was reporting "0 over 0 is nothing left to divide" and failing the
+report on it. But a tile that filtered out EVERY line item would print nothing,
+and it printed 0.45% - so whatever that classification is, it is not what the
+tile did. Failing a correct report on reasoning that is visibly broken the
+moment you open Investigate is the worst of both.
 
+Both checks now abstain in that case:
 
-3. A name, remembered
------------------------
-Type your name once in the top right and it stays on that browser. The name
-box disappears from every sign-off row and from the report page; the topbar
-shows who you are with a "not you?" to clear it.
+  - the CTR check says "could not be checked against its own numbers" (info,
+    not a failure)
+  - the clicks check says "could not be checked against the line items" (info)
 
-It is a cookie, not a login. Nothing is authorised by it and it is not treated
-as a security boundary - the board is behind the office network and everyone
-on it can already do everything. What sign-off needs is attribution, and
-typing it into every row is what made people stop.
+and both print the line item names AS THE PARSER READ THEM in Investigate.
+That is the part that is wrong, and it is invisible from the numbers - the
+report looks fine and the finding looks reasoned.
 
-Signing off for the first time remembers you, so there is no separate step to
-find before the thing you came to do. A typed name still wins over the
-remembered one, for signing on behalf of whoever is next to you.
-
-
-4. Ticking off the last finding signs the report off
-------------------------------------------------------
-Going through every finding and accepting it IS reading the report. Asking for
-a signature afterwards asks the same question twice, and the answer was a
-screen of reports at "in, unreviewed" that somebody had in fact been through.
-
-Only on the way in, and only from "new". Un-ticking something does not tear up
-a sign-off, and a report already at needs fix or waived has a decision on it
-that this will not overwrite. It needs to know who you are, so it does nothing
-until a name is saved.
+If you open Window World after this and send me that "Names as read" list, I
+can fix the parse properly rather than guessing at the layout. Or send me the
+PDF and I will do it from the file.
 
 
-5. The tiles add up what is on screen
----------------------------------------
-Filter to one buyer and the counts at the top now follow - expected, not
-received, in review, errors, good to go, partners delivered. They were the
-whole board's totals regardless, which is the summary answering a question
-nobody is asking any more.
-
-The "hours to go" projection steps aside while a filter is on and says "of 710
-on the whole board" instead. That rate is measured across the whole cycle;
-applied to a subset it would be a number with nothing behind it.
-
-
-6. The filters live in the URL
---------------------------------
-Search text, every dropdown, and the "Only started" toggle now write
-themselves into the address bar, so a view can be bookmarked or sent to
-somebody. Opening that URL puts the filters back.
-
-replaceState, not pushState - filtering is not navigation, and forty Back
-presses to undo one search is not a history. A saved view naming a partner
-that is not on this board drops that one rather than showing nothing.
-
-
-7. No more 1s in the filter menus
------------------------------------
-A count of 1 is never worth printing. It was tested per menu before ("show
-them only if any of them varies") and one partner with two cards was enough to
-bring the whole column of 1s back. Tested per row, it cannot.
-
-
-Tests: 304 passing.
+Tests: 308 passing.

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Client links · {{ cycle.label }} · Report QA{% endblock %}
+{% block where %}<a href="/cycle?period={{ period }}">Cycle</a> ·
+  {{ cycle.label }} · Client links{% endblock %}
+{% block body %}
+
+<div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+  <div>
+    <h1>Client links</h1>
+    <p class="sub">
+      {{ cycle.label }}.
+      {% if delivered.count %}
+        {{ delivered.count }}
+        {%- if delivered.groups >= delivered.count %} of {{ delivered.groups }}{% endif %}
+        partner{{ 's' if delivered.count != 1 }}
+        packaged{% if delivered.ready %}, {{ delivered.ready }} ready to go{% endif %}.
+      {% else %}
+        Nothing packaged yet.
+      {% endif %}
+    </p>
+  </div>
+  <form method="get" action="/cycle/links" style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <label for="period" style="margin:0;font-size:12px">Cycle</label>
+    <select name="period" id="period" onchange="this.form.submit()"
+            style="font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--line);
+                   border-radius:20px;background:var(--surface);color:var(--ink)">
+      {% for p in periods %}
+        <option value="{{ p }}" {% if p == period %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<section>
+  {% if delivered.links %}
+    <div class="links wide">
+      <ul>
+        {% for l in delivered.links %}
+          {# The one just packaged is marked until it has been used. See the
+             script at the foot of this page for when the mark comes off. #}
+          <li{% if new and l.group == new %} class="fresh" data-fresh{% endif %}>
+            <span class="lname">{{ l.group }}
+              {% if new and l.group == new %}<em>just packaged</em>{% endif %}</span>
+            {% if l.url %}
+              <a class="btn gold" href="{{ l.url }}" target="_blank" rel="noopener"
+                 data-used>Open{% if l.target == 'dropbox' %} (Dropbox){% endif %}</a>
+              <button type="button" class="copy" data-copy="{{ l.url }}" data-used
+                      title="Copy the link">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                  <rect x="9" y="9" width="11" height="11" rx="2" fill="none"
+                        stroke="currentColor" stroke-width="2"/>
+                  <path d="M5 15V6a2 2 0 012-2h9" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round"/>
+                </svg><span>Copy</span>
+              </button>
+              <code class="rawlink">{{ l.url }}</code>
+            {% else %}
+              <a class="btn gold" href="{{ l.download }}" data-used>Download zip</a>
+              <span class="acct">kept here - Drive and Dropbox are not set up yet</span>
+            {% endif %}
+            {% if l.archive %}
+              <a href="{{ l.archive }}" target="_blank" rel="noopener">In Drive</a>
+            {% endif %}
+            <span class="acct">{{ l.reports }} file{{ 's' if l.reports != 1 }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <p class="empty">No partner has been packaged for {{ cycle.label }} yet.
+      They appear here as they are sent.
+      <a href="/cycle?period={{ period }}">Back to the cycle</a>.</p>
+  {% endif %}
+  {% if delivered.failed %}
+    <p class="sub" style="margin-top:12px">
+      {{ delivered.failed }} partner{{ 's' if delivered.failed != 1 }} failed to
+      package. The reason is on the card -
+      <a href="/cycle?period={{ period }}">back to the cycle</a>.</p>
+  {% endif %}
+</section>
+
+<script>
+(function () {
+  // THE MARK COMES OFF ONCE THE LINK HAS BEEN USED.
+  //
+  // It is there to point at the link you just made, so it has done its job the
+  // moment you copy or open it. It also has to not survive a reload, which is
+  // why ?new= is taken out of the address bar as soon as the page has drawn -
+  // a refresh then loads a page with nothing marked.
+  var fresh = document.querySelector('[data-fresh]');
+  if (!fresh) return;
+  var clear = function () { fresh.classList.remove('fresh'); };
+  fresh.querySelectorAll('[data-used]').forEach(function (el) {
+    el.addEventListener('click', clear);
+  });
+  if (window.history && history.replaceState) {
+    var u = new URL(window.location.href);
+    u.searchParams.delete('new');
+    history.replaceState(null, '', u.toString());
+  }
+})();
+</script>
+{% endblock %}

@@ -12,13 +12,13 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-39"
-BUILD_NOTES = ("Put your name in once and it is remembered, and ticking off the "
-               "last finding signs the report off. The tiles at the top add up "
-               "whatever the filters are showing and the filters live in the "
-               "URL, so a view can be bookmarked. Window World's three findings "
-               "were all one parsing fault: a line item name that wraps above "
-               "its own numbers.")
+BUILD = "2026.08.25-40"
+BUILD_NOTES = ("Client links have their own page, and packaging a partner takes "
+               "you straight there with the new link first and marked until you "
+               "use it. Two checks now abstain instead of failing when their own "
+               "reasoning has visibly broken - which is why Window World kept "
+               "failing after the fix.")
+
 # ---------------------------------------------------------------------------
 
 

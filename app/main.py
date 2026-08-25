@@ -752,8 +752,40 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
 def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
                   db: Session = Depends(get_db)):
     from .delivery import deliver
-    deliver(db, period, group, force=bool(force))
+    rec = deliver(db, period, group, force=bool(force))
+    if rec is not None and rec.ok:
+        # Straight to the links, with this one marked. Packaging a partner is
+        # the last step before sending its link to somebody, and landing back
+        # on a board of 146 cards with the new link somewhere in it is a
+        # find-it-yourself puzzle at exactly the wrong moment.
+        return RedirectResponse(
+            f"/cycle/links?period={period}&new={quote(group)}", status_code=303)
+    # A failure belongs on the card, next to the Try again button.
     return RedirectResponse(f"/cycle?period={period}", status_code=303)
+
+
+@app.get("/cycle/links")
+def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
+                db: Session = Depends(get_db)):
+    """Every finished partner's client link for this cycle, on its own page."""
+    from .board import by_group
+    from .cycle import current_period, cycle_for, recent_periods
+
+    period = period or settings.default_period or current_period()
+    groups = by_group(db, period)
+    delivered = _delivered(db, period, groups)
+    periods = recent_periods()
+    if period not in periods:
+        periods = sorted(set(periods) | {period}, reverse=True)
+    # The one just packaged goes first, however the rest are sorted. It is the
+    # reason this page is open.
+    if new:
+        delivered["links"].sort(key=lambda l: l["group"] != new)
+    return templates.TemplateResponse(request, "links.html", {
+        "nav": "cycle", "cycle": cycle_for(period), "period": period,
+        "periods": periods, "delivered": delivered, "new": new,
+        "configured": settings.delivery_configured,
+    })
 
 
 @app.get("/delivery/{delivery_id}/file")

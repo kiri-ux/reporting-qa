@@ -79,42 +79,16 @@
         <p class="pacenote">of <span data-tile="groups">{{ delivered.groups }}</span>{% if delivered.ready %} ·
           {{ delivered.ready }} ready to package{% endif %}</p>
       {% endif %}
+      {% if delivered.count %}
+        <p class="pacenote"><a href="/cycle/links?period={{ period }}">Client links</a></p>
+      {% endif %}
     </div>
   </div>
 
-  {% if delivered.links %}
-    {# The links, at the top, where somebody about to send one can find them. #}
-    <div class="links">
-      <h3>Client links</h3>
-      <ul>
-        {% for l in delivered.links %}
-          <li>
-            <span class="lname">{{ l.group }}</span>
-            {% if l.url %}
-              <a class="btn gold" href="{{ l.url }}" target="_blank" rel="noopener"
-                 >Open{% if l.target == 'dropbox' %} (Dropbox){% endif %}</a>
-              <button type="button" class="copy" data-copy="{{ l.url }}"
-                      title="Copy the link">
-                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                  <rect x="9" y="9" width="11" height="11" rx="2" fill="none"
-                        stroke="currentColor" stroke-width="2"/>
-                  <path d="M5 15V6a2 2 0 012-2h9" fill="none" stroke="currentColor"
-                        stroke-width="2" stroke-linecap="round"/>
-                </svg><span>Copy</span>
-              </button>
-            {% else %}
-              <a class="btn gold" href="{{ l.download }}">Download zip</a>
-              <span class="acct">kept here - Drive and Dropbox are not set up yet</span>
-            {% endif %}
-            {% if l.archive %}
-              <a href="{{ l.archive }}" target="_blank" rel="noopener">In Drive</a>
-            {% endif %}
-            <span class="acct">{{ l.reports }} file{{ 's' if l.reports != 1 }}</span>
-          </li>
-        {% endfor %}
-      </ul>
-    </div>
-  {% endif %}
+{# The links themselves live on their own page. A list of finished partners
+   growing above a board of 146 cards pushes the work down the screen, and the
+   moment you actually want a link is when you are sending it, not when you are
+   reviewing. #}
 </section>
 
 <section>

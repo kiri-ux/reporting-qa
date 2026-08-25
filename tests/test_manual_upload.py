@@ -261,10 +261,10 @@ def test_the_cycle_board_and_a_report_page_render_after_a_pulled_signoff(client)
     assert ">k</span>" not in board.text
 
 
-# ------------------------------------------------------- the link, at the top
-def test_a_delivered_partner_puts_its_link_at_the_top_of_the_board(client):
-    """It sorts in among 145 others otherwise, so the one thing somebody came
-    to the page for was found by scrolling."""
+# ------------------------------------------------------ the links, on their own page
+def test_the_board_points_at_the_links_page_rather_than_listing_them(client):
+    """A list of finished partners growing above 146 cards pushes the work down
+    the screen. The moment you want a link is when you are sending it."""
     c, (db, dbm, imod) = client
     rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
     db.add(dbm.Delivery(period=rep.period, group=rep.market, target="drive",
@@ -272,15 +272,54 @@ def test_a_delivered_partner_puts_its_link_at_the_top_of_the_board(client):
                         share_url="https://drive.google.com/drive/folders/abc123"))
     db.commit()
 
-    page = c.get(f"/cycle?period={rep.period}")
+    board = c.get(f"/cycle?period={rep.period}").text
+    assert "Partners delivered" in board
+    assert f"/cycle/links?period={rep.period}" in board
+    # The stacked panel is gone. The partner's own card keeps its link, which
+    # sits in context rather than pushing the board down the screen.
+    assert '<div class="links">' not in board
+    assert "Client link" in board
+
+
+def test_the_links_page_lists_them_with_copy(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    db.add(dbm.Delivery(period=rep.period, group=rep.market, target="drive",
+                        reports=1, ok=True,
+                        share_url="https://drive.google.com/drive/folders/abc123"))
+    db.commit()
+
+    page = c.get(f"/cycle/links?period={rep.period}")
     assert page.status_code == 200
-    head, tail = page.text.split('class="glist"', 1)
-    # Above the partner list, not inside it.
-    assert "https://drive.google.com/drive/folders/abc123" in head
-    assert "Client links" in head
-    assert "Partners delivered" in head
-    # And copyable, not just openable.
-    assert 'data-copy="https://drive.google.com/drive/folders/abc123"' in head
+    assert 'data-copy="https://drive.google.com/drive/folders/abc123"' in page.text
+    assert 'class="fresh"' not in page.text, "nothing was packaged on this visit"
+
+
+def test_the_one_just_packaged_is_first_and_marked(client):
+    """Packaging is the last step before sending the link, and landing back on
+    a board with it somewhere in there is a find-it-yourself puzzle."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    for name in ("Aardvark Media", rep.market, "Zebra Radio"):
+        db.add(dbm.Delivery(period=rep.period, group=name, target="drive",
+                            reports=1, ok=True,
+                            share_url=f"https://drive.google.com/{name}"))
+    db.commit()
+
+    from urllib.parse import quote
+    page = c.get(f"/cycle/links?period={rep.period}&new={quote(rep.market)}").text
+    body = page[page.find("<ul>"):]
+    assert body.find(rep.market) < body.find("Aardvark Media"), "not first"
+    assert 'class="fresh"' in body and "just packaged" in body
+    # Alphabetical otherwise, so the rest of the page does not reshuffle.
+    assert body.find("Aardvark Media") < body.find("Zebra Radio")
+
+
+def test_an_empty_links_page_says_so_rather_than_looking_broken(client):
+    c, (db, dbm, imod) = client
+    page = c.get("/cycle/links?period=2026-07")
+    assert page.status_code == 200
+    assert "No partner has been packaged" in page.text
 
 
 def test_see_reports_does_not_jump_past_the_card(client):

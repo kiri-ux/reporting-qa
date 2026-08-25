@@ -119,6 +119,23 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .links ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .links li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .links .lname{font-weight:600;min-width:200px}
+.links.wide li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+ background:var(--surface)}
+.links.wide .lname{min-width:260px}
+.rawlink{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+ background:var(--parchment);border:1px solid var(--line);border-radius:6px;
+ padding:3px 7px;max-width:46ch;overflow:hidden;text-overflow:ellipsis;
+ white-space:nowrap}
+
+/* The link just packaged, until it has been copied, opened, or reloaded past. */
+.links li.fresh{border-color:var(--gold);background:#FFFBF0;
+ box-shadow:0 0 0 3px rgba(241,180,52,.22)}
+.links li.fresh .lname em{font-style:normal;font-size:11px;letter-spacing:.06em;
+ text-transform:uppercase;color:#9A6B00;margin-left:8px}
+@media (prefers-reduced-motion: no-preference){
+  .links li.fresh{animation:freshin .35s ease-out}
+  @keyframes freshin{from{box-shadow:0 0 0 9px rgba(241,180,52,0)}}
+}
 
 /* A copy button, because the link is going into an email, not a new tab. */
 .copy{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;

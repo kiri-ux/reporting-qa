@@ -152,6 +152,12 @@ def _ctr_basis(ctx) -> tuple[float, float, float, float] | None:
     if not all_i or not imps or abs(all_i - imps) / imps > 0.02:
         return None                 # the grid does not describe this campaign
     keep = [r for r in rows if not CTR_EXCLUDED.search(r[0])]
+    if not keep:
+        # Nothing survives the footnote's exclusions, which cannot be what the
+        # tile did - it printed a rate, and a rate over nothing is not a
+        # number. The names have been read wrong; abstaining is the only
+        # honest answer, and it is what the caller does with None.
+        return None
     return sum(r[1] for r in keep), sum(r[2] for r in keep), all_i, all_c
 
 
@@ -204,15 +210,24 @@ def check_headline_ctr(ctx) -> list[dict]:
         # The products the footnote excludes are on this report, and the line
         # item grid cannot say how much of the campaign they are. Claiming the
         # rate is wrong would be guessing.
+        #
+        # The names as the parser read them go in the trace. When this rule is
+        # wrong it is because a wrapped line item name was assembled wrong, and
+        # that is invisible from the numbers alone - the report looks fine and
+        # the finding looks reasoned.
+        from .quality import line_item_totals
+        seen = line_item_totals(ctx.get("text") or "")
+        if seen:
+            trace = trace + [("Names as read",
+                              "; ".join(_short_name(n, 70) for n, _i, _c in seen))]
         return [_f("ctr_unverifiable", "info",
                    "CTR could not be checked against its own numbers",
                    f"Stated {ctr:.2f}%, against {plain:.3f}% for all "
                    f"{clicks:,.0f} clicks over all {imps:,.0f} impressions. The "
                    f"tile leaves CTV, OTT, YouTube and Performance Max out of "
                    f"both halves and this report runs at least one of them, so "
-                   f"the two are not comparable - and the line item grid does "
-                   f"not add up to the headline, so the filtered rate cannot be "
-                   f"worked out either.", trace)]
+                   f"the two are not comparable - and the line items left after "
+                   f"that do not give a rate either.", trace)]
 
     return [_f("headline_ctr", "fail", "Top-line CTR does not match its own numbers",
                f"Report states {ctr:.2f}%. {clicks:,.0f} clicks / {imps:,.0f} impressions "
@@ -266,6 +281,31 @@ def check_line_items(ctx) -> list[dict]:
     # two numbers differ but how much of the difference those products explain,
     # and whether what is left over is worth anybody's time.
     excluded = [r for r in rows if CLICKS_EXCLUDED.search(r[0])]
+
+    # AN EXCLUSION THAT SWALLOWS THE WHOLE REPORT IS NOT AN EXCLUSION.
+    #
+    # It is the sound of names having been read wrong. A tile that filters out
+    # every line item would print nothing, and it printed 84 - so whatever this
+    # classification is, it is not what the tile did.
+    #
+    # Failing the report on the strength of it is the worst of both: a correct
+    # report marked wrong, on reasoning that is visibly broken the moment you
+    # open Investigate. Better to say the check could not run.
+    if excluded and len(excluded) == len(rows):
+        out.append(_f("clicks_unverifiable", "info",
+                      "The clicks tile could not be checked against the line items",
+                      f"Every line item on this report reads as CTV or OTT, and a "
+                      f"tile filtering all of them out would print nothing rather "
+                      f"than {clicks:,.0f}. The names are being read wrong, so no "
+                      f"claim is made either way. Investigate has the names as "
+                      f"they were read.",
+                      [("Top-line clicks", f"{clicks:,.0f}"),
+                       ("Line items counted", f"{len(rows)}"),
+                       ("Their clicks", f"{sc:,.0f}"),
+                       ("Names as read",
+                        "; ".join(_short_name(n, 70) for n, _i, _c in rows))]))
+        return out
+
     excl = sum(r[2] for r in excluded)
     unexplained = gap - excl
     ctrace = [("Top-line clicks", f"{clicks:,.0f}"),

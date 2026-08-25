@@ -853,10 +853,15 @@ def test_only_the_ctv_line_is_left_out_of_the_clicks_total():
     assert not [f for f in out if f["severity"] == "fail"]
 
 
-def test_the_ctr_check_survives_every_line_being_excluded():
-    """It crashed - "check_headline_ctr could not run: division by zero" - and
-    a crash is not a verdict. An Amazon CTV plus Amazon Video buy really can
-    have nothing left once the footnote's exclusions come out."""
+def test_the_ctr_check_abstains_when_every_line_is_excluded():
+    """First it crashed - "could not run: division by zero". Then it failed the
+    report on 0 over 0.
+
+    Neither is a verdict. A tile that filtered out every line item would print
+    nothing, and it printed a rate - so the names have been read wrong, and the
+    only honest answer is that the check could not run. It says which names it
+    read, because that is the part that is wrong.
+    """
     from app.checks.rules import check_headline_ctr
     text = """ Line Item Performance
  Line Item Name              Impressions   Clicks    CTR
@@ -865,7 +870,23 @@ def test_the_ctr_check_survives_every_line_being_excluded():
 """
     out = check_headline_ctr({"text": text, "imps": 20000, "clicks": 100,
                               "ctr": 0.90})
-    assert out and "nothing left to divide" in out[0]["detail"]
+    assert len(out) == 1
+    assert out[0]["severity"] == "info"
+    assert out[0]["code"] == "ctr_unverifiable"
+    names = {r["label"]: r["value"] for r in out[0]["trace"]}["Names as read"]
+    assert "Behavioral CTV" in names and "Retargeting OTT" in names
+
+
+def test_the_clicks_check_abstains_when_every_line_is_excluded():
+    from app.checks.rules import check_line_items
+    text = """ Line Item Performance
+ Line Item Name              Impressions   Clicks    CTR
+ Acme - Behavioral CTV            10,000       50   0.50%
+ Acme - Retargeting OTT           10,000       41   0.41%
+"""
+    out = check_line_items({"text": text, "imps": 20000, "clicks": 84})
+    assert [f["severity"] for f in out] == ["info"]
+    assert out[0]["code"] == "clicks_unverifiable"
 
 
 def test_an_icon_glyph_is_not_part_of_a_name():
