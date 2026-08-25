@@ -1,75 +1,76 @@
-build 2026.08.25-52
+build 2026.08.25-53
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
 app/main.py
-app/ingest.py
 app/recheck.py
-app/roster.py
-app/checks/spend.py       (new)
-app/checks/rules.py
+app/templates/base.html
+app/templates/cycle.html
 app/templates/orders.html
+app/templates/viewer.html
 tests/test_order_remap.py
 
 
-1. Pacing: a full month against a full month's budget
--------------------------------------------------------
-New check. It reads the spend the report itself prints and compares it to what
-the order says that product should spend in a month. More than 50% adrift
-either way is a warning:
+1. The Render email - the health check was failing because it was working
+--------------------------------------------------------------------------
+Two things I did to you, both mine.
 
-    PPC spend is 60% under budget
-    The report shows $400.00 against a monthly budget of $1,000.00. Half a
-    month's budget adrift is usually a reporting fault rather than a media one -
-    a wrong date range, a line item missing from the pull, or two flights added
-    together.
+Your /healthz output says awaiting_recheck: 838. That queue is what caused the
+email, and I made it expensive:
 
-Where the numbers come from:
+  a) The logo fingerprint shells out to pdftoppm - about a fifth of a second of
+     CPU - and I had it running on EVERY re-check. 838 of those, two workers
+     deep, on a box that is also meant to answer a five-second probe. The file
+     cannot change under a re-check (a replacement goes through its own path
+     and re-fingerprints there), so an existing fingerprint is reused now and
+     only a report that has never had one pays for it.
 
-  - Spend: the Spend Overview tiles - "PPC Ad Cost", "LinkedIn Ad Cost",
-    "Performance Max Cost". Read off the TILE rather than by adding up a cost
-    grid, because the grid is a top-N list on most reports so its total is not
-    the campaign's.
-  - Budget: Monthly Campaign Budget on the order, summed across the line items
-    that were actually running that month. Paused lines and other months do not
-    count.
+  b) /healthz itself ran a COUNT over the reports table on every ping. The
+     platform hits it every few seconds. A count that is fine on an idle box is
+     not fine while the sweeper has the disk busy, and the probe timed out.
+     /healthz is now build info only - no database. The queue depth moved to
+     /healthz/deep, which is worth having and is not worth having on a liveness
+     probe.
 
-Four things it will not do:
-
-  - A LIFETIME report is never paced. It covers a whole flight and a monthly
-    budget says nothing about it.
-  - A product whose spend the report does not print is skipped, not failed.
-    Most products print no spend at all.
-  - A line with no budget on file contributes nothing rather than zero. "No
-    budget loaded" and "a budget of nothing" are different claims and only one
-    of them is true.
-  - With no budgets loaded for a client the check shows as skipped.
-
-One subtlety worth knowing about: two tiles share a line ("PPC Ad Cost" and
-"PPC Cost-Per-Click") and their values share the line underneath, so taking the
-first dollar amount gives the cost-per-click as often as the cost. The value is
-matched to its tile by COLUMN. Verified against the everything-sample: PPC
-$4,037.06, LinkedIn $562.37, Performance Max $7,027.70, and the cost-per-click
-correctly read as $0.96 rather than mistaken for a cost.
+Together those take the sweep back under the duty cycle it was designed for.
 
 
-2. Pull range by partner
---------------------------
-Yes - and this is worth doing.
-
-TapClicks filters the export on the line item's START date, not on delivery, so
-one campaign that began in 2018 and is still running forces the whole range
-back to 2018. But that is one date for a hundred and forty-six partners, and
-almost none of them need it.
-
-There is a "Pull range by partner" link on the Orders page now. It gives, per
-partner, the earliest start date of a line item that is STILL RUNNING, oldest
-first, with a count of live line items. A campaign that finished in 2011 does
-not need to be in the pull and no longer sets anybody's date.
-
-Open it and the top few rows are the partners genuinely forcing an old range.
-Pull those on their own and the rest in a narrow window, and a daily sync stops
-being a couple of million rows.
+2. "This banner stays after I click"
+--------------------------------------
+It had worked - it just had not finished. The sync answers immediately and does
+the download in the background, so you landed back on an unchanged banner with
+no way to tell. It now shows a spinner and "Re-reading now" while a sync is
+running, on the board and on the report page.
 
 
-Tests: 397 passing.
+3. A sync icon for the orders
+-------------------------------
+Next to the report re-check button in the top right. It turns amber when the
+order list was read by older code, spins while it is running, and says which
+sync it is on hover - the one beside it re-reads the reports, this one re-reads
+the order list.
+
+
+4. Narrowing the pull, with the 2,000-day limit
+-------------------------------------------------
+The section is now a table you can expand in place - no download unless you
+want one. Per partner: from, to, days, PULLS NEEDED, live line items, and the
+exact date windows.
+
+  - "To" is today for everybody, because a campaign that launched this morning
+    has to be in the file.
+  - Anything longer than 2,000 days is cut into consecutive windows, oldest
+    first, each the full 2,000 except the last. Cutting from the recent end
+    instead leaves the odd remainder on the oldest window, which is the one
+    nobody wants to run twice.
+  - A summary line up top says how many partners need more than one pull. If
+    that number is small - and it usually is - the rest are one pull each and a
+    daily sync becomes cheap.
+
+
+5. "This cycle" is "Reporting Cycle"
+--------------------------------------
+In the nav rail tooltip.
+
+
+Tests: 401 passing.

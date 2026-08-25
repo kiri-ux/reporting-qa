@@ -144,10 +144,21 @@ def _startup():
 def healthz():
     """Includes the build so you can confirm what is actually live without
     trusting the dashboard, which looks identical either way."""
+    return {"ok": True, **version.info(), "rules": version.rules_version()}
+
+
+@app.get("/healthz/deep")
+def healthz_deep():
+    """The same, plus how many reports still carry an older answer.
+
+    SEPARATE FROM /healthz ON PURPOSE. The platform pings /healthz every few
+    seconds with a five-second timeout, and a COUNT over the reports table on
+    every one of those - while the sweeper has the box busy re-reading eight
+    hundred PDFs - is a health check that fails because the service is working.
+    Render mailed about exactly that. The number is worth having; it is not
+    worth having on the liveness probe.
+    """
     out = {"ok": True, **version.info(), "rules": version.rules_version()}
-    # How many reports are still carrying an older answer. On a deploy that
-    # changed a rule this counts down; if it does not, the sweep is stuck and
-    # the board is showing findings the current code would not produce.
     db = SessionLocal()
     try:
         from .recheck import stale_count
@@ -487,6 +498,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster,
         "env_report": settings.env_report(),
+        "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})
 
@@ -553,6 +565,17 @@ ROW_CAP = 150
 def _logo_is_generic(db: Session, rep) -> bool:
     from .checks.logo import is_generic
     return is_generic(db, rep.logo_hash or "")
+
+
+def _orders_syncing(db: Session) -> bool:
+    """Is a re-read running right now?
+
+    The sync answers immediately and does the work in the background, so
+    pressing the button and landing back on an unchanged banner reads as
+    nothing having happened. It had; it just had not finished.
+    """
+    from .db import OrderSync
+    return bool(db.scalar(select(OrderSync).where(OrderSync.state == "running")))
 
 
 def _orders_stale(db: Session) -> bool:
@@ -733,6 +756,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "delivered": delivered,
         "views": _saved_views(db),
         "orders_stale": _orders_stale(db),
+        "orders_syncing": _orders_syncing(db),
         # How many reports on this board still carry an older answer, and per
         # partner so a card can offer to fix just that one.
         "stale": _stale_here(db, period, groups),
@@ -1485,6 +1509,7 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                        # page, so the one fact that settles it
                                        # belongs on this page.
                                        "orders_stale": _orders_stale(db),
+                                       "orders_syncing": _orders_syncing(db),
                                        # Changes when the file does, so the
                                        # embedded viewer cannot show a copy it
                                        # cached before the replacement.
@@ -1543,6 +1568,41 @@ async def partners_import(file: UploadFile = File(...), db: Session = Depends(ge
     return RedirectResponse("/partners", status_code=303)
 
 
+# TapClicks will not export more than this many days in one go.
+TAP_MAX_DAYS = 2000
+
+
+def pull_plan(db: Session, today: dt.date | None = None,
+              max_days: int = TAP_MAX_DAYS) -> list[dict]:
+    """Per partner: the range its export needs, and how to split it.
+
+    The end date is TODAY for everybody - a campaign that launched this morning
+    has to be in the file. The start is the earliest line item still running,
+    because TapClicks filters on the start date rather than on delivery.
+
+    Where that span is longer than TapClicks will export in one go, it is cut
+    into consecutive windows, OLDEST FIRST, each of them the maximum length
+    except the last. Cutting from the recent end instead would leave the odd
+    remainder on the oldest window, which is the one nobody wants to run twice.
+    """
+    today = today or dt.date.today()
+    out = []
+    for market, earliest, n in pull_range_rows(db):
+        if earliest is None:
+            continue
+        span = (today - earliest).days + 1
+        windows = []
+        start = earliest
+        while start <= today:
+            end = min(start + dt.timedelta(days=max_days - 1), today)
+            windows.append((start, end))
+            start = end + dt.timedelta(days=1)
+        out.append({"market": market or "(no partner)", "from": earliest,
+                    "to": today, "days": span, "lines": n,
+                    "windows": windows, "pulls": len(windows)})
+    return out
+
+
 def pull_range_rows(db: Session) -> list[tuple]:
     """(partner, earliest start still running, live line items), oldest first.
 
@@ -1577,17 +1637,15 @@ def pull_range_csv(db: Session = Depends(get_db)):
     import csv as _csv
     import io as _io
 
-    rows = pull_range_rows(db)
+    plan = pull_plan(db)
     buf = _io.StringIO()
     w = _csv.writer(buf)
-    w.writerow(["Partner", "Pull from", "Live line items",
-                "Why", "Oldest still-running campaign"])
-    for market, earliest, n in rows:
-        w.writerow([market or "(no partner)",
-                    earliest.isoformat() if earliest else "",
-                    n,
-                    "the earliest start date of a line item still running",
-                    earliest.isoformat() if earliest else ""])
+    w.writerow(["Partner", "Pull from", "Pull to", "Days", "Pulls needed",
+                "Live line items", "Windows"])
+    for r in plan:
+        w.writerow([r["market"], r["from"].isoformat(), r["to"].isoformat(),
+                    r["days"], r["pulls"], r["lines"],
+                    "; ".join(f"{a} to {b}" for a, b in r["windows"])])
     return Response(content=buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition":
                              'attachment; filename="pull-range-by-partner.csv"'})

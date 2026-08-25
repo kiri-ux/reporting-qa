@@ -461,3 +461,64 @@ def test_the_pull_range_is_per_partner_and_oldest_first(db):
         ("Recent Radio", "2026-05-01"),
     ], "oldest first, and a finished line must not drag a partner back"
     assert dict((m, n) for m, _e, n in got)["Old Media"] == 2
+
+
+def test_a_long_range_is_cut_into_windows_tapclicks_will_accept(db):
+    """TapClicks will not export more than 2,000 days in one go, so a partner
+    with a campaign running since 2018 needs more than one pull."""
+    import datetime as _d
+    from app.main import pull_plan
+    db.add_all([
+        OrderLine(market="Old Media", client="a", account_ids="1", live=True,
+                  product="PPC", starts_on=_d.date(2018, 3, 4)),
+        OrderLine(market="Recent Radio", client="b", account_ids="2", live=True,
+                  product="PPC", starts_on=_d.date(2026, 5, 1)),
+    ])
+    db.commit()
+    plan = {r["market"]: r for r in pull_plan(db, today=_d.date(2026, 8, 25))}
+
+    recent = plan["Recent Radio"]
+    assert recent["pulls"] == 1
+    assert recent["windows"] == [(_d.date(2026, 5, 1), _d.date(2026, 8, 25))]
+
+    old = plan["Old Media"]
+    assert old["days"] == (_d.date(2026, 8, 25) - _d.date(2018, 3, 4)).days + 1
+    assert old["pulls"] == 2
+    # Consecutive, no gap, no overlap, and the last one ends today.
+    (a1, b1), (a2, b2) = old["windows"]
+    assert a1 == _d.date(2018, 3, 4)
+    assert (b1 - a1).days + 1 == 2000
+    assert a2 == b1 + _d.timedelta(days=1)
+    assert b2 == _d.date(2026, 8, 25)
+
+
+def test_the_full_length_window_comes_first(db):
+    """Cutting from the recent end would leave the odd remainder on the oldest
+    window, which is the one nobody wants to run twice."""
+    import datetime as _d
+    from app.main import pull_plan
+    db.add(OrderLine(market="m", client="a", account_ids="1", live=True,
+                     product="PPC", starts_on=_d.date(2016, 1, 1)))
+    db.commit()
+    windows = pull_plan(db, today=_d.date(2026, 8, 25))[0]["windows"]
+    lengths = [(b - a).days + 1 for a, b in windows]
+    assert lengths[:-1] == [2000] * (len(windows) - 1)
+    assert lengths[-1] <= 2000
+
+
+def test_the_health_check_does_not_count_the_queue():
+    """The platform pings it every few seconds with a five-second timeout, and
+    a COUNT over the reports table while the sweeper has the box busy is a
+    health check that fails because the service is working."""
+    import inspect
+    from app import main as mmod
+    assert "stale_count" not in inspect.getsource(mmod.healthz)
+    assert "stale_count" in inspect.getsource(mmod.healthz_deep)
+
+
+def test_a_recheck_does_not_re_fingerprint_the_logo():
+    """It shells out to pdftoppm - a fifth of a second - and doing that on
+    every report in an 838-deep queue is what timed the health check out."""
+    import inspect
+    from app import recheck as rmod
+    assert "rep.logo_hash or header_logo_hash(path)" in inspect.getsource(rmod.recheck)

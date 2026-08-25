@@ -126,14 +126,65 @@
   <div class="panel">
     <p class="sub" style="font-size:13.5px;margin:0 0 10px">
       TapClicks filters the export on the line item's <b>start date</b>, not on
-      delivery, which is why the range above reaches back to 2018 - one campaign
-      that began then and is still running would otherwise be missing. But that
-      is one date for every partner, and almost none of them need it.
-      <a href="/orders/pull-range.csv">Pull range by partner</a> gives the
-      earliest date each one actually needs, oldest first. Pull the handful of
-      genuinely old partners on their own and the rest in a narrow range, and a
-      daily sync stops being a couple of million rows.
+      delivery, so one campaign that began in 2018 and is still running forces
+      the whole range back to 2018. That is one date for every partner, and
+      almost none of them need it. Per partner, most need a range measured in
+      months.
     </p>
+    {% if plan %}
+      {% set heavy = plan|selectattr('pulls','greaterthan',1)|list %}
+      <p class="sub" style="font-size:13.5px;margin:0 0 10px">
+        {{ plan|length }} partner{{ 's' if plan|length != 1 }} with something
+        still running.
+        {% if heavy %}
+          <b>{{ heavy|length }}</b> need more than one pull at the
+          {{ '{:,}'.format(tap_max_days) }}-day maximum; the rest are one pull
+          each.
+        {% else %}
+          Every one of them fits in a single pull at the
+          {{ '{:,}'.format(tap_max_days) }}-day maximum.
+        {% endif %}
+      </p>
+      <details>
+        <summary class="cksum">Pull range by partner ({{ plan|length }})</summary>
+        <div class="tw" style="margin-top:10px">
+          <table>
+            <thead><tr><th>Partner</th><th>From</th><th>To</th>
+              <th style="text-align:right">Days</th>
+              <th style="text-align:right">Pulls</th>
+              <th style="text-align:right">Live lines</th>
+              <th>Windows</th></tr></thead>
+            <tbody>
+              {% for r in plan %}
+                <tr>
+                  <td>{{ r.market }}</td>
+                  <td class="mono nw">{{ r['from'] }}</td>
+                  <td class="mono nw">{{ r.to }}</td>
+                  <td class="mono nw" style="text-align:right">{{ '{:,}'.format(r.days) }}</td>
+                  <td class="mono nw" style="text-align:right">
+                    {%- if r.pulls > 1 %}<b style="color:var(--warn)">{{ r.pulls }}</b>
+                    {%- else %}{{ r.pulls }}{% endif %}</td>
+                  <td class="mono nw" style="text-align:right">{{ r.lines }}</td>
+                  <td class="mono" style="font-size:11.5px">
+                    {% for a, b in r.windows %}{{ a }} &rarr; {{ b }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      <p class="sub" style="font-size:12.5px;margin-top:10px">
+        Oldest first, so the partners genuinely forcing a long range are at the
+        top. Only line items that are <b>still running</b> count - a campaign
+        that finished in 2011 does not need to be in the pull and no longer
+        sets anybody's date. "To" is today for everybody, because a campaign
+        that launched this morning has to be in the file.
+        <a href="/orders/pull-range.csv">Download it</a> if you would rather.
+      </p>
+    {% else %}
+      <p class="sub" style="font-size:13.5px;margin:0">
+        Nothing loaded yet, so there is no range to work out.</p>
+    {% endif %}
   </div>
 </section>
 

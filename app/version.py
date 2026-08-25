@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-52"
-BUILD_NOTES = ("A full month whose spend is half its budget adrift is now a "
-               "warning - that is the shape of a reporting fault, not a media "
-               "one. And Pull range by partner gives the earliest date each "
-               "partner's export actually needs, instead of 2018 for all of them.")
+BUILD = "2026.08.25-53"
+BUILD_NOTES = ("The health check was failing because the service was working: "
+               "a re-check was re-fingerprinting every logo and the probe was "
+               "counting the queue. Both fixed. Narrowing the pull now shows "
+               "each partner's range and how many pulls it takes, inline.")
 
 # ---------------------------------------------------------------------------
 

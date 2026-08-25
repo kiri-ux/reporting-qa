@@ -115,7 +115,17 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
     from .checks.logo import header_logo_hash, is_generic
-    logo = header_logo_hash(path)
+    # THE FINGERPRINT IS TAKEN ONCE, WHEN THE FILE ARRIVES.
+    #
+    # It shells out to pdftoppm - a fifth of a second of CPU - and re-taking it
+    # on every re-check put that on top of every report in an 838-deep queue,
+    # on a box that is also meant to be answering a five-second health check.
+    # Render started mailing about failed health checks, and this was why.
+    #
+    # The file cannot have changed under a re-check: a replacement goes through
+    # its own path and re-fingerprints there. So an existing hash is reused,
+    # and only a report that has never had one pays for it.
+    logo = rep.logo_hash or header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     flight = client_flight(db, rep.client, rep.account_ids)

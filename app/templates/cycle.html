@@ -114,6 +114,23 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg><span>Share this view</span>
       </button>
+      {# Two different syncs live here now, so each says which it is on hover.
+         This one re-reads the ORDER LIST; the one to its left re-reads the
+         reports. #}
+      {% if orders_syncing %}
+        <span class="sync busy"><span class="spin"></span>orders</span>
+      {% else %}
+        <form method="post" action="/orders/sync" style="display:inline">
+          <input type="hidden" name="back" value="/cycle?period={{ period }}">
+          <button class="sync{{ ' warn' if orders_stale }}" type="submit"
+                  title="Re-read the order list from S3.{% if orders_stale %} It was read by older code, so product findings may be answering from the old version of it.{% endif %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
+              <path d="M4 7h13m0 0l-3-3m3 3l-3 3M20 17H7m0 0l3 3m-3-3l3-3"
+                    fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>orders</button>
+        </form>
+      {% endif %}
       <a href="/cycle.csv?period={{ period }}" class="on">Download CSV</a>
     </span>
   </div>
@@ -126,10 +143,16 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
       <b>The order list was read by older code.</b>
       Product findings on this board may be answering from the old version of
       it. The re-read runs on its own in the background - this does it now.
-      <form method="post" action="/orders/sync" style="display:inline">
-        <input type="hidden" name="back" value="/cycle?period={{ period }}">
-        <button class="mini" type="submit">Re-read the orders</button>
-      </form>
+      {% if orders_syncing %}
+        {# It answers immediately and works in the background, so an unchanged
+           banner read as nothing having happened. It had. #}
+        <span class="mini busy"><span class="spin"></span>Re-reading now</span>
+      {% else %}
+        <form method="post" action="/orders/sync" style="display:inline">
+          <input type="hidden" name="back" value="/cycle?period={{ period }}">
+          <button class="mini" type="submit">Re-read the orders</button>
+        </form>
+      {% endif %}
     </div>
   {% endif %}
 

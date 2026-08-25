@@ -27,6 +27,25 @@
 <div class="split">
   <aside class="checks">
     <h2>Needs a look</h2>
+    {% if orders_stale %}
+      {# A product finding gets argued with on THIS page, so the one fact that
+         settles it - that the order data behind it is out of date - belongs
+         here and not only on the board. #}
+      <div class="stalebar">
+        <b>The order list was read by older code.</b>
+        Any product finding below was worked out from it.
+        {% if orders_syncing %}
+          {# It answers immediately and works in the background, so an
+             unchanged banner read as nothing having happened. It had. #}
+          <span class="mini busy"><span class="spin"></span>Re-reading now</span>
+        {% else %}
+          <form method="post" action="/orders/sync" style="display:inline">
+            <input type="hidden" name="back" value="/report/{{ rep.id }}/view">
+            <button class="mini" type="submit">Re-read the orders</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
 {# Only what needs attention. An "everything is fine" line is noise in a list
    whose entire job is naming problems, and it got read as one. #}
     {% set problems = [] %}
