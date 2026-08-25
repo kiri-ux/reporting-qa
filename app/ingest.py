@@ -94,12 +94,57 @@ def open_batch(db: Session, market: str, period: str) -> Batch | None:
     ).first()
 
 
+def market_from_orders(db: Session, filenames: list[str]) -> str:
+    """Look the market up from the order list using the client on the filename.
+
+    Subjects cannot be relied on. TapClicks sends "FW: Daily report - All
+    Client Data" with nothing in it that names a market, and a batch filed
+    under no market never joins a partner on the board. The order list already
+    knows which market a client belongs to, and the filename already carries
+    the client and its account ids - so ask it rather than parsing prose.
+    """
+    from .roster import _keyify
+    from .db import OrderLine
+    from sqlalchemy import select
+
+    lines = db.scalars(select(OrderLine)).all()
+    if not lines:
+        return ""
+    by_account: dict[str, str] = {}
+    by_client: dict[str, str] = {}
+    for l in lines:
+        if not l.market:
+            continue
+        for a in _keyify(l.client, l.account_ids):
+            by_account.setdefault(a, l.market)
+        by_client.setdefault(re.sub(r"[^a-z0-9]", "", l.client.lower()), l.market)
+
+    votes: dict[str, int] = {}
+    for name in filenames:
+        meta = meta_from_filename(name)
+        hit = None
+        for a in _keyify(meta["client"], meta["account_ids"]):
+            hit = by_account.get(a)
+            if hit:
+                break
+        if hit is None:
+            hit = by_client.get(re.sub(r"[^a-z0-9]", "", meta["client"].lower()))
+        if hit:
+            votes[hit] = votes.get(hit, 0) + 1
+    if not votes:
+        return ""
+    # One email is one client, but a zip can hold a whole market. Either way the
+    # market most of the files agree on is the right answer.
+    return max(votes.items(), key=lambda kv: kv[1])[0]
+
+
 def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = "upload",
                   email_from: str = "", subject: str = "", market: str = "",
                   notify: bool = True, coalesce: bool = False) -> Batch:
     pdfs = expand_attachments(files)
     names = [n for n, _ in pdfs]
-    market = market or guess_market(subject, email_from, names)
+    market = (market or guess_market(subject, email_from, names)
+              or market_from_orders(db, names))
     period = guess_period(names, subject)
 
     batch = open_batch(db, market, period) if coalesce else None
@@ -150,6 +195,16 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         db.add(rep)
         db.flush()
         attach_owners(db, rep)
+
+    if not batch.market:
+        # attach_owners stamps a market onto each report from its order line,
+        # so by now the batch can borrow it even when nothing else knew.
+        found: dict[str, int] = {}
+        for r in batch.reports:
+            if r.market:
+                found[r.market] = found.get(r.market, 0) + 1
+        if found:
+            batch.market = max(found.items(), key=lambda kv: kv[1])[0]
 
     batch.status = "done"
     batch.last_report_at = dt.datetime.utcnow()

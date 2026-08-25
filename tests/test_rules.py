@@ -974,3 +974,81 @@ def test_inbound_key_survives_url_encoding(monkeypatch):
     with pytest.raises(HTTPException) as err:
         m._guard(secret.replace("+", " ").replace("LSg=", "WRO="))
     assert "%2B" in err.value.detail, err.value.detail
+
+
+def test_market_comes_from_the_order_list_when_the_subject_is_useless(tmp_path, monkeypatch):
+    """TapClicks sends "FW: Daily report - All Client Data".
+
+    Nothing in that names a market, and a batch filed under no market never
+    joins a partner on the cycle board. The order list already knows which
+    market a client belongs to and the filename already carries the client and
+    its account ids, so the lookup goes through the data rather than the prose.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'mk.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import ingest as imod
+    importlib.reload(imod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    D = dt.date.fromisoformat
+    db.add(db_mod.OrderLine(market="7 Mountains PA State College",
+                            client="Watsontown Trucking", account_ids="14885",
+                            product="Display Ads", starts_on=D("2026-01-01"),
+                            ends_on=D("2026-12-31")))
+    db.add(db_mod.OrderLine(market="Cape Cod Broadcasting", client="Chatham Bars Inn",
+                            account_ids="51120", product="Display Ads",
+                            starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.commit()
+
+    useless = "FW: Daily report - All Client Data"
+    assert imod.guess_market(useless, "reports@tapclicks.com",
+                             ["July 2026_Watsontown Trucking_14885.pdf"]) == ""
+
+    # by account id on the filename
+    assert imod.market_from_orders(
+        db, ["July 2026_Watsontown Trucking_14885.pdf"]) == "7 Mountains PA State College"
+    # by client name, no account id present
+    assert imod.market_from_orders(
+        db, ["July 2026_Chatham Bars Inn.pdf"]) == "Cape Cod Broadcasting"
+    # a zip of several: the market most files agree on
+    assert imod.market_from_orders(db, [
+        "July 2026_Watsontown Trucking_14885.pdf",
+        "July 2026_Watsontown Trucking_14885 Lifetime.pdf",
+        "July 2026_Chatham Bars Inn.pdf"]) == "7 Mountains PA State College"
+    # an unknown client leaves it blank rather than guessing
+    assert imod.market_from_orders(db, ["July 2026_Someone Else Entirely.pdf"]) == ""
+
+
+def test_process_batch_fills_in_a_blank_market(tmp_path, monkeypatch):
+    """End to end: a real PDF arriving with a useless subject still lands on
+    the right partner."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'pb.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import roster as rmod, ingest as imod
+    importlib.reload(rmod); importlib.reload(imod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    D = dt.date.fromisoformat
+    db.add(db_mod.OrderLine(market="7 Mountains PA Selinsgrove", client="Benton Rodeo",
+                            account_ids="19042", product="Video Ads",
+                            starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.commit()
+
+    pdf = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    batch = imod.process_batch(db, [("July 2026_Benton Rodeo_19042.pdf", pdf)],
+                               source="zapier",
+                               subject="FW: Daily report - All Client Data",
+                               notify=False, coalesce=True)
+    assert batch.market == "7 Mountains PA Selinsgrove", f"got {batch.market!r}"

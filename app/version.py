@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-3"
+BUILD = "2026.08.25-4"
 BUILD_NOTES = ("Delivery now files into the shared drive's own tree - "
                "<Market>/<cycle>/ - reusing the folders already there, and "
                "shares the cycle folder rather than a zip.")
