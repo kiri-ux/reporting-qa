@@ -243,6 +243,23 @@ class GroupRow:
         return seen
 
 
+def market_names_for_group(db: Session, group: str) -> list[str]:
+    """Every market filed under this partner group.
+
+    A group is a set of markets - "7 Mountains PA" and "7 Mountains PA Altoona"
+    are one partner - and reports are stored against the market, so acting on a
+    whole partner means acting on all of them.
+    """
+    out = []
+    for p in _partner_index(db).values():
+        g = p.group or p.partner
+        if g == group and p.partner not in out:
+            out.append(p.partner)
+    if group not in out:
+        out.append(group)
+    return out
+
+
 def by_group(db: Session, period: str,
              expected: list[Expected] | None = None) -> list[GroupRow]:
     exp = expected if expected is not None else expected_for(db, period)

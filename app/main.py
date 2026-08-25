@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, HTTPException,
                      Query, Request, UploadFile)
@@ -496,6 +497,23 @@ def partners_csv(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- cycle board
+def _stale_here(db: Session, period: str, groups) -> dict:
+    from .recheck import stale_count
+    out = {"total": stale_count(db, period=period), "by_group": {}}
+    if not out["total"]:
+        return out
+    for g in groups:
+        n = stale_count(db, period=period, group=g.group)
+        if n:
+            out["by_group"][g.group] = n
+    return out
+
+
+def _recheck_jobs() -> dict:
+    from .recheck import running_jobs
+    return running_jobs()
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/cycle", response_class=HTMLResponse)
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
@@ -527,6 +545,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "summary": summary(exp), "state_label": STATE_LABEL,
         "filter_group": group, "filter_state": state,
         "deliveries": latest_deliveries(db, period),
+        # How many reports on this board still carry an older answer, and per
+        # partner so a card can offer to fix just that one.
+        "stale": _stale_here(db, period, groups),
+        "jobs": _recheck_jobs(),
         "notify": settings.notify_status,
         "configured": settings.delivery_configured,
         "today": dt.date.today(),
@@ -565,6 +587,22 @@ def delivery_file(delivery_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404)
     return FileResponse(d.local_path, media_type="application/zip",
                         filename=Path(d.local_path).name)
+
+
+@app.post("/cycle/recheck")
+def cycle_recheck(period: str = Form(""), group: str = Form("")):
+    """Re-check a partner, or the whole cycle, now.
+
+    The background sweep gets to everything on its own; this is for when
+    "eventually" is not soon enough - a fix has just gone out and somebody
+    wants that partner's board right before they hand a link over.
+    """
+    from .recheck import start_job
+    period = period or settings.default_period or ""
+    key = f"{period}:{group}" if group else f"{period}:*"
+    start_job(key, group=group or None, period=period or None)
+    back = f"/cycle?period={period}" + (f"&group={quote(group)}" if group else "")
+    return RedirectResponse(back, status_code=303)
 
 
 @app.get("/cycle.csv")

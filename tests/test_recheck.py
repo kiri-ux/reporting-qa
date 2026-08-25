@@ -196,3 +196,78 @@ def test_sweep_once_works_through_the_stale_ones(live):
     s, _rep, _ = live
     assert sweep_once(s, limit=8) == 1
     assert stale_count(s) == 0
+
+
+# --------------------------------------------------------- scope and pacing
+def test_the_sweep_rests_no_longer_than_it_worked():
+    """The old pacing rested twenty seconds after four seconds of work, which
+    turned a ten-minute job into two hours - a queue that never drained while
+    builds were going out several times a day."""
+    from app import recheck as rc
+    assert rc.BATCH >= 25
+    assert rc.MAX_REST_SECONDS <= 10
+    assert not hasattr(rc, "PAUSE_SECONDS")
+
+
+def test_the_automatic_sweep_only_covers_recent_cycles():
+    """A finding on a cycle that shipped in March is not in anybody's way, and
+    re-reading four years of PDFs on every deploy is work nobody asked for."""
+    from app.config import Settings
+    from app.recheck import recent_periods
+    n = Settings.model_fields["recheck_periods"].default
+    assert n >= 2
+    assert len(recent_periods(n)) >= n
+
+
+def test_the_pinned_period_is_always_swept_even_if_it_has_aged_out():
+    """The board opens on it, so a stale answer there is the most visible one
+    there is."""
+    from app.recheck import recent_periods
+    from app.config import settings
+    if settings.default_period:
+        assert settings.default_period in recent_periods(1)
+
+
+def test_an_on_demand_run_ignores_the_recent_cycle_limit(live):
+    """The scope exists to keep the automatic sweep cheap. Asking for a partner
+    by hand is a different question and must reach any month."""
+    from app.recheck import _stale_batch
+    s, rep, _ = live
+    rep.period = "2019-03"                    # far outside the sweep's window
+    s.commit()
+    assert _stale_batch(s, 25, scoped=True) == []
+    assert len(_stale_batch(s, 25, scoped=False)) == 1
+
+
+def test_a_group_scoped_run_covers_every_market_in_that_group(live):
+    from app.board import market_names_for_group
+    from app.db import Partner
+    s, rep, _ = live
+    s.add(Partner(partner="7 Mountains PA State College",
+                  group="7 Mountains PA", buyer="x"))
+    s.add(Partner(partner="7 Mountains PA Altoona",
+                  group="7 Mountains PA", buyer="x"))
+    s.commit()
+    markets = market_names_for_group(s, "7 Mountains PA")
+    assert "7 Mountains PA State College" in markets
+    assert "7 Mountains PA Altoona" in markets
+
+
+def test_stale_count_can_be_asked_about_one_partner(live):
+    from app.recheck import stale_count
+    s, rep, _ = live
+    assert stale_count(s, period="2026-07") == 1
+    assert stale_count(s, period="2026-07",
+                       group="7 Mountains PA State College") == 1
+    assert stale_count(s, period="2026-07", group="Somebody Else") == 0
+
+
+def test_a_second_job_for_the_same_scope_does_not_start_twice():
+    from app import recheck as rc
+    with rc._jobs_lock:
+        rc._jobs["k"] = {"state": "running", "done": 3, "total": 9}
+    try:
+        assert rc.start_job("k")["done"] == 3
+    finally:
+        with rc._jobs_lock:
+            rc._jobs.pop("k", None)

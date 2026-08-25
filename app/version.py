@@ -12,12 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-26"
-BUILD_NOTES = ("The SEO manager is no longer named as a partner's buyer, and "
-               "two disagreeing buyers fall back to the reporting breakout. A "
-               "DOOH Video line item is DOOH, not Video - it was being read as "
-               "a video product and would have been asked for a completion "
-               "rate. DOOH and TikTok never owe one.")
+BUILD = "2026.08.25-27"
+BUILD_NOTES = ("The re-check sweep rests no longer than it worked, covers the "
+               "last three cycles rather than every month ever, and has a "
+               "button on each partner card and on the board so you never have "
+               "to wait for it.")
 # ---------------------------------------------------------------------------
 
 

@@ -35,10 +35,17 @@ from .version import rules_version
 
 log = logging.getLogger("report-qa.recheck")
 
-# How many to re-read per pass. A pass runs in a background thread on a 512 MB
-# instance that is also serving pages, so it takes small bites and comes back.
-BATCH = 8
-PAUSE_SECONDS = 20
+# A report re-reads in about half a second - 0.3s for a seven-page one, 1.1s
+# for nineteen pages. The old pacing rested twenty seconds after four seconds
+# of work, which turned a ten-minute job into two hours and meant a queue that
+# never drained while builds were going out several times a day.
+#
+# So the rest is proportional to the work instead: never longer than the batch
+# took, capped at ten seconds. That is still under a 50% duty cycle on a box
+# that is also serving pages, and it drains twelve hundred reports in under
+# twenty minutes.
+BATCH = 25
+MAX_REST_SECONDS = 10.0
 
 
 def _key(f: dict) -> tuple:
@@ -131,25 +138,56 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
 _running = threading.Event()
 
 
-def stale_count(db: Session) -> int:
+def recent_periods(n: int) -> list[str]:
+    """The cycles the automatic sweep covers.
+
+    Old months are re-checked on demand, not on every deploy. A finding on a
+    cycle that shipped in March is not in anybody's way, and re-reading four
+    years of PDFs every time a rule changes is work nobody asked for.
+    """
+    from .cycle import recent_periods as _recent
+    out = _recent(max(n, 1))
+    if settings.default_period and settings.default_period not in out:
+        out.append(settings.default_period)
+    return out
+
+
+def _stale_query(db: Session, periods: list[str] | None, group: str | None,
+                 period: str | None):
+    q = select(Report).where(Report.rules_version != rules_version())
+    if period:
+        q = q.where(Report.period == period)
+    elif periods:
+        q = q.where(Report.period.in_(periods))
+    if group:
+        from .board import market_names_for_group
+        markets = market_names_for_group(db, group)
+        q = q.where(Report.market.in_(markets or [group]))
+    return q
+
+
+def stale_count(db: Session, *, scoped: bool = False, group: str | None = None,
+                period: str | None = None) -> int:
     from sqlalchemy import func
-    return db.scalar(select(func.count(Report.id))
-                     .where(Report.rules_version != rules_version())) or 0
+    periods = recent_periods(settings.recheck_periods) if scoped else None
+    q = _stale_query(db, periods, group, period)
+    return db.scalar(select(func.count()).select_from(q.subquery())) or 0
 
 
-def _stale_batch(db: Session, limit: int) -> list[Report]:
+def _stale_batch(db: Session, limit: int, *, scoped: bool = True,
+                 group: str | None = None, period: str | None = None) -> list[Report]:
     """Newest cycles first. The month somebody is working on is the one where a
     stale answer is actually in the way."""
+    periods = recent_periods(settings.recheck_periods) if scoped else None
+    q = _stale_query(db, periods, group, period)
     return list(db.scalars(
-        select(Report)
-        .where(Report.rules_version != rules_version())
-        .order_by(Report.period.desc(), Report.id.desc())
-        .limit(limit)).all())
+        q.order_by(Report.period.desc(), Report.id.desc()).limit(limit)).all())
 
 
-def sweep_once(db: Session, limit: int = BATCH) -> int:
+def sweep_once(db: Session, limit: int = BATCH, *, scoped: bool = True,
+               group: str | None = None, period: str | None = None) -> int:
     done = 0
-    for rep in _stale_batch(db, limit):
+    for rep in _stale_batch(db, limit, scoped=scoped, group=group, period=period):
         try:
             out = recheck(db, rep)
             done += 1
@@ -183,8 +221,9 @@ def start_sweeper() -> None:
         time.sleep(5)                     # let the first requests through
         while True:
             db = SessionLocal()
+            started = time.monotonic()
             try:
-                if not stale_count(db):
+                if not stale_count(db, scoped=True):
                     log.info("recheck sweep: nothing stale")
                     break
                 n = sweep_once(db)
@@ -195,7 +234,74 @@ def start_sweeper() -> None:
                 break
             finally:
                 db.close()
-            time.sleep(PAUSE_SECONDS)
+            time.sleep(min(time.monotonic() - started, MAX_REST_SECONDS))
         _running.clear()
 
     threading.Thread(target=run, name="recheck-sweeper", daemon=True).start()
+
+
+# ------------------------------------------------------ re-check on demand
+# What each on-demand run is doing, so the page can say more than "working".
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+
+
+def job_state(key: str) -> dict | None:
+    with _jobs_lock:
+        j = _jobs.get(key)
+        return dict(j) if j else None
+
+
+def running_jobs() -> dict[str, dict]:
+    with _jobs_lock:
+        return {k: dict(v) for k, v in _jobs.items() if v.get("state") == "running"}
+
+
+def start_job(key: str, *, group: str | None = None,
+              period: str | None = None) -> dict:
+    """Re-check a partner, or a whole cycle, now.
+
+    The sweep gets to everything eventually; this is for when eventually is not
+    soon enough - after a fix has gone out and somebody wants that partner's
+    board right rather than right in twenty minutes.
+    """
+    with _jobs_lock:
+        cur = _jobs.get(key)
+        if cur and cur.get("state") == "running":
+            return dict(cur)
+        _jobs[key] = {"state": "running", "done": 0, "total": 0,
+                      "group": group, "period": period, "changed": 0}
+
+    def run():
+        db = SessionLocal()
+        try:
+            total = stale_count(db, group=group, period=period)
+            with _jobs_lock:
+                _jobs[key]["total"] = total
+            while True:
+                batch = _stale_batch(db, BATCH, scoped=False, group=group,
+                                     period=period)
+                if not batch:
+                    break
+                for rep in batch:
+                    was = rep.severity
+                    try:
+                        out = recheck(db, rep)
+                    except Exception as exc:                     # noqa: BLE001
+                        log.warning("recheck failed for %s: %s", rep.id, exc)
+                        rep.rules_version = rules_version()
+                        db.commit()
+                        out = {"ok": False}
+                    with _jobs_lock:
+                        _jobs[key]["done"] += 1
+                        if out.get("ok") and out.get("now") != was:
+                            _jobs[key]["changed"] += 1
+        except Exception as exc:                                 # noqa: BLE001
+            log.warning("recheck job %s stopped: %s", key, exc)
+        finally:
+            db.close()
+            with _jobs_lock:
+                _jobs[key]["state"] = "done"
+
+    threading.Thread(target=run, name=f"recheck-{key}", daemon=True).start()
+    return job_state(key) or {}

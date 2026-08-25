@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # only if a deploy needs to stop the sweep for some reason - a stale report
     # showing a fixed rule's old answer is the failure this prevents.
     auto_recheck: bool = True
+    # How many recent cycles the automatic sweep covers. Older months are
+    # re-checked on demand: a finding on a cycle that shipped in March is not
+    # in anybody's way, and re-reading four years of PDFs on every deploy is
+    # work nobody asked for.
+    recheck_periods: int = 3
 
     notifications_enabled: bool = False
 

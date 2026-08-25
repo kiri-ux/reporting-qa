@@ -51,6 +51,28 @@
     </span>
   </div>
 
+  {% if stale.total or jobs %}
+    {# The sweep gets to everything on its own. This is for when eventually is
+       not soon enough - a fix has gone out and somebody wants the board right
+       before they hand a link over. #}
+    <div class="note stale">
+      {% if jobs %}
+        {% set j = (jobs.values()|list)[0] %}
+        <span class="spin"></span>
+        <b>Re-checking{% if j.group %} {{ j.group }}{% endif %}</b> -
+        {{ j.done }} of {{ j.total or '?' }} done. Reload to see where it got to.
+      {% else %}
+        <b>{{ stale.total }} report{{ 's' if stale.total != 1 }}</b> on this board
+        {{ 'was' if stale.total == 1 else 'were' }} judged by older checking code.
+        They are queued for an automatic re-check.
+        <form method="post" action="/cycle/recheck" style="display:inline">
+          <input type="hidden" name="period" value="{{ period }}">
+          <button class="mini">Re-check all {{ stale.total }} now</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <div class="tools">
     <input type="search" data-cards="glist" data-count="cnt-groups"
            placeholder="Search partners...">
@@ -124,6 +146,15 @@
           {# Once the table below is already showing this partner, the link has
              nothing left to do - it stayed blue and clicking it reloaded the
              same page, which reads as broken. It becomes the way back out. #}
+          {% if stale.by_group.get(g.group) %}
+            <form method="post" action="/cycle/recheck" style="display:inline">
+              <input type="hidden" name="period" value="{{ period }}">
+              <input type="hidden" name="group" value="{{ g.group }}">
+              <button class="mini"
+                      title="{{ stale.by_group[g.group] }} of this partner's reports were judged by older checking code. Re-read them now rather than waiting for the sweep.">
+                Re-check {{ stale.by_group[g.group] }}</button>
+            </form>
+          {% endif %}
           {% if filter_group == g.group %}
             <a href="/cycle?period={{ period }}" class="showing"
                title="Showing this partner's reports below - click to show them all">
@@ -291,6 +322,10 @@
 .wtag.t b{background:var(--plum)}
 .wtag.s b{background:var(--ok)}
 .gcard[hidden]{display:none}
+.note.stale{border-left-color:var(--warn);background:var(--warn-bg, var(--atlas-10));
+ display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.note.stale form{margin:0}
+.gfoot form{display:inline}
 .gfoot .showing{color:var(--velocity);font-weight:700;background:var(--velocity-10);
  padding:2px 9px;border-radius:12px;text-decoration:none}
 .gfoot .showing:hover{background:var(--velocity);color:#fff}
