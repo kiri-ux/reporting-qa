@@ -9,6 +9,11 @@
   <span class="meta">{{ rep.market }} · {{ rep.period }}
     {%- if rep.pages %} · {{ rep.pages }} pages{% endif %}
     {%- if rep.impressions %} · {{ '{:,}'.format(rep.impressions) }} impressions{% endif %}</span>
+  {% if rep.account_ids %}
+    {# The order id is what you quote when raising this with anyone, so it
+       belongs where you can copy it without opening the PDF. #}
+    <span class="oid" title="Order id">{{ rep.account_ids }}</span>
+  {% endif %}
   {% if rep.is_lifetime %}<span class="pill p-info">lifetime</span>{% endif %}
   <span class="pill p-{{ rep.board_state }}">{{ rep.board_state|replace('_',' ')|title }}</span>
   <a class="btn" href="/report/{{ rep.id }}/file" download="{{ rep.filename }}">Download</a>
@@ -149,6 +154,9 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
 .pagehead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .pagehead h1{font-size:26px;line-height:1.1}
 .pagehead .meta{font-size:13px;color:var(--muted)}
+.pagehead .oid{align-self:center;font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;
+ background:var(--atlas-10);color:#3D5468;padding:3px 10px;border-radius:20px;
+ user-select:all}
 .pagehead .pill{align-self:center}
 .pagehead .btn{margin-left:auto;align-self:center;padding:7px 16px;font-size:13px}
 .split{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:18px;align-items:start}
