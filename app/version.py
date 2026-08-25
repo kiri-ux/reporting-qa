@@ -12,10 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-56"
-BUILD_NOTES = ("A running sync now says what started it - the button, a deploy "
-               "whose import rules changed, or a batch of reports arriving. "
-               "Three things can begin one and none of them used to say so.")
+BUILD = "2026.08.25-57"
+BUILD_NOTES = ("The product check now refuses to answer while the loaded orders "
+               "were read by older import code, instead of saying the same "
+               "wrong thing again. And every report has an Order lines as "
+               "stored page, so this stops being guesswork from a screenshot.")
 
 # ---------------------------------------------------------------------------
 

@@ -1,56 +1,63 @@
-build 2026.08.25-56
+build 2026.08.25-57
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/db.py
 app/main.py
 app/ingest.py
 app/recheck.py
-app/orders_s3.py
-app/templates/orders.html
+app/checks/rules.py
+app/templates/report_orders.html   (new)
+app/templates/viewer.html
 tests/test_order_remap.py
 
 
-A running sync now says what started it
------------------------------------------
-Short answer to your question: yes, it is normal, and yes, pressing the orders
-button is one of the things that does it - but not the only one. THREE
-different things can start a sync and none of them said so, which is why
-opening the page and finding one running looked like the tool deciding to do
-something on its own.
+Blair Regional YMCA, fourth time
+----------------------------------
+I have been fixing this by guessing from screenshots and telling you to press
+things. That is not working, so this build does two things instead.
 
-  1. You pressed the button - the one in the top right of the board, or Sync
-     from S3 now on this page.
-  2. The import rules changed on this deploy. The export is parsed once and
-     only the answer is kept, so when the code that interprets it changes, the
-     loaded orders are answering from an older version of it and the file has
-     to be read again. This fires once per deploy that touches that code -
-     which, while I have been shipping several builds a day, has been most of
-     them.
-  3. A batch of reports arrived. The order list is refreshed before
-     completeness runs, so a campaign added or ended since the last run is
-     already reflected. Reports have been arriving all day.
+1. THE CHECK REFUSES TO ANSWER FROM STALE ORDER DATA.
 
-The page now says which:
+   The export is parsed once and only the answer is kept. While the loaded rows
+   were produced by an older import than the code running now, the product
+   check has nothing current to compare against - so it now abstains and shows
+   as skipped, with the reason. It was answering from four-builds-old data and
+   producing the same wrong finding over and over, and no amount of explaining
+   beats not saying it.
 
-    Sync running since 5:52 PM, because the import rules changed on this
-    deploy, so the loaded orders were answering from an older version of them.
+   So on this deploy that finding disappears until the orders have actually
+   been re-read. If it comes back after a successful re-read, it is real and I
+   will treat it as real.
 
-And the finished line says it too - "Last synced 6:04 PM (you pressed the
-button) · 2,081 lines".
+2. EVERY REPORT NOW HAS "ORDER LINES AS STORED".
 
-Nothing about the behaviour changed. It was always doing this; it just never
-told you, and "is that normal?" is a question the page should have been able to
-answer on its own.
+   A link under the checks on the report page. It shows the actual rows the
+   report is being judged against - not the summary a finding prints:
 
-Two things worth knowing while you are looking at it:
+     Product | Would be | Raw name on the order | Order | Line items |
+     Live | Ran in 2026-07 | Flights | Budget
 
-  - A sync that has been running more than 30 minutes is treated as dead - a
-    deploy or restart mid-import - and stops blocking the next one. So a stuck
-    claim cannot wedge it permanently.
-  - Reason 2 stops happening once it has run successfully after a deploy. If
-    you see it every time you open the page, that is reason 3, and it will
-    settle when the reports stop arriving.
+   Two columns settle it on sight:
+
+     - WOULD BE is what today's code would map that raw product name to. Where
+       it differs from Product - shown in red - the row was written by an older
+       import, and that IS the answer. A row storing "Social Mirror" whose raw
+       name is "Social Mirror CTV Ads" is provably from before build 42.
+
+     - FLIGHTS shows each order's own window. "none recorded" in red means the
+       row predates build 42, so the period test is falling back to the merged
+       span and a gap between two flights is invisible - which is exactly the
+       Blair Regional YMCA shape.
+
+   Open that page for this report and send me a screenshot of it. Whatever is
+   wrong will be visible in one of those two columns, and I will fix the actual
+   thing rather than the thing I inferred.
+
+One more possibility worth naming, in case the data turns out to be current:
+the second finding says the REPORT carries Social Mirror CTV sections. If no
+Social Mirror CTV is running in July and the report is printing it anyway, that
+finding is right and the report is the thing that is wrong - a pull that
+included a product it should not have.
 
 
-Tests: 408 passing.
+Tests: 411 passing.

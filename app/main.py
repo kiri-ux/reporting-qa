@@ -1276,6 +1276,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     any_of = expected_any(db, client, account_ids, period=period)
     quiet = quiet_products(db, client, account_ids, period=period)
     budgets = budgets_for(db, client, account_ids, period=period)
+    orders_ok = not _orders_stale(db)
     # The corner of page one, and which other markets print the same mark.
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
@@ -1290,7 +1291,8 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets)
+                     logo_known=logo_seen, budgets=budgets,
+                     orders_current=orders_ok)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
@@ -1382,6 +1384,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
+    orders_ok = not _orders_stale(db)
     from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(target)
     logo_bad = is_generic(db, logo)
@@ -1392,7 +1395,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets)
+                     logo_known=logo_seen, budgets=budgets,
+                     orders_current=orders_ok)
     rep.stored_path = str(target)
     rep.logo_hash = logo
     rep.pages = result["pages"]
@@ -1464,6 +1468,7 @@ async def replace_report(report_id: int, request: Request,
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
+    orders_ok = not _orders_stale(db)
     from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(path)
     logo_bad = is_generic(db, logo)
@@ -1475,7 +1480,8 @@ async def replace_report(report_id: int, request: Request,
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets)
+                     logo_known=logo_seen, budgets=budgets,
+                     orders_current=orders_ok)
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",
@@ -1684,6 +1690,50 @@ def pull_range_rows(db: Session) -> list[tuple]:
         .group_by(OrderLine.market)).all()
     return sorted(((m, e, n) for m, e, n in rows),
                   key=lambda r: (r[1] or dt.date.max, r[0] or ""))
+
+
+@app.get("/report/{report_id}/orders")
+def report_orders(report_id: int, request: Request, db: Session = Depends(get_db)):
+    """Every order line this report is being judged against, as stored.
+
+    Not the summary the finding prints - the actual rows, with the product they
+    were mapped to, whether they are live, their windows, and which sync loaded
+    them. Three rounds of "why am I still seeing this" all came down to the
+    stored rows being older than the code, and there was no way to look at them
+    without me guessing from a screenshot.
+    """
+    from .checks.products import map_order_products
+    from .roster import _ran_during, client_lines
+    from .version import product_map_version
+
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    lines = client_lines(db, rep.client, rep.account_ids) or []
+    rows = []
+    for l in sorted(lines, key=lambda x: (x.product or "", x.account_ids or "")):
+        rows.append({
+            "product": l.product or "(unmapped)",
+            "raw": l.campaign or "",
+            # What TODAY's code would map that raw name to. When this differs
+            # from the stored product, the row was written by an older import
+            # and that is the whole answer.
+            "would_be": ", ".join(map_order_products(l.campaign or "")) or "(nothing)",
+            "orders": l.account_ids or "", "lines": l.line_ids or "",
+            "live": bool(getattr(l, "live", True)),
+            "flights": getattr(l, "flights", None) or [],
+            "starts": l.starts_on, "ends": l.ends_on,
+            "budget": l.budget,
+            "ran": _ran_during(l, rep.period) if rep.period else None,
+        })
+    sync = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+                      .order_by(desc(OrderSync.id)).limit(1)).first()
+    return templates.TemplateResponse(request, "report_orders.html", {
+        "nav": "cycle", "rep": rep, "rows": rows, "sync": sync,
+        "map_now": product_map_version(),
+        "stale": bool(sync and sync.ok and
+                      (sync.map_version or "") != product_map_version()),
+    })
 
 
 @app.get("/orders/pull-range.csv")

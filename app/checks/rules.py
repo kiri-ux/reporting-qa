@@ -1067,7 +1067,8 @@ CHECKS: list[tuple] = [
 # Why a rule had nothing to do. "Nothing to check against" is true of every
 # skipped rule and tells you nothing about which one you are looking at.
 SKIP_WHY = {
-    "check_products": "no order list loaded for this client",
+    "check_products": "no order list loaded for this client, or the loaded one "
+                      "was read by older import code",
     "check_date_range": "the report prints no date range",
     "check_headline_ctr": "no top-line impressions or clicks on the report",
     "check_line_items": "no grids on the report",
@@ -1106,7 +1107,15 @@ def _rule_applies(rule, ctx) -> bool:
     """
     name = rule.__name__
     if name == "check_products":
-        return ctx.get("expected_products") is not None
+        # AND the order list has to have been read by the current import code.
+        #
+        # The export is parsed once and only the answer is kept, so while the
+        # loaded orders were produced by an older import this check is
+        # comparing the report against a stale answer. It was producing
+        # findings from it - the same one, three times, on a report that was
+        # right - and no amount of explaining beats not saying it.
+        return (ctx.get("expected_products") is not None
+                and ctx.get("orders_current", True))
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
     if name == "check_pacing":
@@ -1204,7 +1213,8 @@ def run_all(path: Path, filename: str | None = None,
             expected_any: list | None = None,
             quiet_products: set | None = None,
             logo_generic: bool = False, logo_known: bool = False,
-            logo_hash: str = "", budgets: dict | None = None) -> dict:
+            logo_hash: str = "", budgets: dict | None = None,
+            orders_current: bool = True) -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
     # a finding say WHERE on a forty-one page report to look.
@@ -1227,6 +1237,10 @@ def run_all(path: Path, filename: str | None = None,
         # Other markets whose reports carry this same header logo.
         # What the order says each product should spend in a month.
         "budgets": budgets or {},
+        # False while the loaded orders were produced by an older import than
+        # the one running now. The product check abstains rather than answering
+        # from data it knows is out of date.
+        "orders_current": bool(orders_current),
         "logo_generic": bool(logo_generic),
         # Has anybody marked ANY logo as the default yet? Until somebody
         # has, this check has nothing to compare against and abstains.

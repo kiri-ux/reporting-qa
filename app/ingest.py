@@ -269,6 +269,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                                period=batch.period)
         budgets = budgets_for(db, meta_guess["client"], meta_guess["account_ids"],
                               period=batch.period)
+        from .recheck import _orders_current
+        orders_ok = _orders_current(db)
         # The corner of page one, and which other markets print the same
         # mark. Worked out here rather than inside the check because it takes
         # a database question, and a check is handed facts rather than going
@@ -285,7 +287,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets)
+                     logo_known=logo_seen, budgets=budgets,
+                     orders_current=orders_ok)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},

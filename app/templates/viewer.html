@@ -121,6 +121,11 @@
       </details>
     {% endif %}
 
+    <p class="sub" style="font-size:12.5px;margin-top:14px">
+      <a href="/report/{{ rep.id }}/orders">Order lines as stored</a> - what a
+      product finding is actually being judged against.
+    </p>
+
     <h2 style="margin-top:22px">Sign-off</h2>
     <form method="post" action="/report/{{ rep.id }}/review" class="signoff">
       {# The name sits on its own line so the three verdicts stay on one row.

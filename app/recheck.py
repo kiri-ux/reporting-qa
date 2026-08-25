@@ -91,6 +91,22 @@ def _new_failures(old_findings: list, acked: list, new_findings: list) -> list[s
     return fresh
 
 
+def _orders_current(db: Session) -> bool:
+    """Were the loaded orders produced by the import code running now?
+
+    While they were not, the product check has nothing current to compare
+    against and abstains. It was answering from the old data instead, and
+    saying the same wrong thing about the same report over and over.
+    """
+    from .db import OrderSync
+    from .version import product_map_version
+    row = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+                     .order_by(OrderSync.id.desc()).limit(1)).first()
+    if row is None or not row.ok:
+        return True                    # nothing loaded: a different problem
+    return (row.map_version or "") == product_map_version()
+
+
 def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     """Re-read this report's PDF with today's rules. Returns what changed."""
     from .checks.rules import run_all
@@ -111,6 +127,7 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
+    orders_ok = _orders_current(db)
     # The corner of page one, and which other markets print the same mark.
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
@@ -134,7 +151,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets)
+                     logo_known=logo_seen, budgets=budgets,
+                     orders_current=orders_ok)
 
     was_sev = rep.severity
     old_findings, old_acked = list(rep.findings or []), list(rep.acked or [])

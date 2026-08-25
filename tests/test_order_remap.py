@@ -540,3 +540,36 @@ def test_every_way_of_starting_a_sync_says_which_it_was():
     assert 'trigger="rules"' in _P("app/recheck.py").read_text()
     assert 'trigger="batch"' in _P("app/ingest.py").read_text()
     assert "triggers[running.trigger]" in _P("app/templates/orders.html").read_text()
+
+
+# ------------------------------------------- refusing to answer from stale data
+def test_the_product_check_abstains_while_the_orders_are_stale():
+    """It was producing findings from an import four builds old - the same one,
+    three times, on a report that was right. No amount of explaining beats not
+    saying it."""
+    from app.checks.rules import _rule_applies, check_products
+    fresh = {"expected_products": {"Meta"}, "products": {"Meta"},
+             "orders_current": True}
+    assert _rule_applies(check_products, fresh) is True
+    stale = dict(fresh, orders_current=False)
+    assert _rule_applies(check_products, stale) is False
+
+
+def test_the_report_page_can_show_the_rows_it_is_judged_against(db):
+    """Three rounds of "why am I still seeing this" all came down to the stored
+    rows being older than the code, and there was no way to look at them
+    without me guessing from a screenshot."""
+    from pathlib import Path as _P
+    tpl = _P("app/templates/report_orders.html").read_text()
+    assert "Would be" in tpl and "none recorded" in tpl
+    assert "/report/{{ rep.id }}/orders" in _P("app/templates/viewer.html").read_text()
+    assert '@app.get("/report/{report_id}/orders")' in _P("app/main.py").read_text()
+
+
+def test_what_todays_code_would_map_a_raw_name_to_is_shown():
+    """Where that differs from the stored product, the row was written by an
+    older import and that is the whole answer."""
+    from app.checks.products import map_order_products
+    assert map_order_products("Social Mirror CTV Ads") == ["Social Mirror CTV"]
+    # The old import had no Social Mirror CTV key, so a row stored as plain
+    # "Social Mirror" with this raw name is provably from older code.
