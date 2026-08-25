@@ -495,3 +495,49 @@ def test_the_recheck_marks_the_pull_rather_than_erasing_who():
     new = [{"code": "a", "title": "One"}, {"code": "b", "title": "Two",
                                            "severity": "fail"}]
     assert _new_failures(old, [], new) == ["Two"]
+
+
+# ------------------------------------------- the partner button skips sign-offs
+def test_the_partner_recheck_query_leaves_signed_off_reports_alone():
+    """It said "6 of 8" on a partner with one report still pending, and worked
+    through six somebody had already read and signed."""
+    import inspect
+    from app import recheck as rmod
+    src = inspect.getsource(rmod._stale_query)
+    assert "skip_signed" in src
+    assert 'notin_(("reviewed", "waived"))' in src
+    assert "skip_signed" in inspect.signature(rmod.start_job).parameters
+
+
+def test_the_background_sweep_still_covers_them():
+    """That is how a rule change reaches a signed-off report and pulls the
+    sign-off. Narrowing the button must not narrow the sweep."""
+    import inspect
+    from app import recheck as rmod
+    assert "skip_signed" not in inspect.getsource(rmod.sweep_once)
+
+
+def test_the_order_import_fingerprint_covers_the_import_rules_too():
+    """It was just the product mapping, which was too narrow by exactly the bug
+    it was written for. orders_io.py holds the rule that a live line item
+    rescues an order whose header says IO Pending Launch - order 55216."""
+    import hashlib
+    from pathlib import Path
+    from app.version import product_map_version
+
+    before = product_map_version()
+    here = Path(rmod_path()).parent
+    # Changing orders_io.py must move the fingerprint.
+    src = here / "orders_io.py"
+    original = src.read_bytes()
+    try:
+        src.write_bytes(original + b"\n# touched\n")
+        assert product_map_version() != before
+    finally:
+        src.write_bytes(original)
+    assert product_map_version() == before
+
+
+def rmod_path():
+    from app import version
+    return version.__file__

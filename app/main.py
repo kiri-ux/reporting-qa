@@ -595,9 +595,13 @@ def _stale_here(db: Session, period: str, groups) -> dict:
     from .board import markets_by_group
     from .version import rules_version
 
+    # Counted WITHOUT the signed-off ones, because that is what the button
+    # does. It said "Re-check ... 8 reports" and then "6 of 8" on a partner
+    # with one report still pending.
+    signed = Report.review_state.in_(("reviewed", "waived"))
     rows = db.execute(
         select(Report.market,
-               func.count(Report.id),
+               func.sum(case((signed, 0), else_=1)),
                func.sum(case((Report.rules_version != rules_version(), 1), else_=0)))
         .where(Report.period == period)
         .group_by(Report.market)).all()
@@ -814,7 +818,11 @@ def cycle_recheck(period: str = Form(""), group: str = Form(""),
     # it has - "Re-check 2" on a card headed "14 reports" reads as a bug even
     # when 2 is the true number of stale ones.
     start_job(db, key, group=group or None, period=period or None,
-              stale_only=(scope != "all"))
+              stale_only=(scope != "all"),
+              # A partner button means "bring this partner up to date", and a
+              # report somebody signed off is up to date. It said "6 of 8" on a
+              # partner with one report still pending.
+              skip_signed=bool(group))
     back = f"/cycle?period={period}" + (f"&group={quote(group)}" if group else "")
     return RedirectResponse(back, status_code=303)
 

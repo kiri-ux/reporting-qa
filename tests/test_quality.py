@@ -920,3 +920,32 @@ def test_a_report_with_real_ctv_as_well_still_owes_the_widget():
             "Amazon Premium Site and App Performance\n")
     out = check_required_widgets({"text": text, "products": {"CTV"}})
     assert [f["title"] for f in out] == ["No Top CTV Publishers widget"]
+
+
+# ------------------------------------------- 5% needs volume behind it
+def test_a_small_placement_just_over_5_percent_is_not_a_finding():
+    """Field Of Dreams: "Slicing Hero: Sword Master: 10 clicks on 183
+    impressions is 5.46%". One click either way moves that half a point, and
+    183 impressions of a 62,679-impression campaign is not actionable."""
+    text = ("Site and App Performance\n"
+            " Name    Impressions   Clicks   CTR\n"
+            "Slicing Hero: Sword Master     183    10    5.46%\n")
+    assert q.check_site_ctr({"text": text}) == []
+
+
+def test_volume_over_5_percent_is_still_a_finding():
+    text = ("Site and App Performance\n"
+            " Name    Impressions   Clicks   CTR\n"
+            "Some Game App              12,400   800    6.45%\n")
+    out = q.check_site_ctr({"text": text})
+    assert len(out) == 1 and "Some Game App" in out[0]["detail"]
+
+
+def test_a_small_placement_at_46_percent_is_still_a_finding():
+    """The case the check was written for. No volume makes 46% a coincidence,
+    and a flat impressions floor would have thrown it away."""
+    text = ("Site and App Performance\n"
+            " Name    Impressions   Clicks   CTR\n"
+            "Slicing Hero: Sword Master     783   365   46.62%\n")
+    out = q.check_site_ctr({"text": text})
+    assert len(out) == 1 and "Slicing Hero" in out[0]["detail"]

@@ -319,8 +319,10 @@ details[open] > .cksum::before{content:'▾ '}
 .wpill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
  font-size:10.5px;letter-spacing:.01em;padding:2px 8px;border-radius:10px;
  background:var(--atlas-10);color:var(--ink-2);margin-left:6px;
- vertical-align:1px;white-space:nowrap;max-width:26ch;overflow:hidden;
- text-overflow:ellipsis}
+ vertical-align:1px;
+ /* It wraps rather than truncating. "p9 · Site and App Perf…" is the half of
+    the label that says WHERE, cut off in a column with room to spare. */
+ white-space:normal;max-width:100%;overflow-wrap:anywhere}
 .probe{margin:2px 0 0 30px}
 .probe summary{font-size:12px;font-weight:700;color:var(--velocity);cursor:pointer;
  list-style:none;padding:2px 0;font-family:'GT Walsheim Pro',sans-serif}

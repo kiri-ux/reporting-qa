@@ -464,7 +464,9 @@ body.fit .pdfwrap object{height:100%}
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest ? ev.target.closest('.copy') : null;
     if (!b) return;
-    var text = b.dataset.copy || '';
+    // data-copy-url copies wherever you are, filters and all, rather than a
+    // value baked in when the page was rendered.
+    var text = ('copyUrl' in b.dataset) ? window.location.href : (b.dataset.copy || '');
     var label = b.querySelector('span');
     var was = label ? label.textContent : '';
     var done = function (msg, ok) {

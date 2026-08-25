@@ -866,6 +866,21 @@ SITE_GRID = re.compile(
     r"^[ \t]*((?:[A-Z][\w+&'. -]*)?Site and App Performance)[ \t]*$", re.M)
 SITE_CTR_CEILING = 5.0
 
+# Below this many impressions the 5% line is arithmetic rather than behaviour.
+# Field Of Dreams had "Slicing Hero: Sword Master: 10 clicks on 183 impressions
+# is 5.46%" - one click either way moves that by half a point, and 183
+# impressions of a 62,679-impression campaign is not something anybody is going
+# to act on.
+SITE_CTR_MIN_IMPS = 1000
+
+# ...but a small placement can still be unmistakable, and throwing those away
+# would have lost the case this check was written for: "Slicing Hero: Sword
+# Master", 365 clicks on 783 impressions, 46.62%. No volume of impressions
+# makes that a coincidence. So a low-volume row is judged against a rate
+# nothing organic reaches instead of being dropped.
+SITE_CTR_LOUD = 15.0
+SITE_CTR_FLOOR_IMPS = 50
+
 
 # The last row of a grid absorbs the next widget's title as if it were a
 # wrapped name - "minefun.io" comes out as "minefun.io Top CTV Publishers".
@@ -915,11 +930,13 @@ def check_site_ctr(ctx) -> list[dict]:
     text = ctx.get("text") or ""
     bad = []
     for title, name, imps, clicks, printed, at in site_rows(text):
-        if imps < 50:
+        if imps < SITE_CTR_FLOOR_IMPS:
             continue                # a handful of impressions makes any rate
         real = clicks / imps * 100 if imps else 0.0
         worst = max(real, printed or 0.0)
-        if worst <= SITE_CTR_CEILING:
+        ceiling = (SITE_CTR_CEILING if imps >= SITE_CTR_MIN_IMPS
+                   else SITE_CTR_LOUD)
+        if worst <= ceiling:
             continue
         shown = (f"{name}: {clicks:,.0f} clicks on {imps:,.0f} impressions "
                  f"is {real:.2f}%")

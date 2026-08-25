@@ -1,61 +1,77 @@
-build 2026.08.25-40
+build 2026.08.25-41
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
 app/main.py
-app/checks/rules.py
+app/recheck.py
+app/checks/quality.py
 app/templates/base.html
 app/templates/cycle.html
-app/templates/links.html        (new)
-tests/test_manual_upload.py
+app/templates/viewer.html
 tests/test_quality.py
+tests/test_recheck.py
 
 
-1. Client links, on their own page
-------------------------------------
-/cycle/links?period=2026-07. Every packaged partner, with Open, Copy, and the
-raw URL in view. The cycle board no longer stacks them above the work - the
-Partners delivered tile links across, and each partner's own card keeps its
-Client link where it sits in context.
+1. Order 55216, and why the fix did not stick
+-----------------------------------------------
+Same disease as the DOOH one, and I only cured half of it.
 
-Package & share now lands you on that page rather than back on the board. It
-is the last step before sending the link to somebody, and going back to 146
-cards with the new one somewhere in them was a find-it-yourself puzzle at
-exactly the wrong moment.
+The order export is parsed once and only the result is kept, so I made the S3
+sync re-read the file whenever the PRODUCT MAPPING changed. But the rule that
+rescues order 55216 - a live line item overruling a header that says "IO
+Pending Launch" - lives in orders_io.py, not in the mapping. That file was not
+part of the fingerprint, so the fix shipped and the loaded orders kept the old
+answer, exactly as before.
 
-The one just packaged goes first, whatever the sort, with a gold border and a
-JUST PACKAGED tag. The mark comes off when you copy it, open it, or reload -
-?new= is taken out of the address bar as soon as the page has drawn, so a
-refresh loads a page with nothing marked. A failed package still goes back to
-the board, where the reason and the Try again button are.
+The fingerprint now covers every file whose output is baked into an order
+line: the product mapping, orders_io.py, and roster.py. On the first deploy
+after this the export is re-read on its own, and reports for any client whose
+product set moved are queued for a re-check.
 
-
-2. Window World, again - and why the fix did not take
--------------------------------------------------------
-You are right that it should have gone. The parser fix in build 39 handles the
-case I could reconstruct; this report is evidently shaped differently, and I
-cannot see it without the file.
-
-What I can fix without the file is the part that was indefensible either way.
-The check was reporting "0 over 0 is nothing left to divide" and failing the
-report on it. But a tile that filtered out EVERY line item would print nothing,
-and it printed 0.45% - so whatever that classification is, it is not what the
-tile did. Failing a correct report on reasoning that is visibly broken the
-moment you open Investigate is the worst of both.
-
-Both checks now abstain in that case:
-
-  - the CTR check says "could not be checked against its own numbers" (info,
-    not a failure)
-  - the clicks check says "could not be checked against the line items" (info)
-
-and both print the line item names AS THE PARSER READ THEM in Investigate.
-That is the part that is wrong, and it is invisible from the numbers - the
-report looks fine and the finding looks reasoned.
-
-If you open Window World after this and send me that "Names as read" list, I
-can fix the parse properly rather than guessing at the layout. Or send me the
-PDF and I will do it from the file.
+54976 should come right in the same pass, for the same reason - it is the same
+shape of order. To check whether it is loaded at all, the Orders page search
+matches the whole row, so typing 54976 in it will find the order and line ids.
 
 
-Tests: 308 passing.
+2. Re-check on a partner skips reports already signed off
+-----------------------------------------------------------
+"6 of 8" on a partner with one report pending, grinding through six that
+somebody had already read and signed. The button means "bring this partner up
+to date", and a signed-off report is up to date by definition.
+
+The count on the button follows the same rule, so it no longer says 8 when
+there are 2 to do.
+
+The BACKGROUND SWEEP still covers signed-off reports - that is how a rule
+change reaches one and pulls the sign-off if it finds a failure that was not
+there when they signed. This only narrows the button. A single signed-off
+report can still be re-read with "Check this file again" on its own page.
+
+
+3. The 5% site rule needs volume behind it
+--------------------------------------------
+"Slicing Hero: Sword Master: 10 clicks on 183 impressions is 5.46%". One click
+either way moves that half a point, and 183 impressions of a 62,679-impression
+campaign is not something anybody is going to act on.
+
+5% now applies from 1,000 impressions up. Below that the row is judged against
+15% instead of being dropped - because the case this check was written for was
+"Slicing Hero: Sword Master", 365 clicks on 783 impressions, 46.62%, and a
+flat impressions floor would have thrown it away. No volume makes 46% a
+coincidence.
+
+
+4. Share this view
+--------------------
+A button beside Download CSV that copies the current URL, filters and all.
+They have been in the address bar since build 39, but nobody thinks to select
+a URL they did not type.
+
+
+5. The where-pill is not cut off any more
+-------------------------------------------
+"p9 · Site and App Perf…" in a column with room to spare. It wraps instead of
+truncating - the half that says WHERE is the point of it.
+
+
+Tests: 314 passing.

@@ -12,12 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-40"
-BUILD_NOTES = ("Client links have their own page, and packaging a partner takes "
-               "you straight there with the new link first and marked until you "
-               "use it. Two checks now abstain instead of failing when their own "
-               "reasoning has visibly broken - which is why Window World kept "
-               "failing after the fix.")
+BUILD = "2026.08.25-41"
+BUILD_NOTES = ("The order export is now re-read when the IMPORT rules change, "
+               "not just the product mapping - which is why order 55216 stayed "
+               "wrong after it was fixed. Re-check on a partner skips reports "
+               "already signed off, the 5% site rule needs volume behind it, "
+               "and there is a Share this view button.")
 
 # ---------------------------------------------------------------------------
 
@@ -68,7 +68,7 @@ def rules_fingerprint() -> str:
 
 
 def product_map_version() -> str:
-    """Fingerprint of the code that turns an order's product name into a product.
+    """Fingerprint of the code that turns the order export into order lines.
 
     The order list is not stored raw: every line item is mapped on the way in
     and only the answer is kept. So a fix to the mapping does nothing for the
@@ -83,11 +83,25 @@ def product_map_version() -> str:
     import hashlib
     from pathlib import Path
 
-    src = Path(__file__).resolve().parent / "checks" / "products.py"
-    try:
-        return hashlib.sha256(src.read_bytes()).hexdigest()[:16]
-    except OSError:
-        return ""
+    here = Path(__file__).resolve().parent
+    # EVERY FILE WHOSE OUTPUT IS BAKED INTO AN ORDER LINE.
+    #
+    # This started as just the product mapping, which was too narrow by exactly
+    # the bug it was written for. orders_io.py decides which rows survive the
+    # import at all - it holds the rule that a live line item rescues an order
+    # whose header says "IO Pending Launch" - and a fix there was reaching the
+    # loaded orders no more than a mapping fix was. Order 55216 was fixed and
+    # kept failing for that reason.
+    parts = [here / "checks" / "products.py", here / "orders_io.py",
+             here / "roster.py"]
+    h = hashlib.sha256()
+    for src in parts:
+        try:
+            h.update(src.name.encode())
+            h.update(src.read_bytes())
+        except OSError:
+            return ""
+    return h.hexdigest()[:16]
 
 
 _FINGERPRINT: str | None = None
