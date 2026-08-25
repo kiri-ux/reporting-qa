@@ -599,10 +599,15 @@ def _stale_here(db: Session, period: str, groups) -> dict:
     # does. It said "Re-check ... 8 reports" and then "6 of 8" on a partner
     # with one report still pending.
     signed = Report.review_state.in_(("reviewed", "waived"))
+    # BOTH numbers count the same population: the reports the button will act
+    # on. Counting stale over ALL of them while the button skipped the
+    # signed-off ones left the amber dot on for ever - press it, it does the
+    # work it can, and the count it is judged by never moves.
+    stale = Report.rules_version != rules_version()
     rows = db.execute(
         select(Report.market,
                func.sum(case((signed, 0), else_=1)),
-               func.sum(case((Report.rules_version != rules_version(), 1), else_=0)))
+               func.sum(case((signed, 0), (stale, 1), else_=0)))
         .where(Report.period == period)
         .group_by(Report.market)).all()
     have_by_market = {m or "": int(n or 0) for m, n, _s in rows}
@@ -1082,7 +1087,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     """
     from .checks import run_all
     from .ingest import client_flight, open_batch
-    from .roster import attach_owners, expected_products
+    from .roster import attach_owners, expected_products, expected_why
     from .version import rules_version as _rv
 
     blob = await file.read()
@@ -1116,10 +1121,12 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     path.write_bytes(blob)
 
     exp = expected_products(db, client, account_ids, period=period)
+    why = expected_why(db, client, account_ids, period=period)
     flight = client_flight(db, client, account_ids)
     try:
         result = run_all(path, filename=file.filename, expected_products=exp,
-                         flight=flight, period=period, market=market)
+                         flight=flight, period=period, market=market,
+                     expected_why=why)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
@@ -1167,7 +1174,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     """
     from .checks import run_all
     from .ingest import client_flight
-    from .roster import expected_products
+    from .roster import expected_products, expected_why
     from .version import rules_version as _rv
 
     rep = db.get(Report, report_id)
@@ -1206,9 +1213,11 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
             pass
 
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(target, filename=rep.filename, expected_products=exp,
-                     flight=flight, period=rep.period, market=rep.market or "")
+                     flight=flight, period=rep.period, market=rep.market or "",
+                     expected_why=why)
     rep.stored_path = str(target)
     rep.pages = result["pages"]
     rep.impressions = result["impressions"]
@@ -1245,7 +1254,7 @@ async def replace_report(report_id: int, request: Request,
     from .checks import run_all
     from .checks.parser import meta_from_filename
     from .ingest import client_flight
-    from .roster import expected_products
+    from .roster import expected_products, expected_why
 
     rep = db.get(Report, report_id)
     if not rep:
@@ -1274,10 +1283,12 @@ async def replace_report(report_id: int, request: Request,
     path.write_bytes(blob)
 
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     flight = client_flight(db, rep.client, rep.account_ids)
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,
-                         flight=flight, period=rep.period, market=rep.market or "")
+                         flight=flight, period=rep.period, market=rep.market or "",
+                     expected_why=why)
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",

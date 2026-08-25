@@ -203,3 +203,44 @@ def test_an_ampersand_is_a_format_not_a_second_product():
 def test_the_single_answer_is_still_the_first_one():
     assert m("CTV + Video Ads") == "CTV"
     assert m("Video Ads") == "Video"
+
+
+# ------------------------------------------- Field Of Dreams, order 51118
+#
+# Reported three times, and right every time. One product on the order -
+# Mobile Conquesting - and a report carrying a Display slice, a "Field Of
+# Dreams - AI Display" line item and a Display Creative Performance widget.
+# All of it IS the Mobile Conquesting buy: the order calls the product "Mobile
+# Conquesting Display & Video Ads".
+def test_a_product_is_not_rogue_when_an_ordered_product_prints_it():
+    out = check_products(_ctx(["Mobile Conquesting"],
+                              ["Display", "Mobile Conquesting"]))
+    assert out == []
+
+
+def test_the_same_holds_for_the_other_display_and_video_products():
+    for product in ("Meta", "TikTok", "DOOH", "Performance Max"):
+        assert check_products(_ctx([product], [product, "Display"])) == []
+        assert check_products(_ctx([product], [product, "Video"])) == []
+
+
+def test_a_real_rogue_is_still_caught():
+    out = check_products(_ctx(["Mobile Conquesting"],
+                              ["Mobile Conquesting", "TikTok"]))
+    assert [f["title"] for f in out] == ["On the report with no live order: TikTok"]
+
+
+def test_forgiving_a_format_does_not_make_it_expected():
+    """A Mobile Conquesting order does not OWE a Display section. This rule
+    only ever forgives a product on the report, never demands one."""
+    out = check_products(_ctx(["Mobile Conquesting"], ["Mobile Conquesting"]))
+    assert out == []
+
+
+def test_social_mirror_is_not_on_the_list():
+    """Its order name is just "Social Mirror Ads" - it does not say it delivers
+    Display and Video, so nothing here claims it does. Kept deliberately narrow
+    so this does not quietly stop catching real ones."""
+    from app.checks.products import DELIVERS
+    assert "Social Mirror" not in DELIVERS
+    assert "CTV" not in DELIVERS

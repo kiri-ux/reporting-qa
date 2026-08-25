@@ -95,7 +95,7 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     """Re-read this report's PDF with today's rules. Returns what changed."""
     from .checks.rules import run_all
     from .ingest import client_flight
-    from .roster import expected_products
+    from .roster import expected_products, expected_why
 
     path = Path(rep.stored_path or "")
     if not path.exists():
@@ -106,9 +106,11 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
         return {"ok": False, "reason": "the stored PDF is gone"}
 
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(path, filename=rep.filename, expected_products=exp,
-                     flight=flight, period=rep.period, market=rep.market or "")
+                     flight=flight, period=rep.period, market=rep.market or "",
+                     expected_why=why)
 
     was_sev = rep.severity
     old_findings, old_acked = list(rep.findings or []), list(rep.acked or [])

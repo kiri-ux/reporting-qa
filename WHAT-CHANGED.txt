@@ -1,71 +1,97 @@
-build 2026.08.25-42
+build 2026.08.25-43
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/db.py
 app/main.py
+app/ingest.py
+app/recheck.py
 app/roster.py
-app/orders_io.py
+app/checks/rules.py
 app/checks/products.py
-app/templates/base.html
-app/templates/cycle.html
 tests/test_expected_products.py
-tests/test_manual_upload.py
 tests/test_product_map.py
+tests/test_recheck.py
+tests/test_required_widgets.py
 
 
-1. A product is only expected if it ran THAT month
-----------------------------------------------------
-Blair Regional YMCA, order 31449. Social Mirror CTV ran to 30 June 2026 and
-starts again on 1 August. Two separate orders.
+1. "How can we fix these once and for all" - here is the actual cause
+----------------------------------------------------------------------
+It is one bug, and it has been behind most of the product findings you have
+been sending me.
 
-The order list keeps one row per client and product with the WIDEST span
-across every order - first start to last end. That is the right answer for
-"when does this campaign end", and completely wrong for "was it running in
-July": merged, those two flights are one campaign from 2025 to December 2026,
-and July - a month in which no Social Mirror CTV ran at all - sits inside it.
+expected_products matched a client's orders BY ACCOUNT ID, and only fell back
+to matching by name IF THE ID MATCH FOUND NOTHING:
 
-So the July report was failed twice for it. Once for the product, once for the
-Top CTV Publishers widget the product would have owed.
+    hit = [lines matching the report's order id]
+    if not hit:
+        hit = [lines matching the client name]
 
-Each order's own window is now kept alongside the merged span, and "did it run
-in July" is asked of the individual windows. The merged span is still there
-and still answers the end-date question.
+River Valley Builders' report carries order 31050. The id match found
+something, so the name match never ran - and their live Live Chat order, which
+sits under 31171, was invisible. The report was then failed twice: once for a
+Live Chat "with no live order" that was sitting right there, and once for two
+products that had stopped in 2024, which were the only orders anybody was
+looking at.
 
-Order rows loaded before this fall back to the old behaviour rather than
-guessing, and are replaced on the next order sync.
+That is also what happened with 43619 back at the start, and it is why these
+keep coming back in different costumes - I kept fixing the symptom.
 
+Every order for the client now counts, matched by id OR by name, together.
 
-2. "CTV + Video Ads" is two products
---------------------------------------
-Bloomsburg Chevrolet, order 43852. One line item, product "CTV + Video Ads",
-and a report carrying a CTV section and a Video section - which is exactly
-what was bought. Read as CTV alone, the Video was a product with no live
-order.
+And so this is self-diagnosing next time rather than costing three rounds:
+Investigate on a product finding now lists every order that was considered, its
+dates, and whether it counted:
 
-" + " in a product name is the IO tool's word for "and", and both sides now
-map. Two things it deliberately does not split:
+    Live Chat · order 31171     2024-07-17 to 2026-12-31 · counted
+    Meta · order 31050          2024-12-06 to 2026-07-31 · counted
+    Mobile Conquesting · 31050  2023-05-05 to 2024-04-30; 2024-05-01 to
+                                2024-06-30 · not running in 2026-07
+    Social Mirror · order 31050 2024-07-17 to 2024-11-30 · not running in 2026-07
 
-  - "YouTube+ Video Ads" - the plus belongs to the name. Splitting that puts a
-    live YouTube order back under Video, which is the bug this file exists for.
-    Only " + " with spaces around it counts.
-  - "Display & Video Ads" - an ampersand is the FORMAT a product is delivered
-    in, not a second product. "Meta Display & Video Ads" is Meta.
-
-There is a test that walks a product name through six format tails and expects
-the same answer each time.
+If one of these is still wrong, that panel says which order and which date is
+being read wrong, and I can fix it from the screenshot.
 
 
-3. Saved filter views
------------------------
-Name the filters you are looking at and they become a chip under the filter
-row - click to load, x to forget. Saving the same name again replaces it.
+2. Field Of Dreams: Display is the Mobile Conquesting buy
+-----------------------------------------------------------
+Reported three times, and right every time. One product on the order, and a
+report carrying a Display slice, a "Field Of Dreams - AI Display" line item and
+a Display Creative Performance widget - all of which IS Mobile Conquesting. The
+order calls the product "Mobile Conquesting Display & Video Ads"; Display and
+Video are the formats it is delivered in.
 
-The period is deliberately NOT saved. A view built while looking at July should
-open on whatever cycle you are on, or it is wrong the moment the month turns.
-Only known filter keys are stored, since the query comes from the browser.
+A product on the report is no longer rogue when an ordered product is what
+prints it. The list is deliberately narrow - only the products whose order name
+literally says "Display & Video Ads" (Mobile Conquesting, Meta, TikTok, DOOH,
+Performance Max) plus Native Display. Social Mirror and CTV are not on it, so
+this does not quietly stop catching real ones.
 
-The chip for the view you are currently on is highlighted.
+It only ever FORGIVES a product on the report. A Mobile Conquesting order does
+not owe a Display section.
 
 
-Tests: 328 passing.
+3. Media Player is a device
+-----------------------------
+Flagged as "not a device TapClicks reports" on a report whose own table
+describes it: "A personal device, either mobile or stationary, that plays
+media, such as Smart Speakers and iPods".
+
+Added - but the real fix is that a row TapClicks has written a description for
+is a device, whatever the hard-coded list says. A list has to be updated by
+somebody who has already seen the new name; the description is in the report.
+Junk rows arrive with nothing beside them, which is how those are still caught.
+
+
+4. Device findings say which page
+-----------------------------------
+Both of them carry the page and widget pill now.
+
+
+5. The Re-check dot that would not clear
+------------------------------------------
+The button skips reports already signed off (build 41). The stale count it is
+coloured by did not - so pressing it did the work it could and the number it is
+judged by never moved. Both count the same reports now.
+
+
+Tests: 343 passing.

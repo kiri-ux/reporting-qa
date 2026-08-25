@@ -16,7 +16,8 @@ from .checks.parser import meta_from_filename
 from .config import settings
 from .db import Batch, Report
 from .notify import post_slack, send_digest
-from .roster import attach_owners, completeness, expected_products
+from .roster import (attach_owners, completeness, expected_products,
+                     expected_why)
 
 log = logging.getLogger("reportqa.ingest")
 
@@ -258,11 +259,14 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         meta_guess = meta_from_filename(name)
         exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"],
                                 period=batch.period)
+        why = expected_why(db, meta_guess["client"], meta_guess["account_ids"],
+                           period=batch.period)
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
         try:
             result = run_all(path, filename=name, expected_products=exp,
                              flight=flight, period=batch.period,
-                             market=batch.market or "")
+                             market=batch.market or "",
+                     expected_why=why)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},

@@ -541,3 +541,15 @@ def test_the_order_import_fingerprint_covers_the_import_rules_too():
 def rmod_path():
     from app import version
     return version.__file__
+
+
+# ------------------------------------------- the amber dot that never cleared
+def test_the_stale_count_and_the_button_cover_the_same_reports():
+    """It kept turning amber after a re-check. The button skips reports already
+    signed off; the count did not, so pressing it did the work it could and the
+    number it is judged by never moved."""
+    import inspect
+    from app import main as mmod
+    src = inspect.getsource(mmod._stale_here)
+    # The stale sum is guarded by the same signed-off test as the have count.
+    assert "case((signed, 0), (stale, 1), else_=0)" in src

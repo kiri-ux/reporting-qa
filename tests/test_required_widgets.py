@@ -153,3 +153,44 @@ def test_a_completion_performance_widget_over_100_fails():
 def test_exactly_100_is_fine():
     text = ("Completion Performance\nName   Imps   Rate\nRoku   100   100.00%\n")
     assert check_completion_rates({"text": text}) == []
+
+
+# ------------------------------------------- Sholley Insurance: Media Player
+def test_media_player_is_a_device():
+    """Flagged as "not a device TapClicks reports" on a report whose own table
+    describes it: "A personal device, either mobile or stationary, that plays
+    media, such as Smart Speakers and iPods"."""
+    assert "media player" in KNOWN_DEVICES
+
+
+def test_a_row_the_table_describes_is_a_device_whatever_the_list_says():
+    """A hard-coded list has to be updated by somebody who has seen the new
+    name. The description is in the report already."""
+    text = ("Device Performance\n"
+            "Device Name          Description                                   Impressions   Clicks   CTR\n"
+            "Holographic Visor    A head worn device that projects video into "
+            "the wearer's field of view.        10        0   0.00%\n")
+    assert check_devices_known({"text": text}) == []
+
+
+def test_a_row_with_no_description_is_still_caught():
+    """The junk this check exists for arrives with nothing beside it, which is
+    how the description rule still leaves it caught."""
+    text = ("Device Performance\n"
+            "Device Name     Description        Impressions   Clicks   CTR\n"
+            "Mobile          A portable electronic device that can connect to "
+            "the internet.       100    5   5.00%\n"
+            "Toaster         12    0   0.00%\n")
+    out = check_devices_known({"text": text})
+    assert out and "Toaster" in out[0]["detail"]
+
+
+def test_device_findings_say_which_page():
+    """"the device breakout is wrong" is true and unhelpful until you know
+    which of forty pages it is on."""
+    text = ("DEVICES - PAGE 8\nDevice Performance\n"
+            "Device Name   Impressions   Clicks   CTR\n"
+            "Blender       10    0   0.00%\n")
+    out = check_devices_known({"text": text, "page_text": [text],
+                               "page_of": lambda o: 8})
+    assert out and out[0].get("where", "").startswith("p8")

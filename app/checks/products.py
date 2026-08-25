@@ -101,6 +101,40 @@ ORDER_PRODUCT_MAP = {
 # not a finding. SEO is delivered as its own report.
 NOT_IN_MONTHLY_REPORT = {"SEO"}
 
+# WHAT A PRODUCT PRINTS ON THE REPORT BESIDES ITSELF.
+#
+# Field Of Dreams runs one product - Mobile Conquesting - and its report
+# carries a Display slice, a "Field Of Dreams - AI Display" line item and a
+# Display Creative Performance widget. All of it IS the Mobile Conquesting buy:
+# the order calls the product "Mobile Conquesting Display & Video Ads", and
+# Display and Video are the formats it is delivered in, not other products
+# somebody bought.
+#
+# Read literally, the report was carrying "Display with no live order" - three
+# times, on a report that was right every time.
+#
+# This is used ONLY to forgive a product on the report. It never makes one
+# expected: a Mobile Conquesting order does not owe a Display section.
+#
+# The membership is taken from what the order tool calls each product. Every
+# one of these is sold as "... Display & Video Ads".
+DELIVERS = {
+    "Mobile Conquesting": {"Display", "Video"},
+    "Meta": {"Display", "Video"},
+    "TikTok": {"Display", "Video"},
+    "DOOH": {"Display", "Video"},
+    "Performance Max": {"Display", "Video"},
+    "Native Display": {"Display"},
+}
+
+
+def formats_covered(expected) -> set[str]:
+    """Everything the expected products print in their own right."""
+    out: set[str] = set()
+    for p in expected or ():
+        out |= DELIVERS.get(p, set())
+    return out
+
 # What the name STARTS with, when the exact name is not in the map above. The
 # IO tool grows new spellings faster than anybody updates a dictionary -
 # "TikTok Display & Video Ads", "Digital Out-Of-Home (DOOH) Display & Video

@@ -142,3 +142,90 @@ def test_one_continuous_flight_still_covers_its_months():
 def test_an_open_ended_flight_runs_until_somebody_says_otherwise():
     line = _Line(_dt.date(2026, 4, 1), None, [["2026-04-01", None]])
     assert _ran_during(line, "2027-01") is True
+
+
+# ------------------------------- River Valley Builders / The Home Store, 2026-07
+#
+# THE BUG BEHIND A WHOLE RUN OF FALSE POSITIVES.
+#
+# expected_products matched a client's orders by account id, and only fell back
+# to matching by NAME if the id match found nothing. This client's report
+# carries order 31050, so the id match found something - and the name match
+# that would have found their live Live Chat order under 31171 never ran.
+#
+# The report was then failed twice: for a Live Chat "with no live order" that
+# was sitting right there, and for two products that had stopped in 2024, which
+# were the only orders anybody was looking at.
+import datetime as _d
+
+from sqlalchemy import create_engine as _ce
+from sqlalchemy.orm import sessionmaker as _sm
+
+from app.db import Base as _B, OrderLine as _OL
+from app.roster import client_lines, expected_products, expected_why
+
+
+def _db():
+    eng = _ce("sqlite://")
+    _B.metadata.create_all(eng)
+    s = _sm(bind=eng)()
+    s.add_all([
+        _OL(market="7 Mountains PA", client="River Valley Builders/The Home Store",
+            account_ids="31050", product="Mobile Conquesting",
+            starts_on=_d.date(2023, 5, 5), ends_on=_d.date(2024, 6, 30),
+            flights=[["2023-05-05", "2024-04-30"], ["2024-05-01", "2024-06-30"]]),
+        _OL(market="7 Mountains PA", client="River Valley Builders/The Home Store",
+            account_ids="31050", product="Social Mirror",
+            starts_on=_d.date(2024, 7, 17), ends_on=_d.date(2024, 11, 30),
+            flights=[["2024-07-17", "2024-11-30"]]),
+        _OL(market="7 Mountains PA", client="River Valley Builders/The Home Store",
+            account_ids="31050", product="Meta",
+            starts_on=_d.date(2023, 8, 5), ends_on=_d.date(2026, 7, 31),
+            flights=[["2024-12-06", "2026-07-31"]]),
+        # The second order. Same client, different id, and live.
+        _OL(market="7 Mountains PA", client="River Valley Builders/The Home Store",
+            account_ids="31171", product="Live Chat",
+            starts_on=_d.date(2024, 7, 17), ends_on=_d.date(2026, 12, 31),
+            flights=[["2024-07-17", "2026-12-31"]]),
+    ])
+    s.commit()
+    return s
+
+
+def test_every_order_for_a_client_counts_not_just_the_one_on_the_report():
+    s = _db()
+    lines = client_lines(s, "River Valley Builders The Home Store", "31050")
+    assert {l.account_ids for l in lines} == {"31050", "31171"}
+
+
+def test_the_live_chat_order_stops_live_chat_being_rogue():
+    s = _db()
+    got = expected_products(s, "River Valley Builders The Home Store", "31050",
+                            period="2026-07")
+    assert "Live Chat" in got
+
+
+def test_products_that_stopped_in_2024_are_not_expected_in_2026():
+    s = _db()
+    got = expected_products(s, "River Valley Builders The Home Store", "31050",
+                            period="2026-07")
+    assert got == {"Meta", "Live Chat"}
+
+
+def test_the_finding_can_show_its_working():
+    """Three rounds of "this is a false positive" all needed the same thing to
+    settle them: which orders were looked at and what their dates were."""
+    s = _db()
+    rows = expected_why(s, "River Valley Builders The Home Store", "31050",
+                        period="2026-07")
+    flat = " | ".join(f"{a} = {b}" for a, b in rows)
+    assert "Live Chat · order 31171" in flat
+    assert "Mobile Conquesting · order 31050" in flat
+    assert "not running in 2026-07" in flat
+    assert "counted" in flat
+
+
+def test_a_client_with_no_orders_at_all_still_says_so():
+    s = _db()
+    assert client_lines(s, "Someone Else", "99999") is None
+    assert expected_products(s, "Someone Else", "99999", period="2026-07") is None

@@ -239,15 +239,8 @@ def expected_products(db: Session, client: str, account_ids: str,
     "expected" - which is how a July 2026 report got failed for missing Mobile
     Conquesting whose last line ended on New Year's Eve 2025.
     """
-    lines = db.scalars(select(OrderLine)).all()
-    if not lines:
-        return None
-    ids = _keyify(client, account_ids)
-    hit = [l for l in lines if ids and (ids & _keyify(l.client, l.account_ids))]
-    if not hit:
-        norm = re.sub(r"[^a-z0-9]", "", (client or "").lower())
-        hit = [l for l in lines if norm and re.sub(r"[^a-z0-9]", "", l.client.lower()) == norm]
-    if not hit:
+    hit = client_lines(db, client, account_ids)
+    if hit is None:
         return None
     if period:
         # An empty result here is not the same as no order list. If every one
@@ -256,6 +249,61 @@ def expected_products(db: Session, client: str, account_ids: str,
         # pass - not None, which it reads as "we cannot say".
         hit = [l for l in hit if _ran_during(l, period)]
     return {l.product for l in hit if l.product}
+
+
+def client_lines(db: Session, client: str, account_ids: str):
+    """Every order line belonging to this client. None if it is not on the list.
+
+    EVERY ONE, matched by account id OR by name, not whichever matches first.
+    That "if not hit" fallback was the bug behind a whole run of false
+    positives: a client whose report carries order 31050 also has a live Live
+    Chat order under 31171, and because the id match found something, the name
+    match that would have found the second order never ran. The report was then
+    failed for a Live Chat "with no live order" that was sitting right there,
+    and for two products that had stopped in 2024 - the only orders anyone was
+    looking at.
+    """
+    lines = db.scalars(select(OrderLine)).all()
+    if not lines:
+        return None
+    ids = _keyify(client, account_ids)
+    norm = re.sub(r"[^a-z0-9]", "", (client or "").lower())
+    hit = []
+    for l in lines:
+        by_id = bool(ids and (ids & _keyify(l.client, l.account_ids)))
+        by_name = bool(norm and re.sub(r"[^a-z0-9]", "", l.client.lower()) == norm)
+        if by_id or by_name:
+            hit.append(l)
+    return hit or None
+
+
+def expected_why(db: Session, client: str, account_ids: str,
+                 period: str | None = None) -> list[tuple[str, str]]:
+    """Why each product is or is not expected, as trace rows.
+
+    Three rounds of "this is a false positive" all needed the same thing to
+    settle them: which orders were being looked at and what their dates were.
+    Reading it off the code took a screenshot, a guess and a deploy each time.
+    It goes on the finding instead.
+    """
+    hit = client_lines(db, client, account_ids)
+    if hit is None:
+        return [("Orders found for this client", "none - no claim is made")]
+
+    def when(l) -> str:
+        wins = [w for w in (getattr(l, "flights", None) or [])
+                if isinstance(w, (list, tuple)) and len(w) == 2]
+        if not wins:
+            wins = [[l.starts_on, l.ends_on]]
+        return "; ".join(f"{_as_date(a) or '?'} to {_as_date(b) or 'open'}"
+                         for a, b in wins)
+
+    rows: list[tuple[str, str]] = []
+    for l in sorted(hit, key=lambda x: (x.product or "", x.account_ids or "")):
+        live = _ran_during(l, period) if period else True
+        rows.append((f"{l.product or 'unmapped'} · order {l.account_ids or '?'}",
+                     f"{when(l)} · {'counted' if live else 'not running in ' + (period or '')}"))
+    return rows
 
 
 def _as_date(v):

@@ -23,6 +23,7 @@ from .quality import (check_blank_screenshots, check_conversion_names,
                       section_bodies,
                       check_widget_errors, SITE_GRID,
                       line_item_names, creative_rows, PLACEMENT_GRID,
+                      _where,
                       CONVERSION_HEADER, SOCIAL_MIRROR_GRID)
 
 LINE_ITEM = re.compile(r"Line Item Performance$")
@@ -402,6 +403,10 @@ def check_device(ctx) -> list[dict]:
         return []
     device_total = dev.total("Impressions")
     imps = ctx["imps"]
+    # Where to look. A device breakout is one widget on one page of forty, and
+    # "the device breakout is wrong" is true and unhelpful until you know which.
+    title = (dev.title or "Device Performance").strip()
+    where = _where(ctx, (ctx.get("text") or "").find(title), title)
 
     excluded = settings.excluded_products
     eligible = 0.0
@@ -425,7 +430,8 @@ def check_device(ctx) -> list[dict]:
                    "Device breakout exceeds what was served",
                    f"Device totals {device_total:,.0f} against a top line of "
                    f"{imps:,.0f} (+{over / imps * 100:.1f}%). A breakdown cannot "
-                   f"describe more impressions than the campaign served.", trace)]
+                   f"describe more impressions than the campaign served.", trace,
+                   where=where)]
 
     if eligible > 0:
         pct = (device_total - eligible) / eligible * 100
@@ -434,7 +440,7 @@ def check_device(ctx) -> list[dict]:
                        "Device breakout well under the eligible total",
                        f"Device totals {device_total:,.0f} against {eligible:,.0f} "
                        f"eligible ({pct:.1f}%). Unknown-device filtering does not "
-                       f"usually account for this.", trace)]
+                       f"usually account for this.", trace, where=where)]
     return []
 
 
@@ -546,15 +552,16 @@ def check_geofence_names(ctx) -> list[dict]:
                f"latitude or longitude. Expected if the fence was built from an address list.")]
 
 
-def _product_trace(expected: set, found: set) -> list[tuple[str, str]]:
+def _product_trace(expected: set, found: set, why=None) -> list[tuple[str, str]]:
     """Both full lists, behind Investigate.
 
     They belong somewhere - "why is that expected?" is a fair question - just
     not on the line that is supposed to name the problem.
     """
-    return [("Live orders say", ", ".join(sorted(expected)) or "nothing"),
-            ("Detected on the report", ", ".join(sorted(found)) or "nothing"),
-            ("Both agree on", ", ".join(sorted(expected & found)) or "nothing")]
+    return ([("Live orders say", ", ".join(sorted(expected)) or "nothing"),
+             ("Detected on the report", ", ".join(sorted(found)) or "nothing"),
+             ("Both agree on", ", ".join(sorted(expected & found)) or "nothing")]
+            + list(why or []))
 
 
 def check_products(ctx) -> list[dict]:
@@ -577,12 +584,17 @@ def check_products(ctx) -> list[dict]:
     if missing:
         out.append(_f("product_missing", "fail",
                       "Ordered but not on the report: " + ", ".join(missing),
-                      "", trace=_product_trace(expected, found)))
-    rogue = sorted(found - expected)
+                      "", trace=_product_trace(expected, found, ctx.get("expected_why"))))
+    # A product is not rogue when one of the ordered products is what prints
+    # it. Mobile Conquesting is sold as "Mobile Conquesting Display & Video
+    # Ads" and its report carries a Display section - which is the buy, not a
+    # Display campaign nobody ordered.
+    from .products import formats_covered
+    rogue = sorted(found - expected - formats_covered(expected))
     if rogue and expected:
         out.append(_f("product_rogue", "fail",
                       "On the report with no live order: " + ", ".join(rogue),
-                      "", trace=_product_trace(expected, found)))
+                      "", trace=_product_trace(expected, found, ctx.get("expected_why"))))
     # NOTHING IS RAISED WHEN THEY MATCH.
     #
     # An "everything is fine" line read as an accusation on a narrow screen -
@@ -715,8 +727,25 @@ def _num(v: str):
 KNOWN_DEVICES = {
     "connected tv", "streaming device", "connected device", "connected audio",
     "desktop", "mobile", "tablet", "smart tv", "set top box", "game console",
-    "other", "unknown",
+    "media player", "other", "unknown",
 }
+
+
+def _has_description(cells: list[str]) -> bool:
+    """Does this row carry TapClicks' own description of the device?
+
+    A sentence, not a number and not a fragment: the description column reads
+    "An internet enabled device that provides streaming content...". Six words
+    is comfortably below the shortest real one and well above anything a
+    stray heading brings with it.
+    """
+    for c in cells[1:]:
+        c = c.strip()
+        if as_number(c) is not None:
+            continue
+        if len(c.split()) >= 6:
+            return True
+    return False
 
 
 def check_devices_known(ctx) -> list[dict]:
@@ -739,6 +768,19 @@ def check_devices_known(ctx) -> list[dict]:
             continue
         if name.lower() in KNOWN_DEVICES:
             continue
+        # THE TABLE DESCRIBES ITS OWN ROWS.
+        #
+        # Every real device carries a Description - "A personal device, either
+        # mobile or stationary, that plays media, such as Smart Speakers and
+        # iPods" for Media Player, which was reported as not a device on the
+        # strength of a hard-coded list that had not heard of it. A list has to
+        # be updated by somebody who has seen the new name; the description is
+        # in the report already.
+        #
+        # The junk this check exists to catch - a page footer read as a row -
+        # has no description, which is why it still gets caught.
+        if _has_description(cells):
+            continue
         if name not in odd:
             odd.append(name)
     if not odd:
@@ -748,7 +790,8 @@ def check_devices_known(ctx) -> list[dict]:
                f"in the device breakout",
                "Not a device TapClicks reports: " + ", ".join(odd[:8]) +
                ("..." if len(odd) > 8 else "") +
-               ". Known devices are " + ", ".join(sorted(KNOWN_DEVICES)) + ".")]
+               ". Known devices are " + ", ".join(sorted(KNOWN_DEVICES)) + ".",
+               where=_where(ctx, i, "Device Performance"))]
 
 
 # ---------------------------------------------------------------- widgets
@@ -1035,7 +1078,7 @@ def _page_finder(pages: list[str]):
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
             flight: tuple | None = None, period: str | None = None,
-            market: str = "") -> dict:
+            market: str = "", expected_why: list | None = None) -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
     # a finding say WHERE on a forty-one page report to look.
@@ -1045,6 +1088,11 @@ def run_all(path: Path, filename: str | None = None,
     imps, clicks, ctr = headline(text)
     tables = extract_tables(text, strict=True)
     ctx = {
+        # Which orders were looked at and what their dates were. Three separate
+        # "this is a false positive" rounds all needed exactly this to settle
+        # them, and reading it off the code cost a screenshot, a guess and a
+        # deploy each time. It goes on the finding instead.
+        "expected_why": expected_why or [],
         "path": path,
         "text": text,
         "page_text": per_page,
