@@ -550,6 +550,23 @@ def partners_csv(db: Session = Depends(get_db)):
 ROW_CAP = 150
 
 
+def _orders_stale(db: Session) -> bool:
+    """Were the loaded orders read by an older version of the import code?
+
+    The export is parsed once and only the answer is kept, so a fix to the
+    import - a product mapping, the paused-line rule, the per-order flights -
+    does nothing until the file is read again. The sweeper re-reads it on its
+    own, but when that has not happened yet the board goes on showing findings
+    from the old answer and there is no sign anywhere that it is doing so.
+    That silence is what turned one bug into three rounds of screenshots.
+    """
+    from .db import OrderSync
+    from .version import product_map_version
+    row = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+                     .order_by(desc(OrderSync.id)).limit(1)).first()
+    return bool(row and row.ok and (row.map_version or "") != product_map_version())
+
+
 def _delivered(db: Session, period: str, groups) -> dict:
     """The finished partners, and their links, for the top of the board.
 
@@ -710,6 +727,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # are about to send - was found by scrolling.
         "delivered": delivered,
         "views": _saved_views(db),
+        "orders_stale": _orders_stale(db),
         # How many reports on this board still carry an older answer, and per
         # partner so a card can offer to fix just that one.
         "stale": _stale_here(db, period, groups),
@@ -1490,7 +1508,8 @@ def _run_sync(claim_id: int) -> None:
 
 
 @app.post("/orders/sync")
-def orders_sync(background: BackgroundTasks, db: Session = Depends(get_db)):
+def orders_sync(background: BackgroundTasks, back: str = Form(""),
+                db: Session = Depends(get_db)):
     """Start the sync and answer immediately.
 
     It downloads about 850 MB and parses a couple of million rows. Doing that
@@ -1500,10 +1519,14 @@ def orders_sync(background: BackgroundTasks, db: Session = Depends(get_db)):
     """
     from .orders_s3 import begin_sync
     claim = begin_sync(db)
+    # Only a path on this app, so the button cannot be turned into an open
+    # redirect by anybody who can post a form at it.
+    home = back if back.startswith("/") and not back.startswith("//") else "/orders"
+    sep = "&" if "?" in home else "?"
     if claim is None:
-        return RedirectResponse("/orders?sync=already", status_code=303)
+        return RedirectResponse(f"{home}{sep}sync=already", status_code=303)
     background.add_task(_run_sync, claim.id)
-    return RedirectResponse("/orders?sync=started", status_code=303)
+    return RedirectResponse(f"{home}{sep}sync=started", status_code=303)
 
 
 @app.post("/batch/{batch_id}/renotify")

@@ -629,3 +629,19 @@ def test_the_check_abstains_when_the_corner_could_not_be_read():
     from app.checks.rules import _rule_applies, check_market_logo
     assert _rule_applies(check_market_logo, {"logo_hash": ""}) is False
     assert _rule_applies(check_market_logo, {"logo_hash": "abc"}) is True
+
+
+def test_the_sync_button_comes_back_where_it_was_pressed(client):
+    c, (db, dbm, imod) = client
+    r = c.post("/orders/sync", data={"back": "/cycle?period=2026-07"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("/cycle?period=2026-07&sync=")
+
+
+def test_the_sync_button_cannot_be_pointed_off_this_app(client):
+    """It takes a path from a form, so it is not trusted to be one."""
+    c, (db, dbm, imod) = client
+    for evil in ("https://example.com/", "//example.com/", "javascript:alert(1)"):
+        r = c.post("/orders/sync", data={"back": evil}, follow_redirects=False)
+        assert r.headers["location"].startswith("/orders?sync=")

@@ -32,7 +32,12 @@
 
 <section>
   {# data-tiles marks these as re-addable from the partner cards below. #}
-  <div class="cards" data-tiles="glist">
+  {# data-narrowed says the SERVER already filtered - ?group= or ?state=.
+   Without it the tiles compare what is on screen against what the
+   server sent, sees no difference, and leaves the whole-cycle
+   projection up beside one partner's six outstanding reports. #}
+  <div class="cards" data-tiles="glist"
+       {% if filter_group or filter_state %}data-narrowed="1"{% endif %}>
     <div><b data-tile="total">{{ summary.total }}</b><span>Expected<span
       data-tile-life>{% if summary.lifetimes %} · {{ summary.lifetimes }} lifetime{% endif %}</span></span></div>
     <div class="c-fail"><b data-tile="missing">{{ summary.missing }}</b><span>Not received</span>
@@ -112,6 +117,21 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
       <a href="/cycle.csv?period={{ period }}" class="on">Download CSV</a>
     </span>
   </div>
+
+  {% if orders_stale %}
+    {# The findings on this board were worked out against order data that an
+       older version of the import produced. Saying so beats the alternative,
+       which is somebody reporting the same false positive a third time. #}
+    <div class="stalebar">
+      <b>The order list was read by older code.</b>
+      Product findings on this board may be answering from the old version of
+      it. The re-read runs on its own in the background - this does it now.
+      <form method="post" action="/orders/sync" style="display:inline">
+        <input type="hidden" name="back" value="/cycle?period={{ period }}">
+        <button class="mini" type="submit">Re-read the orders</button>
+      </form>
+    </div>
+  {% endif %}
 
   <div class="tools">
     <input type="search" data-cards="glist" data-count="cnt-groups"

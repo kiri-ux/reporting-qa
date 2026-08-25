@@ -1,56 +1,60 @@
-build 2026.08.25-46
+build 2026.08.25-47
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/db.py
 app/main.py
-app/ingest.py
-app/recheck.py
-app/checks/logo.py        (new)
-app/checks/rules.py
+app/templates/base.html
+app/templates/cycle.html
 tests/test_manual_upload.py
+tests/test_order_remap.py
 
 
-The generic logo
-------------------
-A report going out with the reporting tool's default blue chart icon instead of
-the station's logo is now a failure: "The report is using the reporting tool's
-default logo", on page 1.
+1. "about 19 hours to go" beside one partner's six reports
+------------------------------------------------------------
+The projection was meant to step aside once a filter was on, and did - for the
+filters applied IN THE BROWSER. A partner filter from the URL (?group=) is
+applied by the SERVER, so every card on screen was every card the server sent,
+the page compared the two, saw no difference, and left the whole cycle's
+projection up beside six outstanding reports.
 
-HOW IT KNOWS, without a list of 146 partner logos to keep current:
-
-The top-left corner of page one is rendered, downsampled and hashed, and the
-hash is stored on the report. Then the test is who the logo BELONGS to -
-
-    a partner's logo    appears on that partner's reports
-    a client's logo     appears on that client's report
-    a generic logo      appears on everybody's
-
-A mark found on three or more different markets is not any of theirs. It learns
-which image that is from the reports as they arrive, and needs nothing
-maintained.
-
-Three markets, not two, on purpose: a partner group really can cover two
-markets and print one logo across both, and at two that group would be accused
-of using a template.
-
-The client's own logo is safe by the same rule - it is on one client's report,
-so it never reaches three markets.
-
-Details:
-
-  - Downsampled to 96x32 greyscale before hashing, because the same logo
-    rendered by two builds of poppler can differ by a pixel of anti-aliasing
-    and a full-size hash would call those two different logos.
-  - The crop takes the corner only - it stops well short of the centred
-    "Digital Marketing Report" and the date block on the right, so a change of
-    client name or date cannot move the fingerprint.
-  - If the corner cannot be read at all - no poppler, no page one - the check
-    abstains and shows as skipped rather than failing the report.
-  - 0.2s per report, on ingest and on re-check.
-
-Investigate lists the other markets carrying the same mark, so a false positive
-would name itself.
+The tiles now know when the server has already narrowed the board. Filtered,
+the tile says "6 / Not received / of 728 on the whole board" and the projection
+is gone.
 
 
-Tests: 368 passing.
+2. Blair Regional YMCA - and why you have sent it twice
+--------------------------------------------------------
+You have, and the reason is worth more than another point fix.
+
+Your screenshot shows Investigate saying:
+
+    Social Mirror · order 31449   2025-01-03 to 2026-12-31 · counted
+
+That is ONE window. The fix in build 42 records each order's own flight
+separately, so a real re-read of that order would show TWO - one ending 30 June
+and one starting 1 August, with July in the gap. One window means this row was
+written by the OLD import and has not been re-read since.
+
+The export is parsed once and only the answer is kept, so an import fix does
+nothing until the file is read again. The sweeper does it on its own after a
+deploy, but until it has, the board goes on showing findings computed from the
+old data - and there was no sign anywhere that it was doing so. That silence is
+what turned one bug into three rounds of screenshots.
+
+So the board now says it. When the loaded orders were read by older import
+code, a bar sits above the partner list:
+
+    The order list was read by older code. Product findings on this board may
+    be answering from the old version of it. The re-read runs on its own in the
+    background - this does it now.  [Re-read the orders]
+
+Press it, wait for the sync to finish, and re-check that partner. If the
+finding survives THAT, it is a real bug and the trace will show two windows
+instead of one - send me the panel and I can fix it from the screenshot.
+
+(The button posts to the same sync the orders page uses, and comes back to the
+board rather than dumping you on /orders. It only accepts a path on this app,
+so it cannot be turned into an open redirect.)
+
+
+Tests: 373 passing.

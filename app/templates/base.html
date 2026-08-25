@@ -144,6 +144,12 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .copy:hover{border-color:var(--atlas);color:var(--atlas)}
 .copy.done{border-color:var(--ok);color:var(--ok)}
 
+/* ---- the order list is out of date ---- */
+.stalebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+ background:var(--warn-bg);border:1px solid #E8CE95;border-radius:10px;
+ padding:10px 14px;margin:0 0 12px;font-size:13px;color:#6B4C0E}
+.stalebar b{color:#5A3F09}
+
 /* ---- bulk sign-off ---- */
 .bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
 .bulk .picked{font-size:12px;color:var(--muted);min-width:9ch}
@@ -781,7 +787,7 @@ body.fit .pdfwrap object{height:100%}
       if (out) out.textContent = shown === total
         ? total.toLocaleString() + ' partners'
         : shown.toLocaleString() + ' of ' + total.toLocaleString() + ' partners';
-      retotal(visible, shown !== total);
+      retotal(visible, shown !== total || 'narrowed' in (tiles ? tiles.dataset : {}));
       remember(terms.length ? box.value.trim() : '', picks, ons);
     };
 

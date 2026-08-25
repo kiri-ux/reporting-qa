@@ -178,3 +178,52 @@ def test_an_unreachable_bucket_does_not_stop_the_report_sweep(monkeypatch):
     monkeypatch.setattr("app.orders_s3.begin_sync",
                         lambda db: (_ for _ in ()).throw(RuntimeError("no s3")))
     rmod._remap_orders_if_stale()          # must not raise
+
+
+# ------------------------------------------- saying so, on the page she works on
+def test_the_board_says_when_the_orders_were_read_by_older_code(monkeypatch):
+    """The export is parsed once and only the answer is kept, so an import fix
+    does nothing until the file is read again. The sweeper does it on its own,
+    but while it has not the board goes on showing the old answer with no sign
+    anywhere that it is doing so - and that silence turned one bug into three
+    rounds of screenshots."""
+    from app import main as mmod
+    from app.db import OrderSync
+    from app.version import product_map_version
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+
+    s.add(OrderSync(ok=True, state="done", map_version="an-older-one",
+                    synced_at=dt.datetime.utcnow()))
+    s.commit()
+    assert mmod._orders_stale(s) is True
+
+    s.query(OrderSync).delete()
+    s.add(OrderSync(ok=True, state="done", map_version=product_map_version(),
+                    synced_at=dt.datetime.utcnow()))
+    s.commit()
+    assert mmod._orders_stale(s) is False
+
+
+def test_no_orders_loaded_is_not_stale():
+    """"Nothing loaded" is a different problem with its own message on the
+    orders page. It is not this banner's job."""
+    from app import main as mmod
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+    assert mmod._orders_stale(s) is False
+
+
+def test_a_failed_sync_is_not_reported_as_stale():
+    from app import main as mmod
+    from app.db import OrderSync
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+    s.add(OrderSync(ok=False, state="done", map_version="",
+                    synced_at=dt.datetime.utcnow(), message="S3 unreachable"))
+    s.commit()
+    assert mmod._orders_stale(s) is False

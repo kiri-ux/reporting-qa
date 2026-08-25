@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-46"
-BUILD_NOTES = ("A report using the reporting tool's default logo instead of the "
-               "station's is now a failure. It works out which mark is the "
-               "generic one from the reports themselves - a partner's logo is "
-               "on that partner's reports, the tool's is on everybody's.")
+BUILD = "2026.08.25-47"
+BUILD_NOTES = ("The hours-to-go projection now steps aside when the board is "
+               "narrowed to one partner, and the board says out loud when the "
+               "loaded orders were read by older import code - which is what "
+               "made the same product finding come back three times.")
 
 # ---------------------------------------------------------------------------
 
