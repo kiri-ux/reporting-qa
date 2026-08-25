@@ -808,3 +808,91 @@ def test_a_group_takes_the_exception_not_the_first_answer(app_db):
                  client="c", account_ids="1", products=["Video"], kind="monthly",
                  buyer="", report=None)])
     assert rows[0].target == "dropbox"
+
+
+# ------------------------------------------------- what a report is called
+def test_a_hand_pulled_report_is_named_from_what_it_is(app_db):
+    """TapClicks calls every file you download by hand "Digital Marketing
+    Report.pdf". That name followed the report onto the board, into the zip and
+    into the partner's folder, where nothing can be filed by it."""
+    import datetime as dt
+    from app import db as dbm
+    from app.ingest import process_batch
+
+    db, dbm_, imod = app_db
+    D = dt.date.fromisoformat
+    db.add(dbm_.OrderLine(market="7 Mountains PA Selinsgrove", client="Benton Rodeo",
+                          account_ids="52746", line_ids="1", product="Mobile Conquesting",
+                          campaign="Mobile Conquesting Display & Video Ads",
+                          starts_on=D("2025-01-01"), ends_on=D("2026-12-31"), live=True))
+    db.commit()
+    blob = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    batch = process_batch(db, [("Digital Marketing Report.pdf", blob)],
+                          source="manual", notify=False)
+    rep = batch.reports[0]
+    assert rep.filename == "July 2026_Benton Rodeo 52746.pdf"
+    # The client comes off page one, not off the useless filename - and the
+    # market and order id come off the order line it matches.
+    assert rep.client == "Benton Rodeo"
+    assert rep.account_ids == "52746"
+    assert rep.market == "7 Mountains PA Selinsgrove"
+
+
+def test_a_lifetime_is_recognised_by_the_range_it_prints():
+    """A lifetime pulled with no month in its name was read as a monthly and
+    checked against one month of a two-year campaign."""
+    import datetime as dt
+    from app.checks.rules import looks_like_lifetime
+    D = dt.date.fromisoformat
+    assert looks_like_lifetime((D("2026-07-01"), D("2026-07-31"))) is False
+    assert looks_like_lifetime((D("2026-06-28"), D("2026-08-02"))) is False
+    assert looks_like_lifetime((D("2025-01-03"), D("2026-07-31"))) is True
+    assert looks_like_lifetime(None) is False
+
+
+def test_the_name_is_built_from_the_report_not_inherited():
+    from app.naming import canonical_name
+
+    class R:
+        id = 1
+        client = "All Seasons Powersports"
+        account_ids = "53908"
+        period = "2026-07"
+        is_lifetime = False
+        filename = "Digital Marketing Report.pdf"
+
+    r = R()
+    assert canonical_name(r) == "July 2026_All Seasons Powersports 53908.pdf"
+    r.is_lifetime = True
+    assert canonical_name(r) == "Lifetime_All Seasons Powersports 53908.pdf"
+    r.account_ids = "53908, 53909"
+    assert canonical_name(r) == "Lifetime_All Seasons Powersports 53908 53909.pdf"
+    # Nothing known yet: keep its own name, minus a browser's "(1)".
+    r.client, r.period, r.is_lifetime = "", "", False
+    r.filename = "download (1).pdf"
+    assert canonical_name(r) == "download.pdf"
+
+
+def test_a_report_with_no_market_gets_one_on_the_next_check(app_db):
+    """"no market" means the report belongs to no partner, sits under no card
+    and is in nobody's cycle. The stamp used to happen only at ingest, so
+    anything that arrived before its client was on the order list stayed that
+    way for good."""
+    import datetime as dt
+    from pathlib import Path
+    from app import db as dbm_
+    from app.recheck import recheck
+
+    db, dbm2, _ = app_db
+    D = dt.date.fromisoformat
+    db.add(dbm2.OrderLine(market="7 Mountains PA Selinsgrove", client="Benton Rodeo",
+                          account_ids="52999", line_ids="1", product="Mobile Conquesting",
+                          campaign="Mobile Conquesting Display & Video Ads",
+                          starts_on=D("2025-01-01"), ends_on=D("2026-12-31"), live=True))
+    src = FIXTURES / "benton_rodeo.pdf"
+    rep = dbm2.Report(batch_id=1, filename="July 2026_Benton Rodeo 52999.pdf",
+                      stored_path=str(src), client="Benton Rodeo",
+                      account_ids="52999", market="", period="2026-07")
+    db.add(rep); db.commit()
+    recheck(db, rep)
+    assert rep.market == "7 Mountains PA Selinsgrove"

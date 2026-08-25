@@ -1206,6 +1206,25 @@ def _page_finder(pages: list[str]):
     return page_of
 
 
+# No month is longer than 31 days, so a printed range wider than this is a
+# campaign to date. The gap is deliberate: a monthly pulled a few days either
+# side of the month is still a monthly.
+LIFETIME_DAYS = 45
+
+
+def looks_like_lifetime(printed) -> bool:
+    """Is this a campaign-to-date report, judged by what it prints?
+
+    THE NAME ONLY SAYS SO WHEN SOMEBODY NAMED IT. A report pulled by hand
+    arrives as "Digital Marketing Report.pdf", so a lifetime covering two years
+    was read as a monthly - checked against one month, and passed, on a report
+    that was never about that month.
+    """
+    if not printed or not printed[0] or not printed[1]:
+        return False
+    return (printed[1] - printed[0]).days > LIFETIME_DAYS
+
+
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
             flight: tuple | None = None, period: str | None = None,
@@ -1221,6 +1240,13 @@ def run_all(path: Path, filename: str | None = None,
     per_page = pdf_pages(path)
     text = "".join(per_page)
     is_lifetime = meta_from_filename(filename or path.name)["is_lifetime"]
+    # THE REPORT ITSELF SAYS WHICH IT IS. The name only says so when somebody
+    # named it, and a file pulled by hand arrives as "Digital Marketing
+    # Report.pdf" - so a lifetime covering two years was read as a monthly,
+    # checked against one month, and passed. No monthly can print a range
+    # longer than its month; anything wider than that is a campaign to date.
+    if not is_lifetime and looks_like_lifetime(date_range(text)):
+        is_lifetime = True
     imps, clicks, ctr = headline(text)
     tables = extract_tables(text, strict=True)
     ctx = {
@@ -1288,10 +1314,25 @@ def run_all(path: Path, filename: str | None = None,
         })
 
     meta = meta_from_text(text)
-    meta.update({k: v for k, v in meta_from_filename(filename or path.name).items()
-                 if v or k == "is_lifetime"})
-    if not meta.get("client"):
-        meta["client"] = meta_from_filename(filename or path.name)["client"]
+    from_name = meta_from_filename(filename or path.name)
+    # The filename wins only when it IS a name. A file saved as "Digital
+    # Marketing Report.pdf" was overriding the client the report itself prints
+    # on page one, which is how a report ended up filed under a client called
+    # Digital Marketing Report.
+    if from_name.get("named"):
+        meta.update({k: v for k, v in from_name.items()
+                     if v and k in ("client", "account_ids")})
+    for k in ("client", "account_ids"):
+        if not meta.get(k) and from_name.get(k):
+            meta[k] = from_name[k]
+    # Whatever the name said, plus what the printed range says.
+    meta["is_lifetime"] = bool(is_lifetime)
+    if is_lifetime and period:
+        # A LIFETIME BELONGS TO THE CYCLE IT SHIPS IN, not to the month its
+        # campaign began. Read off the printed range, a lifetime covering
+        # Jan 2025 to Jul 2026 filed itself under 2025-01 and vanished off the
+        # board somebody was working.
+        meta["period"] = period
 
     worst = "pass"
     for f in findings:

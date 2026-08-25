@@ -1,0 +1,66 @@
+"""What a report is called, once this tool has decided what it is.
+
+A file arrives called whatever the person who pulled it left it as - often
+"Digital Marketing Report.pdf", sometimes "download (2).pdf" - and that name
+then follows it onto the board, into the zip, and into the partner's folder.
+Nothing downstream can file by a name like that.
+
+So the name is BUILT, not kept: the cycle, the client, and the order ids that
+report covers, in the shape the feed already uses.
+
+    July 2026_All Seasons Powersports 53908.pdf
+    Lifetime_All Seasons Powersports 53908.pdf
+
+The original is only a fallback, for a report we know nothing about yet.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import re
+
+SAFE = re.compile(r"[^A-Za-z0-9._ &,()+-]")
+DUPLICATE_SUFFIX = re.compile(r"(?:\s*\(\d+\)|\s+copy(?:\s+\d+)?)+$", re.I)
+
+
+def _safe(s: str, limit: int = 150) -> str:
+    return SAFE.sub("_", (s or "").strip())[:limit].strip()
+
+
+def month_label(period: str) -> str:
+    """"2026-07" -> "July 2026"."""
+    try:
+        return dt.date.fromisoformat((period or "") + "-01").strftime("%B %Y")
+    except ValueError:
+        return ""
+
+
+def ids_of(raw: str) -> str:
+    """The order ids on a report, de-duplicated, in the order they appear."""
+    parts = re.split(r"[,\s;/]+", (raw or "").strip())
+    return " ".join(dict.fromkeys(p for p in parts if p))
+
+
+def canonical_name(rep) -> str:
+    """The name this report should be filed under.
+
+    Falls back to its own name - minus a browser's "(1)" - when there is not
+    enough known to build one. That matters: "Service One Credit Union (1)"
+    read as a different client from "Service One Credit Union", so a corrected
+    file filed itself as a new report instead of replacing the one it corrects.
+    """
+    client = _safe(getattr(rep, "client", "") or "")
+    ids = ids_of(getattr(rep, "account_ids", "") or "")
+    prefix = ("Lifetime" if getattr(rep, "is_lifetime", False)
+              else month_label(getattr(rep, "period", "") or ""))
+    if client and prefix:
+        stem = f"{prefix}_{client}" + (f" {ids}" if ids else "")
+        return f"{stem}.pdf"
+
+    raw = (getattr(rep, "filename", "") or "").strip()
+    stem, dot, ext = raw.rpartition(".")
+    if not dot:
+        stem, ext = raw, "pdf"
+    stem = DUPLICATE_SUFFIX.sub("", stem).strip()
+    if not stem:
+        stem = f"report-{getattr(rep, 'id', '') or 'unnamed'}"
+    return f"{_safe(stem)}.{(ext or 'pdf').lower()}"

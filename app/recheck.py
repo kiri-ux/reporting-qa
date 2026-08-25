@@ -134,6 +134,18 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
         db.commit()
         return {"ok": False, "reason": "the stored PDF is gone"}
 
+    # A REPORT WITH NO MARKET BELONGS TO NO PARTNER.
+    #
+    # It shows as "no market" on the board, sits under no card, and is in
+    # nobody's cycle - eighty-six of them turned up at once on a single logo.
+    # The market is stamped from the order line at ingest, and anything that
+    # arrived before its client was on the order list, or whose name did not
+    # match the way it does now, never got one. A re-check is the moment to
+    # look again.
+    if not rep.market:
+        from .roster import attach_owners
+        attach_owners(db, rep)
+
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)

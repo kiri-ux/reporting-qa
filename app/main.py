@@ -1222,20 +1222,16 @@ def file_token(rep) -> str:
 
 
 def canonical_filename(rep) -> str:
-    """The name this report should be filed under.
+    """The name this report should be filed under - built, not inherited.
 
-    Its own, with any "(1)" or " copy" a browser added stripped off - those
-    made "Service One Credit Union (1)" a different client from "Service One
-    Credit Union", so the corrected file filed itself as a new report instead
-    of replacing the one it corrects.
+    It used to be whatever the file arrived as, minus a browser's "(1)". That
+    is right for the feed, whose names are already correct, and wrong for
+    everything else: a report uploaded by hand as "Digital Marketing Report.pdf"
+    kept that name onto the board, into the zip and into the partner's folder,
+    where nothing can be filed by it.
     """
-    from .checks.parser import DUPLICATE_SUFFIX
-    name = (rep.filename or f"report-{rep.id}.pdf").strip()
-    stem, dot, ext = name.rpartition(".")
-    if not dot:
-        stem, ext = name, "pdf"
-    clean = DUPLICATE_SUFFIX.sub("", stem).strip()
-    return f"{clean or f'report-{rep.id}'}.{ext or 'pdf'}"
+    from .naming import canonical_name
+    return canonical_name(rep)
 
 
 def _names_another_report(rep, uploaded: str) -> str:
@@ -1493,6 +1489,22 @@ async def replace_report(report_id: int, request: Request,
     if wrong:
         raise HTTPException(400, wrong)
 
+    # A NAME THAT KNOWS MORE THAN THE REPORT DOES IS WORTH READING.
+    #
+    # The rule above is "whatever it is called on your machine, it is filed
+    # under the name this report already has" - which is right for a browser's
+    # "download (2).pdf" and wrong when somebody has deliberately renamed the
+    # file to correct it. Uploading "Lifetime_All Seasons Powersports 53908"
+    # onto a report that had neither an order id nor a lifetime flag left both
+    # of them missing. It is already established above that the name is not
+    # some other report's, so what it adds is taken.
+    up = meta_from_filename(file.filename or "")
+    if up.get("account_ids") and not rep.account_ids:
+        rep.account_ids = up["account_ids"]
+    if up.get("is_lifetime"):
+        rep.is_lifetime = True
+    if up.get("client") and not rep.client:
+        rep.client = up["client"]
     rep.filename = canonical_filename(rep)
     path = Path(rep.stored_path) if rep.stored_path else None
     if path is None:

@@ -12,14 +12,13 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-60"
-BUILD_NOTES = ("The board was reading every order line twice as full objects on "
-               "every page load, and the roster once per market - so it built "
-               "itself out of forty thousand rows it did not need. Half the time "
-               "and a twentieth of the bytes now. One background sweep across "
-               "both workers instead of two, and a job whose process died stops "
-               "claiming to be running. Package again is back on a delivered "
-               "partner.")
+BUILD = "2026.08.25-61"
+BUILD_NOTES = ("Reports are NAMED now - July 2026_Client 53908.pdf - built from "
+               "the cycle, the client the report itself prints, and the order "
+               "ids, instead of keeping whatever the file was called. A report "
+               "with no market gets one on its next check, so it stops belonging "
+               "to no partner. And a lifetime is recognised by the range it "
+               "prints, not only by its name.")
 
 # ---------------------------------------------------------------------------
 

@@ -210,19 +210,25 @@ def _fill_from_roster(db: Session, report: Report) -> None:
 
 
 def attach_owners(db: Session, report: Report) -> None:
-    """Stamp the owner onto a report by account id, then by name, then by the
-    partner's roster entry."""
-    ids = _keyify(report.client, report.account_ids)
-    for ol in db.scalars(select(OrderLine)).all():
-        if ids & _keyify(ol.client, ol.account_ids):
+    """Stamp the market and the owner onto a report from its order lines.
+
+    THE SAME MATCHER THE PRODUCT CHECK USES. This had its own - account ids
+    first, then an exact match on the normalised client name - and it missed
+    everything the two spellings disagreed on. A report whose market never got
+    stamped shows as "no market" on the board and belongs to no partner at all:
+    eighty-six of them turned up on one logo. `client_lines` matches on id OR
+    name, which is the union that fixed the same problem for products.
+    """
+    hit = client_lines(db, report.client, report.account_ids) or []
+    # A market from an order line, preferring a line that has one - a client
+    # can have an order row loaded with a blank business unit.
+    for ol in hit:
+        if ol.market:
             _stamp(db, report, ol)
             return
-    norm = re.sub(r"[^a-z0-9]", "", (report.client or "").lower())
-    if norm:
-        for ol in db.scalars(select(OrderLine)).all():
-            if norm == re.sub(r"[^a-z0-9]", "", ol.client.lower()):
-                _stamp(db, report, ol)
-                return
+    if hit:
+        _stamp(db, report, hit[0])
+        return
     _fill_from_roster(db, report)
 
 

@@ -17,7 +17,8 @@ from .checks.parser import meta_from_filename
 from .config import settings
 from .db import Batch, KnownLogo, Report
 from .notify import post_slack, send_digest
-from .roster import (attach_owners, completeness, expected_any,
+from .naming import canonical_name
+from .roster import (attach_owners, client_lines, completeness, expected_any,
                      expected_products, expected_why, quiet_products,
                      budgets_for)
 
@@ -365,6 +366,19 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         rep.logo_hash = logo
         db.flush()
         attach_owners(db, rep)
+        # THE NAME IS BUILT, and only now - attach_owners has just matched this
+        # report to its order line, which is where the order ids come from when
+        # the file arrived without them. A hand-pulled "Digital Marketing
+        # Report.pdf" becomes "July 2026_All Seasons Powersports 53908.pdf",
+        # which is what the board, the zip and the partner's folder all file by.
+        if not rep.account_ids:
+            hit = client_lines(db, rep.client, rep.account_ids) or []
+            ids = " ".join(dict.fromkeys(
+                i for l in hit for i in (l.account_ids or "").replace(",", " ").split()))
+            if ids:
+                rep.account_ids = ids[:255]
+        rep.filename = canonical_name(rep)
+        db.flush()
         if not replaced:
             _index(existing, rep)
 

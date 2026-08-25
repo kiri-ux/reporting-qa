@@ -264,4 +264,12 @@ def meta_from_filename(name: str) -> dict:
     for a in accounts:
         client = client.replace(a, " ")
     client = re.sub(r"[\s:_/-]+$", "", re.sub(r"\s{2,}", " ", client)).strip(" _-:/")
-    return {"client": client, "account_ids": " ".join(accounts), "is_lifetime": is_lifetime}
+    # DOES THIS NAME FOLLOW THE CONVENTION?
+    #
+    # "July 2026_Benton Rodeo 52746.pdf" names its client. "Digital Marketing
+    # Report.pdf" names nothing - it is what TapClicks calls every file you
+    # download by hand - and reading a client out of it produced a report for a
+    # client called Digital Marketing Report, with no market and no orders.
+    # A month-or-Lifetime prefix, or an order id, is what makes it a name.
+    return {"client": client, "account_ids": " ".join(accounts),
+            "is_lifetime": is_lifetime, "named": bool(m or accounts)}
