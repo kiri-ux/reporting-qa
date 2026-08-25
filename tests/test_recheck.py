@@ -196,9 +196,28 @@ def test_a_missing_pdf_is_stamped_so_the_sweep_does_not_loop(live):
     assert stale_count(s) == 0
 
 
-def test_sweep_once_works_through_the_stale_ones(live):
+def test_the_automatic_sweep_leaves_signed_off_reports_alone(live):
+    """A change of mind, and worth saying why.
+
+    The sweep exists so a fixed rule reaches the reports it already got wrong,
+    and a signed-off report is as capable of carrying a wrong answer as any
+    other. But with a rule changing several times a day, sweeping them re-reads
+    finished work over and over, and every pass that finds a new failure pulls
+    somebody's sign-off - so the queue never empties and the board keeps
+    un-reviewing itself.
+    """
     from app.recheck import stale_count, sweep_once
-    s, _rep, _ = live
+    s, rep, _ = live                       # the fixture report is reviewed
+    assert sweep_once(s, limit=8) == 0
+    assert stale_count(s) == 1, "still stale - just not swept behind your back"
+    assert stale_count(s, skip_signed=True) == 0
+
+
+def test_sweep_once_works_through_the_ones_still_open(live):
+    from app.recheck import stale_count, sweep_once
+    s, rep, _ = live
+    rep.review_state = "new"
+    s.commit()
     assert sweep_once(s, limit=8) == 1
     assert stale_count(s) == 0
 
@@ -509,12 +528,13 @@ def test_the_partner_recheck_query_leaves_signed_off_reports_alone():
     assert "skip_signed" in inspect.signature(rmod.start_job).parameters
 
 
-def test_the_background_sweep_still_covers_them():
-    """That is how a rule change reaches a signed-off report and pulls the
-    sign-off. Narrowing the button must not narrow the sweep."""
+def test_the_sweep_and_the_button_now_agree():
+    """Both leave signed-off reports alone. The board counts them instead, for
+    a deliberate pass before delivery - which is the moment that matters, and a
+    decision rather than something that happens mid-cycle."""
     import inspect
     from app import recheck as rmod
-    assert "skip_signed" not in inspect.getsource(rmod.sweep_once)
+    assert "skip_signed=True" in inspect.getsource(rmod.sweep_once)
 
 
 def test_the_order_import_fingerprint_covers_the_import_rules_too():
@@ -553,3 +573,30 @@ def test_the_stale_count_and_the_button_cover_the_same_reports():
     src = inspect.getsource(mmod._stale_here)
     # The stale sum is guarded by the same signed-off test as the have count.
     assert "case((signed, 0), (stale, 1), else_=0)" in src
+
+
+def test_the_deliberate_pass_covers_only_the_signed_off_ones(live):
+    """Before delivery is the moment that matters, and it is a decision rather
+    than something that happens while somebody is mid-cycle."""
+    from app.recheck import stale_count
+    s, rep, dbm = live                     # reviewed, stamped with older code
+    s.add(dbm.Report(batch_id=1, period="2026-07", client="Still Open",
+                     account_ids="2", market=rep.market, filename="x.pdf",
+                     stored_path="", severity="pass", findings=[], checks=[],
+                     acked=[], review_state="new", rules_version="older"))
+    s.commit()
+
+    assert stale_count(s) == 2                             # both are stale
+    assert stale_count(s, skip_signed=True) == 1           # what the sweep does
+    assert stale_count(s, signed_only=True) == 1           # the deliberate pass
+
+
+def test_the_signed_off_count_is_on_the_board():
+    """Not swept behind your back, but not invisible either."""
+    import inspect
+    from app import main as mmod
+    assert '"signed_stale"' in inspect.getsource(mmod._stale_here)
+    from pathlib import Path as _P
+    tpl = _P("app/templates/cycle.html").read_text()
+    assert 'value="signed"' in tpl
+    assert "signed off" in tpl

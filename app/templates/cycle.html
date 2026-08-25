@@ -131,6 +131,22 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
             </svg>orders</button>
         </form>
       {% endif %}
+      {# Signed off, and judged by code that has since changed. Not swept
+         automatically - re-reading finished work while a rule changes three
+         times a day is how the queue never empties and the board keeps
+         un-reviewing itself. Before delivery is the moment that matters. #}
+      {% if stale.signed_stale %}
+        <form method="post" action="/cycle/recheck" style="display:inline">
+          <input type="hidden" name="period" value="{{ period }}">
+          <input type="hidden" name="scope" value="signed">
+          <button class="sync" type="submit"
+                  title="{{ stale.signed_stale }} signed-off report{{ 's' if stale.signed_stale != 1 }} on this cycle {{ 'was' if stale.signed_stale == 1 else 'were' }} judged by older checking code. They are left alone while you work - this re-reads them, which is worth doing before you package anything. A sign-off is only pulled if a failure turns up that was not there when it was signed.">
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
+              <path d="M4 12l5 5L20 6" fill="none" stroke="currentColor"
+                    stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>{{ stale.signed_stale }} signed off</button>
+        </form>
+      {% endif %}
       <a href="/cycle.csv?period={{ period }}" class="on">Download CSV</a>
     </span>
   </div>

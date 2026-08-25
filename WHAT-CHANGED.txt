@@ -1,4 +1,4 @@
-build 2026.08.25-53
+build 2026.08.25-54
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
@@ -7,70 +7,77 @@ app/recheck.py
 app/templates/base.html
 app/templates/cycle.html
 app/templates/orders.html
-app/templates/viewer.html
-tests/test_order_remap.py
+tests/test_recheck.py
 
 
-1. The Render email - the health check was failing because it was working
---------------------------------------------------------------------------
-Two things I did to you, both mine.
+1. "Are we also checking already reviewed reports?"
+-----------------------------------------------------
+We were. We are not any more, and you are right that we should not be.
 
-Your /healthz output says awaiting_recheck: 838. That queue is what caused the
-email, and I made it expensive:
+The sweep exists so a fixed rule reaches the reports it already got wrong, and
+a signed-off report is as capable of carrying a wrong answer as any other. But
+with a rule changing several times a day, sweeping them re-reads finished work
+over and over - and every pass that finds a new failure pulls somebody's
+sign-off. The queue never empties and the board keeps un-reviewing itself. That
+is what your 838 was.
 
-  a) The logo fingerprint shells out to pdftoppm - about a fifth of a second of
-     CPU - and I had it running on EVERY re-check. 838 of those, two workers
-     deep, on a box that is also meant to answer a five-second probe. The file
-     cannot change under a re-check (a replacement goes through its own path
-     and re-fingerprints there), so an existing fingerprint is reused now and
-     only a report that has never had one pays for it.
+So the automatic sweep now covers only what is still in your way. Reports you
+have signed off are LEFT ALONE, and counted in the top bar instead:
 
-  b) /healthz itself ran a COUNT over the reports table on every ping. The
-     platform hits it every few seconds. A count that is fine on an idle box is
-     not fine while the sweeper has the disk busy, and the probe timed out.
-     /healthz is now build info only - no database. The queue depth moved to
-     /healthz/deep, which is worth having and is not worth having on a liveness
-     probe.
+    [check icon] 24 signed off
 
-Together those take the sweep back under the duty cycle it was designed for.
+Press it and it re-reads exactly those. That is worth doing once before you
+package a cycle, and it is a decision rather than something that happens while
+you are mid-flow. Nothing is hidden: the count is on screen, and the hover says
+what it means.
 
-
-2. "This banner stays after I click"
---------------------------------------
-It had worked - it just had not finished. The sync answers immediately and does
-the download in the background, so you landed back on an unchanged banner with
-no way to tell. It now shows a spinner and "Re-reading now" while a sync is
-running, on the board and on the report page.
+The per-partner Re-check button already worked this way since build 41, so the
+sweep and the button now agree.
 
 
-3. A sync icon for the orders
--------------------------------
-Next to the report re-check button in the top right. It turns amber when the
-order list was read by older code, spins while it is running, and says which
-sync it is on hover - the one beside it re-reads the reports, this one re-reads
-the order list.
+2. The rules for "needs signing off again"
+--------------------------------------------
+Exactly one thing does it. A report that was Reviewed or Waived goes back to
+unreviewed when a re-check produces a FAILURE THAT WAS NOT THERE WHEN IT WAS
+SIGNED.
+
+  - Matched on code AND title, so one of four "Row CTR does not match" findings
+    appearing is a new failure even though that code was already present.
+  - Warnings never do it. Only failures.
+  - A failure you had already accepted never does it - accepting it is what
+    "I have seen this" means.
+  - A failure that was there before and is still there does not do it either.
+    Nothing changed.
+
+When it happens the name stays on the row so you know whose sign-off went, the
+tag reads "needs signing off again", and the hover says who signed it and why
+it was taken off.
+
+Given item 1, this now only happens when YOU ask for it - the deliberate pass,
+the partner Re-check button, or a replaced file.
 
 
-4. Narrowing the pull, with the 2,000-day limit
--------------------------------------------------
-The section is now a table you can expand in place - no download unless you
-want one. Per partner: from, to, days, PULLS NEEDED, live line items, and the
-exact date windows.
+3. The cheapest way to pull the orders
+----------------------------------------
+You can pick one partner or all partners, 2,000 days maximum. One pull per
+partner is 146 runs. Two all-partner windows is two runs and twice the whole
+board's rows. Neither is the answer.
 
-  - "To" is today for everybody, because a campaign that launched this morning
-    has to be in the file.
-  - Anything longer than 2,000 days is cut into consecutive windows, oldest
-    first, each the full 2,000 except the last. Cutting from the recent end
-    instead leaves the odd remainder on the oldest window, which is the one
-    nobody wants to run twice.
-  - A summary line up top says how many partners need more than one pull. If
-    that number is small - and it usually is - the rest are one pull each and a
-    daily sync becomes cheap.
+The Orders page now works out and shows the third option:
+
+    1. ALL PARTNERS, <today minus 2,000 days> to today
+       Covers N of 146 partners completely.
+    2. Then one pull each for the few partners with something still running
+       that started before that cutoff - and only the part BEFORE the cutoff,
+       because the bulk pull already has the rest of them.
+
+So each extra run is a narrow slice of one partner's history rather than
+another copy of the board. Total rows are the board once plus a handful, and
+total runs are one plus however few stragglers you actually have.
+
+The exact dates and the straggler list are computed from your loaded orders and
+printed on the page - I cannot tell you the numbers from here, but that panel
+can as soon as you open it.
 
 
-5. "This cycle" is "Reporting Cycle"
---------------------------------------
-In the nav rail tooltip.
-
-
-Tests: 401 passing.
+Tests: 404 passing.

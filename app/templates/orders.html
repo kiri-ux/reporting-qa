@@ -131,7 +131,49 @@
       almost none of them need it. Per partner, most need a range measured in
       months.
     </p>
-    {% if plan %}
+    {% if strategy and plan %}
+      {# THE RECOMMENDATION, not a table to work it out from.
+         TapClicks exports one partner or all partners, at most 2,000 days.
+         One pull per partner is 146 runs; two all-partner windows is two runs
+         but twice the whole board's rows. Neither is the cheap answer. #}
+      <div class="plan">
+        <h3 style="margin:0 0 6px">Do this</h3>
+        <ol>
+          <li><b>All partners</b>, {{ strategy.bulk[0] }} &rarr; {{ strategy.bulk[1] }}
+            <span class="acct">({{ '{:,}'.format(tap_max_days) }} days, the
+            maximum)</span><br>
+            <span class="sub" style="font-size:12.5px">Covers
+              {{ strategy.covered }} of {{ plan|length }} partners completely.</span>
+          </li>
+          {% if strategy.stragglers %}
+            <li><b>Then one pull each</b> for the
+              {{ strategy.stragglers|length }} partner{{ 's' if strategy.stragglers|length != 1 }}
+              with something still running that started before
+              {{ strategy.cutoff }}:
+              <ul class="acct" style="margin:6px 0 0">
+                {% for s in strategy.stragglers %}
+                  <li>{{ s.market }} &mdash;
+                    {% for a, b in s.windows %}{{ a }} &rarr; {{ b }}{% if not loop.last %}, {% endif %}{% endfor %}
+                  </li>
+                {% endfor %}
+              </ul>
+              <span class="sub" style="font-size:12.5px;display:block;margin-top:6px">
+                Only the part before the cutoff - the bulk pull already has the
+                rest of them, so each of these is a narrow slice of one
+                partner's history rather than another copy of the board.</span>
+            </li>
+          {% endif %}
+        </ol>
+        <p class="sub" style="font-size:12.5px;margin:8px 0 0">
+          <b>{{ strategy.runs }} run{{ 's' if strategy.runs != 1 }} in total</b>,
+          and the row count is the whole board once plus
+          {{ strategy.stragglers|length }} narrow slice{{ 's' if strategy.stragglers|length != 1 }}.
+          Two all-partner windows would be fewer runs and roughly twice the
+          rows; one run per partner would be {{ plan|length }} runs. This is the
+          cheap corner of both.
+        </p>
+      </div>
+
       {% set heavy = plan|selectattr('pulls','greaterthan',1)|list %}
       <p class="sub" style="font-size:13.5px;margin:0 0 10px">
         {{ plan|length }} partner{{ 's' if plan|length != 1 }} with something

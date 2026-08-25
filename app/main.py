@@ -499,6 +499,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         "clients": clients, "no_roster": no_roster,
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
+        "strategy": pull_strategy(db),
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})
 
@@ -644,6 +645,10 @@ def _stale_here(db: Session, period: str, groups) -> dict:
     # does. It said "Re-check ... 8 reports" and then "6 of 8" on a partner
     # with one report still pending.
     signed = Report.review_state.in_(("reviewed", "waived"))
+    # Signed off AND judged by older code. Not swept automatically - re-reading
+    # finished work while a rule changes three times a day is how the queue
+    # never empties and the board keeps un-reviewing itself - so it is counted
+    # here instead, for a deliberate pass before delivery.
     # BOTH numbers count the same population: the reports the button will act
     # on. Counting stale over ALL of them while the button skipped the
     # signed-off ones left the amber dot on for ever - press it, it does the
@@ -659,7 +664,12 @@ def _stale_here(db: Session, period: str, groups) -> dict:
     stale_by_market = {m or "": int(st or 0) for m, _n, st in rows}
 
     index = markets_by_group(db)
-    out = {"total": sum(stale_by_market.values()), "by_group": {}, "have": {}}
+    signed_stale = db.scalar(
+        select(func.count()).select_from(Report)
+        .where(Report.period == period, signed,
+               Report.rules_version != rules_version())) or 0
+    out = {"total": sum(stale_by_market.values()), "by_group": {}, "have": {},
+           "signed_stale": int(signed_stale)}
     for g in groups:
         markets = index.get(g.group) or [g.group]
         if g.group not in markets:
@@ -1001,8 +1011,11 @@ def cycle_recheck(period: str = Form(""), group: str = Form(""),
     # A partner button means "make this partner right", which is every report
     # it has - "Re-check 2" on a card headed "14 reports" reads as a bug even
     # when 2 is the true number of stale ones.
+    # scope=signed is the deliberate pass over reports that ARE signed off and
+    # were judged by older code. Everything else leaves them alone.
     start_job(db, key, group=group or None, period=period or None,
               stale_only=(scope != "all"),
+              signed_only=(scope == "signed"),
               # A partner button means "bring this partner up to date", and a
               # report somebody signed off is up to date. It said "6 of 8" on a
               # partner with one report still pending.
@@ -1601,6 +1614,50 @@ def pull_plan(db: Session, today: dt.date | None = None,
                     "to": today, "days": span, "lines": n,
                     "windows": windows, "pulls": len(windows)})
     return out
+
+
+def pull_strategy(db: Session, today: dt.date | None = None,
+                  max_days: int = TAP_MAX_DAYS) -> dict:
+    """The cheapest way to pull everything, given the tool's two options.
+
+    TapClicks will export ONE partner or ALL partners, and at most 2,000 days.
+    One pull per partner is a hundred and forty-six runs, which nobody is
+    going to do daily. Two all-partner windows is two runs but twice the whole
+    board's rows, which is the thing being avoided.
+
+    The cheap answer is neither. 2,000 days back from today is a cutoff, and
+    almost every partner's oldest still-running line item is after it. So:
+
+        one ALL-PARTNERS pull covering the most recent 2,000 days
+        plus one SINGLE-PARTNER pull for each partner that started earlier
+
+    The stragglers only need the part BEFORE the cutoff - the bulk pull already
+    has the rest of them - so each is a narrow slice of one partner's history,
+    not another copy of the board. Rows are the whole board once plus a
+    handful, and runs are one plus however few stragglers there are.
+    """
+    today = today or dt.date.today()
+    cutoff = today - dt.timedelta(days=max_days - 1)
+
+    stragglers = []
+    for market, earliest, n in pull_range_rows(db):
+        if earliest is None or earliest >= cutoff:
+            continue
+        # Only the part the bulk pull does not already cover.
+        windows, start, last = [], earliest, cutoff - dt.timedelta(days=1)
+        while start <= last:
+            end = min(start + dt.timedelta(days=max_days - 1), last)
+            windows.append((start, end))
+            start = end + dt.timedelta(days=1)
+        stragglers.append({"market": market or "(no partner)", "from": earliest,
+                           "to": last, "lines": n, "windows": windows,
+                           "pulls": len(windows)})
+
+    covered = sum(1 for _m, e, _n in pull_range_rows(db) if e and e >= cutoff)
+    extra = sum(s["pulls"] for s in stragglers)
+    return {"cutoff": cutoff, "today": today, "max_days": max_days,
+            "bulk": (cutoff, today), "stragglers": stragglers,
+            "covered": covered, "runs": 1 + extra, "extra_runs": extra}
 
 
 def pull_range_rows(db: Session) -> list[tuple]:

@@ -185,7 +185,7 @@ def recent_periods(n: int) -> list[str]:
 
 def _stale_query(db: Session, periods: list[str] | None, group: str | None,
                  period: str | None, stale_only: bool = True,
-                 skip_signed: bool = False):
+                 skip_signed: bool = False, signed_only: bool = False):
     q = select(Report)
     if stale_only:
         q = q.where(Report.rules_version != rules_version())
@@ -201,6 +201,10 @@ def _stale_query(db: Session, periods: list[str] | None, group: str | None,
         # reaches a signed-off report and pulls the sign-off if it finds a new
         # failure. This only narrows the button.
         q = q.where(Report.review_state.notin_(("reviewed", "waived")))
+    if signed_only:
+        # The deliberate pass before delivery: only the finished work, and only
+        # where the code that judged it has since changed.
+        q = q.where(Report.review_state.in_(("reviewed", "waived")))
     if period:
         q = q.where(Report.period == period)
     elif periods:
@@ -214,21 +218,24 @@ def _stale_query(db: Session, periods: list[str] | None, group: str | None,
 
 def stale_count(db: Session, *, scoped: bool = False, group: str | None = None,
                 period: str | None = None, stale_only: bool = True,
-                skip_signed: bool = False) -> int:
+                skip_signed: bool = False, signed_only: bool = False) -> int:
     from sqlalchemy import func
     periods = recent_periods(settings.recheck_periods) if scoped else None
-    q = _stale_query(db, periods, group, period, stale_only, skip_signed)
+    q = _stale_query(db, periods, group, period, stale_only, skip_signed,
+                     signed_only)
     return db.scalar(select(func.count()).select_from(q.subquery())) or 0
 
 
 def _stale_batch(db: Session, limit: int, *, scoped: bool = True,
                  group: str | None = None, period: str | None = None,
                  stale_only: bool = True, after: int = 0,
-                 skip_signed: bool = False) -> list[Report]:
+                 skip_signed: bool = False,
+                 signed_only: bool = False) -> list[Report]:
     """Newest cycles first. The month somebody is working on is the one where a
     stale answer is actually in the way."""
     periods = recent_periods(settings.recheck_periods) if scoped else None
-    q = _stale_query(db, periods, group, period, stale_only, skip_signed)
+    q = _stale_query(db, periods, group, period, stale_only, skip_signed,
+                     signed_only)
     if after:
         q = q.where(Report.id > after)
     # Stale-only runs shrink their own queue, so newest-first is right. A run
@@ -240,8 +247,24 @@ def _stale_batch(db: Session, limit: int, *, scoped: bool = True,
 
 def sweep_once(db: Session, limit: int = BATCH, *, scoped: bool = True,
                group: str | None = None, period: str | None = None) -> int:
+    """One batch of the automatic sweep.
+
+    IT LEAVES SIGNED-OFF REPORTS ALONE. That is a change of mind and worth
+    saying why. The sweep exists so a fixed rule reaches the reports it already
+    got wrong, and a signed-off report is as capable of carrying a wrong answer
+    as any other. But with a rule changing several times a day, sweeping them
+    re-reads work that is already done, over and over, and every pass that
+    finds a new failure pulls somebody's sign-off - so the queue never empties
+    and the board keeps un-reviewing itself.
+
+    So the sweep now covers what is still in the way, and the signed-off ones
+    are counted on the board with a button to do them deliberately. Before
+    delivery is the moment that matters, and that is a decision rather than
+    something that should happen while somebody is mid-cycle.
+    """
     done = 0
-    for rep in _stale_batch(db, limit, scoped=scoped, group=group, period=period):
+    for rep in _stale_batch(db, limit, scoped=scoped, group=group, period=period,
+                            skip_signed=True):
         try:
             out = recheck(db, rep)
             done += 1
@@ -325,8 +348,8 @@ def start_sweeper() -> None:
             db = SessionLocal()
             started = time.monotonic()
             try:
-                if not stale_count(db, scoped=True):
-                    log.info("recheck sweep: nothing stale")
+                if not stale_count(db, scoped=True, skip_signed=True):
+                    log.info("recheck sweep: nothing stale that is still open")
                     break
                 n = sweep_once(db)
                 if not n:
@@ -376,7 +399,7 @@ def _touch(db: Session, key: str, **fields) -> None:
 
 def start_job(db: Session, key: str, *, group: str | None = None,
               period: str | None = None, stale_only: bool = True,
-              skip_signed: bool = False) -> dict:
+              skip_signed: bool = False, signed_only: bool = False) -> dict:
     """Re-check a partner, or a whole cycle, now.
 
     The sweep gets to everything eventually; this is for when eventually is not
@@ -395,7 +418,8 @@ def start_job(db: Session, key: str, *, group: str | None = None,
     row.period = period or ""
     row.state = "running"
     row.total = stale_count(db, group=group, period=period,
-                            stale_only=stale_only, skip_signed=skip_signed)
+                            stale_only=stale_only, skip_signed=skip_signed,
+                            signed_only=signed_only)
     row.done = row.changed = 0
     row.note = ""
     row.started_at = row.updated_at = dt.datetime.utcnow()
@@ -411,7 +435,8 @@ def start_job(db: Session, key: str, *, group: str | None = None,
                 batch = _stale_batch(own, BATCH, scoped=False, group=group,
                                      period=period, stale_only=stale_only,
                                      after=0 if stale_only else after,
-                                     skip_signed=skip_signed)
+                                     skip_signed=skip_signed,
+                                     signed_only=signed_only)
                 if not batch:
                     break
                 if not stale_only:
