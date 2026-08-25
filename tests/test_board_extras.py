@@ -81,3 +81,32 @@ def test_site_ctr_findings_are_absent_from_every_real_fixture():
             if abs(clicks / imps * 100 - printed) > 0.05:
                 bad.setdefault(f.stem, []).append(name)
     assert bad == {}, bad
+
+
+def test_the_recheck_control_is_a_button_not_a_banner():
+    """A count beside a refresh arrow needs no sentence, and a banner across
+    the top of the board pushed the partners down for something that is not
+    news."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert "Nothing is emailed" not in cycle
+    assert 'class="note stale"' not in cycle
+    assert "on this board were judged by older checking code" not in cycle
+    # it lives with Download CSV, and it says how many
+    assert 'class="sync"' in cycle and "{{ stale.total }}</button>" in cycle
+    assert cycle.index('class="sync"') < cycle.index("Download CSV")
+
+
+def test_the_button_becomes_a_progress_readout_while_it_runs():
+    cycle = (TPL / "cycle.html").read_text()
+    assert 'class="sync busy"' in cycle
+    assert "{{ j.done }} of {{ j.total or '?' }}" in cycle
+
+
+def test_the_partner_button_carries_no_count():
+    """"Re-check 2" under a heading that says "14 reports" reads as a bug, even
+    when 2 is the true number of stale ones. The numbers go in the hover and
+    the button does the whole partner."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert ">\n                Re-check</button>" in cycle
+    assert "Re-check {{ stale.by_group[g.group] }}" not in cycle
+    assert 'name="scope" value="all"' in cycle

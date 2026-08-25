@@ -18,6 +18,7 @@ from .quality import (check_blank_screenshots, check_conversion_names,
                       check_creative_names, check_social_mirror_sizes,
                       check_strategy_categorized, check_truncated_text,
                       check_completion_present, check_site_ctr,
+                      check_store_visits, STORE_TABLE,
                       check_social_placement_totals, COMPLETION_OWED,
                       section_bodies,
                       check_widget_errors, SITE_GRID,
@@ -402,14 +403,19 @@ def check_blank_pages(ctx) -> list[dict]:
 
 
 # ---------------------------------------------------------------- geo-fencing
-def check_geofence_names(ctx) -> list[dict]:
-    text = ctx["text"]
+# A geo-fence row prints its state and ZIP - "  FL   32405 " - which is what
+# tells a data row from the heading, the column header and the page furniture
+# around it.
+GEOFENCE_ROW = re.compile(r"\s{2,}[A-Z]{2}\s{2,}\d{5}\s")
+
+
+def _geofence_block(text: str) -> tuple[str | None, list[str]]:
+    """(header line, data rows) for the geo-fencing table, or (None, [])."""
     i = text.find("Geo-Fencing Performance")
     if i < 0:
-        return []
-    seg_lines = text[i:].split("\n")
+        return None, []
     seg = []
-    for n, line in enumerate(seg_lines):
+    for n, line in enumerate(text[i:].split("\n")):
         if n and line.strip() and not line.startswith((" ", "\t")) and "Performance" in line:
             break
         seg.append(line)
@@ -417,11 +423,21 @@ def check_geofence_names(ctx) -> list[dict]:
             break
     hdr = next((l for l in seg if "Business Name" in l and "Address" in l), None)
     if not hdr:
+        return None, []
+    return hdr, [l for l in seg if GEOFENCE_ROW.search(l)]
+
+
+def _geofence_rows(text: str) -> list[str]:
+    return _geofence_block(text)[1]
+
+
+def check_geofence_names(ctx) -> list[dict]:
+    hdr, rows = _geofence_block(ctx["text"])
+    if not hdr or not rows:
         return []
     addr = hdr.index("Address")
-    rows = [l for l in seg if re.search(r"\s{2,}[A-Z]{2}\s{2,}\d{5}\s", l)]
     blank = [l for l in rows if (len(l) - len(l.lstrip())) >= addr - 2]
-    if not rows or not blank:
+    if not blank:
         return []
     return [_f("geofence_no_business_name", "info",
                "Geo-fence rows have no business name",
@@ -757,6 +773,7 @@ CHECKS: list[tuple] = [
     (check_site_ctr,        "No site is clicking at a rate a person would not"),
     (check_completion_present,
      "Every video and audio product reports how much got watched"),
+    (check_store_visits,    "Store visits agree with the store table"),
 ]
 
 # Why a rule had nothing to do. "Nothing to check against" is true of every
@@ -784,6 +801,7 @@ SKIP_WHY = {
     "check_social_placement_totals": "no social placement grid on the report",
     "check_site_ctr": "no site and app breakout on the report",
     "check_completion_present": "no video or audio product on the report",
+    "check_store_visits": "no store visit breakout on the report",
 }
 
 RULES = [fn for fn, _ in CHECKS]
@@ -838,6 +856,8 @@ def _rule_applies(rule, ctx) -> bool:
     if name == "check_social_mirror_sizes":
         return any(SOCIAL_MIRROR_GRID.search(t) for t, _n in
                    creative_rows(ctx.get("text") or ""))
+    if name == "check_store_visits":
+        return bool(STORE_TABLE.search(ctx.get("text") or ""))
     if name == "check_completion_present":
         from .quality import WATCHED_PRODUCTS
         bodies = section_bodies(ctx.get("text") or "")
@@ -852,12 +872,12 @@ def _rule_applies(rule, ctx) -> bool:
         # No geo-fencing on the report means nothing was verified. Reporting a
         # pass would claim every business name is filled in on a table that is
         # not there.
-        text = ctx.get("text") or ""
-        i = text.find("Geo-Fencing Performance")
-        if i < 0:
-            return False
-        return any("Business Name" in l and "Address" in l
-                   for l in text[i:i + 20000].split("\n"))
+        #
+        # And an EMPTY widget is the same thing. TapClicks prints the heading
+        # and the column header whether or not there is any data under them, so
+        # "the heading is here" was enough to tick a report that has no
+        # geo-fencing rows at all - a claim about nothing, on a lot of reports.
+        return bool(_geofence_rows(ctx.get("text") or ""))
     return True
 
 

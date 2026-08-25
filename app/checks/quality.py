@@ -944,3 +944,108 @@ def _completion_without_sections(ctx, text: str) -> list[dict]:
                 ("The word \"Completion\" anywhere on the report", "no"),
                 ("Section banners to look inside", "none - this template "
                  "prints no page-header sections")])]
+
+
+# --------------------------------------- 11. store visits against their table
+# The Visits page says three things about the same fact and they have to agree:
+# a headline count of locations that tracked a visit, a table of those
+# locations, and a Visits tile. Each is a separate TapClicks widget pulling its
+# own query, so they can and do disagree.
+STORE_TABLE = re.compile(r"Visits by Store Location", re.I)
+LOCATIONS_LABEL = "NUMBER OF LOCATIONS THAT TRACKED A VISIT"
+VISITS_LABEL = re.compile(r"^\s*Visits\s{2,}Estimated Visits", re.M)
+# "CHEVROLET OF   420 Central   Bloomsburg   PA   17815   1"
+STORE_ROW = re.compile(r"\s{2,}[A-Z]{2}\s{2,}\d{5}\s+([\d,]+)\s*$")
+INT_ONLY = re.compile(r"^[\d,]+$")
+
+
+def _number_above(lines: list[str], i: int, want: int = 1) -> list[float] | None:
+    """The figures printed above a tile's caption.
+
+    These pages put the number on one line and its label three blank lines
+    below, which is the only relationship between them in the text.
+    """
+    for n in range(i - 1, max(i - 8, -1), -1):
+        t = lines[n].strip()
+        if not t:
+            continue
+        cells = [c for c in re.split(r"\s{2,}", t) if c]
+        if cells and all(INT_ONLY.match(c) for c in cells) and len(cells) >= want:
+            try:
+                return [float(c.replace(",", "")) for c in cells]
+            except ValueError:
+                return None
+        return None
+    return None
+
+
+def store_visits(text: str) -> dict | None:
+    """(locations claimed, store rows, visits claimed) off the Visits page."""
+    m = STORE_TABLE.search(text)
+    if not m:
+        return None
+    lines = text.split("\n")
+    # The whole visits block, from the store table to the next page header.
+    start = text.count("\n", 0, m.start())
+    end = start
+    for n in range(start, min(start + 80, len(lines))):
+        if PAGE_HEADER.match(lines[n]) and n > start:
+            break
+        end = n
+
+    rows = []
+    for n in range(start, end + 1):
+        hit = STORE_ROW.search(lines[n])
+        if hit:
+            try:
+                rows.append(float(hit.group(1).replace(",", "")))
+            except ValueError:
+                pass
+
+    locations = visits = None
+    for n, line in enumerate(lines):
+        if LOCATIONS_LABEL in line and abs(n - start) < 40:
+            got = _number_above(lines, n)
+            if got:
+                locations = got[0]
+        if VISITS_LABEL.match(line) and abs(n - start) < 60:
+            got = _number_above(lines, n, want=1)
+            if got:
+                visits = got[0]
+
+    clipped = "Grid contains more rows" in "\n".join(lines[start:end + 1])
+    return {"locations": locations, "rows": rows, "visits": visits,
+            "clipped": clipped}
+
+
+def check_store_visits(ctx) -> list[dict]:
+    """The store visit figures have to agree with the table beneath them."""
+    got = store_visits(ctx.get("text") or "")
+    if not got or got["clipped"] or not got["rows"]:
+        return []
+
+    out = []
+    trace = [("Locations that tracked a visit", f"{got['locations']:,.0f}"
+              if got["locations"] is not None else "not printed"),
+             ("Rows in the store table", f"{len(got['rows'])}"),
+             ("Visits", f"{got['visits']:,.0f}"
+              if got["visits"] is not None else "not printed"),
+             ("Visits in the store table", f"{sum(got['rows']):,.0f}"),
+             ("Store rows", ", ".join(f"{v:,.0f}" for v in got["rows"][:10]))]
+
+    if got["locations"] is not None and int(got["locations"]) != len(got["rows"]):
+        out.append(_f("store_locations_mismatch", "fail",
+                      "Store location count does not match the table",
+                      f"The report says {got['locations']:,.0f} location"
+                      f"{'s' if got['locations'] != 1 else ''} tracked a visit, "
+                      f"and lists {len(got['rows'])}. The table is not clipped, "
+                      f"so they are counting different things.", trace))
+
+    if got["visits"] is not None and abs(sum(got["rows"]) - got["visits"]) > 0.5:
+        out.append(_f("store_visits_mismatch", "fail",
+                      "Visits do not match the store table",
+                      f"The Visits figure is {got['visits']:,.0f} and the store "
+                      f"table adds up to {sum(got['rows']):,.0f} "
+                      f"({sum(got['rows']) - got['visits']:+,.0f}). The table is "
+                      f"not clipped, so every visit should be in it.", trace))
+    return out

@@ -123,6 +123,22 @@ def _whole(needle: str, haystack: str) -> bool:
 
 
 def detect(text: str, tables) -> set[str]:
+    """The products this report actually shows.
+
+    Two kinds of evidence: a widget section - "Mobile Conquesting Creative
+    Performance", "Display Creative Performance" - and a line item name ending
+    in its product. Both count.
+
+    The tails looked like a liability for a while: Mobile Conquesting IS a
+    display and video product, so its line items are named "... - AI Display",
+    and a report running nothing but Mobile Conquesting could in principle be
+    credited with Display on that alone. It has not happened. Every report
+    checked so far - seven real ones and the 317-page sample - had its products
+    fully covered by the sections, with the tails adding nothing, and the one
+    report that looked like the bug turned out to carry a real Display
+    Creative Performance widget. So the tails stay: on a template that prints
+    no section titles they would be the only evidence there is.
+    """
     found: set[str] = set()
 
     titles = [(t.title or "").strip() for t in tables if (t.title or "").strip()]

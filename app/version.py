@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-27"
-BUILD_NOTES = ("The re-check sweep rests no longer than it worked, covers the "
-               "last three cycles rather than every month ever, and has a "
-               "button on each partner card and on the board so you never have "
-               "to wait for it.")
+BUILD = "2026.08.25-29"
+BUILD_NOTES = ("The store visits page is reconciled against its own table - "
+               "the locations count against the rows, and the Visits figure "
+               "against what those rows add up to. A clipped table is not "
+               "asked to add up.")
 # ---------------------------------------------------------------------------
 
 

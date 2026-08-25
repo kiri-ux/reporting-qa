@@ -47,31 +47,28 @@
     <span class="tabs">
       {% if filter_group or filter_state %}
         <a href="/cycle?period={{ period }}">Clear filters</a>{% endif %}
+      {# The sweep gets to everything on its own. This is for when eventually is
+         not soon enough - a fix has gone out and somebody wants the board right
+         before they hand a link over. #}
+      {% if jobs %}
+        {% set j = (jobs.values()|list)[0] %}
+        <span class="sync busy" title="Reload to see where it got to">
+          <span class="spin"></span>{{ j.done }} of {{ j.total or '?' }}</span>
+      {% elif stale.total %}
+        <form method="post" action="/cycle/recheck" style="display:inline">
+          <input type="hidden" name="period" value="{{ period }}">
+          <button class="sync" type="submit"
+                  title="{{ stale.total }} report{{ 's' if stale.total != 1 }} on this board {{ 'was' if stale.total == 1 else 'were' }} judged by older checking code. They are queued for an automatic re-check - this does them now.">
+            <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
+              <path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6" fill="none"
+                    stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>{{ stale.total }}</button>
+        </form>
+      {% endif %}
       <a href="/cycle.csv?period={{ period }}" class="on">Download CSV</a>
     </span>
   </div>
-
-  {% if stale.total or jobs %}
-    {# The sweep gets to everything on its own. This is for when eventually is
-       not soon enough - a fix has gone out and somebody wants the board right
-       before they hand a link over. #}
-    <div class="note stale">
-      {% if jobs %}
-        {% set j = (jobs.values()|list)[0] %}
-        <span class="spin"></span>
-        <b>Re-checking{% if j.group %} {{ j.group }}{% endif %}</b> -
-        {{ j.done }} of {{ j.total or '?' }} done. Reload to see where it got to.
-      {% else %}
-        <b>{{ stale.total }} report{{ 's' if stale.total != 1 }}</b> on this board
-        {{ 'was' if stale.total == 1 else 'were' }} judged by older checking code.
-        They are queued for an automatic re-check.
-        <form method="post" action="/cycle/recheck" style="display:inline">
-          <input type="hidden" name="period" value="{{ period }}">
-          <button class="mini">Re-check all {{ stale.total }} now</button>
-        </form>
-      {% endif %}
-    </div>
-  {% endif %}
 
   <div class="tools">
     <input type="search" data-cards="glist" data-count="cnt-groups"
@@ -146,13 +143,19 @@
           {# Once the table below is already showing this partner, the link has
              nothing left to do - it stayed blue and clicking it reloaded the
              same page, which reads as broken. It becomes the way back out. #}
-          {% if stale.by_group.get(g.group) %}
+          {% set have = stale.have.get(g.group, 0) %}
+          {% if have %}
+            {# No count on the label. "Re-check 2" under a heading that says
+               "14 reports" reads as a bug, even when 2 is the true number of
+               stale ones - so the button does the whole partner and the
+               numbers go in the hover. #}
             <form method="post" action="/cycle/recheck" style="display:inline">
               <input type="hidden" name="period" value="{{ period }}">
               <input type="hidden" name="group" value="{{ g.group }}">
-              <button class="mini"
-                      title="{{ stale.by_group[g.group] }} of this partner's reports were judged by older checking code. Re-read them now rather than waiting for the sweep.">
-                Re-check {{ stale.by_group[g.group] }}</button>
+              <input type="hidden" name="scope" value="all">
+              <button class="mini{{ ' warn' if stale.by_group.get(g.group) }}"
+                      title="Re-read this partner's {{ have }} report{{ 's' if have != 1 }} with today's rules.{% if stale.by_group.get(g.group) %} {{ stale.by_group[g.group] }} of them {{ 'was' if stale.by_group[g.group] == 1 else 'were' }} judged by older code.{% endif %}">
+                Re-check</button>
             </form>
           {% endif %}
           {% if filter_group == g.group %}
@@ -322,9 +325,17 @@
 .wtag.t b{background:var(--plum)}
 .wtag.s b{background:var(--ok)}
 .gcard[hidden]{display:none}
-.note.stale{border-left-color:var(--warn);background:var(--warn-bg, var(--atlas-10));
- display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.note.stale form{margin:0}
+/* Sits with Download CSV rather than in a banner of its own. The count is the
+   whole message - a number beside a refresh arrow needs no sentence. */
+.sync{display:inline-flex;align-items:center;gap:6px;font-family:Agdasima,sans-serif;
+ font-size:14px;font-weight:700;letter-spacing:.03em;padding:5px 11px;
+ border-radius:14px;border:1px solid var(--warn);color:var(--warn);
+ background:var(--surface);cursor:pointer;line-height:1;
+ font-variant-numeric:tabular-nums}
+.sync:hover{background:var(--warn);color:#fff}
+.sync.busy{border-color:var(--velocity);color:var(--velocity);cursor:default}
+.sync.busy:hover{background:var(--surface);color:var(--velocity)}
+.secbar .tabs form{margin:0;display:inline-flex}
 .gfoot form{display:inline}
 .gfoot .showing{color:var(--velocity);font-weight:700;background:var(--velocity-10);
  padding:2px 9px;border-radius:12px;text-decoration:none}

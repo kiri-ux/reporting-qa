@@ -522,3 +522,111 @@ def test_a_dooh_video_line_item_is_dooh_not_video():
     # and the generic tails still work on everything else
     assert tail("Acme - Retargeting Video") == "Video"
     assert tail("Acme - AI Display") == "Display"
+
+
+# ------------------------------------------------------------ geo-fencing
+def test_an_empty_geofence_widget_is_not_a_pass():
+    """TapClicks prints the heading and the column header whether or not there
+    is data under them. "The heading is here" was enough to tick "Every
+    geo-fencing row has a business name" on reports with no geo-fencing rows
+    at all - a claim about nothing."""
+    from app.checks.rules import _geofence_rows, _rule_applies, check_geofence_names
+
+    empty = ("Mobile Conquesting Geo-Fencing Performance\n"
+             "Business Name   Address   City   State   Zip   Impressions\n"
+             "\n")
+    assert _geofence_rows(empty) == []
+    assert _rule_applies(check_geofence_names, {"text": empty}) is False
+
+
+def test_a_geofence_widget_with_rows_is_judged():
+    from app.checks.rules import _geofence_rows, _rule_applies, check_geofence_names
+
+    filled = ("Mobile Conquesting Geo-Fencing Performance\n"
+              "Business Name   Address   City   State   Zip   Impressions   Clicks   CTR\n"
+              "Bay City Point  500 E 23rd St  Panama City  FL  32405  3,330  6  0.18%\n")
+    assert len(_geofence_rows(filled)) == 1
+    assert _rule_applies(check_geofence_names, {"text": filled}) is True
+
+
+def test_no_geofence_widget_at_all_still_abstains():
+    from app.checks.rules import _rule_applies, check_geofence_names
+    assert _rule_applies(check_geofence_names,
+                         {"text": "Display Creative Performance\n"}) is False
+
+
+def test_the_samples_geofence_rows_are_found(sample):
+    from app.checks.rules import _geofence_rows
+    assert len(_geofence_rows(sample)) >= 15
+
+
+# ------------------------------------------------------------ store visits
+STORES = ("VISITS - PAGE 1\n"
+          "Mobile Conquesting Visit Performance   Mobile Conquesting Number of Store Locations\n"
+          "\n"
+          "                                                          3\n"
+          "                                        " + q.LOCATIONS_LABEL + "\n"
+          "\n"
+          "                                        Mobile Conquesting Visits by Store Location\n"
+          "                                        Business Name   Address   City   State   Zip   Visits\n"
+          "\n"
+          "                                        Close's Lumber   142 Davis St   Bradford   PA   16701   200\n"
+          "                                        Close's Lumber   11 Buckler DR   Roulette   PA   16746     3\n"
+          "                                        Close's Lumber   625 N Union ST   Olean   NY   14760     1\n"
+          "\n"
+          "           204                816\n"
+          "\n"
+          "        Visits               Estimated Visits (4x Verified Data)\n")
+
+
+def test_a_consistent_visits_page_says_nothing():
+    got = q.store_visits(STORES)
+    assert got["locations"] == 3 and len(got["rows"]) == 3 and got["visits"] == 204
+    assert q.check_store_visits({"text": STORES}) == []
+
+
+def test_a_location_count_that_does_not_match_the_table_is_found():
+    text = STORES.replace("                          3\n", "                          5\n")
+    out = q.check_store_visits({"text": text})
+    assert any(f["code"] == "store_locations_mismatch" for f in out)
+
+
+def test_visits_that_do_not_match_the_table_are_found():
+    text = STORES.replace("           204     ", "           250     ")
+    out = q.check_store_visits({"text": text})
+    f = next(x for x in out if x["code"] == "store_visits_mismatch")
+    assert "204" in f["detail"] and "250" in f["detail"]
+
+
+def test_a_clipped_table_is_not_expected_to_add_up():
+    """Ten rows of a longer list cannot sum to the whole, and saying so every
+    month would be noise, not a finding."""
+    text = STORES.replace("Business Name",
+                          "Grid contains more rows, but they have been clipped.\nBusiness Name")
+    text = text.replace("           204     ", "           250     ")
+    assert q.check_store_visits({"text": text}) == []
+
+
+def test_the_samples_visits_page_reconciles(sample):
+    got = q.store_visits(sample)
+    assert got and got["locations"] == 1 and got["rows"] == [1.0] and got["visits"] == 1
+    assert q.check_store_visits({"text": sample}) == []
+
+
+def test_a_report_with_no_visits_page_abstains():
+    from app.checks.rules import _rule_applies, check_store_visits
+    assert q.store_visits("Display Creative Performance\n") is None
+    assert _rule_applies(check_store_visits, {"text": "Display Ads\n"}) is False
+
+
+def test_a_display_creative_widget_really_does_mean_display_ran():
+    """Field Of Dreams looked like a false positive - a Mobile Conquesting
+    report credited with Display off a line item called "AI Display". It turned
+    out to carry a Display Creative Performance widget, so the finding was
+    right. The tails were nearly removed over a bug that was not there."""
+    from app.checks.parser import extract_tables
+    from app.checks.products import detect
+    text = ("Display Creative Performance\n"
+            "Preview Image   Creative Name   Impressions   Clicks   CTR\n"
+            "                Field Of Dreams_7.14__888x138   11,199   117   1.04%\n")
+    assert "Display" in detect(text, extract_tables(text, strict=True))

@@ -271,3 +271,28 @@ def test_a_second_job_for_the_same_scope_does_not_start_twice():
     finally:
         with rc._jobs_lock:
             rc._jobs.pop("k", None)
+
+
+def test_a_partner_run_covers_every_report_not_only_the_stale_ones(live):
+    """"Re-check 2" on a card headed "14 reports" reads as a bug. The button
+    now means "make this partner right", which is all of them."""
+    from app.recheck import _stale_batch, stale_count
+    from app.version import rules_version
+    s, rep, _ = live
+    rep.rules_version = rules_version()          # already current
+    s.commit()
+
+    assert stale_count(s, period="2026-07") == 0
+    assert stale_count(s, period="2026-07", stale_only=False) == 1
+    assert len(_stale_batch(s, 25, scoped=False, stale_only=False)) == 1
+
+
+def test_a_run_over_everything_walks_forward_instead_of_looping(live):
+    """A stale-only run shrinks its own queue as it goes. A run over everything
+    does not - a re-checked report still matches - so it pages by id."""
+    from app.recheck import _stale_batch
+    s, rep, _ = live
+    first = _stale_batch(s, 25, scoped=False, stale_only=False)
+    assert first and first[0].id == rep.id
+    assert _stale_batch(s, 25, scoped=False, stale_only=False,
+                        after=rep.id) == []

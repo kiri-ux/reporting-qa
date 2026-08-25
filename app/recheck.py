@@ -153,8 +153,10 @@ def recent_periods(n: int) -> list[str]:
 
 
 def _stale_query(db: Session, periods: list[str] | None, group: str | None,
-                 period: str | None):
-    q = select(Report).where(Report.rules_version != rules_version())
+                 period: str | None, stale_only: bool = True):
+    q = select(Report)
+    if stale_only:
+        q = q.where(Report.rules_version != rules_version())
     if period:
         q = q.where(Report.period == period)
     elif periods:
@@ -167,21 +169,27 @@ def _stale_query(db: Session, periods: list[str] | None, group: str | None,
 
 
 def stale_count(db: Session, *, scoped: bool = False, group: str | None = None,
-                period: str | None = None) -> int:
+                period: str | None = None, stale_only: bool = True) -> int:
     from sqlalchemy import func
     periods = recent_periods(settings.recheck_periods) if scoped else None
-    q = _stale_query(db, periods, group, period)
+    q = _stale_query(db, periods, group, period, stale_only)
     return db.scalar(select(func.count()).select_from(q.subquery())) or 0
 
 
 def _stale_batch(db: Session, limit: int, *, scoped: bool = True,
-                 group: str | None = None, period: str | None = None) -> list[Report]:
+                 group: str | None = None, period: str | None = None,
+                 stale_only: bool = True, after: int = 0) -> list[Report]:
     """Newest cycles first. The month somebody is working on is the one where a
     stale answer is actually in the way."""
     periods = recent_periods(settings.recheck_periods) if scoped else None
-    q = _stale_query(db, periods, group, period)
-    return list(db.scalars(
-        q.order_by(Report.period.desc(), Report.id.desc()).limit(limit)).all())
+    q = _stale_query(db, periods, group, period, stale_only)
+    if after:
+        q = q.where(Report.id > after)
+    # Stale-only runs shrink their own queue, so newest-first is right. A run
+    # over everything does not, so it walks the ids upward instead.
+    order = (Report.id.asc(),) if not stale_only else (Report.period.desc(),
+                                                       Report.id.desc())
+    return list(db.scalars(q.order_by(*order).limit(limit)).all())
 
 
 def sweep_once(db: Session, limit: int = BATCH, *, scoped: bool = True,
@@ -257,8 +265,8 @@ def running_jobs() -> dict[str, dict]:
         return {k: dict(v) for k, v in _jobs.items() if v.get("state") == "running"}
 
 
-def start_job(key: str, *, group: str | None = None,
-              period: str | None = None) -> dict:
+def start_job(key: str, *, group: str | None = None, period: str | None = None,
+              stale_only: bool = True) -> dict:
     """Re-check a partner, or a whole cycle, now.
 
     The sweep gets to everything eventually; this is for when eventually is not
@@ -275,14 +283,22 @@ def start_job(key: str, *, group: str | None = None,
     def run():
         db = SessionLocal()
         try:
-            total = stale_count(db, group=group, period=period)
+            total = stale_count(db, group=group, period=period,
+                                stale_only=stale_only)
             with _jobs_lock:
                 _jobs[key]["total"] = total
+            # When re-reading everything rather than only the stale ones, the
+            # query cannot shrink as it goes - a re-checked report still
+            # matches it - so walk the ids forward instead of looping forever.
+            after = 0
             while True:
                 batch = _stale_batch(db, BATCH, scoped=False, group=group,
-                                     period=period)
+                                     period=period, stale_only=stale_only,
+                                     after=0 if stale_only else after)
                 if not batch:
                     break
+                if not stale_only:
+                    after = max(r.id for r in batch)
                 for rep in batch:
                     was = rep.severity
                     try:

@@ -498,14 +498,16 @@ def partners_csv(db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------- cycle board
 def _stale_here(db: Session, period: str, groups) -> dict:
+    """How many reports this board has, and how many carry an older answer."""
     from .recheck import stale_count
-    out = {"total": stale_count(db, period=period), "by_group": {}}
-    if not out["total"]:
-        return out
+    out = {"total": stale_count(db, period=period), "by_group": {}, "have": {}}
     for g in groups:
-        n = stale_count(db, period=period, group=g.group)
-        if n:
-            out["by_group"][g.group] = n
+        have = stale_count(db, period=period, group=g.group, stale_only=False)
+        if have:
+            out["have"][g.group] = have
+            n = stale_count(db, period=period, group=g.group)
+            if n:
+                out["by_group"][g.group] = n
     return out
 
 
@@ -590,7 +592,8 @@ def delivery_file(delivery_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/cycle/recheck")
-def cycle_recheck(period: str = Form(""), group: str = Form("")):
+def cycle_recheck(period: str = Form(""), group: str = Form(""),
+                  scope: str = Form("stale")):
     """Re-check a partner, or the whole cycle, now.
 
     The background sweep gets to everything on its own; this is for when
@@ -600,7 +603,11 @@ def cycle_recheck(period: str = Form(""), group: str = Form("")):
     from .recheck import start_job
     period = period or settings.default_period or ""
     key = f"{period}:{group}" if group else f"{period}:*"
-    start_job(key, group=group or None, period=period or None)
+    # A partner button means "make this partner right", which is every report
+    # it has - "Re-check 2" on a card headed "14 reports" reads as a bug even
+    # when 2 is the true number of stale ones.
+    start_job(key, group=group or None, period=period or None,
+              stale_only=(scope != "all"))
     back = f"/cycle?period={period}" + (f"&group={quote(group)}" if group else "")
     return RedirectResponse(back, status_code=303)
 
