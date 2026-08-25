@@ -488,3 +488,37 @@ def test_both_real_fixtures_with_video_report_their_completion():
         if not f.exists():
             pytest.skip("fixture missing")
         assert "Completion" in pdf_text(f)
+
+
+def test_dooh_and_tiktok_never_owe_a_completion_rate():
+    """Nothing gets watched to the end on a billboard, and TikTok does not
+    report completion. Neither is in the owed list, on either path."""
+    from app.checks.quality import COMPLETION_OWED, WATCHED_PRODUCTS
+    owed = {s for s, _o in COMPLETION_OWED}
+    assert "DOOH ADS" not in owed and "TIKTOK ADS" not in owed
+    assert "DOOH" not in WATCHED_PRODUCTS and "TikTok" not in WATCHED_PRODUCTS
+
+    text = ("DOOH ADS - PAGE 1\nDOOH Creative Performance\n"
+            "TIKTOK ADS - PAGE 1\nTikTok Creative Performance\n")
+    assert q.check_completion_present({"text": text}) == []
+    assert q.check_completion_present(
+        {"text": "DOOH Creative Performance\n",
+         "products": {"DOOH", "TikTok"}}) == []
+
+
+def test_a_dooh_video_line_item_is_dooh_not_video():
+    """"... Venue Targeting DOOH Video" was read as Video by the generic tail,
+    which put a billboard campaign on the report as a video product - and would
+    then have demanded a completion rate for it."""
+    import re as _re
+    from app.checks.products import TAIL_PATTERNS
+
+    def tail(name):
+        return next((p for p, rx in TAIL_PATTERNS if _re.search(rx, name)), None)
+
+    assert tail("Acme - Venue Targeting DOOH Video") == "DOOH"
+    assert tail("Acme - Venue Targeting DOOH Display") == "DOOH"
+    assert tail("Acme - Venue Targeting DOOH") == "DOOH"
+    # and the generic tails still work on everything else
+    assert tail("Acme - Retargeting Video") == "Video"
+    assert tail("Acme - AI Display") == "Display"

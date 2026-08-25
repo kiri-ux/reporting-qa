@@ -12,11 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-25"
-BUILD_NOTES = ("A video or audio product with no completion rate anywhere in "
-               "its section now fails - Video, CTV, Social Mirror CTV, Online "
-               "Audio, YouTube+, YouTube TV and Amazon Premium Video. Display, "
-               "DOOH and Amazon display are not asked for one.")
+BUILD = "2026.08.25-26"
+BUILD_NOTES = ("The SEO manager is no longer named as a partner's buyer, and "
+               "two disagreeing buyers fall back to the reporting breakout. A "
+               "DOOH Video line item is DOOH, not Video - it was being read as "
+               "a video product and would have been asked for a completion "
+               "rate. DOOH and TikTok never owe one.")
 # ---------------------------------------------------------------------------
 
 

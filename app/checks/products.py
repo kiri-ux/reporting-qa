@@ -35,6 +35,12 @@ SECTION_PATTERNS: list[tuple[str, str]] = [
 
 # Line-item name suffix -> product. Order matters.
 TAIL_PATTERNS: list[tuple[str, str]] = [
+    # DOOH first. Its line items are named "... Venue Targeting DOOH Video"
+    # and "... DOOH Display", so the generic Video and Display tails claimed
+    # them - which put a billboard campaign on the report as Video, told the
+    # order check it was running a product it was not, and would have demanded
+    # a completion rate for something nobody watches to the end.
+    ("DOOH", r"\bDOOH(?: Video| Display)?$"),
     ("Social Mirror CTV", r"Social Mirror CTV$"),
     ("Native Display", r"Native Display$"),
     ("Native Display", r"\bNative$"),
@@ -49,7 +55,6 @@ TAIL_PATTERNS: list[tuple[str, str]] = [
     ("Meta", r"\bMeta$"),
     ("TikTok", r"\bTikTok$"),
     ("YouTube", r"\bYouTube$"),
-    ("DOOH", r"\bDOOH(?: Display)?$"),
 ]
 
 # What the order tool calls a product -> what the report calls it.

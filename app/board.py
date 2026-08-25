@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from .cycle import Cycle, cycle_for
 from .db import OrderLine, Partner, Report
+from .partners import is_seo
 
 ACC = re.compile(r"\b\d{4,6}\b")
 
@@ -99,6 +100,9 @@ def expected_for(db: Session, period: str) -> list[Expected]:
     idx = _partner_index(db)
 
     rows: dict[tuple[str, str, str], Expected] = {}
+    # Whether the buyer currently on each Expected came off an SEO line, and is
+    # therefore still waiting for a real one.
+    seo_buyer: dict[tuple[str, str, str], bool] = {}
     for l in db.scalars(select(OrderLine)).all():
         if excluded(l.market):
             continue
@@ -118,6 +122,15 @@ def expected_for(db: Session, period: str) -> list[Expected]:
                     market=l.market, group=group, client=l.client, kind=kind,
                     account_ids=l.account_ids, line_ids=l.line_ids, buyer=l.buyer,
                     reporter=(p.reporting_team if p else ""))
+            # SEO belongs to a different person, and whichever line happened to
+            # be read first decided the buyer - so a client with one SEO line
+            # showed its SEO manager as the buyer for everything it ran.
+            if is_seo(l.product):
+                seo_buyer.setdefault(k, True)
+            else:
+                if seo_buyer.get(k, True):     # nothing real on it yet
+                    e.buyer = l.buyer or e.buyer
+                seo_buyer[k] = False
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
             # A client's lifetime covers several products, so its line ids are
@@ -253,12 +266,23 @@ def by_group(db: Session, period: str,
     out = []
     for g, rows in groups.items():
         p = people.get(g)
-        buyers = [b for b in dict.fromkeys(e.buyer for e in rows if e.buyer)]
-        from .partners import is_seo
+        # One name on the card, not a list. A group's line items can carry
+        # several campaign managers, and "Anna Halligan, Bella Duddy" answers
+        # the question "who do I chase" with "work it out yourself". When they
+        # disagree, the reporting breakout's buyer is the answer.
+        # SEO is owned by someone else and is not one of the buyers being
+        # counted - a client running SEO alone would otherwise look like a
+        # second buyer and push the whole group onto the roster fallback.
+        real = [e for e in rows
+                if not (e.products and all(is_seo(x) for x in e.products))]
+        buyers = [b for b in dict.fromkeys(e.buyer for e in (real or rows) if e.buyer)]
+        roster_buyer = p.buyer if p else ""
+        buyer = buyers[0] if len(buyers) == 1 else (roster_buyer or ", ".join(buyers))
+
         has_seo = any(is_seo(prod) for e in rows for prod in (e.products or []))
         out.append(GroupRow(
             group=g, target=targets.get(g, ""), expected=rows,
-            buyer=", ".join(buyers) or (p.buyer if p else ""),
+            buyer=buyer,
             reporter=(p.reporting_team if p else ""),
             trainer=(p.trainer if p else ""),
             seo=((p.seo if p else "") if has_seo else "")))
