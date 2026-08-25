@@ -524,6 +524,40 @@ def partners_csv(db: Session = Depends(get_db)):
 ROW_CAP = 150
 
 
+def _delivered(db: Session, period: str, groups) -> dict:
+    """The finished partners, and their links, for the top of the board.
+
+    A delivered partner sorts in among a hundred and forty-five others, so the
+    one thing somebody came to the page for - the link they are about to send -
+    was found by scrolling. It belongs where the counts are.
+    """
+    from .delivery import latest_deliveries
+
+    dels = latest_deliveries(db, period)
+    links, failed = [], 0
+    # Walked over the DELIVERIES, not over the groups. A partner whose orders
+    # moved can drop off this cycle's expected list after its reports went out,
+    # and taking the link off the page with it is not an improvement.
+    for name, d in dels.items():
+        if not d.ok:
+            failed += 1
+            continue
+        links.append({
+            "group": name,
+            "url": d.share_url or "",
+            # No Drive or Dropbox configured yet, so the delivery is a zip on
+            # this box. There is no URL to copy - the link is this app's own
+            # download route, which only works for somebody logged in here.
+            "download": f"/delivery/{d.id}/file" if not d.share_url else "",
+            "target": d.target or "", "reports": d.reports or 0,
+            "archive": (d.archive_url or "") if d.archive_url != d.share_url else "",
+        })
+    links.sort(key=lambda x: x["group"].lower())
+    ready = sum(1 for g in groups if g.ready and g.group not in dels)
+    return {"links": links, "count": len(links), "groups": len(groups),
+            "ready": ready, "failed": failed}
+
+
 def _stale_here(db: Session, period: str, groups) -> dict:
     """How many reports this board has, and how many carry an older answer.
 
@@ -593,6 +627,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     cyc = cycle_for(period)
     exp = expected_for(db, period)
     groups = by_group(db, period, exp)
+    # Counted before the filter. A partner filter narrows what is listed below;
+    # it must not make the cycle look like it has one partner in it.
+    delivered = _delivered(db, period, groups)
     if group:
         groups = [g for g in groups if g.group == group]
     rows = [e for g in groups for e in g.expected]
@@ -602,6 +639,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # section at the bottom so the top of the page is only what is still open.
     done = [e for e in rows if e.ready]
     rows = [e for e in rows if not e.ready]
+    # ARRIVED FIRST. Two thirds of a cycle has not been sent yet, so in market
+    # order the reports there is something to DO about sit below a screenful of
+    # "Not received" - and the row cap can cut them off the page entirely.
+    # Stable, so market and client order is kept inside each half.
+    rows.sort(key=lambda e: 0 if e.report else 1)
     # The reports table was 24,851 of the page's 30,342 DOM nodes and four
     # seconds of browser time. The server was never the slow part.
     cap = None if show_all else ROW_CAP
@@ -628,6 +670,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "pace": pace(db, period, summary(exp)["missing"]),
         "filter_group": group, "filter_state": state,
         "deliveries": latest_deliveries(db, period),
+        # The finished links, at the top. A partner that is done sorts in with
+        # 145 others, so the one thing you came to the page for - the link you
+        # are about to send - was found by scrolling.
+        "delivered": delivered,
         # How many reports on this board still carry an older answer, and per
         # partner so a card can offer to fix just that one.
         "stale": _stale_here(db, period, groups),

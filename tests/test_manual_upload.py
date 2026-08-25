@@ -259,3 +259,56 @@ def test_the_cycle_board_and_a_report_page_render_after_a_pulled_signoff(client)
     assert "sign-off pulled" in board.text
     # And the name is not sitting in the reviewer column as though it stood.
     assert ">k</span>" not in board.text
+
+
+# ------------------------------------------------------- the link, at the top
+def test_a_delivered_partner_puts_its_link_at_the_top_of_the_board(client):
+    """It sorts in among 145 others otherwise, so the one thing somebody came
+    to the page for was found by scrolling."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    db.add(dbm.Delivery(period=rep.period, group=rep.market, target="drive",
+                        reports=1, ok=True,
+                        share_url="https://drive.google.com/drive/folders/abc123"))
+    db.commit()
+
+    page = c.get(f"/cycle?period={rep.period}")
+    assert page.status_code == 200
+    head, tail = page.text.split('class="glist"', 1)
+    # Above the partner list, not inside it.
+    assert "https://drive.google.com/drive/folders/abc123" in head
+    assert "Client links" in head
+    assert "Partners delivered" in head
+    # And copyable, not just openable.
+    assert 'data-copy="https://drive.google.com/drive/folders/abc123"' in head
+
+
+def test_see_reports_does_not_jump_past_the_card(client):
+    """The anchor scrolled straight past the partner card that says what you
+    are looking at, so the table arrived with its heading off screen."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    page = c.get(f"/cycle?period={rep.period}")
+    assert "See reports" in page.text
+    assert "#reports\">See reports" not in page.text
+
+
+def test_the_reports_that_arrived_sort_above_the_ones_that_have_not(client):
+    """Two thirds of a cycle has not been sent yet. In market order the rows
+    there is something to do about sit below a screenful of "Not received" -
+    and the 150-row cap can cut them off the page altogether."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    # A pile of orders with nothing against them, named to sort first.
+    for i in range(5):
+        db.add(dbm.OrderLine(market=rep.market, client=f"AAA Client {i}",
+                             account_ids=f"9000{i}", product="Display",
+                             starts_on=None, ends_on=None))
+    db.commit()
+
+    text = c.get(f"/cycle?period={rep.period}").text
+    body = text.split('id="reports"', 1)[-1] if 'id="reports"' in text else text
+    arrived = body.find("Awaken Bakery")
+    first_missing = body.find("AAA Client")
+    assert arrived != -1 and first_missing != -1
+    assert arrived < first_missing, "the report you can open is below the ones you cannot"

@@ -1,105 +1,59 @@
-build 2026.08.25-37
+build 2026.08.25-38
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/db.py
 app/main.py
-app/recheck.py
-app/orders_io.py
-app/orders_s3.py
-app/checks/products.py
-app/checks/rules.py
+app/templates/base.html
 app/templates/cycle.html
-app/templates/viewer.html
-tests/test_order_remap.py     (new)
-tests/test_product_map.py
-tests/test_recheck.py
 tests/test_manual_upload.py
 
 
-1. Why the product error kept coming back after I "fixed" it
---------------------------------------------------------------
-This is the important one, and it's worse than it looked.
+1. The client link is at the top now
+--------------------------------------
+A delivered partner sorts in among 145 others, so the one thing you came to
+the page for - the link you were about to send - was found by scrolling.
 
-The order export is not stored. Every line item is turned into a product name
-on the way in and only the product is kept. So fixing the mapping code does
-nothing for the orders already in the database - and the S3 sync skips any
-file whose ETag has not changed, so the export is never read again to correct
-them. The wrong answer stands until somebody happens to upload a new export.
+There is now a CLIENT LINKS panel directly under the counts, listing every
+partner delivered this cycle with an Open button and a Copy button. It is
+built from the deliveries rather than from the partner list, so a partner
+whose orders shift after its reports went out does not take its link off the
+page with it.
 
-That is why 52753 still said DOOH after the DOOH fix shipped. The code was
-right; the data it was reading had been mapped by the old code.
+The same Copy button is on the partner card too, next to Client link.
 
-Fixed by making the mapping part of what "unchanged" means. The sync now
-records which version of the mapping read the export, and re-reads it when
-that version moves - automatically, in the background, on the first deploy
-after a mapping change. After a re-read, reports for any client whose product
-set actually moved are queued for a re-check. Only those clients: restamping
-everything would re-read every PDF in the cycle daily for the same answer.
+Copy falls back to the old execCommand path when the clipboard API is not
+available - the board is opened over plain http on the office network, where
+that API is simply absent, and a button that silently does nothing is worse
+than one that says "Press Ctrl+C".
 
 
-2. SKyPAC, order 51251 - no Video anywhere
--------------------------------------------
-Two live line items: "TikTok Display & Video Ads" and "YouTube+ Video Ads".
-Neither is a Video product. The words "Video Ads" are in the FORMAT half of
-both names, and the matcher was finding them there.
+2. Partners delivered, as a number
+------------------------------------
+A sixth tile in the top row: how many partners are delivered, out of the total,
+with "N ready to package" underneath when there are any. The other five tiles
+count reports; this is the one the cycle is actually judged on.
 
-The rule now is that the product LEADS the name and everything after it is the
-format it is sold in. No amount of matching inside the tail gets "TikTok
-Display & Video Ads" right, because "video ads" really is in there.
-
-Also on that order: "Social Mirror CTV Ads" was not being mapped at all, so it
-dropped out of the expected list and the report's Social Mirror CTV pages came
-out as a product nobody had bought. It is its own line item to order and its
-own widget on the report, so it is now its own product on both sides.
-
-SKyPAC's four live line items now come out as TikTok, YouTube, Social Mirror,
-Social Mirror CTV - which is exactly what the report carries. No finding.
-
-There is a test that walks a product name through six different format tails
-("", " Ads", " Display Ads", " Display & Video Ads", ...) and expects the same
-answer each time, because the IO tool grows new spellings faster than anybody
-updates a dictionary.
+It is counted before the partner filter is applied - filtering to one partner
+narrows the list below, it should not make the cycle look like it has one
+partner in it.
 
 
-3. The findings say only what is wrong
-----------------------------------------
-Before:
-  1 product on the order but not on the report
-  Expected from live orders and absent here: Video. On the report: Social
-  Mirror, Social Mirror CTV, TikTok, YouTube.
+3. Arrived reports sort to the top
+------------------------------------
+728 of 1,271 have not been sent yet, so in market order the reports there is
+something to DO about sat below a screenful of "Not received" - and with the
+150-row cap they could be cut off the page entirely.
 
-After:
-  Ordered but not on the report: Video
-  On the report with no live order: TikTok, YouTube
-
-Five product names to read before you could find the one that mattered. The
-two full lists are still there under Investigate, along with what both sides
-agree on, because "why is that expected?" is a fair question - just not on the
-line whose job is to name the problem.
+The still-open table now puts everything that has arrived first, keeping market
+and client order inside each half.
 
 
-4. The stray "k" on an unreviewed row
----------------------------------------
-Paulina's row showed "k" under the reporter and "k" in the sign-off box, on a
-report in the ERRORS state with all three buttons live.
-
-What happened: k signed it off, a re-check found a failure that was not there
-when she signed, and the sign-off was correctly pulled - but her name stayed
-printed as though it still stood.
-
-The name has to survive, because somebody has to be told whose sign-off went.
-So it is now marked as pulled instead: the row shows a "sign-off pulled" tag
-that says on hover who signed it and why it went, the name is gone from the
-reviewer column and the input box, and the report page says the same thing in
-a sentence. Signing off again clears it.
+4. See reports no longer jumps you down
+-----------------------------------------
+The link carried a #reports anchor, which scrolled straight past the partner
+card you had just clicked - and that card is what tells you what you are
+looking at, so the table arrived with its heading off screen. The anchor is
+gone; the page loads at the top with the filtered card in view.
 
 
-5. No page reference on the board
------------------------------------
-The "p6 - Site and App Performance" pill is off the cycle board. That column is
-for deciding which reports to open; the page number matters once you have
-opened one, and it is still on the report page where it is useful.
-
-
-Tests: 286 passing (up from 265 - 21 new).
+Tests: 289 passing.

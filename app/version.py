@@ -12,13 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-37"
-BUILD_NOTES = ("Product findings now name only what is missing or extra, not "
-               "the whole list. The order export is re-read whenever the "
-               "product mapping changes, so a fix reaches the orders already "
-               "loaded - which is why TikTok and DOOH orders kept reading as "
-               "Video after they were fixed. A pulled sign-off no longer "
-               "leaves a reviewer's name on the row.")
+BUILD = "2026.08.25-38"
+BUILD_NOTES = ("Finished client links now sit at the top of the board with a "
+               "copy button, beside a count of how many partners are delivered. "
+               "The reports that have actually arrived sort above the ones that "
+               "have not, and See reports no longer jumps you past the card you "
+               "just clicked.")
 # ---------------------------------------------------------------------------
 
 

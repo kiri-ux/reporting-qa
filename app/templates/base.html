@@ -103,6 +103,22 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .cards span{font-size:12px;color:var(--muted);letter-spacing:.04em}
 .c-fail b{color:var(--cardinal)}.c-warn b{color:var(--warn)}.c-ok b{color:var(--ok)}
 
+/* ---- the finished links, above the partner list ---- */
+.links{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+ box-shadow:var(--shadow);padding:14px 18px;margin-top:14px}
+.links h3{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+ color:var(--muted)}
+.links ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.links li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.links .lname{font-weight:600;min-width:200px}
+
+/* A copy button, because the link is going into an email, not a new tab. */
+.copy{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;
+ padding:5px 10px;border:1px solid var(--line);border-radius:16px;cursor:pointer;
+ background:var(--surface);color:var(--ink-2)}
+.copy:hover{border-color:var(--atlas);color:var(--atlas)}
+.copy.done{border-color:var(--ok);color:var(--ok)}
+
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;
  box-shadow:var(--shadow);padding:18px 20px}
 
@@ -396,6 +412,46 @@ body.fit .pdfwrap object{height:100%}
   btn.addEventListener('click', function () {
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  });
+
+  // Copy a link. navigator.clipboard needs a secure context, and this is also
+  // opened over plain http on the office network, where it is simply absent -
+  // so the button has to say it failed rather than doing nothing at all.
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest ? ev.target.closest('.copy') : null;
+    if (!b) return;
+    var text = b.dataset.copy || '';
+    var label = b.querySelector('span');
+    var was = label ? label.textContent : '';
+    var done = function (msg, ok) {
+      if (!label) return;
+      label.textContent = msg;
+      b.classList.toggle('done', !!ok);
+      setTimeout(function () {
+        label.textContent = was;
+        b.classList.remove('done');
+      }, 1600);
+    };
+    var fallback = function () {
+      var t = document.createElement('textarea');
+      t.value = text;
+      t.setAttribute('readonly', '');
+      t.style.position = 'fixed';
+      t.style.opacity = '0';
+      document.body.appendChild(t);
+      t.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(t);
+      done(ok ? 'Copied' : 'Press Ctrl+C', ok);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () {
+        done('Copied', true);
+      }, fallback);
+    } else {
+      fallback();
+    }
   });
 
   // Filter: a free-text box plus per-column dropdowns, both narrowing the same

@@ -64,7 +64,49 @@
     <div><b>{{ summary['in'] + summary.warnings }}</b><span>In, awaiting review</span></div>
     <div class="c-fail"><b>{{ summary.errors + summary.needs_fix }}</b><span>Errors or needs fix</span></div>
     <div class="c-ok"><b>{{ summary.ready }}</b><span>Good to go</span></div>
+    {# Reports, reports, reports - and then the question the cycle is actually
+       judged on, which is how many partners are finished and sent. #}
+    <div class="c-ok"><b>{{ delivered.count }}</b><span>Partners delivered</span>
+      {% if delivered.groups %}
+        <p class="pacenote">of {{ delivered.groups }}{% if delivered.ready %} ·
+          {{ delivered.ready }} ready to package{% endif %}</p>
+      {% endif %}
+    </div>
   </div>
+
+  {% if delivered.links %}
+    {# The links, at the top, where somebody about to send one can find them. #}
+    <div class="links">
+      <h3>Client links</h3>
+      <ul>
+        {% for l in delivered.links %}
+          <li>
+            <span class="lname">{{ l.group }}</span>
+            {% if l.url %}
+              <a class="btn gold" href="{{ l.url }}" target="_blank" rel="noopener"
+                 >Open{% if l.target == 'dropbox' %} (Dropbox){% endif %}</a>
+              <button type="button" class="copy" data-copy="{{ l.url }}"
+                      title="Copy the link">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                  <rect x="9" y="9" width="11" height="11" rx="2" fill="none"
+                        stroke="currentColor" stroke-width="2"/>
+                  <path d="M5 15V6a2 2 0 012-2h9" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round"/>
+                </svg><span>Copy</span>
+              </button>
+            {% else %}
+              <a class="btn gold" href="{{ l.download }}">Download zip</a>
+              <span class="acct">kept here - Drive and Dropbox are not set up yet</span>
+            {% endif %}
+            {% if l.archive %}
+              <a href="{{ l.archive }}" target="_blank" rel="noopener">In Drive</a>
+            {% endif %}
+            <span class="acct">{{ l.reports }} file{{ 's' if l.reports != 1 }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
 </section>
 
 <section>
@@ -194,11 +236,23 @@
                title="Showing this partner's reports below - click to show them all">
               Showing all {{ g.expected|length }} &times;</a>
           {% else %}
-            <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}#reports">See reports</a>
+            {# No #reports anchor. It jumped straight past the partner card you
+               had just clicked - and the card is what tells you what you are
+               looking at, so the table arrived with its heading off screen. #}
+            <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
           {% endif %}
           {% if d and d.ok and d.share_url %}
             <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
               Client link{% if d.target == 'dropbox' %} (Dropbox){% endif %}</a>
+            <button type="button" class="copy" data-copy="{{ d.share_url }}"
+                    title="Copy the link">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2" fill="none"
+                      stroke="currentColor" stroke-width="2"/>
+                <path d="M5 15V6a2 2 0 012-2h9" fill="none" stroke="currentColor"
+                      stroke-width="2" stroke-linecap="round"/>
+              </svg><span>Copy</span>
+            </button>
             {% if d.archive_url and d.archive_url != d.share_url %}
               <a href="{{ d.archive_url }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
