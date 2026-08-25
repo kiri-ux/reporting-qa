@@ -1834,3 +1834,70 @@ def test_a_corrected_report_replaces_the_broken_one(tmp_path, monkeypatch):
                        coalesce=True, subject="FW: Daily report")
     assert db.query(db_mod.Report).count() == 2, \
         "a lifetime replaced the monthly, or the other way round"
+
+
+def test_completion_rate_above_100_is_a_failure():
+    """More completions than impressions is arithmetically impossible - it is
+    a counting fault upstream, not a good month."""
+    from app.checks.rules import check_completion_rates
+
+    ok = """Connected TV (CTV) Completion Performance by Strategy
+Strategy                         25% Completion Rate    50% Completion Rate
+Beech Bend - Retargeting CTV     100.00%                99.86%
+Beech Bend - Behavioral CTV      100.00%                99.73%
+"""
+    assert check_completion_rates({"text": ok}) == []
+
+    bad = ok.replace("99.86%", "104.20%")
+    out = check_completion_rates({"text": bad})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert "104.20%" in out[0]["detail"]
+    assert "Retargeting CTV" in out[0]["detail"]
+
+    # any completion widget, not just CTV
+    vid = """Video Completion Performance by Line Item
+Line Item                        25% Completion Rate
+Watsontown - Behavioral Video    101.00%
+"""
+    out = check_completion_rates({"text": vid})
+    assert out and out[0]["severity"] == "fail"
+
+    # percentages OUTSIDE a completion widget are none of its business
+    other = """Line Item Performance
+Some Line Item     140%    2,000
+"""
+    assert check_completion_rates({"text": other}) == []
+
+
+def test_only_real_devices_belong_in_the_device_breakout():
+    from app.checks.rules import check_devices_known
+
+    good = """Device Performance
+ Device Name        Description                       Impressions   Clicks    CTR
+Connected TV       An internet enabled device            41,115         15   0.04%
+Streaming Device   A stick/dongle device                 28,346          1   0.00%
+Mobile             A phone                               10,000          5   0.05%
+"""
+    assert check_devices_known({"text": good}) == []
+
+    junk = good + "msn.com            Some publisher                        1,000      2   0.20%\n"
+    out = check_devices_known({"text": junk})
+    assert len(out) == 1 and out[0]["severity"] == "warn"
+    assert "msn.com" in out[0]["detail"]
+
+
+def test_no_widget_check_fires_on_the_real_fixtures():
+    """These are known-good reports. A new rule that flags them is wrong about
+    the rule, not about the reports."""
+    import datetime as _dt
+    from app.checks import run_all
+
+    for f in ["watsontown", "central_penn", "centre_hills", "keystone_altoona",
+              "independence_ford", "salem_rv", "benton_rodeo"]:
+        r = run_all(FIXTURES / f"{f}.pdf", filename=f"July 2026_{f}_1234.pdf",
+                    period="2026-07",
+                    flight=(_dt.date(2024, 1, 1), _dt.date(2026, 7, 31)))
+        noisy = [x for x in r["findings"]
+                 if x["code"] in ("completion_over_100", "unknown_device",
+                                  "widget_missing")]
+        assert not noisy, f"{f}: {[x['title'] for x in noisy]}"

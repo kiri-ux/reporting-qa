@@ -10,8 +10,9 @@ import re
 from pathlib import Path
 
 from ..config import settings
-from .parser import (date_range, SKIP_LINE, Table, extract_tables, headline, meta_from_filename,
-                     meta_from_text, page_count, page_ink_pct, pdf_text, tokens)
+from .parser import (as_number, date_range, SKIP_LINE, Table, extract_tables, headline,
+                     meta_from_filename, meta_from_text, page_count, page_ink_pct,
+                     pdf_text, tokens)
 from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
 
 LINE_ITEM = re.compile(r"Line Item Performance$")
@@ -346,6 +347,214 @@ def check_date_range(ctx) -> list[dict]:
                f"so it should read {first.strftime(fmt)} to {last.strftime(fmt)}.")]
 
 
+
+# ---------------------------------------------------------------- completion
+PCT = re.compile(r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*%")
+
+# Where one widget's rows stop. The next heading is the obvious boundary, but
+# the PAGE FOOTER comes first whenever a widget ends near the bottom of a page
+# - and missing it swept a DOOH report's Site and App rows into its device
+# table, which then read as twenty-one unrecognised devices.
+WIDGET_END = re.compile(
+    r"(^\S.*(?:Performance|Publishers|Breakout|Screenshots)\s*$"
+    r"|Digital Marketing Report|Date range \w{3} \d{2}, \d{4})", re.M)
+
+
+def _widget_block(text: str, start: int, limit: int = 6000) -> str:
+    block = text[start:start + limit]
+    end = WIDGET_END.search(block)
+    return block[:end.start()] if end else block
+
+
+def check_completion_rates(ctx) -> list[dict]:
+    """No completion rate can exceed 100%.
+
+    A rate above 100 means more completions than impressions, which is
+    arithmetically impossible - it is a counting fault upstream, not a good
+    month. Every "Completion Performance" widget is checked, whatever product
+    it belongs to.
+    """
+    text = ctx.get("text") or ""
+    out, seen = [], set()
+    for m in re.finditer(r"^.*Completion Performance.*$", text, re.M):
+        block = _widget_block(text, m.end())
+        for line in block.split("\n"):
+            bad = [v for v in PCT.findall(line)
+                   if _num(v) is not None and _num(v) > 100.0]
+            if not bad:
+                continue
+            label = re.split(r"\s{2,}", line.strip())[0][:60]
+            key = (m.group(0).strip()[:60], label)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(_f("completion_over_100", "fail",
+                          "Completion rate above 100%",
+                          f"{m.group(0).strip()}: {label} shows "
+                          f"{', '.join(v + '%' for v in bad)}. More completions "
+                          f"than impressions is not possible."))
+    return out
+
+
+def _num(v: str):
+    try:
+        return float(v.replace(",", ""))
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------- devices
+# The devices TapClicks reports. Anything else in this table is a data fault -
+# a site name, a publisher, a blank - not a device someone watched an ad on.
+# Taken off the everything-sample's Device Performance table, which lists each
+# one with its own description: Connected Device is the DOOH billboard, and
+# Connected Audio is the smart speaker - both read as junk until you see them.
+KNOWN_DEVICES = {
+    "connected tv", "streaming device", "connected device", "connected audio",
+    "desktop", "mobile", "tablet", "smart tv", "set top box", "game console",
+    "other", "unknown",
+}
+
+
+def check_devices_known(ctx) -> list[dict]:
+    """Every row of Device Performance has to be an actual device."""
+    text = ctx.get("text") or ""
+    i = text.find("Device Performance")
+    if i < 0:
+        return []
+    block = _widget_block(text, i + len("Device Performance"), 3000)
+
+    odd = []
+    for line in block.split("\n"):
+        if not line.strip() or line.startswith((" ", "\t")):
+            continue
+        cells = re.split(r"\s{2,}", line.strip())
+        name = cells[0].strip()
+        if not name or name.lower() in ("device name", "device", "description"):
+            continue
+        if as_number(name) is not None:
+            continue
+        if name.lower() in KNOWN_DEVICES:
+            continue
+        if name not in odd:
+            odd.append(name)
+    if not odd:
+        return []
+    return [_f("unknown_device", "warn",
+               f"{len(odd)} unrecognised device{'s' if len(odd) > 1 else ''} "
+               f"in the device breakout",
+               "Not a device TapClicks reports: " + ", ".join(odd[:8]) +
+               ("..." if len(odd) > 8 else "") +
+               ". Known devices are " + ", ".join(sorted(KNOWN_DEVICES)) + ".")]
+
+
+# ---------------------------------------------------------------- widgets
+# Which widgets a product owes.
+#
+# The titles are the exact heading strings, taken off a 317-page sample that
+# carries every widget the report can produce. They are compared against whole
+# lines, not searched for inside them, because "Amazon Premium Site and App
+# Performance" contains "Site and App Performance" - a substring search would
+# let an Amazon-only report satisfy the generic site/app requirement.
+#
+# A widget is owed when EITHER the order says the product ran OR the report
+# itself carries that product's ad section. The report declaring a section is
+# the stronger signal of the two, and it keeps working on a report whose order
+# list has not loaded.
+W_CTV_PUBS   = "Top CTV Publishers"
+W_SITE_APP   = "Site and App Performance"
+W_AMZ_INV    = "Amazon Inventory Source Performance"
+W_AMZ_SITE   = "Amazon Premium Site and App Performance"
+W_YT_PLACE   = "YouTube+ Placement Performance"
+W_YT_CHAN    = "Top 10 YouTube Channel Performance"
+W_YTTV_CHAN  = "Top 10 YouTube TV Channel Performance"
+
+# (product codes, ad-section header, [widget titles], plain-English why)
+REQUIRED_WIDGETS: list[tuple] = [
+    ({"CTV", "CV"}, "CTV ADS",              [W_CTV_PUBS], "Connected TV"),
+    ({"SMC"},       "SOCIAL MIRROR CTV ADS", [W_CTV_PUBS], "Social Mirror CTV"),
+    ({"AD", "AV"},  "AMAZON ADS",           [W_AMZ_INV, W_AMZ_SITE], "Amazon Premium"),
+]
+
+# The ads section for a product, written as it appears in the page header
+# ("CTV ADS - PAGE 1"). Matched on the header line so a mention in body copy
+# cannot stand in for a section that is not there.
+SECTION = re.compile(r"^\s*([A-Z][A-Z0-9 &+/'.-]{2,60}?)\s+-\s+PAGE\s+\d+", re.M)
+
+BARCK = re.compile(r"^\s*BARCK\+", re.M)
+
+
+def _sections(text: str) -> set[str]:
+    return {m.group(1).strip() for m in SECTION.finditer(text)}
+
+
+def _heading_counts(text: str) -> dict[str, int]:
+    """How many times each heading appears, as a whole line of its own."""
+    out: dict[str, int] = {}
+    for line in text.split("\n"):
+        t = line.strip()
+        if t:
+            out[t] = out.get(t, 0) + 1
+    return out
+
+
+def check_required_widgets(ctx) -> list[dict]:
+    """Products that owe a particular widget have to actually carry it."""
+    from ..product_codes import code_for
+
+    text = ctx.get("text") or ""
+    if not text:
+        return []
+    codes = {code_for(p) for p in (ctx.get("products") or set())}
+    secs = _sections(text)
+    heads = _heading_counts(text)
+    out = []
+
+    def owed(title: str, n: int, why: str):
+        have = heads.get(title, 0)
+        if have >= n:
+            return
+        if n > 1:
+            detail = (f"This report runs {why}, and {n} {title} widgets are owed "
+                      f"- one per product. {have} on the report.")
+        else:
+            detail = (f"This report runs {why}, which should carry a {title} "
+                      f"widget. It is not on the report.")
+        out.append(_f("widget_missing", "fail", f"No {title} widget"
+                      if not have else f"Only {have} of {n} {title} widgets",
+                      detail))
+
+    # Widgets owed once per product family that ran.
+    wanted: dict[str, list[str]] = {}
+    for fam_codes, section, titles, why in REQUIRED_WIDGETS:
+        if not (codes & fam_codes or section in secs):
+            continue
+        for t in titles:
+            wanted.setdefault(t, []).append(why)
+    for title, whys in wanted.items():
+        owed(title, len(whys), " and ".join(whys))
+
+    # YouTube. A YouTube TV only campaign owes the TV channel widget and
+    # nothing else, which is why this is not in the table above: the report's
+    # own sections are what say which of the two ran.
+    yt_plus = "YOUTUBE+ ADS" in secs
+    yt_tv = "YOUTUBE TV ADS" in secs
+    if "YT" in codes and not (yt_plus or yt_tv):
+        yt_plus = True                      # ran YouTube, no section says which
+    if yt_plus:
+        owed(W_YT_PLACE, 1, "YouTube+")
+        owed(W_YT_CHAN, 1, "YouTube+")
+    if yt_tv:
+        owed(W_YTTV_CHAN, 1, "YouTube TV")
+
+    # BARCK+ targeting owes the generic site and app breakout. The report
+    # names its own BARCK+ widget, so this does not depend on knowing which
+    # products carry BARCK+ - if the targeting ran, the report says so.
+    if BARCK.search(text):
+        owed(W_SITE_APP, 1, "BARCK+ targeting")
+    return out
+
+
 # Every rule, with the plain-English claim it is making. The label is written
 # as the thing that is TRUE when the check passes, because that is how it is
 # read on the report page - a list of what was verified, not a list of rule
@@ -362,6 +571,9 @@ CHECKS: list[tuple] = [
     (check_geofence_names, "Every geo-fencing row has a business name"),
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
+    (check_completion_rates, "No completion rate is above 100%"),
+    (check_devices_known,  "Every row of the device breakout is an actual device"),
+    (check_required_widgets, "Every product carries the widgets it owes"),
 ]
 
 RULES = [fn for fn, _ in CHECKS]
@@ -386,6 +598,25 @@ def _rule_applies(rule, ctx) -> bool:
     if name in ("check_line_items", "check_creative", "check_device",
                 "check_row_math", "check_rate_ceiling"):
         return bool(ctx.get("tables"))
+    if name == "check_completion_rates":
+        return "Completion Performance" in (ctx.get("text") or "")
+    if name == "check_devices_known":
+        return "Device Performance" in (ctx.get("text") or "")
+    if name == "check_required_widgets":
+        # This one no longer needs the order list: a report carrying a CTV or
+        # Amazon or YouTube ads section has already declared what ran. It only
+        # abstains when nothing on the report owes a widget at all.
+        text = ctx.get("text") or ""
+        if BARCK.search(text):
+            return True
+        secs = _sections(text)
+        if secs & {s for _c, s, _t, _w in REQUIRED_WIDGETS} or \
+           secs & {"YOUTUBE+ ADS", "YOUTUBE TV ADS"}:
+            return True
+        from ..product_codes import code_for
+        codes = {code_for(p) for p in (ctx.get("products") or set())}
+        owed = {"YT"} | {c for cs, _s, _t, _w in REQUIRED_WIDGETS for c in cs}
+        return bool(codes & owed)
     if name == "check_geofence_names":
         # No geo-fencing on the report means nothing was verified. Reporting a
         # pass would claim every business name is filled in on a table that is
