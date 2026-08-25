@@ -17,7 +17,8 @@ from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
 from .quality import (check_blank_screenshots, check_conversion_names,
                       check_creative_names, check_social_mirror_sizes,
                       check_strategy_categorized, check_truncated_text,
-                      check_social_placement_totals, check_widget_errors,
+                      check_site_ctr, check_social_placement_totals,
+                      check_widget_errors, SITE_GRID,
                       line_item_names, creative_rows, PLACEMENT_GRID,
                       CONVERSION_HEADER, SOCIAL_MIRROR_GRID)
 
@@ -751,6 +752,7 @@ CHECKS: list[tuple] = [
     (check_widget_errors,   "No widget printed an error instead of its data"),
     (check_social_placement_totals,
      "Social placements add up to no more than their platform totals"),
+    (check_site_ctr,        "No site is clicking at a rate a person would not"),
 ]
 
 # Why a rule had nothing to do. "Nothing to check against" is true of every
@@ -776,6 +778,7 @@ SKIP_WHY = {
     "check_widget_errors": "",
     "check_social_mirror_sizes": "no Social Mirror creative grid on the report",
     "check_social_placement_totals": "no social placement grid on the report",
+    "check_site_ctr": "no site and app breakout on the report",
 }
 
 RULES = [fn for fn, _ in CHECKS]
@@ -830,6 +833,8 @@ def _rule_applies(rule, ctx) -> bool:
     if name == "check_social_mirror_sizes":
         return any(SOCIAL_MIRROR_GRID.search(t) for t, _n in
                    creative_rows(ctx.get("text") or ""))
+    if name == "check_site_ctr":
+        return bool(SITE_GRID.search(ctx.get("text") or ""))
     if name == "check_social_placement_totals":
         return bool(PLACEMENT_GRID.search(ctx.get("text") or ""))
     if name == "check_geofence_names":

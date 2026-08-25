@@ -88,12 +88,33 @@ def _startup():
     finally:
         db.close()
 
+    # Anything judged by older checking code gets re-read in the background.
+    # Without this a fixed rule only reaches the reports that arrive after the
+    # deploy, and everything already on the board keeps its wrong answer.
+    try:
+        from .recheck import start_sweeper
+        start_sweeper()
+    except Exception:
+        import traceback; traceback.print_exc()
+
 
 @app.get("/healthz")
 def healthz():
     """Includes the build so you can confirm what is actually live without
     trusting the dashboard, which looks identical either way."""
-    return {"ok": True, **version.info()}
+    out = {"ok": True, **version.info(), "rules": version.rules_version()}
+    # How many reports are still carrying an older answer. On a deploy that
+    # changed a rule this counts down; if it does not, the sweep is stuck and
+    # the board is showing findings the current code would not produce.
+    db = SessionLocal()
+    try:
+        from .recheck import stale_count
+        out["awaiting_recheck"] = stale_count(db)
+    except Exception as exc:  # noqa: BLE001
+        out["awaiting_recheck"] = f"unknown: {exc}"
+    finally:
+        db.close()
+    return out
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -724,6 +745,8 @@ async def replace_report(report_id: int, request: Request,
     rep.review_state = "new"
     rep.reviewed_at = None
     rep.reviewed_by = who.strip() or rep.reviewed_by
+    from .version import rules_version as _rv
+    rep.rules_version = _rv()
     db.commit()
     return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 
@@ -734,29 +757,24 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     if not rep:
         raise HTTPException(404)
     from .checks.rules import SKIP_WHY
+    from .version import rules_version
     return templates.TemplateResponse(request, "viewer.html",
                                       {"nav": "cycle", "rep": rep,
-                                       "skip_why": SKIP_WHY})
+                                       "skip_why": SKIP_WHY,
+                                       "stale": bool(rep.rules_version)
+                                       and rep.rules_version != rules_version()})
 
 
 @app.post("/report/{report_id}/recheck")
 def report_recheck(report_id: int, db: Session = Depends(get_db)):
-    """Run every check again against the file already on disk.
-
-    Findings are written once, at the moment a report arrives, and then stored.
-    So a deploy that fixes a rule does not fix the reports that rule already
-    got wrong - they keep showing yesterday's answer until something re-reads
-    the PDF. This is that something, and it needs no re-upload.
-    """
-    from .checks.rules import run_all
-    from .ingest import client_flight
-    from .roster import expected_products
+    """Re-read this one now, rather than waiting for the sweep to reach it."""
+    from .recheck import recheck
 
     rep = db.get(Report, report_id)
     if not rep:
         raise HTTPException(404)
-    path = Path(rep.stored_path or "")
-    if not path.exists():
+    out = recheck(db, rep, manual=True)
+    if not out.get("ok"):
         rep.findings = (rep.findings or []) + [{
             "code": "missing_file", "severity": "warn",
             "title": "The stored PDF is gone",
@@ -764,23 +782,6 @@ def report_recheck(report_id: int, db: Session = Depends(get_db)):
                       "on disk. Old PDFs are pruned after "
                       f"{settings.keep_pdf_months} months. Upload it again below."}]
         db.commit()
-        return RedirectResponse(f"/report/{report_id}/view", status_code=303)
-
-    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
-    flight = client_flight(db, rep.client, rep.account_ids)
-    result = run_all(path, filename=rep.filename, expected_products=exp,
-                     flight=flight, period=rep.period, market=rep.market or "")
-    rep.findings = result["findings"]
-    rep.checks = result.get("checks") or []
-    rep.severity = result["severity"]
-    rep.products = ", ".join(result.get("products") or [])
-    # An acceptance was given to a finding that may no longer exist, and a
-    # sign-off was given to a different answer. Both have to be re-earned.
-    rep.acked = []
-    if rep.review_state in ("reviewed", "waived"):
-        rep.review_state = "new"
-        rep.reviewed_at = None
-    db.commit()
     return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 
 

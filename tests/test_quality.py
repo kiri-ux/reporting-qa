@@ -358,3 +358,42 @@ def test_the_ctr_finding_carries_its_arithmetic():
     assert "Stated CTR" in labels
     assert "After leaving those out" in labels
     assert "Filtered clicks / filtered impressions" in labels
+
+
+# ------------------------------------------------------------ site CTR
+def test_a_site_clicking_at_46_percent_is_found():
+    """The real one: "Slicing Hero: Sword Master", 783 impressions, 365 clicks.
+    An ad under a button people are trying to press."""
+    text = ("PUBLISHERS & INVENTORY - PAGE 1\n"
+            "Site and App Performance\n"
+            " Name    Impressions   Clicks   CTR\n"
+            "imdb.com                     9,401     2    0.02%\n"
+            "T-Mobile Play                7,321   168    2.29%\n"
+            "Slicing Hero: Sword Master     783   365   46.62%\n")
+    out = q.check_site_ctr({"text": text})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert "Slicing Hero" in out[0]["detail"]
+    assert "T-Mobile Play" not in out[0]["detail"]
+
+
+def test_a_handful_of_impressions_is_not_evidence():
+    """9 clicks on 30 impressions is 30% and means nothing."""
+    text = ("Site and App Performance\n"
+            " Name   Impressions   Clicks   CTR\n"
+            "Tiny App      30     9   30.00%\n")
+    assert q.check_site_ctr({"text": text}) == []
+
+
+def test_the_samples_sites_are_all_below_the_ceiling(sample):
+    assert q.check_site_ctr({"text": sample}) == []
+
+
+def test_a_glued_widget_title_is_stripped_from_a_site_name():
+    """The last row of a grid absorbs the next widget's heading as if it were a
+    wrapped name, so "minefun.io" arrived as "minefun.io Top CTV Publishers"."""
+    text = ("Site and App Performance\n"
+            " Name   Impressions   Clicks   CTR\n"
+            "minefun.io Top CTV Publishers   95   24   25.26%\n")
+    out = q.check_site_ctr({"text": text})
+    assert "minefun.io:" in out[0]["detail"]
+    assert "Publishers" not in out[0]["detail"]

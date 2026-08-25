@@ -753,3 +753,82 @@ def check_social_placement_totals(ctx) -> list[dict]:
                               f"grid is a subset of the total, so it cannot be "
                               f"larger - a placement is being counted twice."))
     return out
+
+
+# ------------------------------------------------- 9. sites clicking too much
+# A site with a click-through rate in the double digits is not a good
+# placement, it is a click farm - almost always a game or utility app where
+# the ad sits under a button people are trying to press. "Slicing Hero: Sword
+# Master", 783 impressions and 365 clicks, is what it looks like.
+#
+# Both the printed rate and the arithmetic are tested, because these grids
+# print a CTR that does not always agree with their own two columns.
+SITE_GRID = re.compile(
+    r"^[ \t]*((?:[A-Z][\w+&'. -]*)?Site and App Performance)[ \t]*$", re.M)
+SITE_CTR_CEILING = 5.0
+
+
+# The last row of a grid absorbs the next widget's title as if it were a
+# wrapped name - "minefun.io" comes out as "minefun.io Top CTV Publishers".
+# Stripping it here rather than in grid_rows, because a line item name really
+# can end in "Performance Max" and losing that would break a different rule.
+GLUED_TITLE = re.compile(
+    r"\s+(?:Top\s+\d*\s*)?[A-Z][\w+&'. -]*?"
+    r"(?:Performance|Publishers|Breakout|Screenshots|Conversions)$")
+
+
+def site_rows(text: str) -> list[tuple[str, str, float, float, float | None]]:
+    """(widget, name, impressions, clicks, printed CTR) per site."""
+    out = []
+    for m in SITE_GRID.finditer(text):
+        title = m.group(1).strip()
+        for name, at in grid_rows(text, m.end()):
+            eol = text.find("\n", at)
+            line = text[at:eol if eol > 0 else len(text)]
+            cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
+            nums, pct = [], None
+            for c in cells[1:]:
+                if not NUMERIC.match(c):
+                    continue
+                try:
+                    v = float(c.rstrip("%").replace(",", "").lstrip("$"))
+                except ValueError:
+                    continue
+                if c.endswith("%"):
+                    pct = v
+                else:
+                    nums.append(v)
+            if len(nums) >= 2:
+                out.append((title, GLUED_TITLE.sub("", name).strip(),
+                            nums[0], nums[1], pct))
+    return out
+
+
+def check_site_ctr(ctx) -> list[dict]:
+    """No site should be clicking at a rate a person would not."""
+    text = ctx.get("text") or ""
+    bad = []
+    for _title, name, imps, clicks, printed in site_rows(text):
+        if imps < 50:
+            continue                # a handful of impressions makes any rate
+        real = clicks / imps * 100 if imps else 0.0
+        worst = max(real, printed or 0.0)
+        if worst <= SITE_CTR_CEILING:
+            continue
+        if printed is not None and abs(printed - real) > 0.05:
+            shown = (f"{name}: {clicks:,.0f} clicks on {imps:,.0f} impressions "
+                     f"is {real:.2f}% (the report prints {printed:.2f}%)")
+        else:
+            shown = (f"{name}: {clicks:,.0f} clicks on {imps:,.0f} impressions "
+                     f"is {real:.2f}%")
+        bad.append((worst, shown))
+    if not bad:
+        return []
+    bad.sort(reverse=True)
+    return [_f("site_ctr_high", "fail",
+               f"{len(bad)} site{'s' if len(bad) > 1 else ''} clicking above "
+               f"{SITE_CTR_CEILING:.0f}%",
+               "A double-digit rate on one placement is a click farm, not an "
+               "audience - usually a game or utility app where the ad sits "
+               "under a button people are trying to press: "
+               + _sample([s for _w, s in bad], 10))]

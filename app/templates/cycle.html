@@ -121,7 +121,16 @@
         </div>
 
         <div class="gfoot">
-          <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
+          {# Once the table below is already showing this partner, the link has
+             nothing left to do - it stayed blue and clicking it reloaded the
+             same page, which reads as broken. It becomes the way back out. #}
+          {% if filter_group == g.group %}
+            <a href="/cycle?period={{ period }}" class="showing"
+               title="Showing this partner's reports below - click to show them all">
+              Showing all {{ g.expected|length }} &times;</a>
+          {% else %}
+            <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}#reports">See reports</a>
+          {% endif %}
           {% if d and d.ok and d.share_url %}
             <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
               Client link{% if d.target == 'dropbox' %} (Dropbox){% endif %}</a>
@@ -167,7 +176,7 @@
 </section>
 
 {% if rows %}
-<section>
+<section id="reports">
   <div class="secbar">
     <h2 style="border:0;margin:0;padding:0">
       Reports{% if filter_group %} · {{ filter_group }}{% endif %}
@@ -282,6 +291,9 @@
 .wtag.t b{background:var(--plum)}
 .wtag.s b{background:var(--ok)}
 .gcard[hidden]{display:none}
+.gfoot .showing{color:var(--velocity);font-weight:700;background:var(--velocity-10);
+ padding:2px 9px;border-radius:12px;text-decoration:none}
+.gfoot .showing:hover{background:var(--velocity);color:#fff}
 .gtags{display:flex;flex-wrap:wrap;gap:5px}
 .gtags a{text-decoration:none}
 .pill.pdf{background:var(--velocity-10);color:var(--velocity);text-decoration:none;

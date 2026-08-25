@@ -12,12 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-22"
-BUILD_NOTES = ("An Investigate button on every arithmetic finding, showing the "
-               "numbers the rule used. The top-line CTR now accounts for CTV, "
-               "YouTube and PMax being left out of both halves. The device "
-               "breakout is measured against the top line, not a guessed "
-               "subset. Line items are read off the whole grid, not page one.")
+BUILD = "2026.08.25-23"
+BUILD_NOTES = ("Reports are re-checked automatically when the checking code "
+               "changes - no button needed. YouTube+ orders are no longer "
+               "filed under Video, which was failing those reports twice over. "
+               "A site clicking above 5% is flagged. See reports turns into "
+               "the way back out once it has done its job.")
 # ---------------------------------------------------------------------------
 
 
@@ -42,3 +42,36 @@ def label() -> str:
 def info() -> dict:
     return {"build": BUILD, "notes": BUILD_NOTES, "commit": commit(),
             "service": service()}
+
+
+# --------------------------------------------------------------- rules version
+# Findings are written once, when a report arrives, and then stored. A deploy
+# that fixes a rule does not reach back and fix the reports that rule already
+# got wrong - they keep showing yesterday's answer.
+#
+# So every report records the fingerprint of the checking code that judged it,
+# and anything stamped with an older one gets re-checked in the background.
+# The fingerprint is a hash of the source rather than a number somebody has to
+# remember to bump, because the one time it is forgotten is the deploy that
+# most needed it.
+def rules_fingerprint() -> str:
+    import hashlib
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parent / "checks"
+    h = hashlib.sha256()
+    for name in sorted(p.name for p in here.glob("*.py")):
+        h.update(name.encode())
+        h.update((here / name).read_bytes())
+    return h.hexdigest()[:16]
+
+
+_FINGERPRINT: str | None = None
+
+
+def rules_version() -> str:
+    """Cached: the source does not change while the process is running."""
+    global _FINGERPRINT
+    if _FINGERPRINT is None:
+        _FINGERPRINT = rules_fingerprint()
+    return _FINGERPRINT

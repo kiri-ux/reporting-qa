@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # period in the URL. Set it to "" to go back to following the calendar.
     default_period: str = "2026-07"
 
+    # Re-check reports in the background when the checking code changes. Off
+    # only if a deploy needs to stop the sweep for some reason - a stale report
+    # showing a fixed rule's old answer is the failure this prevents.
+    auto_recheck: bool = True
+
     notifications_enabled: bool = False
 
     slack_webhook_url: str = ""

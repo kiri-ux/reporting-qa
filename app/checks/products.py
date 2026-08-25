@@ -64,6 +64,12 @@ ORDER_PRODUCT_MAP = {
     "connected tv ads": "CTV",
     "amazon premium ctv + video ads": "CTV",
     "youtube video ads": "YouTube",
+    # All three are the YouTube section of the report. Without them the
+    # fallback found "video ads" inside "YouTube+ Video Ads" and filed a live
+    # YouTube order under Video.
+    "youtube+ video ads": "YouTube",
+    "youtube tv ads": "YouTube",
+    "search engine optimization+": "SEO",
     "pay-per-click ads": "PPC",
     "performance max ads": "Performance Max",
     "tiktok ads": "TikTok",
@@ -78,13 +84,37 @@ NOT_IN_MONTHLY_REPORT = {"SEO"}
 
 
 def map_order_product(name: str) -> str | None:
+    """The product an order line item is selling.
+
+    The fallback used to walk the map in insertion order and take the first
+    key that appeared anywhere inside the name. "video ads" sits inside
+    "YouTube+ Video Ads", so a live YouTube+ order was recorded as Video - and
+    the report was then failed twice over, once for a Video product that was
+    never running and once for the YouTube that was.
+
+    So the fallback goes longest key first, and a key only counts when it lands
+    on whole words. "video ads" no longer wins inside "youtube+ video ads",
+    because "youtube+ video ads" is longer and is tried first.
+    """
     key = re.sub(r"\s+", " ", (name or "").strip().lower())
+    if not key:
+        return None
     if key in ORDER_PRODUCT_MAP:
         return ORDER_PRODUCT_MAP[key]
-    for order_name, product in ORDER_PRODUCT_MAP.items():           # partial fallback
-        if order_name in key or key in order_name:
-            return product
+    for order_name in sorted(ORDER_PRODUCT_MAP, key=len, reverse=True):
+        if _whole(order_name, key) or _whole(key, order_name):
+            return ORDER_PRODUCT_MAP[order_name]
     return None
+
+
+def _whole(needle: str, haystack: str) -> bool:
+    """Is `needle` in `haystack` on word boundaries?
+
+    Without this "seo" matches inside "video ads" the moment the map grows a
+    short key, which is the same class of bug one letter smaller.
+    """
+    return re.search(r"(?<![a-z0-9])" + re.escape(needle) + r"(?![a-z0-9])",
+                     haystack) is not None
 
 
 def detect(text: str, tables) -> set[str]:

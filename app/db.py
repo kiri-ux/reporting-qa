@@ -95,6 +95,10 @@ class Report(Base):
     # stays on the report - it is a note about a known quirk, not a mistake -
     # but it stops counting against the severity.
     acked: Mapped[list] = mapped_column(JSON, default=list)
+    # The fingerprint of the checking code that produced these findings. A
+    # report stamped with an older one is re-checked in the background, because
+    # findings are written once and a fixed rule does not reach back on its own.
+    rules_version: Mapped[str] = mapped_column(String(32), default="", index=True)
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
 
@@ -318,6 +322,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("partners", "delivery_target", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("deliveries", "archive_url", "TEXT"),
     ("reports", "acked", "JSON"),
+    ("reports", "rules_version", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("reports", "checks", "JSON"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),

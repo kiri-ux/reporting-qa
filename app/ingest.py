@@ -297,6 +297,10 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         rep.severity = result["severity"]
         rep.findings = result["findings"]
         rep.checks = result.get("checks") or []
+        # Stamped with the code that judged it, so a later deploy knows whether
+        # this answer is still the current one.
+        from .version import rules_version
+        rep.rules_version = rules_version()
         db.flush()
         attach_owners(db, rep)
         if not replaced:

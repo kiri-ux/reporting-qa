@@ -145,6 +145,11 @@
     {% endif %}
 
     <h2 style="margin-top:22px">Re-run the checks</h2>
+    {% if stale %}
+      <p class="sub" style="font-size:12px;margin:0 0 8px;color:var(--warn)">
+        These findings came from older checking code. This report is queued for
+        an automatic re-check - the button does it now.</p>
+    {% endif %}
     {# The findings on a report are whatever the rules said the day it arrived.
        A deploy that fixes a rule does not reach back and fix them, so this is
        how a report gets a second opinion without being re-sent. #}
