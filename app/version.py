@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-17"
-BUILD_NOTES = ("The widget check is confirmed against a 317-page sample that "
-               "carries every widget the report can produce, and now fails "
-               "rather than warns. Connected Audio and Connected Device are "
-               "real devices. The page footer no longer reads as a table row.")
+BUILD = "2026.08.25-18"
+BUILD_NOTES = ("A product whose flight ended before the report's month is no "
+               "longer expected on it. An \"Only started\" button on the cycle "
+               "board hides the partners nothing has arrived for. Sign-off "
+               "keeps its three verdicts on one line and says what Waive does.")
 # ---------------------------------------------------------------------------
 
 

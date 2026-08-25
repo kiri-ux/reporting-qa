@@ -104,16 +104,28 @@
 
     <h2 style="margin-top:22px">Sign-off</h2>
     <form method="post" action="/report/{{ rep.id }}/review" class="signoff">
+      {# The name sits on its own line so the three verdicts stay on one row.
+         Wrapping split them two-and-one, which read as though Waive belonged
+         to something else. #}
       <input type="text" name="who" placeholder="Your name" value="{{ rep.reviewed_by }}">
-      <button class="mini ok" name="state" value="reviewed"
-              {% if rep.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
-      <button class="mini warn" name="state" value="needs_fix"
-              {% if rep.review_state == 'needs_fix' %}disabled{% endif %}>Needs fix</button>
-      {% if rep.effective_severity == 'fail' %}
-        <button class="mini" name="state" value="waived"
-                {% if rep.review_state == 'waived' %}disabled{% endif %}>Waive</button>
-      {% endif %}
+      <div class="verdicts">
+        <button class="mini ok" name="state" value="reviewed"
+                {% if rep.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
+        <button class="mini warn" name="state" value="needs_fix"
+                {% if rep.review_state == 'needs_fix' %}disabled{% endif %}>Needs fix</button>
+        {% if rep.effective_severity == 'fail' %}
+          <button class="mini" name="state" value="waived"
+                  title="Send it as it is. The failure stays on the record, but this report stops holding up the partner's link."
+                  {% if rep.review_state == 'waived' %}disabled{% endif %}>Waive</button>
+        {% endif %}
+      </div>
     </form>
+    {% if rep.effective_severity == 'fail' and rep.review_state != 'waived' %}
+      <p class="sub" style="font-size:12px;margin-top:6px;max-width:46ch">
+        <b>Waive</b> sends it as it is - for a failure you have looked at and
+        decided not to fix. The finding stays on the record, but the report
+        stops holding up its partner's link.</p>
+    {% endif %}
     {% if rep.reviewed_at %}
       <p class="sub" style="font-size:12.5px;margin-top:8px">
         {{ rep.review_state|replace('_', ' ')|title }} by
@@ -231,9 +243,10 @@ details[open] > .cksum::before{content:'▾ '}
  background:var(--surface);color:var(--ink)}
 .noteform textarea:focus{outline:none;border-color:var(--velocity);
  box-shadow:0 0 0 3px var(--velocity-10)}
-.signoff{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.signoff{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.verdicts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .signoff input{font:inherit;font-size:13px;padding:6px 11px;border:1px solid var(--line);
- border-radius:16px;background:var(--surface);color:var(--ink);width:110px}
+ border-radius:16px;background:var(--surface);color:var(--ink);width:150px}
 .mini.ok{border-color:var(--ok);color:var(--ok)}
 .mini.ok:hover:not(:disabled){background:var(--ok);color:#fff}
 .mini.warn{border-color:var(--warn);color:var(--warn)}

@@ -670,7 +670,7 @@ async def replace_report(report_id: int, request: Request,
         path = store / (rep.filename or f"report-{rep.id}.pdf")
     path.write_bytes(blob)
 
-    exp = expected_products(db, rep.client, rep.account_ids)
+    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
     flight = client_flight(db, rep.client, rep.account_ids)
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,

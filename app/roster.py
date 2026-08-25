@@ -226,10 +226,19 @@ def attach_owners(db: Session, report: Report) -> None:
     _fill_from_roster(db, report)
 
 
-def expected_products(db: Session, client: str, account_ids: str) -> set[str] | None:
+def expected_products(db: Session, client: str, account_ids: str,
+                     period: str | None = None) -> set[str] | None:
     """Products the client's qualifying orders say belong on this report.
+
     Returns None when the client is not on the order list, so the check stays
-    quiet rather than guessing."""
+    quiet rather than guessing.
+
+    The period filter is not optional in practice. A client with fourteen line
+    items across six years has products that stopped running in 2024 sitting
+    beside one that is still live, and without a date test every one of them is
+    "expected" - which is how a July 2026 report got failed for missing Mobile
+    Conquesting whose last line ended on New Year's Eve 2025.
+    """
     lines = db.scalars(select(OrderLine)).all()
     if not lines:
         return None
@@ -240,7 +249,25 @@ def expected_products(db: Session, client: str, account_ids: str) -> set[str] | 
         hit = [l for l in lines if norm and re.sub(r"[^a-z0-9]", "", l.client.lower()) == norm]
     if not hit:
         return None
+    if period:
+        # An empty result here is not the same as no order list. If every one
+        # of a client's products stopped before the period, the honest answer
+        # is "nothing was owed" - an empty set, which the check reads as a
+        # pass - not None, which it reads as "we cannot say".
+        hit = [l for l in hit if _ran_during(l, period)]
     return {l.product for l in hit if l.product}
+
+
+def _ran_during(line, period: str) -> bool:
+    """Did this line item's flight touch the report's month at all?"""
+    y, m = (int(x) for x in period.split("-"))
+    start = dt.date(y, m, 1)
+    end = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+    if line.ends_on and line.ends_on < start:
+        return False
+    if line.starts_on and line.starts_on > end:
+        return False
+    return True
 
 
 def completeness(db: Session, market: str, period: str) -> dict:

@@ -63,6 +63,12 @@
   <div class="tools">
     <input type="search" data-cards="glist" data-count="cnt-groups"
            placeholder="Search partners...">
+    {# 1,209 of 1,244 reports have not arrived yet, so most of this board is
+       partners nothing has happened to. One click hides them. #}
+    <button type="button" class="mini toggle" data-cardtoggle="glist"
+            data-key="arrived" aria-pressed="false"
+            title="Hide the partners nothing has arrived for yet">
+      Only started</button>
     <span class="count" id="cnt-groups"></span>
   </div>
   <div class="colfilters" data-cardfilters-for="glist"></div>
@@ -73,7 +79,8 @@
       <div class="gcard {% if g.ready %}done{% endif %}"
            data-partner="{{ g.group }}" data-buyer="{{ g.buyer }}"
            data-reporter="{{ g.reporter }}" data-trainer="{{ g.trainer }}"
-           data-status="{{ 'Good to go' if g.ready else 'Open' }}">
+           data-status="{{ 'Good to go' if g.ready else 'Open' }}"
+           data-arrived="{{ 1 if g.counts.missing < g.expected|length else 0 }}">
         <div class="ghead">
           <div>
             <h3 style="margin:0">{{ g.group }}</h3>

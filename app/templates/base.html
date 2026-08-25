@@ -255,6 +255,11 @@ tr[hidden]{display:none}
  background:var(--surface);color:var(--ink-2)}
 .mini:hover:not(:disabled){border-color:var(--velocity);color:var(--velocity)}
 .mini:disabled{opacity:.45;cursor:default}
+/* A pressed toggle has to look pressed, not just hovered - it stays on after
+   the pointer leaves, and an unfilled outline reads as "off". */
+.mini.toggle{white-space:nowrap}
+.mini.toggle.on{background:var(--velocity);border-color:var(--velocity);color:#fff}
+.mini.toggle.on:hover{color:#fff;filter:brightness(1.08)}
 .btn:disabled{opacity:.55;cursor:default}
 .spin{display:inline-block;width:11px;height:11px;margin-right:7px;border-radius:50%;
  border:2px solid var(--velocity-50);border-top-color:var(--velocity);
@@ -474,9 +479,23 @@ body.fit .pdfwrap object{height:100%}
     });
     var total = cards.length, selects = [], t;
 
+    // Toggles are plain on/off filters that live outside the select row -
+    // "only the partners something has arrived for" is one click, not a
+    // dropdown you have to open and read.
+    var toggles = Array.prototype.slice.call(
+      document.querySelectorAll('[data-cardtoggle="' + box.dataset.cards + '"]'));
+    toggles.forEach(function (t) {
+      t.addEventListener('click', function () {
+        t.classList.toggle('on');
+        t.setAttribute('aria-pressed', t.classList.contains('on') ? 'true' : 'false');
+        run();
+      });
+    });
+
     var run = function () {
       var terms = box.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
       var picks = selects.filter(function (s) { return s.el.chosen.length; });
+      var ons = toggles.filter(function (t) { return t.classList.contains('on'); });
       var shown = 0;
       cards.forEach(function (c) {
         var hit = terms.every(function (w) { return c.hay.indexOf(w) !== -1; })
@@ -484,7 +503,8 @@ body.fit .pdfwrap object{height:100%}
             var want = s.el.chosen;
             return (c.d[s.key] || '').split(/\s*,\s*/)
               .some(function (v) { return want.indexOf(v.trim()) !== -1; });
-          });
+          })
+          && ons.every(function (t) { return c.d[t.dataset.key] === '1'; });
         c.el.hidden = !hit;
         if (hit) shown++;
       });
@@ -518,6 +538,9 @@ body.fit .pdfwrap object{height:100%}
         clear.addEventListener('click', function () {
           box.value = '';
           selects.forEach(function (s) { s.el.reset(); });
+          toggles.forEach(function (t) {
+            t.classList.remove('on'); t.setAttribute('aria-pressed', 'false');
+          });
           run();
         });
         wrap.appendChild(clear);
@@ -593,6 +616,9 @@ body.fit .pdfwrap object{height:100%}
         clear.addEventListener('click', function () {
           box.value = '';
           selects.forEach(function (s) { s.el.reset(); });
+          toggles.forEach(function (t) {
+            t.classList.remove('on'); t.setAttribute('aria-pressed', 'false');
+          });
           run();
         });
         wrap.appendChild(clear);

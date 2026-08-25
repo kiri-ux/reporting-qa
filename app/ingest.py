@@ -251,7 +251,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         path = store / safe
         path.write_bytes(blob)
         meta_guess = meta_from_filename(name)
-        exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"])
+        exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"],
+                                period=batch.period)
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
         try:
             result = run_all(path, filename=name, expected_products=exp,
