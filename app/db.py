@@ -151,7 +151,12 @@ class Delivery(Base):
     reports: Mapped[int] = mapped_column(Integer, default=0)
     bytes: Mapped[int] = mapped_column(Integer, default=0)
     local_path: Mapped[str] = mapped_column(String(1024), default="")
+    # The link handed to the client. For a market that archives to Drive but
+    # delivers by Dropbox, this is the Dropbox one.
     share_url: Mapped[str] = mapped_column(Text, default="")
+    # Where the same reports were filed internally. Usually the Drive folder,
+    # and the same as share_url when Drive is also what the client gets.
+    archive_url: Mapped[str] = mapped_column(Text, default="")
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     message: Mapped[str] = mapped_column(Text, default="")
 
@@ -264,6 +269,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "review_note", "TEXT DEFAULT '' NOT NULL"),
     ("partners", "partner_group", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("partners", "delivery_target", "VARCHAR(32) DEFAULT '' NOT NULL"),
+    ("deliveries", "archive_url", "TEXT"),
 ]
 
 

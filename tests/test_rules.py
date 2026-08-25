@@ -779,3 +779,163 @@ def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path)
     # the shared thing is the cycle folder, and the link points at it
     assert shared == [cycle_id]
     assert url.endswith(cycle_id)
+
+
+def test_seven_mountains_archives_to_drive_but_shares_dropbox(monkeypatch, tmp_path):
+    """Archive and client link are two different destinations.
+
+    Every market's reports are filed in the shared drive - that is the internal
+    record and it does not change. What the CLIENT is handed is separate: the
+    Drive folder for 199 markets, a Dropbox link for the seven 7 Mountains
+    ones. A Dropbox market therefore uploads twice; the Drive copy is never
+    skipped.
+    """
+    from app import delivery as dmod
+    from app.board import Expected, GroupRow
+    from app.db import Report, SessionLocal, init_db
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'d.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    calls = []
+    monkeypatch.setattr(dmod, "upload_drive_folder",
+                        lambda g, p, l: (calls.append("drive"),
+                                         ("https://drive.google.com/drive/folders/DRV",
+                                          "filed in Drive", 2))[1])
+    monkeypatch.setattr(dmod, "upload_dropbox_folder",
+                        lambda g, p, l: (calls.append("dropbox"),
+                                         ("https://www.dropbox.com/scl/fo/XYZ",
+                                          "shared on Dropbox", 2))[1])
+    monkeypatch.setattr(type(dmod.settings), "delivery_configured",
+                        property(lambda self: {"drive": True, "dropbox": True}))
+
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+
+    def group_for(market, target):
+        e = Expected(market=market, group=market, client="A Client", kind="monthly",
+                     report=Report(severity="pass", review_state="reviewed",
+                                   findings=[], stored_path=str(pdf)))
+        return GroupRow(market, target, [e])
+
+    # --- a 7 Mountains market: both, and the client link is Dropbox
+    monkeypatch.setattr(dmod, "by_group",
+                        lambda *a, **k: [group_for("7 Mountains PA State College", "dropbox")])
+    rec = dmod.deliver(db, "2026-08", "7 Mountains PA State College")
+    assert rec.ok, rec.message
+    assert calls == ["drive", "dropbox"], f"got {calls}"
+    assert "dropbox.com" in rec.share_url, "client was given the wrong link"
+    assert "drive.google.com" in rec.archive_url, "nothing was archived to Drive"
+
+    # --- any other market: Drive only, and that is also the client link
+    calls.clear()
+    monkeypatch.setattr(dmod, "by_group",
+                        lambda *a, **k: [group_for("Cape Cod Broadcasting", "")])
+    rec = dmod.deliver(db, "2026-08", "Cape Cod Broadcasting")
+    assert rec.ok, rec.message
+    assert calls == ["drive"], f"Dropbox was used for a non-7-Mountains market: {calls}"
+    assert rec.share_url == rec.archive_url
+    assert "drive.google.com" in rec.share_url
+
+
+def test_a_dropbox_failure_does_not_lose_the_drive_copy(monkeypatch, tmp_path):
+    """If Dropbox fails, the reports are still filed in Drive and the message
+    says so - otherwise it reads as though nothing was delivered at all."""
+    from app import delivery as dmod
+    from app.board import Expected, GroupRow
+    from app.db import Report
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'f.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    def boom(*a, **k):
+        raise RuntimeError("insufficient_scope")
+
+    monkeypatch.setattr(dmod, "upload_drive_folder",
+                        lambda g, p, l: ("https://drive.google.com/drive/folders/DRV",
+                                         "filed", 2))
+    monkeypatch.setattr(dmod, "upload_dropbox_folder", boom)
+    monkeypatch.setattr(type(dmod.settings), "delivery_configured",
+                        property(lambda self: {"drive": True, "dropbox": True}))
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+    e = Expected(market="7 Mountains KY", group="7 Mountains KY", client="C",
+                 kind="monthly", report=Report(severity="pass", review_state="reviewed",
+                                               findings=[], stored_path=str(pdf)))
+    monkeypatch.setattr(dmod, "by_group",
+                        lambda *a, **k: [GroupRow("7 Mountains KY", "dropbox", [e])])
+
+    rec = dmod.deliver(db, "2026-08", "7 Mountains KY")
+    assert not rec.ok
+    assert "filed in Drive" in rec.message
+    assert "insufficient_scope" in rec.message
+    assert rec.archive_url.endswith("DRV"), "the Drive copy was not recorded"
+
+
+def test_retention_frees_the_disk_but_keeps_the_record(tmp_path, monkeypatch):
+    """A cycle is ~1.6 GB of PDFs. The findings and sign-offs must survive the
+    file being deleted, because those are the record - the PDF itself lives in
+    the shared drive by then."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'r.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("KEEP_PDF_MONTHS", "4")
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import ingest as imod
+    importlib.reload(imod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    today = dt.date.today()
+    def months_back(n):
+        y, m = today.year, today.month - n
+        while m <= 0:
+            y, m = y - 1, m + 12
+        return f"{y:04d}-{m:02d}"
+
+    b = db_mod.Batch(market="M", period=months_back(0)); db.add(b); db.flush()
+    keep, drop = [], []
+    for n, bucket in ((0, keep), (2, keep), (6, drop), (14, drop)):
+        f = tmp_path / f"r{n}.pdf"
+        f.write_bytes(b"x" * 5000)
+        r = db_mod.Report(batch_id=b.id, period=months_back(n), client=f"C{n}",
+                          filename=f.name, stored_path=str(f), severity="fail",
+                          review_state="reviewed", reviewed_by="Jacob",
+                          findings=[{"title": "Device breakout under total"}])
+        db.add(r); bucket.append((r, f))
+    db.commit()
+
+    res = imod.prune_old_pdfs(db)
+    assert res["files"] == 2, f"pruned {res['files']}"
+    assert res["freed"] == 10000
+
+    for r, f in keep:
+        assert f.exists(), f"{r.period} was deleted and should not have been"
+        assert r.stored_path
+    for r, f in drop:
+        assert not f.exists(), f"{r.period} should have been deleted"
+        db.refresh(r)
+        assert r.stored_path == "", "stored_path should be cleared"
+        # the record itself survives
+        assert r.severity == "fail"
+        assert r.reviewed_by == "Jacob"
+        assert r.findings[0]["title"] == "Device breakout under total"
+
+    # 0 means keep everything
+    monkeypatch.setattr(imod.settings, "keep_pdf_months", 0)
+    assert imod.prune_old_pdfs(db)["files"] == 0

@@ -15,7 +15,8 @@ from . import brand, version
 from .config import settings
 from .db import (Batch, Inbound, OrderLine, OrderSync, Partner, Report,
                  SessionLocal, init_db)
-from .ingest import (finish_batch, parse_postmark, process_batch, sweep_stale)
+from .ingest import (finish_batch, parse_postmark, process_batch,
+                    prune_old_pdfs, sweep_stale)
 from .orders_s3 import last_sync, sync as sync_orders
 from .roster import completeness, import_orders
 
@@ -420,6 +421,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     from .delivery import latest_deliveries
 
     period = period or current_period()
+    prune_old_pdfs(db)          # cheap, and keeps the disk from filling silently
     cyc = cycle_for(period)
     exp = expected_for(db, period)
     groups = by_group(db, period, exp)

@@ -292,48 +292,69 @@ def deliver(db: Session, period: str, group_name: str, *,
                        message=f"Not ready: {blocking}.")
         db.add(rec); db.commit(); return rec
 
-    target = group.target or settings.delivery_target
+    # ARCHIVE AND CLIENT LINK ARE TWO DIFFERENT THINGS.
+    #
+    # Every market's reports are filed in the shared drive, which is the
+    # internal record. What the client is handed is separate: usually that same
+    # Drive folder, but the 7 Mountains markets get a Dropbox link instead. So
+    # a Dropbox market uploads twice - once to archive, once to share - rather
+    # than the Drive copy being skipped.
+    share_to = group.target or settings.delivery_target
     label = dt.date.fromisoformat(period + "-01").strftime("%Y-%m %B")
+    archive_url, share_url, message, n = "", "", "", 0
 
-    if target in ("drive", "dropbox"):
-        try:
-            fn = upload_drive_folder if target == "drive" else upload_dropbox_folder
-            url, message, n = fn(group, period, label)
-        except ModuleNotFoundError as exc:
-            db.rollback()
-            rec = Delivery(period=period, group=group_name, target=target, ok=False,
-                           message=f"The {target} library is not installed on this "
-                                   f"deploy ({exc.name}). Redeploy so "
-                                   f"requirements.txt is picked up.")
-            db.add(rec); db.commit(); return rec
-        except Exception as exc:  # noqa: BLE001
-            import traceback
-            traceback.print_exc()
-            db.rollback()
-            rec = Delivery(period=period, group=group_name, target=target, ok=False,
-                           message=f"Upload failed: {type(exc).__name__}: {exc}")
-            db.add(rec); db.commit(); return rec
-        rec = Delivery(period=period, group=group_name, target=target, reports=n,
-                       share_url=url, ok=True, message=message)
+    def fail(msg: str) -> Delivery:
+        db.rollback()
+        rec = Delivery(period=period, group=group_name, target=share_to,
+                       ok=False, message=msg, archive_url=archive_url)
         db.add(rec); db.commit()
         return rec
 
-    # No cloud target: build the zip and keep it here to download.
+    if settings.delivery_configured["drive"]:
+        try:
+            archive_url, drive_msg, n = upload_drive_folder(group, period, label)
+        except ModuleNotFoundError as exc:
+            return fail(f"The Google library is not installed on this deploy "
+                        f"({exc.name}). Redeploy so requirements.txt is picked up.")
+        except Exception as exc:  # noqa: BLE001
+            import traceback; traceback.print_exc()
+            return fail(f"Filing to Drive failed: {type(exc).__name__}: {exc}")
+        share_url, message = archive_url, drive_msg
+
+    if share_to == "dropbox":
+        try:
+            share_url, dbx_msg, n2 = upload_dropbox_folder(group, period, label)
+            n = n or n2
+        except ModuleNotFoundError as exc:
+            return fail(f"Reports are filed in Drive, but the Dropbox library is "
+                        f"not installed ({exc.name}). Redeploy so requirements.txt "
+                        f"is picked up.")
+        except Exception as exc:  # noqa: BLE001
+            import traceback; traceback.print_exc()
+            return fail(f"Reports are filed in Drive"
+                        f"{' at ' + archive_url if archive_url else ''}, but the "
+                        f"Dropbox upload failed: {type(exc).__name__}: {exc}")
+        message = (f"{dbx_msg} Also filed in Drive." if archive_url else dbx_msg)
+
+    if share_url:
+        rec = Delivery(period=period, group=group_name, target=share_to, reports=n,
+                       share_url=share_url, archive_url=archive_url, ok=True,
+                       message=message)
+        db.add(rec); db.commit()
+        return rec
+
+    # Nothing configured: build the zip and keep it here to download.
     out_dir = settings.data_dir / "deliveries" / period
     try:
         path, n = build_zip(group, period, out_dir)
     except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        rec = Delivery(period=period, group=group_name, target=target, ok=False,
-                       message=f"Could not build the zip: {type(exc).__name__}: {exc}")
-        db.add(rec); db.commit(); return rec
+        return fail(f"Could not build the zip: {type(exc).__name__}: {exc}")
     if n == 0:
-        rec = Delivery(period=period, group=group_name, target=target, ok=False,
-                       message="Every report is marked ready but none has a stored PDF.")
-        db.add(rec); db.commit(); return rec
-    rec = Delivery(period=period, group=group_name, target=target, reports=n,
+        return fail("Every report is marked ready but none has a stored PDF.")
+    rec = Delivery(period=period, group=group_name, target="local", reports=n,
                    bytes=path.stat().st_size, local_path=str(path), ok=True,
-                   message="Zip built and kept here for download.")
+                   message="Zip built and kept here for download. Set up Drive or "
+                           "Dropbox to deliver it automatically.")
     db.add(rec); db.commit()
     return rec
 

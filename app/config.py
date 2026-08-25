@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     dropbox_refresh_token: str = ""
     dropbox_folder: str = "/Vici Reports"
 
+    # How many months of report PDFs to keep on the disk. Once delivery is
+    # wired up the shared drive holds the archive, so what is here is a cache
+    # for the viewer and the packager. 0 keeps everything.
+    keep_pdf_months: int = 4
+
     # device breakout legitimately excludes these products
     device_excluded_products: str = "Mobile Conquesting,PPC,YouTube,LinkedIn,Performance Max"
     # creative types that never carry a preview image

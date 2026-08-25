@@ -94,8 +94,11 @@
           <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
           {% if d and d.ok and d.share_url %}
             <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
-              Open shared link</a>
-            <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>
+              Client link{% if d.target == 'dropbox' %} (Dropbox){% endif %}</a>
+            {% if d.archive_url and d.archive_url != d.share_url %}
+              <a href="{{ d.archive_url }}" target="_blank" rel="noopener">In Drive</a>
+            {% endif %}
+            <span class="acct">{{ d.reports }} file{{ 's' if d.reports != 1 }}</span>
           {% elif d and d.ok %}
             <a class="btn gold" href="/delivery/{{ d.id }}/file">Download zip</a>
             <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>

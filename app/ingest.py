@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 import uuid
 import zipfile
@@ -14,8 +15,10 @@ from .checks import run_all
 from .checks.parser import meta_from_filename
 from .config import settings
 from .db import Batch, Report
-from .roster import attach_owners, completeness, expected_products
 from .notify import post_slack, send_digest
+from .roster import attach_owners, completeness, expected_products
+
+log = logging.getLogger("reportqa.ingest")
 
 # Subjects and filenames name the market inconsistently: "7MOU SG",
 # "7 Mountains SG", "Selinsgrove". Normalise them all to the tracker's spelling
@@ -156,6 +159,53 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     if notify:
         finish_batch(db, batch.id)
     return batch
+
+
+def prune_old_pdfs(db: Session) -> dict:
+    """Delete stored PDFs past the retention window, keep every check result.
+
+    A cycle is roughly 1.6 GB of PDFs. Left alone that fills a 10 GB disk in
+    six months, and a full disk does not announce itself - it shows up as
+    unrelated write failures somewhere else entirely. The Report rows, their
+    findings and every sign-off stay; only the file goes, and the archive in
+    the shared drive is the copy that matters by then.
+    """
+    from sqlalchemy import select
+    months = settings.keep_pdf_months
+    if months <= 0:
+        return {"freed": 0, "files": 0}
+
+    today = dt.date.today()
+    y, m = today.year, today.month - months
+    while m <= 0:
+        y, m = y - 1, m + 12
+    cutoff = f"{y:04d}-{m:02d}"
+
+    freed = files = 0
+    rows = db.scalars(select(Report).where(Report.stored_path != "",
+                                           Report.period < cutoff)).all()
+    for r in rows:
+        p = Path(r.stored_path)
+        try:
+            if p.exists():
+                freed += p.stat().st_size
+                p.unlink()
+                files += 1
+        except OSError:
+            continue
+        r.stored_path = ""
+    if files:
+        db.commit()
+        log.info("pruned %d report PDFs before %s, freed %.1f MB",
+                 files, cutoff, freed / 1048576)
+    # empty batch directories left behind
+    for d in sorted((settings.data_dir).glob("batch-*")):
+        try:
+            if d.is_dir() and not any(d.iterdir()):
+                d.rmdir()
+        except OSError:
+            pass
+    return {"freed": freed, "files": files, "cutoff": cutoff}
 
 
 def sweep_stale(db: Session) -> int:
