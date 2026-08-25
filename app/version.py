@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-24"
-BUILD_NOTES = ("Filter menus drop the count column where every count is 1, "
-               "which was the whole Partner list. Everything from -23: "
-               "automatic re-checking, the YouTube+ product fix, the 5% site "
-               "rule, and See reports turning into the way back out.")
+BUILD = "2026.08.25-25"
+BUILD_NOTES = ("A video or audio product with no completion rate anywhere in "
+               "its section now fails - Video, CTV, Social Mirror CTV, Online "
+               "Audio, YouTube+, YouTube TV and Amazon Premium Video. Display, "
+               "DOOH and Amazon display are not asked for one.")
 # ---------------------------------------------------------------------------
 
 

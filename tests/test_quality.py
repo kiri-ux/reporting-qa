@@ -397,3 +397,94 @@ def test_a_glued_widget_title_is_stripped_from_a_site_name():
     out = q.check_site_ctr({"text": text})
     assert "minefun.io:" in out[0]["detail"]
     assert "Publishers" not in out[0]["detail"]
+
+
+# ------------------------------------------- video and audio owe a rate
+def test_the_sample_reports_completion_for_every_watched_product(sample):
+    """Every video and audio section of the everything-sample carries it."""
+    assert q.check_completion_present({"text": sample}) == []
+
+
+def test_a_video_section_with_no_completion_is_found():
+    text = ("VIDEO ADS - PAGE 1\n"
+            "Video Creative Performance\n"
+            "Preview   Creative Name   Impressions   Clicks   CTR\n"
+            "          spot.mp4          1,000   10   1.00%\n")
+    out = q.check_completion_present({"text": text})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert "Video" in out[0]["detail"]
+
+
+def test_an_online_audio_section_with_no_completion_is_found():
+    text = ("ONLINE AUDIO ADS - PAGE 1\n"
+            "Online Audio Creative Performance\n"
+            "Creative Name   Impressions   Clicks   CTR\n"
+            "spot.mp3            2,762    0   0.00%\n")
+    out = q.check_completion_present({"text": text})
+    assert "Online Audio" in out[0]["detail"]
+
+
+def test_completion_reported_as_a_column_counts(sample):
+    """Social Mirror CTV has no completion WIDGET - its rate is a column inside
+    the creative grid. A list of exact widget titles would have failed it."""
+    body = q.section_bodies(sample)["SOCIAL MIRROR CTV ADS"]
+    assert "Completion Performance" not in body
+    assert "Video Completion Rate" in body
+    assert q.check_completion_present({"text": sample}) == []
+
+
+def test_display_and_dooh_do_not_owe_a_completion_rate():
+    """Nothing gets watched to the end on a display banner or a billboard."""
+    text = ("DISPLAY ADS - PAGE 1\nDisplay Creative Performance\n"
+            "DOOH ADS - PAGE 1\nDOOH Creative Performance\n")
+    assert q.check_completion_present({"text": text}) == []
+
+
+def test_amazon_display_alone_does_not_owe_one():
+    """Amazon Premium Display shares the section and has nothing to complete."""
+    text = ("AMAZON ADS - PAGE 1\n"
+            "Amazon Premium Display Creative Performance\n"
+            "Creative Name   Preview Link   Impressions   Clicks   CTR\n"
+            "banner.jpg      Click to View     1,000   10   1.00%\n")
+    assert q.check_completion_present({"text": text}) == []
+
+
+def test_amazon_video_in_the_same_section_does_owe_one():
+    text = ("AMAZON ADS - PAGE 1\n"
+            "Amazon Premium Video Creative Performance\n"
+            "Creative Name   Preview Link   Impressions   Clicks   CTR\n"
+            "spot.mp4        Click to View     1,000   10   1.00%\n")
+    out = q.check_completion_present({"text": text})
+    assert len(out) == 1 and "Amazon Premium Video" in out[0]["detail"]
+
+
+# The older template prints no section banners at all, so there is nothing to
+# look inside and the question has to be asked of the whole report.
+def test_a_report_with_no_section_banners_falls_back_to_its_products():
+    out = q.check_completion_present(
+        {"text": "Digital Marketing Report\nCTV Creative Performance\n",
+         "products": {"CTV", "Display"}})
+    assert len(out) == 1 and "CTV" in out[0]["detail"]
+
+
+def test_the_fallback_is_satisfied_by_the_word_anywhere():
+    out = q.check_completion_present(
+        {"text": "Video Completion Performance by Line Item\n",
+         "products": {"Video"}})
+    assert out == []
+
+
+def test_the_fallback_says_nothing_without_a_watched_product():
+    assert q.check_completion_present(
+        {"text": "Display Creative Performance\n",
+         "products": {"Display", "Mobile Conquesting"}}) == []
+
+
+def test_both_real_fixtures_with_video_report_their_completion():
+    """central_penn runs CTV, watsontown runs CTV and Video. Both print it."""
+    from app.checks.parser import pdf_text
+    for stem in ("central_penn", "watsontown"):
+        f = Path(__file__).parent / "fixtures" / f"{stem}.pdf"
+        if not f.exists():
+            pytest.skip("fixture missing")
+        assert "Completion" in pdf_text(f)

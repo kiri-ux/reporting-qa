@@ -152,8 +152,11 @@ def widget_rows(text: str, title_test) -> list[tuple[str, str, int]]:
 
 
 # ---------------------------------------------------------------- findings
-def _f(code, sev, title, detail) -> dict:
-    return {"code": code, "severity": sev, "title": title, "detail": detail}
+def _f(code, sev, title, detail, trace=None) -> dict:
+    out = {"code": code, "severity": sev, "title": title, "detail": detail}
+    if trace:
+        out["trace"] = [{"label": l, "value": v} for l, v in trace]
+    return out
 
 
 def _sample(items: list[str], n: int = 8) -> str:
@@ -832,3 +835,112 @@ def check_site_ctr(ctx) -> list[dict]:
                "audience - usually a game or utility app where the ad sits "
                "under a button people are trying to press: "
                + _sample([s for _w, s in bad], 10))]
+
+
+# ------------------------------------------- 10. video and audio owe a rate
+# Anything a person watches or listens to has a completion rate, and the client
+# is paying for the watching. A video or audio section with no completion
+# figures anywhere in it is a report that cannot answer the one question those
+# products exist to answer.
+#
+# The test is the word "Completion" appearing anywhere inside that product's own
+# ads section, rather than a list of exact widget titles. TapClicks reports it
+# five different ways - a widget for Video and Online Audio ("Video Completion
+# Performance by Line Item"), a strategy grid for CTV, a column inside the
+# creative grid for Social Mirror CTV - and a title list would have to know all
+# five and stay right as they change.
+COMPLETION_OWED = (
+    ("VIDEO ADS", None),
+    ("CTV ADS", None),
+    ("SOCIAL MIRROR CTV ADS", None),
+    ("ONLINE AUDIO ADS", None),
+    ("YOUTUBE+ ADS", None),
+    ("YOUTUBE TV ADS", None),
+    # Amazon Premium Display sits in the same section and has nothing to
+    # complete, so this one is only owed when the video half is running.
+    ("AMAZON ADS", re.compile(r"Amazon Premium (?:Video|OTT)", re.I)),
+)
+
+FRIENDLY_SECTION = {
+    "VIDEO ADS": "Video",
+    "CTV ADS": "CTV",
+    "SOCIAL MIRROR CTV ADS": "Social Mirror CTV",
+    "ONLINE AUDIO ADS": "Online Audio",
+    "YOUTUBE+ ADS": "YouTube+",
+    "YOUTUBE TV ADS": "YouTube TV",
+    "AMAZON ADS": "Amazon Premium Video",
+}
+
+
+def section_bodies(text: str) -> dict[str, str]:
+    """Everything printed under each page-header section, joined.
+
+    A section runs over many pages and its pages are not contiguous, so this
+    collects all of them - "VIDEO ADS - PAGE 1" and "VIDEO ADS - SUMMARY GRIDS"
+    are the same section and the completion widget can be on either.
+    """
+    heads = list(PAGE_HEADER.finditer(text))
+    out: dict[str, list[str]] = {}
+    for i, m in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        out.setdefault(m.group(1).strip(), []).append(text[m.start():end])
+    return {k: "".join(v) for k, v in out.items()}
+
+
+# Products that owe a completion rate, named the way `detect` names them. Used
+# on the older template that prints no "SECTION - PAGE n" banners at all, where
+# there are no sections to look inside.
+WATCHED_PRODUCTS = ("Video", "CTV", "Social Mirror CTV", "Online Audio", "YouTube")
+
+
+def check_completion_present(ctx) -> list[dict]:
+    """Every video and audio product has to report how much got watched."""
+    text = ctx.get("text") or ""
+    bodies = section_bodies(text)
+    if not any(sec in bodies for sec, _o in COMPLETION_OWED):
+        return _completion_without_sections(ctx, text)
+    missing, trace = [], []
+    for section, only_if in COMPLETION_OWED:
+        body = bodies.get(section)
+        if body is None:
+            continue
+        if only_if is not None and not only_if.search(body):
+            continue
+        name = FRIENDLY_SECTION.get(section, section.title())
+        if "Completion" in body:
+            trace.append((name, "completion figures found in its section"))
+        else:
+            missing.append(name)
+            trace.append((name, "no completion figures anywhere in its section"))
+    if not missing:
+        return []
+    return [_f("completion_missing", "fail",
+               f"{len(missing)} product{'s' if len(missing) > 1 else ''} with no "
+               f"completion rate",
+               "The client is paying for the watching and listening, and this "
+               "report does not say how much of it happened. No completion "
+               "figures anywhere in the section for: " + _sample(missing) + ".",
+               trace)]
+
+
+def _completion_without_sections(ctx, text: str) -> list[dict]:
+    """The same question on a report that prints no section banners.
+
+    Several of these templates exist and they carry no "VIDEO ADS - PAGE 1"
+    headers, so there is no section to look inside. All that is left is which
+    products the report shows and whether the word appears anywhere, which
+    cannot say WHICH product is short - only that something is.
+    """
+    watched = sorted(set(ctx.get("products") or ()) & set(WATCHED_PRODUCTS))
+    if not watched or "Completion" in text:
+        return []
+    return [_f("completion_missing", "fail",
+               f"{len(watched)} product{'s' if len(watched) > 1 else ''} with no "
+               f"completion rate",
+               "The client is paying for the watching and listening, and this "
+               "report does not mention completion anywhere. On the report: "
+               + ", ".join(watched) + ".",
+               [("Video and audio products on the report", ", ".join(watched)),
+                ("The word \"Completion\" anywhere on the report", "no"),
+                ("Section banners to look inside", "none - this template "
+                 "prints no page-header sections")])]

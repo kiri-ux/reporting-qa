@@ -17,7 +17,9 @@ from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
 from .quality import (check_blank_screenshots, check_conversion_names,
                       check_creative_names, check_social_mirror_sizes,
                       check_strategy_categorized, check_truncated_text,
-                      check_site_ctr, check_social_placement_totals,
+                      check_completion_present, check_site_ctr,
+                      check_social_placement_totals, COMPLETION_OWED,
+                      section_bodies,
                       check_widget_errors, SITE_GRID,
                       line_item_names, creative_rows, PLACEMENT_GRID,
                       CONVERSION_HEADER, SOCIAL_MIRROR_GRID)
@@ -753,6 +755,8 @@ CHECKS: list[tuple] = [
     (check_social_placement_totals,
      "Social placements add up to no more than their platform totals"),
     (check_site_ctr,        "No site is clicking at a rate a person would not"),
+    (check_completion_present,
+     "Every video and audio product reports how much got watched"),
 ]
 
 # Why a rule had nothing to do. "Nothing to check against" is true of every
@@ -779,6 +783,7 @@ SKIP_WHY = {
     "check_social_mirror_sizes": "no Social Mirror creative grid on the report",
     "check_social_placement_totals": "no social placement grid on the report",
     "check_site_ctr": "no site and app breakout on the report",
+    "check_completion_present": "no video or audio product on the report",
 }
 
 RULES = [fn for fn, _ in CHECKS]
@@ -833,6 +838,12 @@ def _rule_applies(rule, ctx) -> bool:
     if name == "check_social_mirror_sizes":
         return any(SOCIAL_MIRROR_GRID.search(t) for t, _n in
                    creative_rows(ctx.get("text") or ""))
+    if name == "check_completion_present":
+        from .quality import WATCHED_PRODUCTS
+        bodies = section_bodies(ctx.get("text") or "")
+        if any(sec in bodies for sec, _o in COMPLETION_OWED):
+            return True
+        return bool(set(ctx.get("products") or ()) & set(WATCHED_PRODUCTS))
     if name == "check_site_ctr":
         return bool(SITE_GRID.search(ctx.get("text") or ""))
     if name == "check_social_placement_totals":
