@@ -599,36 +599,76 @@ def test_an_unreadable_file_is_silent_rather_than_broken(tmp_path):
     assert header_logo_hash(tmp_path / "missing.pdf") == ""
 
 
-def test_a_logo_on_three_markets_is_the_tools_default():
+def test_the_check_fails_only_a_logo_somebody_has_marked():
+    """It does not guess. Guessing was tried - a logo on three or more markets
+    could not be any one partner's, so it must be the tool's - and Seven
+    Mountains disproved it in a day, running 7 Mountains PA, PA Altoona and KY
+    as separate markets with one perfectly correct logo across all of them."""
     from app.checks.rules import check_market_logo
-    ctx = {"logo_hash": "abc", "market": "7 Mountains PA",
-           "logo_shared_with": ["Alpha Media", "Beta Radio"]}
-    out = check_market_logo(ctx)
+    assert check_market_logo({"logo_hash": "abc", "logo_generic": False}) == []
+    out = check_market_logo({"logo_hash": "abc", "logo_generic": True})
     assert len(out) == 1 and out[0]["severity"] == "fail"
     assert out[0]["where"] == "p1"
-    assert "3 different markets" in out[0]["detail"]
+    assert out[0]["detail"] == "", "the title says it; the paragraph did not"
 
 
-def test_a_partner_group_covering_two_markets_is_not_accused():
-    """One logo across a two-market group is one partner's logo, not a
-    template."""
-    from app.checks.rules import check_market_logo
-    assert check_market_logo({"logo_hash": "abc", "market": "7 Mountains PA",
-                              "logo_shared_with": ["7 Mountains PA Altoona"]}) == []
-
-
-def test_a_logo_only_this_market_uses_is_fine():
-    from app.checks.rules import check_market_logo
-    assert check_market_logo({"logo_hash": "abc", "market": "7 Mountains PA",
-                              "logo_shared_with": ["7 Mountains PA"]}) == []
-
-
-def test_the_check_abstains_when_the_corner_could_not_be_read():
-    """No poppler, no page one, no Pillow. A check that cannot see the logo
-    says nothing about it rather than failing the report."""
+def test_the_check_abstains_until_it_has_been_told_anything():
+    """Two ways to have nothing to say: the corner could not be read, or nobody
+    has marked the tool's default yet so there is nothing to compare against."""
     from app.checks.rules import _rule_applies, check_market_logo
-    assert _rule_applies(check_market_logo, {"logo_hash": ""}) is False
-    assert _rule_applies(check_market_logo, {"logo_hash": "abc"}) is True
+    assert _rule_applies(check_market_logo, {"logo_hash": "", "logo_known": True}) is False
+    assert _rule_applies(check_market_logo, {"logo_hash": "a", "logo_known": False}) is False
+    assert _rule_applies(check_market_logo, {"logo_hash": "a", "logo_known": True}) is True
+
+
+def test_marking_a_logo_makes_every_report_carrying_it_fail(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    db.expire_all()
+    logo = db.get(dbm.Report, rep.id).logo_hash
+    assert logo
+
+    c.post("/me", data={"who": "Kiri"})
+    assert c.post(f"/logo/{logo}/mark", data={"kind": "generic"},
+                  follow_redirects=False).status_code == 303
+
+    from app.checks.logo import is_generic
+    assert is_generic(db, logo) is True
+    # And the reports carrying it are queued for a re-check, since the answer
+    # they are showing was worked out before anybody had said this.
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).rules_version == ""
+
+
+def test_a_marking_can_be_taken_back(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    db.expire_all()
+    logo = db.get(dbm.Report, rep.id).logo_hash
+    c.post(f"/logo/{logo}/mark", data={"kind": "generic"})
+    c.post(f"/logo/{logo}/mark", data={"kind": "clear"})
+    from app.checks.logo import is_generic
+    assert is_generic(db, logo) is False
+
+
+def test_the_report_page_shows_the_actual_crop(client):
+    """Marking a logo is a decision about a picture, so the page shows the
+    picture rather than asking anybody to take a fingerprint on trust."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    page = c.get(f"/report/{rep.id}/view").text
+    assert f"/report/{rep.id}/logo.png" in page
+    assert "This is the tool's default logo" in page
+
+    png = c.get(f"/report/{rep.id}/logo.png")
+    assert png.status_code == 200
+    assert png.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_a_junk_fingerprint_is_refused(client):
+    c, (db, dbm, imod) = client
+    assert c.post("/logo/..%2Fetc/mark", data={"kind": "generic"}).status_code in (400, 404)
+    assert c.post("/logo/NOTAHASH/mark", data={"kind": "generic"}).status_code == 400
 
 
 def test_the_sync_button_comes_back_where_it_was_pressed(client):

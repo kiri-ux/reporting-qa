@@ -351,6 +351,23 @@ class OrderLine(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class KnownLogo(Base):
+    """A page-one logo somebody has passed judgement on.
+
+    The check does not guess which mark is the reporting tool's default. It is
+    told, once, by a person looking at a picture of the actual crop - because
+    every rule for guessing it also catches a partner group that covers several
+    markets and prints one perfectly good logo across all of them.
+    """
+    __tablename__ = "known_logos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    logo_hash: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="generic")  # generic | ok
+    marked_by: Mapped[str] = mapped_column(String(128), default="")
+    marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class SavedView(Base):
     """A named set of filters on the cycle board.
 

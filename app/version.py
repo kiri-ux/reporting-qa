@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-47"
-BUILD_NOTES = ("The hours-to-go projection now steps aside when the board is "
-               "narrowed to one partner, and the board says out loud when the "
-               "loaded orders were read by older import code - which is what "
-               "made the same product finding come back three times.")
+BUILD = "2026.08.25-48"
+BUILD_NOTES = ("The logo check no longer guesses which mark is the tool's "
+               "default - you tell it once, from a report that has it, looking "
+               "at a picture of the actual crop. Seven Mountains running three "
+               "markets is what killed the guess.")
 
 # ---------------------------------------------------------------------------
 

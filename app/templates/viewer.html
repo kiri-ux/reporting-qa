@@ -212,10 +212,30 @@
       </label>
       {# What it will be called once it is here, so nobody has to wonder
          whether "(1)" or "download.pdf" matters. It does not. #}
-      <p class="sub asname">Saved as <code>{{ saved_as }}</code> whatever the
-        file is called on your machine.</p>
+      <p class="sub asname">Renamed to <code>{{ saved_as }}</code></p>
       <button class="mini" type="submit" title="Re-runs every check. Accepted findings and the sign-off reset, since they described the old file. Your note is kept.">Upload the corrected PDF</button>
     </form>
+
+    {% if logo_hash %}
+      <h2 style="margin-top:22px">Page-one logo</h2>
+      {# The picture, not the fingerprint. Marking a logo is a decision about
+         what it looks like, and this is the exact crop the check compares. #}
+      <div class="logobox">
+        <img src="/report/{{ rep.id }}/logo.png" alt="The logo in the top-left corner of page one">
+        <form method="post" action="/logo/{{ logo_hash }}/mark">
+          {% if logo_generic %}
+            <p class="sub">Marked as the reporting tool's default, so every
+              report carrying it fails.</p>
+            <button class="mini" name="kind" value="clear">It is a real logo</button>
+          {% else %}
+            <p class="sub">If this is the reporting tool's default rather than
+              a station or client logo, say so once and every report carrying
+              it will fail.</p>
+            <button class="mini warn" name="kind" value="generic">This is the tool's default logo</button>
+          {% endif %}
+        </form>
+      </div>
+    {% endif %}
 
     <h2 style="margin-top:22px">Notes</h2>
     {# Saved on its own button, so writing a note does not also mark the report

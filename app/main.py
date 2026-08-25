@@ -10,13 +10,13 @@ from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, HTTPExceptio
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import case, desc, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
 from . import brand, version
 from .config import settings
-from .db import (Batch, Inbound, OrderLine, OrderSync, Partner, Report,
-                 SessionLocal, init_db)
+from .db import (Batch, Inbound, KnownLogo, OrderLine, OrderSync, Partner,
+                 Report, SessionLocal, init_db)
 from .ingest import (finish_batch, parse_postmark, process_batch,
                     prune_old_pdfs, sweep_stale)
 from .orders_s3 import last_sync, sync as sync_orders
@@ -550,6 +550,11 @@ def partners_csv(db: Session = Depends(get_db)):
 ROW_CAP = 150
 
 
+def _logo_is_generic(db: Session, rep) -> bool:
+    from .checks.logo import is_generic
+    return is_generic(db, rep.logo_hash or "")
+
+
 def _orders_stale(db: Session) -> bool:
     """Were the loaded orders read by an older version of the import code?
 
@@ -794,6 +799,59 @@ def set_me(request: Request, who: str = Form("")):
     else:
         resp.delete_cookie(USER_COOKIE, path="/")
     return resp
+
+
+@app.get("/report/{report_id}/logo.png")
+def report_logo(report_id: int, db: Session = Depends(get_db)):
+    """The exact corner the fingerprint was taken from.
+
+    Marking a logo is a decision about a picture, so the page shows the
+    picture rather than asking somebody to take the fingerprint on trust.
+    """
+    from .checks.logo import crop_png
+    rep = db.get(Report, report_id)
+    if not rep or not rep.stored_path or not Path(rep.stored_path).exists():
+        raise HTTPException(404)
+    png = crop_png(rep.stored_path)
+    if not png:
+        raise HTTPException(404)
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.post("/logo/{logo}/mark")
+def mark_logo(logo: str, request: Request, kind: str = Form("generic"),
+              db: Session = Depends(get_db)):
+    """Record what this mark is, once, for every report that carries it.
+
+    The check does not guess. Guessing was tried - a logo on three or more
+    markets could not be any one partner's, so it must be the tool's - and
+    Seven Mountains disproved it in a day, running three markets on this board
+    with one perfectly correct logo across all of them.
+    """
+    if not re.fullmatch(r"[0-9a-f]{4,32}", logo or ""):
+        raise HTTPException(400, "not a logo fingerprint")
+    row = db.scalar(select(KnownLogo).where(KnownLogo.logo_hash == logo))
+    if kind == "clear":
+        if row is not None:
+            db.delete(row)
+    else:
+        if row is None:
+            row = KnownLogo(logo_hash=logo)
+            db.add(row)
+        row.kind = "generic" if kind == "generic" else "ok"
+        row.marked_by = whoami(request)
+        row.marked_at = dt.datetime.utcnow()
+    db.commit()
+    # Every report carrying this mark now has an out-of-date answer.
+    n = 0
+    for rep in db.scalars(select(Report).where(Report.logo_hash == logo)).all():
+        rep.rules_version = ""
+        n += 1
+    if n:
+        db.commit()
+    return RedirectResponse(request.headers.get("referer") or "/cycle",
+                            status_code=303)
 
 
 @app.post("/reports/review")
@@ -1178,16 +1236,18 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     # The corner of page one, and which other markets print the same mark.
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
-    from .checks.logo import header_logo_hash, logo_markets
+    from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(path)
-    logo_seen = logo_markets(db, logo)
+    logo_bad = is_generic(db, logo)
+    logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     flight = client_flight(db, client, account_ids)
     try:
         result = run_all(path, filename=file.filename, expected_products=exp,
                          flight=flight, period=period, market=market,
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
-                     logo_hash=logo, logo_shared_with=logo_seen)
+                     logo_hash=logo, logo_generic=logo_bad,
+                     logo_known=logo_seen)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
@@ -1278,15 +1338,17 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
-    from .checks.logo import header_logo_hash, logo_markets
+    from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(target)
-    logo_seen = logo_markets(db, logo, exclude_id=rep.id)
+    logo_bad = is_generic(db, logo)
+    logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(target, filename=rep.filename, expected_products=exp,
                      flight=flight, period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
-                     logo_hash=logo, logo_shared_with=logo_seen)
+                     logo_hash=logo, logo_generic=logo_bad,
+                     logo_known=logo_seen)
     rep.stored_path = str(target)
     rep.logo_hash = logo
     rep.pages = result["pages"]
@@ -1357,16 +1419,18 @@ async def replace_report(report_id: int, request: Request,
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
-    from .checks.logo import header_logo_hash, logo_markets
+    from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(path)
-    logo_seen = logo_markets(db, logo, exclude_id=rep.id)
+    logo_bad = is_generic(db, logo)
+    logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     flight = client_flight(db, rep.client, rep.account_ids)
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,
                          flight=flight, period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
-                     logo_hash=logo, logo_shared_with=logo_seen)
+                     logo_hash=logo, logo_generic=logo_bad,
+                     logo_known=logo_seen)
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",
@@ -1408,6 +1472,10 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                       {"nav": "cycle", "rep": rep,
                                        "skip_why": SKIP_WHY,
                                        "saved_as": canonical_filename(rep),
+                                       # The page-one logo, so it can be
+                                       # judged by somebody looking at it.
+                                       "logo_hash": rep.logo_hash or "",
+                                       "logo_generic": _logo_is_generic(db, rep),
                                        # Changes when the file does, so the
                                        # embedded viewer cannot show a copy it
                                        # cached before the replacement.

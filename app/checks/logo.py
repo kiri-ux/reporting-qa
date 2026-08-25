@@ -6,17 +6,19 @@ reporting tool's default: a generic blue bar-chart icon that says nothing about
 who sent the report, and goes out to the client looking like a template nobody
 finished.
 
-THE TEST IS NOT "IS THIS THE RIGHT LOGO". Nobody has a list of a hundred and
-forty-six partner logos, and keeping one current would be its own job. What
-separates a generic logo from a real one is who it belongs to:
+IT IS TOLD WHICH LOGO IS THE GENERIC ONE. It does not guess.
 
-  * a partner's logo appears on that partner's reports
-  * a client's logo appears on that client's report
-  * a generic logo appears on everybody's
+The first version counted markets: a mark on three or more of them could not be
+any one partner's, so it must be the tool's. That is wrong, and Ken Waddell
+proved it in a day - Seven Mountains runs 7 Mountains PA, PA Altoona and KY as
+separate markets on this board and prints the same, entirely correct, logo on
+all of them. Any threshold that catches the tool's default also catches every
+group that covers more than a couple of markets.
 
-So the corner is hashed, the hash is stored, and a logo that turns up across
-several unrelated markets is the generic one. It learns which image that is
-from the reports themselves and needs nothing kept up to date.
+So the corner is hashed and the hash is stored, and a person marks a hash as
+the tool's default once, from a report that has it, looking at a picture of the
+actual crop. After that every report carrying that mark fails, and nothing else
+does. One click, no guessing, and no false positives to argue with.
 """
 from __future__ import annotations
 
@@ -66,15 +68,8 @@ def header_logo_hash(path: str | Path) -> str:
         return ""
 
 
-# How many different markets have to share one logo before it is generic. Two
-# is not enough: a partner group really can cover two markets and print one
-# logo across both, and one report per market of a two-market group would
-# otherwise be accused of using a template.
-GENERIC_AT = 3
-
-
 def logo_markets(db, logo: str, exclude_id: int | None = None) -> list[str]:
-    """Every market whose reports carry this logo."""
+    """Every market whose reports carry this logo. Shown, not judged on."""
     from sqlalchemy import select
 
     from ..db import Report
@@ -84,3 +79,46 @@ def logo_markets(db, logo: str, exclude_id: int | None = None) -> list[str]:
     if exclude_id:
         q = q.where(Report.id != exclude_id)
     return sorted({(m or "").strip() for m in db.scalars(q).all() if (m or "").strip()})
+
+
+def is_generic(db, logo: str) -> bool:
+    """Has somebody marked this mark as the reporting tool's default?"""
+    from sqlalchemy import select
+
+    from ..db import KnownLogo
+    if not logo:
+        return False
+    row = db.scalar(select(KnownLogo).where(KnownLogo.logo_hash == logo))
+    return bool(row and row.kind == "generic")
+
+
+def crop_png(path: str | Path) -> bytes:
+    """The same corner the hash is taken from, as a PNG.
+
+    Marking a logo is a decision about a picture, so the page shows the
+    picture - the exact pixels the fingerprint was taken from, not an
+    approximation of them.
+    """
+    import io
+    try:
+        from PIL import Image
+    except ImportError:
+        return b""
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(
+                ["pdftoppm", "-f", "1", "-l", "1", "-r", "150", "-png",
+                 str(path), f"{d}/p"],
+                check=True, capture_output=True, timeout=30)
+            pages = sorted(Path(d).glob("p*.png"))
+            if not pages:
+                return b""
+            im = Image.open(pages[0])
+            w, h = im.size
+            crop = im.crop((int(BOX[0] * w), int(BOX[1] * h),
+                            int(BOX[2] * w), int(BOX[3] * h)))
+            buf = io.BytesIO()
+            crop.save(buf, format="PNG")
+            return buf.getvalue()
+    except Exception:                                    # noqa: BLE001
+        return b""

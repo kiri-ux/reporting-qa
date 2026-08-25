@@ -628,33 +628,19 @@ def check_products(ctx) -> list[dict]:
 
 
 def check_market_logo(ctx) -> list[dict]:
-    """The corner of page one should carry somebody's logo, not the tool's.
+    """The corner of page one must not carry the reporting tool's own mark.
 
-    The reporting tool prints a generic blue bar-chart icon when a partner has
-    no logo configured, and it goes to the client looking like a template
-    nobody finished. There is no list of a hundred and forty-six partner logos
-    to check against, and keeping one current would be its own job - so the
-    test is who the logo BELONGS to. A partner's logo is on that partner's
-    reports; a client's is on that client's; a generic one is on everybody's.
+    It does not guess which mark that is - it is told, once, from a report that
+    has it. Guessing was tried: a logo on three or more markets could not be
+    any one partner's, so it must be the tool's. Seven Mountains disproved that
+    in a day, running three markets on this board with one perfectly correct
+    logo across all of them.
     """
-    from .logo import GENERIC_AT
-
-    shared = list(ctx.get("logo_shared_with") or [])
-    here = (ctx.get("market") or "").strip()
-    others = sorted({m for m in shared if m and m != here})
-    if len(others) + 1 < GENERIC_AT:
+    if not ctx.get("logo_generic"):
         return []
     return [_f("generic_logo", "fail",
-               "The report is using the reporting tool's default logo",
-               f"The mark in the top-left corner of page one is on reports for "
-               f"{len(others) + 1} different markets, so it is not this "
-               f"partner's and not the client's. It should be the station logo, "
-               f"or the client's own.",
-               [("Markets carrying this same logo",
-                 ", ".join([here] + others) if here else ", ".join(others)),
-                ("What it should be",
-                 "the partner station's logo, or the client's")],
-               where="p1")]
+               "Page one carries the reporting tool's default logo",
+               "", where="p1")]
 
 
 def check_date_range(ctx) -> list[dict]:
@@ -1049,9 +1035,10 @@ def _rule_applies(rule, ctx) -> bool:
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
     if name == "check_market_logo":
-        # The corner could not be read - no poppler, no page one, no Pillow.
-        # A check that cannot see the logo says nothing about it.
-        return bool(ctx.get("logo_hash"))
+        # Two ways to have nothing to say: the corner could not be read at
+        # all, or nobody has ever marked the tool's default logo, so there
+        # is nothing to compare against yet.
+        return bool(ctx.get("logo_hash")) and bool(ctx.get("logo_known"))
     if name in ("check_headline_ctr",):
         return ctx.get("imps") is not None and ctx.get("clicks") is not None
     if name in ("check_line_items", "check_creative", "check_device",
@@ -1137,7 +1124,7 @@ def run_all(path: Path, filename: str | None = None,
             market: str = "", expected_why: list | None = None,
             expected_any: list | None = None,
             quiet_products: set | None = None,
-            logo_shared_with: list | None = None,
+            logo_generic: bool = False, logo_known: bool = False,
             logo_hash: str = "") -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
@@ -1159,7 +1146,10 @@ def run_all(path: Path, filename: str | None = None,
         # Neither expected nor a surprise.
         "quiet_products": quiet_products or set(),
         # Other markets whose reports carry this same header logo.
-        "logo_shared_with": logo_shared_with or [],
+        "logo_generic": bool(logo_generic),
+        # Has anybody marked ANY logo as the default yet? Until somebody
+        # has, this check has nothing to compare against and abstains.
+        "logo_known": bool(logo_known),
         "logo_hash": logo_hash or "",
         "path": path,
         "text": text,

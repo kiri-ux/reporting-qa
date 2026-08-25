@@ -26,11 +26,11 @@ import logging
 import threading
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .db import Report, SessionLocal
+from .db import KnownLogo, Report, SessionLocal
 from .version import rules_version
 
 log = logging.getLogger("report-qa.recheck")
@@ -113,15 +113,17 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     # The corner of page one, and which other markets print the same mark.
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
-    from .checks.logo import header_logo_hash, logo_markets
+    from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(path)
-    logo_seen = logo_markets(db, logo, exclude_id=rep.id)
+    logo_bad = is_generic(db, logo)
+    logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(path, filename=rep.filename, expected_products=exp,
                      flight=flight, period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
-                     logo_hash=logo, logo_shared_with=logo_seen)
+                     logo_hash=logo, logo_generic=logo_bad,
+                     logo_known=logo_seen)
 
     was_sev = rep.severity
     old_findings, old_acked = list(rep.findings or []), list(rep.acked or [])

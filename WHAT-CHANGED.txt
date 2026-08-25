@@ -1,60 +1,59 @@
-build 2026.08.25-47
+build 2026.08.25-48
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
+app/db.py
 app/main.py
+app/ingest.py
+app/recheck.py
+app/checks/logo.py
+app/checks/rules.py
 app/templates/base.html
-app/templates/cycle.html
+app/templates/viewer.html
 tests/test_manual_upload.py
-tests/test_order_remap.py
 
 
-1. "about 19 hours to go" beside one partner's six reports
-------------------------------------------------------------
-The projection was meant to step aside once a filter was on, and did - for the
-filters applied IN THE BROWSER. A partner filter from the URL (?group=) is
-applied by the SERVER, so every card on screen was every card the server sent,
-the page compared the two, saw no difference, and left the whole cycle's
-projection up beside six outstanding reports.
-
-The tiles now know when the server has already narrowed the board. Filtered,
-the tile says "6 / Not received / of 728 on the whole board" and the projection
-is gone.
-
-
-2. Blair Regional YMCA - and why you have sent it twice
+1. The logo check was guessing, and the guess was wrong
 --------------------------------------------------------
-You have, and the reason is worth more than another point fix.
+Ken Waddell's report carries the SEVEN MOUNTAINS logo. It is correct. It got
+failed anyway, because the rule was: a logo on three or more markets cannot be
+any one partner's, so it must be the tool's.
 
-Your screenshot shows Investigate saying:
+Seven Mountains runs 7 Mountains PA, 7 Mountains PA Altoona and 7 Mountains KY
+as separate markets on this board, and prints one logo across all of them. Any
+threshold that catches the tool's default also catches every group covering
+more than a couple of markets. There is no number that works.
 
-    Social Mirror · order 31449   2025-01-03 to 2026-12-31 · counted
+SO IT NO LONGER GUESSES. It is told, once.
 
-That is ONE window. The fix in build 42 records each order's own flight
-separately, so a real re-read of that order would show TWO - one ending 30 June
-and one starting 1 August, with July in the gap. One window means this row was
-written by the OLD import and has not been re-read since.
+On any report page there is now a PAGE-ONE LOGO block showing the exact crop
+the check compares - the picture, not the fingerprint - with one button:
 
-The export is parsed once and only the answer is kept, so an import fix does
-nothing until the file is read again. The sweeper does it on its own after a
-deploy, but until it has, the board goes on showing findings computed from the
-old data - and there was no sign anywhere that it was doing so. That silence is
-what turned one bug into three rounds of screenshots.
+    [This is the tool's default logo]
 
-So the board now says it. When the loaded orders were read by older import
-code, a bar sits above the partner list:
+Press it on any report carrying the generic blue chart icon and every report
+with that mark fails from then on, including the ones already on the board:
+they are queued for a re-check the moment you mark it. Nothing else fails.
+"It is a real logo" takes it back.
 
-    The order list was read by older code. Product findings on this board may
-    be answering from the old version of it. The re-read runs on its own in the
-    background - this does it now.  [Re-read the orders]
-
-Press it, wait for the sync to finish, and re-check that partner. If the
-finding survives THAT, it is a real bug and the trace will show two windows
-instead of one - send me the panel and I can fix it from the screenshot.
-
-(The button posts to the same sync the orders page uses, and comes back to the
-board rather than dumping you on /orders. It only accepts a path on this app,
-so it cannot be turned into an open redirect.)
+Until you mark one, the check has nothing to compare against and shows as
+skipped rather than guessing. So on this deploy it goes quiet until you point
+at the bad one - one click, and no false positives to argue with afterwards.
 
 
-Tests: 373 passing.
+2. The finding's paragraph is gone
+------------------------------------
+"The mark in the top-left corner of page one is on reports for 4 different
+markets, so it is not this partner's and not the client's..." - the title said
+it, and the paragraph was explaining a guess that is not being made any more.
+The finding is now just "Page one carries the reporting tool's default logo".
+
+
+3. "Saved as ... whatever the file is called on your machine"
+---------------------------------------------------------------
+Fair. It now reads:
+
+    Renamed to July 2026_Expree Credit Union -KY 53921.pdf
+
+
+Tests: 375 passing.

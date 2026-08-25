@@ -9,12 +9,13 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .checks import run_all
 from .checks.parser import meta_from_filename
 from .config import settings
-from .db import Batch, Report
+from .db import Batch, KnownLogo, Report
 from .notify import post_slack, send_digest
 from .roster import (attach_owners, completeness, expected_any,
                      expected_products, expected_why, quiet_products)
@@ -99,7 +100,7 @@ def _reports_for_period(db: Session, period: str) -> dict:
     Newest last, so a client that has already been superseded once resolves to
     the most recent copy rather than the original.
     """
-    from sqlalchemy import select
+    from sqlalchemy import func, select
     idx = {"by_id": {}, "by_name": {}}
     for rep in db.scalars(select(Report).where(Report.period == period)
                           .order_by(Report.id)).all():
@@ -269,9 +270,10 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         # mark. Worked out here rather than inside the check because it takes
         # a database question, and a check is handed facts rather than going
         # looking for them.
-        from .checks.logo import header_logo_hash, logo_markets
+        from .checks.logo import header_logo_hash, is_generic
         logo = header_logo_hash(path)
-        logo_seen = logo_markets(db, logo)
+        logo_bad = is_generic(db, logo)
+        logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
         try:
             result = run_all(path, filename=name, expected_products=exp,
@@ -279,7 +281,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                              market=batch.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
-                     logo_hash=logo, logo_shared_with=logo_seen)
+                     logo_hash=logo, logo_generic=logo_bad,
+                     logo_known=logo_seen)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},
