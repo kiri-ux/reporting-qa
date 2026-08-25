@@ -483,8 +483,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
 
 @app.post("/report/{report_id}/review")
 def review_report(report_id: int, request: Request, state: str = Form(...),
-                  who: str = Form(""), note: str = Form(""),
-                  db: Session = Depends(get_db)):
+                  who: str = Form(""), db: Session = Depends(get_db)):
     rep = db.get(Report, report_id)
     if not rep:
         raise HTTPException(404)
@@ -492,7 +491,6 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
         raise HTTPException(400, "unknown review state")
     rep.review_state = state
     rep.reviewed_by = who.strip()
-    rep.review_note = note.strip()
     rep.reviewed_at = dt.datetime.utcnow() if state != "new" else None
     db.commit()
     back = request.headers.get("referer") or "/cycle"
@@ -528,7 +526,7 @@ def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
              e.report.review_note if e.report else ""]
             for e in expected_for(db, period)]
     return _csv_response(f"report-qa-cycle-{period}.csv",
-                         ["Market", "Client", "Kind", "Products",
+                         ["Partner", "Client", "Kind", "Products",
                           "Order", "Starts", "Ends", "Buyer", "Reporter", "Status",
                           "Reviewed by", "Note"], rows)
 
@@ -592,6 +590,23 @@ def people_view(request: Request, role: str = Query("reporter"),
     return templates.TemplateResponse(request, "people.html", {
         "nav": "people", "role": role, "rows": rows, "biggest": biggest,
         "total_clients": sum(r["clients"] for r in rows)})
+
+
+@app.post("/report/{report_id}/note")
+def save_note(report_id: int, request: Request, note: str = Form(""),
+              db: Session = Depends(get_db)):
+    """A note saves on its own, separate from sign-off.
+
+    Tangled together, writing a note would also mark the report reviewed, and
+    hitting Reviewed would wipe whatever was half-typed in the box.
+    """
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    rep.review_note = note.strip()[:4000]
+    db.commit()
+    back = request.headers.get("referer") or f"/report/{report_id}/view"
+    return RedirectResponse(back, status_code=303)
 
 
 @app.post("/report/{report_id}/ack")

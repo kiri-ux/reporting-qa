@@ -281,15 +281,13 @@ def check_products(ctx) -> list[dict]:
                       f"with no live order",
                       "On the report but not on any qualifying order: " + ", ".join(rogue) +
                       ". Expected: " + (", ".join(sorted(expected)) or "none") + "."))
-    if not out:
-        # Worded as a confirmation, not a bare list. "Products match the order"
-        # above an unadorned "Social Mirror" reads like the thing it found
-        # wrong, which is the opposite of what it means.
-        names = ", ".join(sorted(found))
-        out.append(_f("products_match", "info", "Products match the order",
-                      (f"Nothing missing, nothing extra. Both the report and the "
-                       f"live orders show: {names}.") if names else
-                      "No products were detected on the report to compare."))
+    # NOTHING IS RAISED WHEN THEY MATCH.
+    #
+    # An "everything is fine" line read as an accusation on a narrow screen -
+    # "Products match the order" above a bare "Social Mirror" - and once the
+    # wording was fixed it was still noise in a list whose whole job is naming
+    # what needs attention. A problem raises a finding; silence means they
+    # matched.
     return out
 
 
@@ -333,11 +331,6 @@ def check_date_range(ctx) -> list[dict]:
             out.append(_f(
                 "lifetime_cut", "fail", "Lifetime report stops before the campaign ends",
                 f"Printed {printed}, but the latest order runs to {w_end.strftime(fmt)}."))
-        if not out:
-            out.append(_f("lifetime_range_ok", "info", "Lifetime covers the full flight",
-                          f"{printed}, against orders running "
-                          f"{w_start.strftime(fmt)} to "
-                          f"{w_end.strftime(fmt) if w_end else 'open'}."))
         return out
 
     period = ctx.get("period")              # "2026-07"
@@ -353,21 +346,47 @@ def check_date_range(ctx) -> list[dict]:
                f"so it should read {first.strftime(fmt)} to {last.strftime(fmt)}.")]
 
 
-RULES = [
-    check_headline_ctr,
-    check_line_items,
-    check_creative,
-    check_device,
-    check_row_math,
-    check_rate_ceiling,
-    check_thumbnails,
-    check_blank_pages,
-    check_geofence_names,
-    check_products,
-    check_date_range,
+# Every rule, with the plain-English claim it is making. The label is written
+# as the thing that is TRUE when the check passes, because that is how it is
+# read on the report page - a list of what was verified, not a list of rule
+# names. A rule that finds nothing has confirmed its label.
+CHECKS: list[tuple] = [
+    (check_headline_ctr,   "The headline CTR matches its own impressions and clicks"),
+    (check_line_items,     "Line item totals add up to the headline"),
+    (check_creative,       "Creative totals match the line items"),
+    (check_device,         "The device breakout matches the eligible total"),
+    (check_row_math,       "Every row's CTR matches that row's own numbers"),
+    (check_rate_ceiling,   "No rate is above its ceiling"),
+    (check_thumbnails,     "Every creative preview rendered"),
+    (check_blank_pages,    "No widget page came out blank"),
+    (check_geofence_names, "Every geo-fencing row has a business name"),
+    (check_products,       "The products on the report match the live orders"),
+    (check_date_range,     "The date range matches the period this report covers"),
 ]
 
+RULES = [fn for fn, _ in CHECKS]
+
 SEV_ORDER = {"fail": 2, "warn": 1, "info": 0}
+
+
+def _rule_applies(rule, ctx) -> bool:
+    """Did this check have anything to work with?
+
+    A rule with no data returns an empty list exactly like a rule that found
+    nothing wrong, and reporting "products match the order" when no order list
+    is loaded is a claim the tool cannot make.
+    """
+    name = rule.__name__
+    if name == "check_products":
+        return ctx.get("expected_products") is not None
+    if name == "check_date_range":
+        return bool(ctx.get("date_range"))
+    if name in ("check_headline_ctr",):
+        return ctx.get("imps") is not None and ctx.get("clicks") is not None
+    if name in ("check_line_items", "check_creative", "check_device",
+                "check_row_math", "check_rate_ceiling"):
+        return bool(ctx.get("tables"))
+    return True
 
 
 def run_all(path: Path, filename: str | None = None,
@@ -391,11 +410,28 @@ def run_all(path: Path, filename: str | None = None,
         "flight": flight,
     }
     findings: list[dict] = []
-    for rule in RULES:
+    checks: list[dict] = []
+    for rule, label in CHECKS:
         try:
-            findings.extend(rule(ctx))
+            out = rule(ctx) or []
         except Exception as exc:                              # never let one rule sink a report
-            findings.append(_f("rule_error", "warn", f"Check {rule.__name__} could not run", str(exc)))
+            out = [_f("rule_error", "warn", f"Check {rule.__name__} could not run", str(exc))]
+            checks.append({"key": rule.__name__, "label": label, "state": "error"})
+            findings.extend(out)
+            continue
+        raised = [f for f in out if f["severity"] in ("fail", "warn")]
+        findings.extend(out)
+        # A rule that returns nothing has verified its label. A rule that
+        # cannot run at all - no order list loaded, no such table on the page -
+        # returns nothing too, so it says so rather than claiming a pass.
+        checks.append({
+            "key": rule.__name__, "label": label,
+            "state": ("failed" if any(f["severity"] == "fail" for f in raised)
+                      else "flagged" if raised
+                      else "skipped" if not _rule_applies(rule, ctx)
+                      else "passed"),
+            "count": len(raised),
+        })
 
     meta = meta_from_text(text)
     meta.update({k: v for k, v in meta_from_filename(filename or path.name).items()
@@ -423,4 +459,5 @@ def run_all(path: Path, filename: str | None = None,
         "pages": ctx["pages"],
         "severity": worst,
         "findings": findings,
+        "checks": checks,
     }

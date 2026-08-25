@@ -176,14 +176,13 @@
   </div>
   <div class="colfilters" data-filters-for="tbl-cycle"></div>
   <div class="tw"><table id="tbl-cycle">
-    <thead><tr><th data-col="Market">Market</th><th>Client</th><th>Products</th>
+    <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
     <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
     <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{% for e in rows %}
       <tr>
         <td class="nw">{{ e.market }}</td>
-        <td><b>{{ e.client }}</b>
-          {% if e.report %}<br><a class="acct" href="/report/{{ e.report.id }}/view">View PDF</a>{% endif %}</td>
+        <td><b>{{ e.client }}</b></td>
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
           <span class="chip" data-name="{{ p.name }}" tabindex="0"
                 style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
@@ -197,12 +196,22 @@
           {% endif %}
           {% else %}<span class="acct">monthly</span>{% endif %}</td>
         <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
-        <td style="font-size:13px;color:var(--ink-2);max-width:38ch">
-          {% if e.report and e.report.findings %}
-            {% for f in e.report.findings[:3] %}{{ f.title or f.detail }}<br>{% endfor %}
-            {% if e.report.findings|length > 3 %}
-              <span class="acct">+{{ e.report.findings|length - 3 }} more</span>{% endif %}
-          {% elif e.report %}<span class="empty">All checks passed</span>
+        <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
+          {% if e.report %}
+            {# Problems only. A confirmation in this column reads as another
+               thing wrong, which is the opposite of what it means. #}
+            {% set open = e.report.open_findings %}
+            {% if open %}
+              {% for f in open[:3] %}{{ f.title or f.detail }}<br>{% endfor %}
+              {% if open|length > 3 %}
+                <span class="acct">+{{ open|length - 3 }} more</span><br>{% endif %}
+            {% elif e.report.acked %}
+              <span class="empty">{{ e.report.acked|length }} accepted, nothing open</span><br>
+            {% else %}<span class="empty">All checks passed</span><br>{% endif %}
+            {% if e.report.review_note %}
+              <span class="notetag" title="{{ e.report.review_note }}">note</span>
+            {% endif %}
+            <a class="pill pdf" href="/report/{{ e.report.id }}/view">View PDF</a>
           {% else %}<span class="empty">Not received</span>{% endif %}
         </td>
         <td class="nw">{{ e.reporter }}
@@ -260,6 +269,13 @@
 .gcard[hidden]{display:none}
 .gtags{display:flex;flex-wrap:wrap;gap:5px}
 .gtags a{text-decoration:none}
+.pill.pdf{background:var(--velocity-10);color:var(--velocity);text-decoration:none;
+ margin-top:5px;display:inline-block}
+.pill.pdf:hover{background:var(--velocity);color:#fff;text-decoration:none}
+.notetag{display:inline-block;font-family:Agdasima,sans-serif;font-size:12px;
+ font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;
+ border-radius:20px;background:var(--warn-bg);color:var(--warn);margin-right:5px;
+ cursor:help}
 .gfoot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:auto;
  padding-top:4px;font-size:13px}
 .dfail{margin:0;font-size:13px;color:var(--crit);background:var(--crit-bg);

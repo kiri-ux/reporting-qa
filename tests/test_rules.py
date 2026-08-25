@@ -1132,9 +1132,11 @@ def test_a_lifetime_pulled_with_a_monthly_range_is_caught():
     assert "does not go back to the campaign start" in bad[0]["title"]
     assert "Mar 01, 2024" in bad[0]["detail"]
 
+    # a lifetime covering the whole flight says nothing at all - a confirmation
+    # in a list of problems reads as another problem
     good = check_date_range({"date_range": (dt.date(2024, 3, 1), dt.date(2026, 7, 31)),
                              "is_lifetime": True, "flight": flight, "period": "2026-07"})
-    assert [f["severity"] for f in good] == ["info"]
+    assert good == []
 
     # cut short at the end
     short = check_date_range({"date_range": (dt.date(2024, 3, 1), dt.date(2026, 5, 31)),
@@ -1311,3 +1313,114 @@ def test_notifications_are_off_until_deliberately_turned_on(monkeypatch):
     assert nmod.settings.notify_status == {
         "enabled": False, "email": False, "slack": False,
         "to": ["jacob@vicimediainc.com"], "domains": nmod.settings.internal_domains}
+
+
+def test_no_check_ever_reports_good_news():
+    """Findings are things to act on. A rule that raises "everything is fine"
+    puts a line in a list whose entire job is naming problems, and it gets
+    read as another one - which is exactly what happened with the products
+    check."""
+    import inspect
+    from app.checks import rules as rmod
+
+    # info-level findings are allowed to exist for context inside a problem,
+    # but no rule may raise one as its ONLY output on a clean report
+    clean = {
+        "expected_products": {"Social Mirror"}, "products": {"Social Mirror"},
+        "date_range": (dt.date(2026, 7, 1), dt.date(2026, 7, 31)),
+        "is_lifetime": False, "period": "2026-07",
+        "flight": (dt.date(2024, 3, 1), dt.date(2026, 7, 31)),
+        "text": "", "tables": [], "pages": 1, "imps": None, "clicks": None, "ctr": None,
+    }
+    for rule in rmod.RULES:
+        try:
+            out = rule(clean)
+        except Exception:
+            continue                      # a rule needing more context is not the point
+        for f in out or []:
+            assert f["severity"] in ("fail", "warn"), (
+                f"{rule.__name__} raised a {f['severity']} finding on a clean "
+                f"report: {f['title']!r}")
+
+
+def test_a_note_saves_without_touching_sign_off(tmp_path, monkeypatch):
+    """Writing a note must not mark the report reviewed, and marking it
+    reviewed must not wipe a half-typed note."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'n.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from fastapi.testclient import TestClient
+    from app import main as mmod
+    importlib.reload(mmod)
+
+    db = db_mod.SessionLocal()
+    b = db_mod.Batch(market="M", period="2026-07"); db.add(b); db.flush()
+    r = db_mod.Report(batch_id=b.id, client="C", period="2026-07", severity="warn",
+                      filename="C.pdf", findings=[{"severity": "warn", "title": "x"}],
+                      acked=[])
+    db.add(r); db.commit()
+    rid = r.id
+
+    c = TestClient(mmod.app)
+    c.post(f"/report/{rid}/note", data={"note": "Partner knows, no action."},
+           follow_redirects=False)
+    db.expire_all()
+    r = db.get(db_mod.Report, rid)
+    assert r.review_note == "Partner knows, no action."
+    assert r.review_state == "new", "saving a note must not sign the report off"
+    assert r.reviewed_at is None
+
+    c.post(f"/report/{rid}/review", data={"state": "reviewed", "who": "Jacob"},
+           follow_redirects=False)
+    db.expire_all()
+    r = db.get(db_mod.Report, rid)
+    assert r.review_state == "reviewed" and r.reviewed_by == "Jacob"
+    assert r.review_note == "Partner knows, no action.", "sign-off wiped the note"
+
+
+def test_every_check_reports_whether_it_ran():
+    """The report page says what was VERIFIED, not only what went wrong.
+
+    A rule that finds nothing and a rule that had no data to work with both
+    return an empty list, so they have to be told apart - claiming "products
+    match the order" when no order list is loaded is a claim the tool cannot
+    make.
+    """
+    from app.checks import run_all
+    from app.checks.rules import CHECKS
+
+    labels = {label for _, label in CHECKS}
+    assert len(labels) == len(CHECKS), "two checks share a label"
+
+    r = run_all(FIXTURES / "salem_rv.pdf", filename="July 2026_Salem RV_17781.pdf",
+                expected_products={"Display"}, period="2026-07",
+                flight=(dt.date(2024, 1, 1), dt.date(2026, 7, 31)))
+    checks = {c["label"]: c for c in r["checks"]}
+    assert len(checks) == len(CHECKS), "a check went unreported"
+    assert all(c["state"] in ("passed", "flagged", "failed", "skipped", "error")
+               for c in checks.values())
+
+    # this fixture's products do not match the order it was given
+    prod = [c for c in r["checks"] if c["key"] == "check_products"][0]
+    assert prod["state"] == "failed"
+    # ...and the rest of it is clean
+    assert sum(1 for c in r["checks"] if c["state"] == "passed") >= 8
+
+    # with NO order list loaded, the products check must not claim a pass
+    r2 = run_all(FIXTURES / "salem_rv.pdf", filename="July 2026_Salem RV_17781.pdf",
+                 expected_products=None, period="2026-07")
+    prod2 = [c for c in r2["checks"] if c["key"] == "check_products"][0]
+    assert prod2["state"] == "skipped", prod2
+    # and a report with no date range printed does not claim that one either
+    assert [c for c in r2["checks"] if c["key"] == "check_date_range"][0]["state"] \
+        in ("passed", "skipped")
+
+    # every failed check has a matching finding, so nothing is flagged silently
+    for c in r["checks"]:
+        if c["state"] in ("failed", "flagged"):
+            assert c["count"] >= 1

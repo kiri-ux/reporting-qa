@@ -211,7 +211,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                       "impressions": 0, "clicks": 0, "pages": 0, "products": [], "severity": "fail",
                       "findings": [{"code": "unreadable", "severity": "fail",
                                     "title": "Report could not be read",
-                                    "detail": str(exc)}]}
+                                    "detail": str(exc)}],
+                      "checks": []}
         meta = result["meta"]
         rep = Report(
             batch_id=batch.id, filename=name, stored_path=str(path),
@@ -221,6 +222,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
             pages=result["pages"], impressions=result["impressions"], clicks=result["clicks"],
             products=", ".join(result.get("products") or []),
             severity=result["severity"], findings=result["findings"],
+            checks=result.get("checks") or [],
         )
         db.add(rep)
         db.flush()

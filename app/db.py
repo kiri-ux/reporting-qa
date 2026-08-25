@@ -76,6 +76,9 @@ class Report(Base):
     products: Mapped[str] = mapped_column(String(512), default="")
     severity: Mapped[str] = mapped_column(String(12), default="pass")    # pass|warn|fail
     findings: Mapped[list] = mapped_column(JSON, default=list)
+    # Every check that ran, with what it verified. Kept alongside the findings
+    # so the report page can say what was looked at, not only what went wrong.
+    checks: Mapped[list] = mapped_column(JSON, default=list)
     owner_buyer: Mapped[str] = mapped_column(String(255), default="")
     owner_team: Mapped[str] = mapped_column(String(255), default="")
 
@@ -307,6 +310,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("partners", "delivery_target", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("deliveries", "archive_url", "TEXT"),
     ("reports", "acked", "JSON"),
+    ("reports", "checks", "JSON"),
 ]
 
 
