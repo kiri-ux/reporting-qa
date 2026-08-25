@@ -1,20 +1,17 @@
 {% extends "base.html" %}
 {% block title %}{{ rep.client }} · Report QA{% endblock %}
 {% block where %}<a href="/cycle">Cycle</a> / {{ rep.client }}{% endblock %}
+{% block bodyclass %}fit{% endblock %}
 {% block body %}
-<div style="display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap">
-  <div>
-    <h1>{{ rep.client }}</h1>
-    <p class="sub">{{ rep.market }} · {{ rep.period }}
-      {%- if rep.is_lifetime %} · <span class="pill p-info">lifetime</span>{% endif %}
-      {%- if rep.pages %} · {{ rep.pages }} pages{% endif %}
-      {%- if rep.impressions %} · {{ '{:,}'.format(rep.impressions) }} impressions{% endif %}</p>
-  </div>
-  <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
-    <span class="pill p-{{ rep.board_state }}">
-      {{ rep.board_state|replace('_',' ')|title }}</span>
-    <a class="btn" href="/report/{{ rep.id }}/file" download="{{ rep.filename }}">Download</a>
-  </span>
+{# One row, not a stacked title block. Every pixel here comes out of the PDF. #}
+<div class="pagehead">
+  <h1>{{ rep.client }}</h1>
+  <span class="meta">{{ rep.market }} · {{ rep.period }}
+    {%- if rep.pages %} · {{ rep.pages }} pages{% endif %}
+    {%- if rep.impressions %} · {{ '{:,}'.format(rep.impressions) }} impressions{% endif %}</span>
+  {% if rep.is_lifetime %}<span class="pill p-info">lifetime</span>{% endif %}
+  <span class="pill p-{{ rep.board_state }}">{{ rep.board_state|replace('_',' ')|title }}</span>
+  <a class="btn" href="/report/{{ rep.id }}/file" download="{{ rep.filename }}">Download</a>
 </div>
 
 {# Side by side. Stacked, the findings pushed the report below the fold and
@@ -69,8 +66,15 @@
     {% if rep.checks %}
       {% set passed = rep.checks|selectattr('state','equalto','passed')|list %}
       {% set skipped = rep.checks|selectattr('state','equalto','skipped')|list %}
-      <details style="margin-top:20px" {% if not problems %}open{% endif %}>
-        <summary class="cksum">{{ passed|length }} of {{ rep.checks|length }} checks passed</summary>
+      {# Always collapsed. The count on the bar is the whole answer most of the
+         time; opening it is for when you want to know exactly which one. #}
+      <details style="margin-top:20px">
+        <summary class="cksum">{{ passed|length }} of {{ rep.checks|length }} checks passed
+          {%- set bad = rep.checks|rejectattr('state','equalto','passed')
+                                  |rejectattr('state','equalto','skipped')|list %}
+          {%- if bad %}<span class="ckbad">{{ bad|length }} not</span>{% endif %}
+          {%- if skipped %}<span class="ckskip">{{ skipped|length }} skipped</span>{% endif %}
+        </summary>
         <ul class="cklist">
           {% for c in rep.checks %}
             <li class="ck-{{ c.state }}">
@@ -142,6 +146,11 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
 </div>
 
 <style>
+.pagehead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.pagehead h1{font-size:26px;line-height:1.1}
+.pagehead .meta{font-size:13px;color:var(--muted)}
+.pagehead .pill{align-self:center}
+.pagehead .btn{margin-left:auto;align-self:center;padding:7px 16px;font-size:13px}
 .split{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:18px;align-items:start}
 .checks{position:sticky;top:78px;background:var(--surface);border:1px solid var(--line);
  border-radius:10px;box-shadow:var(--shadow);padding:16px 18px;max-height:calc(100vh - 100px);
@@ -176,6 +185,11 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
 .cksum::marker,.cksum::-webkit-details-marker{display:none}
 .cksum::before{content:'▸ ';font-size:12px}
 details[open] > .cksum::before{content:'▾ '}
+.ckbad,.ckskip{display:inline-block;font-family:'GT Walsheim Pro',sans-serif;font-size:12px;
+ font-weight:700;letter-spacing:0;text-transform:none;padding:1px 8px;border-radius:20px;
+ margin-left:6px;vertical-align:1px}
+.ckbad{background:var(--crit-bg);color:var(--crit)}
+.ckskip{background:var(--atlas-10);color:#3D5468}
 .cklist{list-style:none;margin:11px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .cklist li{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink-2)}
 .ckmark{flex:0 0 auto;width:16px;height:16px;display:flex;align-items:center;

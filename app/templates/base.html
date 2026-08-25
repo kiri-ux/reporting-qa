@@ -278,7 +278,26 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
  main,footer{padding-left:16px;padding-right:16px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body>
+
+/* ---- fit-to-viewport pages ----
+   One page - the report viewer - is a workspace rather than a document. It
+   should never scroll as a whole; the PDF and the checks panel scroll inside
+   themselves so both stay on screen together. Everything here is scoped to
+   .fit so no other page inherits a fixed height. */
+body.fit{overflow:hidden;height:100vh}
+body.fit main{height:calc(100vh - 61px);padding:14px 20px 0;gap:12px;overflow:hidden;
+ display:flex;flex-direction:column}
+body.fit footer{display:none}
+body.fit .pagehead{flex:0 0 auto}
+body.fit .split{flex:1 1 auto;min-height:0}
+body.fit .checks{position:static;max-height:100%;height:100%;overflow:auto}
+body.fit .pdfwrap{height:100%}
+body.fit .pdfwrap object{height:100%}
+@media(max-width:900px){
+  body.fit{overflow:auto;height:auto}
+  body.fit main{height:auto;overflow:visible}
+}
+</style></head><body class="{% block bodyclass %}{% endblock %}">
 
 <nav class="rail" aria-label="Sections">
   <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
