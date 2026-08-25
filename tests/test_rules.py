@@ -686,9 +686,12 @@ def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path)
     - matched case-insensitively, since these were typed by people - and a
     cycle folder created inside it. The CYCLE FOLDER is what gets shared.
     """
+    import importlib
     from app import delivery as dmod
-    from app.board import Expected, GroupRow
-    from app.db import Report
+    importlib.reload(dmod)
+    from app import board as bmod
+    from app import db as db_mod
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
 
     # A stand-in Drive: folders by (parent, name), files by (parent, name).
     folders = {("PARENT", "7 Mountains PA State College"): "EXISTING_MARKET_ID"}
@@ -790,10 +793,6 @@ def test_seven_mountains_archives_to_drive_but_shares_dropbox(monkeypatch, tmp_p
     ones. A Dropbox market therefore uploads twice; the Drive copy is never
     skipped.
     """
-    from app import delivery as dmod
-    from app.board import Expected, GroupRow
-    from app.db import Report, SessionLocal, init_db
-
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'d.db'}")
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     import importlib
@@ -801,6 +800,13 @@ def test_seven_mountains_archives_to_drive_but_shares_dropbox(monkeypatch, tmp_p
     importlib.reload(cfg_mod)
     from app import db as db_mod
     importlib.reload(db_mod)
+    from app import board as bmod
+    importlib.reload(bmod)
+    # delivery LAST, so it binds to the config and models above rather than to
+    # whatever a previously-reloading test left in sys.modules
+    from app import delivery as dmod
+    importlib.reload(dmod)
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
     db_mod.init_db()
     db = db_mod.SessionLocal()
 
@@ -847,10 +853,6 @@ def test_seven_mountains_archives_to_drive_but_shares_dropbox(monkeypatch, tmp_p
 def test_a_dropbox_failure_does_not_lose_the_drive_copy(monkeypatch, tmp_path):
     """If Dropbox fails, the reports are still filed in Drive and the message
     says so - otherwise it reads as though nothing was delivered at all."""
-    from app import delivery as dmod
-    from app.board import Expected, GroupRow
-    from app.db import Report
-
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'f.db'}")
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     import importlib
@@ -858,6 +860,11 @@ def test_a_dropbox_failure_does_not_lose_the_drive_copy(monkeypatch, tmp_path):
     importlib.reload(cfg_mod)
     from app import db as db_mod
     importlib.reload(db_mod)
+    from app import board as bmod
+    importlib.reload(bmod)
+    from app import delivery as dmod
+    importlib.reload(dmod)
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
     db_mod.init_db()
     db = db_mod.SessionLocal()
 
@@ -1215,6 +1222,8 @@ def test_nothing_is_ever_emailed_to_a_client(monkeypatch, tmp_path):
     monkeypatch.setattr(nmod.settings, "smtp_user", "")
     monkeypatch.setattr(nmod.settings, "digest_to", "jacob@vicimediainc.com")
     monkeypatch.setattr(nmod.settings, "internal_domains", "vicimediainc.com")
+    monkeypatch.setattr(nmod.settings, "notifications_enabled", True)   # the point here
+                                                                       # is WHO, not whether
 
     class B:
         market, period, failed, warned, clean = "7 Mountains KY", "2026-07", 1, 2, 3
@@ -1272,3 +1281,33 @@ def test_the_roster_client_addresses_never_reach_the_notifier():
             if ".recipients" in line or "to_emails" in line:
                 assert "_csv_response" in text and "partners_csv" in text
                 assert "send_digest" not in line and "extra_to" not in line, line
+
+
+def test_notifications_are_off_until_deliberately_turned_on(monkeypatch):
+    """Blank credentials already mean silence, but that is an accident of an
+    empty field. Someone configuring SMTP for an unrelated reason must not
+    start mailing people as a side effect."""
+    from app import notify as nmod
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): raise AssertionError("mail was sent")
+    def boom(*a, **k): raise AssertionError("slack was posted")
+
+    monkeypatch.setattr(nmod.smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(nmod.httpx, "post", boom)
+    # fully configured, and still silent
+    monkeypatch.setattr(nmod.settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(nmod.settings, "digest_from", "qa@vicimediainc.com")
+    monkeypatch.setattr(nmod.settings, "digest_to", "jacob@vicimediainc.com")
+    monkeypatch.setattr(nmod.settings, "slack_webhook_url", "https://hooks.slack.com/x")
+    monkeypatch.setattr(nmod.settings, "notifications_enabled", False)
+
+    class B:
+        market, period, failed, warned, clean = "M", "2026-07", 1, 2, 3
+        reports, notified_at, id = [], None, 1
+
+    assert nmod.send_digest(B()) is False
+    assert nmod.post_slack(B()) is False
+    assert nmod.settings.notify_status == {
+        "enabled": False, "email": False, "slack": False,
+        "to": ["jacob@vicimediainc.com"], "domains": nmod.settings.internal_domains}

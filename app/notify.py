@@ -36,6 +36,8 @@ def _lines(batch, comp) -> list[str]:
 
 
 def post_slack(batch, comp=None) -> bool:
+    if not settings.notifications_enabled:
+        return False
     if not settings.slack_webhook_url:
         return False
     text = "\n".join(_lines(batch, comp))
@@ -82,6 +84,8 @@ def _html(batch, comp) -> str:
 
 
 def send_digest(batch, comp=None, extra_to: list[str] | None = None) -> bool:
+    if not settings.notifications_enabled:
+        return False
     if not (settings.smtp_host and settings.digest_from):
         return False
     wanted = list(dict.fromkeys(settings.digest_recipients + (extra_to or [])))

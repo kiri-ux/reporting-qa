@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     # shared secret appended to the inbound URL, e.g. /inbound/mailgun?k=...
     inbound_secret: str = "change-me"
 
+    # MASTER OFF SWITCH for anything that leaves the building.
+    #
+    # Blank credentials already mean nothing sends, but that is a side effect
+    # of a field being empty rather than a decision. Someone configuring SMTP
+    # for an unrelated reason should not accidentally start mailing people, so
+    # this has to be turned on deliberately.
+    notifications_enabled: bool = False
+
     slack_webhook_url: str = ""
 
     smtp_host: str = ""
@@ -95,6 +103,18 @@ class Settings(BaseSettings):
     @property
     def orders_s3_keys(self) -> list[str]:
         return [k.strip() for k in self.orders_s3_key.split(",") if k.strip()]
+
+    @property
+    def notify_status(self) -> dict:
+        """What would actually go out right now, for the UI to state plainly."""
+        return {
+            "enabled": self.notifications_enabled,
+            "email": bool(self.notifications_enabled and self.smtp_host
+                          and self.digest_from),
+            "slack": bool(self.notifications_enabled and self.slack_webhook_url),
+            "to": self.digest_recipients,
+            "domains": self.internal_domains,
+        }
 
     @property
     def internal_domain_list(self) -> list[str]:

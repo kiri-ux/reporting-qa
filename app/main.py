@@ -475,6 +475,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "summary": summary(exp), "state_label": STATE_LABEL,
         "filter_group": group, "filter_state": state,
         "deliveries": latest_deliveries(db, period),
+        "notify": settings.notify_status,
         "configured": settings.delivery_configured,
         "today": dt.date.today(),
     })

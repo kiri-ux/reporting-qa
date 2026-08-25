@@ -30,6 +30,15 @@
   </form>
 </div>
 
+{% if not notify.enabled %}
+<div class="note" style="border-left-color:var(--atlas-50);background:var(--atlas-10)">
+  <b>Nothing is emailed or posted to Slack.</b> Notifications are off, so this board and
+  the links you hand over are the only output. Turn them on with
+  <code>NOTIFICATIONS_ENABLED=true</code> once you have SMTP set up - and even then only
+  <code>{{ notify.domains }}</code> addresses can receive anything.
+</div>
+{% endif %}
+
 <section>
   <div class="cards">
     <div><b>{{ summary.total }}</b><span>Expected{% if summary.lifetimes %}
