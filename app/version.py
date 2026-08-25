@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.24-7"
-BUILD_NOTES = ("Inbound log, in-app PDF viewer, workload by buyer/reporter/"
-               "trainer, per-column filters, and the buyer column now "
-               "resolves from the roster on every render.")
+BUILD = "2026.08.24-9"
+BUILD_NOTES = ("The cycle board is the front page. Full width, products on "
+               "the cycle rows, labelled progress, and a failed sync now "
+               "shows when it failed.")
 # ---------------------------------------------------------------------------
 
 

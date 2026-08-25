@@ -592,3 +592,87 @@ def test_expected_set_covers_monthlies_and_lifetimes(tmp_path, monkeypatch):
     assert [g.group for g in groups] == ["7 Mountains"]
     assert groups[0].target == "dropbox"
     assert not groups[0].ready                          # nothing received yet
+
+
+def test_each_market_delivers_on_its_own(tmp_path, monkeypatch):
+    """One link per market, not one per media group.
+
+    The roster still has a group column so markets CAN be bundled, but nothing
+    is bundled by default - 7 Mountains PA State College and 7 Mountains KY are
+    two deliveries, each with its own link, both going to Dropbox.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'g.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import partners as pmod, board as bmod
+    importlib.reload(pmod); importlib.reload(bmod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+    pmod.seed_if_empty(db)
+
+    D = dt.date.fromisoformat
+    for market in ["7 Mountains PA State College", "7 Mountains KY",
+                   "Lockwood Digital Solutions Augusta",
+                   "Lockwood Digital Solutions Denison"]:
+        db.add(db_mod.OrderLine(market=market, client=f"{market} client",
+                                product="Display Ads", account_ids="1234",
+                                starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.commit()
+
+    groups = {g.group: g for g in bmod.by_group(db, "2026-07")}
+    assert "7 Mountains" not in groups, "markets got bundled into a media group"
+    assert "Lockwood Digital" not in groups
+    assert set(groups) == {
+        "7 Mountains PA State College", "7 Mountains KY",
+        "Lockwood Digital Solutions Augusta", "Lockwood Digital Solutions Denison"}
+    for g in groups.values():
+        assert len(g.markets) == 1, f"{g.group} covers {g.markets}"
+
+    # ...and every 7 Mountains market still goes to Dropbox, individually
+    assert groups["7 Mountains PA State College"].target == "dropbox"
+    assert groups["7 Mountains KY"].target == "dropbox"
+    assert groups["Lockwood Digital Solutions Augusta"].target == ""
+
+
+def test_a_mixed_s3_folder_still_imports(tmp_path, monkeypatch):
+    """A folder holding an export plus anything else must not break the sync.
+
+    The first version peeked at ONE file's header and applied that verdict to
+    every file. A partner list or a stray sheet sorting alphabetically first
+    therefore sent all five exports down the wrong path, and the failure
+    surfaced as "list index out of range" with no file named.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'m.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import roster as rmod
+    importlib.reload(rmod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    export = tmp_path / "z_export.csv"
+    export.write_bytes(IO_EXPORT.read_bytes())
+    # sorts before the export, and is not an export
+    other = tmp_path / "a_partner_list.csv"
+    other.write_text("Partner,Buyer,Email\nFoo,Bar,x@y.com\n")
+
+    res = rmod.import_orders(db, [other, export], filename="a_partner_list.csv",
+                             period="2026-07")
+    assert isinstance(res, dict), f"fell through to the flat-list path: {res!r}"
+    assert res["kept"] > 0
+    assert res.get("ignored_files") == ["a_partner_list.csv"]
+
+    # and a file that cannot be read names itself rather than failing obscurely
+    junk = tmp_path / "broken.csv"
+    junk.write_bytes(b"\x00\xff binary")
+    res = rmod.import_orders(db, [export, junk], filename="z_export.csv",
+                             period="2026-07")
+    assert res["kept"] > 0, "one bad file should not lose the good ones"

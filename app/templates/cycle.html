@@ -66,15 +66,18 @@
           <span class="pct {% if g.ready %}ok{% endif %}">{{ g.pct }}%</span>
         </div>
 
-        <div class="bar" role="img"
-             aria-label="{{ g.counts.ready }} of {{ g.expected|length }} good to go">
-          {% for s in ['ready','warnings','in','needs_fix','errors','missing'] %}
-            {% if g.counts[s] %}
-              <span class="seg s-{{ s }}"
-                    style="flex:{{ g.counts[s] }}"
-                    title="{{ g.counts[s] }} {{ state_label[s] }}"></span>
-            {% endif %}
-          {% endfor %}
+        <div class="track">
+          <div class="bar" role="img"
+               aria-label="{{ g.counts.ready }} of {{ g.expected|length }} signed off">
+            {% for s in ['ready','warnings','in','needs_fix','errors','missing'] %}
+              {% if g.counts[s] %}
+                <span class="seg s-{{ s }}" style="flex:{{ g.counts[s] }}"
+                      title="{{ g.counts[s] }} {{ state_label[s] }}"></span>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <span class="tracklabel">{{ g.counts.ready }} of {{ g.expected|length }}
+            signed off</span>
         </div>
 
         <div class="gtags">
@@ -144,14 +147,18 @@
   </div>
   <div class="colfilters" data-filters-for="tbl-cycle"></div>
   <div class="tw"><table id="tbl-cycle">
-    <thead><tr><th data-col="Market">Market</th><th>Client</th><th data-col="Kind">Kind</th>
-    <th data-col="Status">Status</th><th>Findings</th><th data-col="Reporter">Reporter</th>
-    <th>Sign-off</th></tr></thead>
+    <thead><tr><th data-col="Market">Market</th><th>Client</th><th>Products</th>
+    <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
+    <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{% for e in rows %}
       <tr>
         <td class="nw">{{ e.market }}</td>
         <td><b>{{ e.client }}</b>
           {% if e.report %}<br><a class="acct" href="/report/{{ e.report.id }}/view">View PDF</a>{% endif %}</td>
+        <td><span class="chips">{% for p in chips.get(e.ident, []) %}
+          <span class="chip" data-name="{{ p.name }}" tabindex="0"
+                style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
+        {% endfor %}</span><span class="sr">{% for p in chips.get(e.ident, []) %}{{ p.name }} {% endfor %}</span></td>
         <td class="nw">{% if e.kind == 'lifetime' %}
           <span class="pill p-info">lifetime</span>
           {% if e.ends_on %}<br><span class="acct">ended {{ e.ends_on }}</span>{% endif %}
@@ -199,7 +206,11 @@
 .pct{margin-left:auto;font-family:Agdasima,sans-serif;font-size:26px;font-weight:700;
  color:var(--atlas-50);font-variant-numeric:tabular-nums;line-height:1}
 .pct.ok{color:var(--ok)}
-.bar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--ink-10)}
+.track{display:flex;align-items:center;gap:10px}
+.bar{display:flex;flex:1;height:8px;border-radius:5px;overflow:hidden;
+ background:var(--ink-10);box-shadow:inset 0 0 0 1px rgba(0,45,88,.09)}
+.tracklabel{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;
+ white-space:nowrap}
 .seg{display:block}
 .s-ready{background:var(--ok)} .s-warnings{background:var(--gold)}
 .s-in{background:var(--velocity-50)} .s-needs_fix{background:var(--plum)}

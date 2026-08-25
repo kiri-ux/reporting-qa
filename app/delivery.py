@@ -59,20 +59,56 @@ def build_zip(group: GroupRow, period: str, out_dir: Path) -> tuple[Path, int]:
 
 
 # ---------------------------------------------------------------- Google Drive
+DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
+
+
+def _drive_credentials():
+    """OAuth first, service account key second.
+
+    Most Workspace organisations now enforce the org policy
+    `iam.disableServiceAccountKeyCreation`, which does not restrict what a key
+    can do - it stops the key existing at all. There is no code change that
+    gets around that, so the primary path is a refresh token from a person who
+    authorised once. Files uploaded into a SHARED drive are owned by the drive
+    rather than by that person, so nothing is orphaned when they leave.
+    """
+    mode = settings.google_auth_mode
+    if mode == "oauth":
+        from google.oauth2.credentials import Credentials
+        missing = [n for n, v in (("GOOGLE_CLIENT_ID", settings.google_client_id),
+                                  ("GOOGLE_CLIENT_SECRET", settings.google_client_secret))
+                   if not v.strip()]
+        if missing:
+            raise RuntimeError(f"{' and '.join(missing)} not set. The refresh token "
+                               f"cannot be exchanged without them.")
+        return Credentials(
+            token=None,
+            refresh_token=settings.google_refresh_token.strip(),
+            client_id=settings.google_client_id.strip(),
+            client_secret=settings.google_client_secret.strip(),
+            token_uri="https://oauth2.googleapis.com/token",
+            scopes=[DRIVE_SCOPE])
+    if mode == "key":
+        from google.oauth2 import service_account
+        return service_account.Credentials.from_service_account_info(
+            settings.google_credentials(), scopes=[DRIVE_SCOPE])
+    raise RuntimeError(
+        "Google Drive is not configured. Set GOOGLE_CLIENT_ID, "
+        "GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN (or, if your org allows "
+        "service account keys, GOOGLE_SERVICE_ACCOUNT_JSON).")
+
+
 def upload_drive(path: Path, folder_name: str) -> tuple[str, str]:
     """Upload into a Google shared drive and return (url, message).
 
     A folder per cycle inside the configured parent, so a partner coming back
     next month finds this month beside last month rather than a pile of zips.
     """
-    from google.oauth2 import service_account
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
-    creds = service_account.Credentials.from_service_account_info(
-        settings.google_credentials(),
-        scopes=["https://www.googleapis.com/auth/drive"])
-    svc = build("drive", "v3", credentials=creds, cache_discovery=False)
+    svc = build("drive", "v3", credentials=_drive_credentials(),
+                cache_discovery=False)
 
     parent = settings.drive_parent_folder_id.strip()
     if not parent:

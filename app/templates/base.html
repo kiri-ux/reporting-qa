@@ -75,8 +75,10 @@ body{margin:0;background:var(--plane);color:var(--ink);
 .topbar::after{content:'';position:absolute;left:0;right:0;bottom:-3px;height:3px;
  background:linear-gradient(90deg,var(--atlas) 0%,var(--velocity) 46%,var(--teal) 100%)}
 
-main{margin-left:var(--rail);padding:26px 28px 40px;display:flex;flex-direction:column;gap:28px;
- max-width:1260px}
+/* Full width on purpose. These tables are ten columns of dense data over a
+   thousand rows; a reading measure would only push half of it off screen. The
+   prose that DOES need a measure caps itself with .sub instead. */
+main{margin-left:var(--rail);padding:26px 28px 40px;display:flex;flex-direction:column;gap:28px}
 
 /* ---- type ---- */
 h1{font-family:Agdasima,sans-serif;font-size:38px;font-weight:700;margin:0;
@@ -268,17 +270,18 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
     <path d="M38.4 43.2l3.2 3.4 6-6.6" fill="none" stroke="#002D58" stroke-width="3.4"
           stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
-  <a href="/" class="{% if nav == 'dash' %}on{% endif %}" title="Dashboard" aria-label="Dashboard" data-label="Dashboard">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
-      <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
-    </svg></a>
-  <a href="/cycle" class="{% if nav == 'cycle' %}on{% endif %}" title="This cycle" aria-label="This cycle" data-label="This cycle">
+  <a href="/" class="{% if nav == 'cycle' %}on{% endif %}" title="This cycle" aria-label="This cycle" data-label="This cycle">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>
       <path d="M9 14.5l2 2 4-4"/>
+    </svg></a>
+  <a href="/batches" class="{% if nav == 'batches' %}on{% endif %}" title="Batches"
+     aria-label="Batches" data-label="Batch history">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
+      <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
     </svg></a>
   <a href="/orders" class="{% if nav == 'orders' %}on{% endif %}" title="Order list" aria-label="Order list" data-label="Order list">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"

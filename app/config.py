@@ -43,8 +43,17 @@ class Settings(BaseSettings):
     # Where a finished partner's zip goes when the roster does not say.
     delivery_target: str = "local"           # local | drive | dropbox
 
-    # Google: a service account JSON key, pasted whole into one env var. The
-    # service account's email must be a member of the shared drive.
+    # Google. Two ways in, and the OAuth one is first because most Workspace
+    # orgs now enforce iam.disableServiceAccountKeyCreation, which makes a
+    # service account key impossible to create at all.
+    #
+    #   OAuth  - a person authorises once and the refresh token is stored here.
+    #            Files land in the SHARED DRIVE, which owns them, so nothing is
+    #            lost if that person leaves.
+    #   Key    - a service account JSON key, if the org policy allows one.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_refresh_token: str = ""
     google_service_account_json: str = ""
     drive_parent_folder_id: str = ""         # folder inside the shared drive
 
@@ -81,6 +90,14 @@ class Settings(BaseSettings):
     def digest_recipients(self) -> list[str]:
         return [e.strip() for e in self.digest_to.split(",") if e.strip()]
 
+    @property
+    def google_auth_mode(self) -> str:
+        if self.google_refresh_token.strip():
+            return "oauth"
+        if self.google_service_account_json.strip():
+            return "key"
+        return ""
+
     def google_credentials(self) -> dict:
         """The service account key, however it was pasted in.
 
@@ -104,8 +121,7 @@ class Settings(BaseSettings):
     @property
     def delivery_configured(self) -> dict[str, bool]:
         return {
-            "drive": bool(self.google_service_account_json.strip()
-                          and self.drive_parent_folder_id.strip()),
+            "drive": bool(self.google_auth_mode and self.drive_parent_folder_id.strip()),
             "dropbox": bool(self.dropbox_app_key.strip()
                             and self.dropbox_app_secret.strip()
                             and self.dropbox_refresh_token.strip()),

@@ -20,7 +20,15 @@
             {% if sync.last_modified %} · object last modified
               {{ sync.last_modified.strftime('%b %d, %Y %H:%M') }} UTC{% endif %}
           {% else %}
-            <span style="color:var(--crit)"><b>Last sync failed:</b> {{ sync.message }}</span>
+            {# The timestamp is the point. Without it a failure written weeks
+               ago by a build that has since been fixed reads exactly like one
+               that happened on the last click. #}
+            <span style="color:var(--crit)"><b>Last sync failed</b>
+              {{ sync.synced_at.strftime('%b %d, %Y at %H:%M') }} UTC:</span><br>
+            <span style="color:var(--crit)">{{ sync.message }}</span>
+            {% if lines %}<br>
+              <span class="acct">{{ lines|length }} order lines are still loaded from
+              before this, so nothing has been lost.</span>{% endif %}
           {% endif %}
         </p>
       {% else %}

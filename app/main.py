@@ -226,14 +226,14 @@ async def inbound_postmark(request: Request, background: BackgroundTasks,
 
 
 # ---------------------------------------------------------------- dashboard
-@app.get("/", response_class=HTMLResponse)
+@app.get("/batches", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     sweep_stale(db)
     batches = db.scalars(select(Batch).order_by(desc(Batch.received_at)).limit(40)).all()
     latest = batches[0] if batches else None
     comp = completeness(db, latest.market, latest.period) if latest else None
     return templates.TemplateResponse(request, "dashboard.html", {
-        "batches": batches, "latest": latest, "comp": comp, "nav": "dash",
+        "batches": batches, "latest": latest, "comp": comp, "nav": "batches",
         "orders": db.query(OrderLine).count(),
     })
 
@@ -411,6 +411,7 @@ def partners_csv(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- cycle board
+@app.get("/", response_class=HTMLResponse)
 @app.get("/cycle", response_class=HTMLResponse)
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
                state: str = Query(""), db: Session = Depends(get_db)):
@@ -427,8 +428,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     rows = [e for g in groups for e in g.expected]
     if state:
         rows = [e for e in rows if e.state == state]
+    from .product_codes import pill
+    chips = {e.ident: [pill(p) for p in e.products] for e in rows}
     return templates.TemplateResponse(request, "cycle.html", {
-        "nav": "cycle", "cycle": cyc, "period": period,
+        "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
         "periods": recent_periods(), "groups": groups, "rows": rows,
         "summary": summary(exp), "state_label": STATE_LABEL,
         "filter_group": group, "filter_state": state,
@@ -479,13 +482,13 @@ def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
     from .board import expected_for
     from .cycle import current_period
     period = period or current_period()
-    rows = [[e.group, e.market, e.client, e.kind, ", ".join(e.products),
+    rows = [[e.market, e.client, e.kind, ", ".join(e.products),
              e.account_ids, e.ends_on or "", e.buyer, e.reporter,
              e.state, e.report.reviewed_by if e.report else "",
              e.report.review_note if e.report else ""]
             for e in expected_for(db, period)]
     return _csv_response(f"report-qa-cycle-{period}.csv",
-                         ["Partner group", "Market", "Client", "Kind", "Products",
+                         ["Market", "Client", "Kind", "Products",
                           "Order", "Ends", "Buyer", "Reporter", "Status",
                           "Reviewed by", "Note"], rows)
 
@@ -502,7 +505,7 @@ def inbound_view(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/people", response_class=HTMLResponse)
-def people_view(request: Request, role: str = Query("buyer"),
+def people_view(request: Request, role: str = Query("reporter"),
                 db: Session = Depends(get_db)):
     """Campaign counts by buyer, reporter and trainer.
 
