@@ -36,31 +36,15 @@
     <div><b data-tile="total">{{ summary.total }}</b><span>Expected<span
       data-tile-life>{% if summary.lifetimes %} · {{ summary.lifetimes }} lifetime{% endif %}</span></span></div>
     <div class="c-fail"><b data-tile="missing">{{ summary.missing }}</b><span>Not received</span>
+      {# The rate, the windows and the arithmetic all live in the hover now.
+         Five lines of working under a headline number is four more than
+         anybody reads, and it pushed the tiles into two rows. #}
       <div data-tile-pace>
-      {% if pace.hours %}<p class="eta">{{ pace.hours|humanhours }} to go</p>{% endif %}
-      {% if pace.rate %}
-        <p class="pacenote">
-          {{ '%.0f'|format(pace.rate) if pace.rate >= 1 else '%.1f'|format(pace.rate) }} an hour
-          over {{ pace.basis }}{% if pace.hours|workingdays %} ·
-          {{ pace.hours|workingdays }}{% endif %}
-        </p>
-        <details class="pacedetail">
-          <summary>How that is worked out</summary>
-          <dl>
-            {% for w in pace.windows %}
-              <dt>{{ w.label|capitalize }}</dt>
-              <dd>{{ w.count }} report{{ 's' if w.count != 1 }}
-                ({{ '%.1f'|format(w.per_hour) }} an hour)</dd>
-            {% endfor %}
-            <dt>Last one arrived</dt><dd>{{ pace.last|et('%b %-d, %-I:%M %p') }}</dd>
-            <dt>At that rate the last one lands</dt>
-            <dd>{{ pace.eta|et('%a %b %-d, %-I:%M %p') }}</dd>
-          </dl>
-          <p class="sub" style="font-size:11px;margin:6px 0 0">
-            Reports arrive in bursts - forty in ten minutes, then nothing for
-            three hours - so this is the shortest window with enough arrivals
-            in it to mean anything, not a measurement.</p>
-        </details>
+      {% if pace.hours %}
+        <p class="eta" title="{% if pace.rate %}{{ '%.0f'|format(pace.rate) if pace.rate >= 1 else '%.1f'|format(pace.rate) }} an hour over {{ pace.basis }}{% if pace.hours|workingdays %} · {{ pace.hours|workingdays }}{% endif %}.
+{% for w in pace.windows %}{{ w.label|capitalize }}: {{ w.count }} report{{ 's' if w.count != 1 }} ({{ '%.1f'|format(w.per_hour) }} an hour)
+{% endfor %}Last one arrived {{ pace.last|et('%b %-d, %-I:%M %p') }}. At that rate the last one lands {{ pace.eta|et('%a %b %-d, %-I:%M %p') }}.
+Reports arrive in bursts, so this is the shortest window with enough arrivals in it to mean anything - not a measurement.{% endif %}">{{ pace.hours|humanhours }} to go</p>
       {% endif %}
       </div>
       {# Shown instead of the projection once a filter is on. The rate is the
@@ -384,7 +368,9 @@
           {% if e.report and e.report.signed_off_by %}<br>
             <span class="acct">{{ e.report.signed_off_by }}</span>{% endif %}
           {% if e.report and e.report.signoff_pulled %}<br>
-            <span class="pendtag" title="{{ e.report.signoff_pulled }}">sign-off pulled</span>
+            {# "sign-off pulled" needed explaining, which is the tag failing at
+               its job. This says what to DO about it; the hover says why. #}
+            <span class="pendtag" title="{{ e.report.signoff_pulled }}.">needs signing off again</span>
           {% endif %}</td>
         <td class="nw">
           {% if not e.report %}
@@ -554,7 +540,7 @@
 .pendtag{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;
  border-radius:9px;background:var(--warn-bg,var(--atlas-10));color:var(--warn);
  white-space:nowrap;margin-top:3px}
-.cards .eta{margin:2px 0 0;font-family:'GT Walsheim Pro',sans-serif;
+.cards .eta{cursor:help;margin:2px 0 0;font-family:'GT Walsheim Pro',sans-serif;
  font-size:15px;font-weight:700;color:var(--ink)}
 .pacenote{margin:3px 0 0;font-size:11.5px;color:var(--ink-2);line-height:1.35}
 .pacedetail summary{font-size:11px;color:var(--velocity);cursor:pointer;

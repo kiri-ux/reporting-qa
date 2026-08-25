@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-44"
-BUILD_NOTES = ("Tick several reports and sign them off together, with one "
-               "button that takes only the ones where every check passed. The "
-               "device-under warning now starts at 20% instead of firing on "
-               "the ordinary case.")
+BUILD = "2026.08.25-45"
+BUILD_NOTES = ("A paused line item now makes no claim either way, an Amazon "
+               "Premium buy is satisfied by CTV or Video rather than both, and "
+               "Investigate shows only the orders the finding is actually "
+               "about. The arrival-rate working moved into a hover.")
 
 # ---------------------------------------------------------------------------
 

@@ -552,16 +552,23 @@ def check_geofence_names(ctx) -> list[dict]:
                f"latitude or longitude. Expected if the fence was built from an address list.")]
 
 
-def _product_trace(expected: set, found: set, why=None) -> list[tuple[str, str]]:
-    """Both full lists, behind Investigate.
+def _product_trace(expected: set, found: set, why=None,
+                   about=()) -> list[tuple[str, str]]:
+    """The evidence for THIS finding, and nothing else.
 
-    They belong somewhere - "why is that expected?" is a fair question - just
-    not on the line that is supposed to name the problem.
+    It printed both full lists, what they agreed on, and every order the client
+    has - twenty lines to explain one missing product. What matched is not in
+    dispute, and the six orders that are not about Meta are not either.
     """
-    return ([("Live orders say", ", ".join(sorted(expected)) or "nothing"),
-             ("Detected on the report", ", ".join(sorted(found)) or "nothing"),
-             ("Both agree on", ", ".join(sorted(expected & found)) or "nothing")]
-            + list(why or []))
+    about = set(about)
+    rows = [("Live orders say", ", ".join(sorted(expected)) or "nothing"),
+            ("Detected on the report", ", ".join(sorted(found)) or "nothing")]
+    for label, value in (why or []):
+        # "Meta · order 14885" - keep the ones naming a product in question.
+        head = str(label).split("\u00b7")[0].strip()
+        if head in about:
+            rows.append((label, value))
+    return rows
 
 
 def check_products(ctx) -> list[dict]:
@@ -579,22 +586,36 @@ def check_products(ctx) -> list[dict]:
     # product names to read before you could see which one was the problem, on
     # a line whose whole job was to name it. The products that matched are not
     # what anybody is looking for here.
+    # AN EITHER-OR EXPECTATION IS SATISFIED BY EITHER.
+    #
+    # "Amazon Premium CTV + Video Ads" is one line item that can deliver all of
+    # its impressions through one half, so a report with CTV and no Video is a
+    # normal Amazon month. If NEITHER turns up it is still a finding, and both
+    # halves stay allowed on the report.
+    short = expected - found
+    for group in ctx.get("expected_any") or []:
+        if set(group) & found:
+            short -= set(group)
+
     out = []
-    missing = sorted(expected - found)
+    missing = sorted(short)
     if missing:
         out.append(_f("product_missing", "fail",
                       "Ordered but not on the report: " + ", ".join(missing),
-                      "", trace=_product_trace(expected, found, ctx.get("expected_why"))))
+                      "", trace=_product_trace(expected, found,
+                                               ctx.get("expected_why"), missing)))
     # A product is not rogue when one of the ordered products is what prints
     # it. Mobile Conquesting is sold as "Mobile Conquesting Display & Video
     # Ads" and its report carries a Display section - which is the buy, not a
     # Display campaign nobody ordered.
     from .products import formats_covered
-    rogue = sorted(found - expected - formats_covered(expected))
+    rogue = sorted(found - expected - formats_covered(expected)
+                   - set(ctx.get("quiet_products") or ()))
     if rogue and expected:
         out.append(_f("product_rogue", "fail",
                       "On the report with no live order: " + ", ".join(rogue),
-                      "", trace=_product_trace(expected, found, ctx.get("expected_why"))))
+                      "", trace=_product_trace(expected, found,
+                                               ctx.get("expected_why"), rogue)))
     # NOTHING IS RAISED WHEN THEY MATCH.
     #
     # An "everything is fine" line read as an accusation on a narrow screen -
@@ -1078,7 +1099,9 @@ def _page_finder(pages: list[str]):
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
             flight: tuple | None = None, period: str | None = None,
-            market: str = "", expected_why: list | None = None) -> dict:
+            market: str = "", expected_why: list | None = None,
+            expected_any: list | None = None,
+            quiet_products: set | None = None) -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
     # a finding say WHERE on a forty-one page report to look.
@@ -1093,6 +1116,11 @@ def run_all(path: Path, filename: str | None = None,
         # them, and reading it off the code cost a screenshot, a guess and a
         # deploy each time. It goes on the finding instead.
         "expected_why": expected_why or [],
+        # Expectations one of two products satisfies - see ANY_OF.
+        "expected_any": expected_any or [],
+        # Bought, but not owed this month - paused, or out of flight.
+        # Neither expected nor a surprise.
+        "quiet_products": quiet_products or set(),
         "path": path,
         "text": text,
         "page_text": per_page,

@@ -136,7 +136,8 @@ class Report(Base):
         """Why this report went back to unreviewed, or ""."""
         if self.review_state == "new" and self.signoff_cleared_at and self.reviewed_by:
             return (f"{self.reviewed_by} signed this off, then a re-check found a "
-                    f"failure that was not there at the time")
+                    f"failure that was not there at the time, so the sign-off "
+                    f"was taken off. It needs signing off again")
         return ""
 
     @property
@@ -332,6 +333,10 @@ class OrderLine(Base):
     #
     # A list of [start, end] ISO strings, either of which may be null.
     flights: Mapped[list] = mapped_column(JSON, default=list)
+    # Is ANY of the line items behind this row actually running? A paused line
+    # is neither expected on the report nor a surprise when it turns up - the
+    # buy exists, it is just not delivering - so it makes no claim either way.
+    live: Mapped[bool] = mapped_column(Boolean, default=True)
     needs_lifetime: Mapped[bool] = mapped_column(Boolean, default=True)
     buyer: Mapped[str] = mapped_column(String(255), default="")
     team_member: Mapped[str] = mapped_column(String(255), default="")
@@ -458,6 +463,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_sync", "map_version", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("reports", "signoff_cleared_at", "TIMESTAMP"),
     ("order_lines", "flights", "JSON"),
+    ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
 ]
 
 

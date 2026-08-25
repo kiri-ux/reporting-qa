@@ -244,3 +244,53 @@ def test_social_mirror_is_not_on_the_list():
     from app.checks.products import DELIVERS
     assert "Social Mirror" not in DELIVERS
     assert "CTV" not in DELIVERS
+
+
+# ------------------------------------------- Window World, order 51329
+#
+# "Amazon Premium CTV + Video Ads" is one line item that can put all of its
+# impressions through one half, so a report with CTV and no Video is a normal
+# Amazon month rather than a missing product. "CTV + Video Ads" is not the
+# same - that buy runs both, and its report carries both.
+from app.checks.products import any_of_groups
+
+AMAZON = [frozenset({"CTV", "Video"})]
+
+
+def _any(exp, found, groups=AMAZON):
+    return [f["title"] for f in check_products(
+        {"expected_products": set(exp), "products": set(found),
+         "expected_any": groups})]
+
+
+def test_amazon_premium_is_satisfied_by_either_half():
+    assert any_of_groups(["Amazon Premium CTV + Video Ads"]) == AMAZON
+    assert _any(["CTV", "Video"], ["CTV"]) == []
+    assert _any(["CTV", "Video"], ["Video"]) == []
+    assert _any(["CTV", "Video"], ["CTV", "Video"]) == []
+
+
+def test_neither_half_turning_up_is_still_a_finding():
+    assert _any(["CTV", "Video"], ["Meta"])[0] == \
+        "Ordered but not on the report: CTV, Video"
+
+
+def test_a_plain_ctv_plus_video_buy_still_owes_both():
+    """Bloomsburg Chevrolet's report carried both, because that buy runs both."""
+    assert any_of_groups(["CTV + Video Ads"]) == []
+    assert _any(["CTV", "Video"], ["CTV"], []) == \
+        ["Ordered but not on the report: Video"]
+
+
+def test_the_trace_names_only_the_product_in_question():
+    """It printed both full lists, what they agreed on, and all seven of the
+    client's orders - twenty lines to explain one missing product."""
+    why = [("Display · order 14885", "2023-10-03 to 2026-12-31 · counted"),
+           ("Meta · order 14885", "2020-08-10 to 2026-06-30 · paused, so not owed either way"),
+           ("TikTok · order 14885", "2026-05-15 to 2026-12-31 · counted")]
+    out = check_products({"expected_products": {"Display", "Meta", "TikTok"},
+                          "products": {"Display", "TikTok"}, "expected_why": why})
+    labels = [r["label"] for r in out[0]["trace"]]
+    assert "Meta · order 14885" in labels
+    assert not [l for l in labels if l.startswith(("Display ·", "TikTok ·"))]
+    assert "Both agree on" not in labels

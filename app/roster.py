@@ -248,7 +248,45 @@ def expected_products(db: Session, client: str, account_ids: str,
         # is "nothing was owed" - an empty set, which the check reads as a
         # pass - not None, which it reads as "we cannot say".
         hit = [l for l in hit if _ran_during(l, period)]
-    return {l.product for l in hit if l.product}
+    # A paused buy is not delivering, so it is not owed on the report.
+    return {l.product for l in hit if l.product and getattr(l, "live", True)}
+
+
+def quiet_products(db: Session, client: str, account_ids: str,
+                   period: str | None = None) -> set[str]:
+    """Products the client has bought but that are not owed on this report.
+
+    Paused line items, and anything whose flight does not touch the month. It
+    is not expected - but it is not a surprise on the report either, which is
+    the half that was missing: a paused Meta line was failed for BOTH, once for
+    being absent and, on another client, once for being present.
+    """
+    hit = client_lines(db, client, account_ids) or []
+    out = set()
+    for l in hit:
+        if not l.product:
+            continue
+        if not getattr(l, "live", True):
+            out.add(l.product)
+        elif period and not _ran_during(l, period):
+            out.add(l.product)
+    return out
+
+
+def expected_any(db: Session, client: str, account_ids: str,
+                 period: str | None = None) -> list:
+    """Expectations this client's orders satisfy with EITHER product.
+
+    "Amazon Premium CTV + Video Ads" is one line item that can deliver all of
+    its impressions through either half, so a report showing CTV and no Video
+    is a normal Amazon month rather than a missing product.
+    """
+    from .checks.products import any_of_groups
+
+    hit = client_lines(db, client, account_ids) or []
+    if period:
+        hit = [l for l in hit if _ran_during(l, period)]
+    return any_of_groups([l.campaign for l in hit])
 
 
 def client_lines(db: Session, client: str, account_ids: str):
@@ -300,9 +338,14 @@ def expected_why(db: Session, client: str, account_ids: str,
 
     rows: list[tuple[str, str]] = []
     for l in sorted(hit, key=lambda x: (x.product or "", x.account_ids or "")):
-        live = _ran_during(l, period) if period else True
+        if not getattr(l, "live", True):
+            verdict = "paused, so not owed either way"
+        elif period and not _ran_during(l, period):
+            verdict = f"not running in {period}"
+        else:
+            verdict = "counted"
         rows.append((f"{l.product or 'unmapped'} · order {l.account_ids or '?'}",
-                     f"{when(l)} · {'counted' if live else 'not running in ' + (period or '')}"))
+                     f"{when(l)} · {verdict}"))
     return rows
 
 

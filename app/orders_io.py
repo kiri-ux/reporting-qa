@@ -225,6 +225,14 @@ def import_io_export(db: Session, sources, period: str | None = None,
             if os_ and (order_start_min is None or os_ < order_start_min):
                 order_start_min = os_
 
+            # A PAUSED LINE ITEM MAKES NO CLAIM EITHER WAY.
+            #
+            # W&L Subaru's only Meta line is IO Paused and ended on 30 June, and
+            # the July report was failed for a missing Meta section. A paused
+            # buy is not delivering, so it is not owed on the report - and if
+            # its product does turn up, that is not a surprise either.
+            line_live = line_status.lower() in LIVE_STATUS or (
+                not line_status and order_status.lower() in LIVE_STATUS)
             for product in products:
                 k = (client, product)
                 if k not in kept:
@@ -234,6 +242,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "campaign": product_raw, "starts_on": start, "ends_on": end,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
+                        "live": False,
                     }
                 else:                    # widest flight across that client's orders
                     cur = kept[k]
@@ -241,6 +250,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         cur["starts_on"] = start
                     if end and (cur["ends_on"] is None or end > cur["ends_on"]):
                         cur["ends_on"] = end
+                # Live if ANY line item behind this row is. A client running one
+                # product across a live order and a paused one is running it.
+                kept[k]["live"] = kept[k]["live"] or line_live
                 # Each order's own window as well as the merged one. The merged
                 # span answers "when does this end"; only the individual windows
                 # can answer "was it running in July", and a client who stopped
@@ -297,7 +309,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             line_ids=", ".join(sorted(v["lines"]))[:512],
             campaign=v["campaign"], product=product,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
-            flights=v["flights"],
+            flights=v["flights"], live=bool(v["live"]),
             buyer=buyer, buyer_email=buyer_email,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))

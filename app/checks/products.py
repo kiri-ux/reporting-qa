@@ -128,6 +128,33 @@ DELIVERS = {
 }
 
 
+# ONE LINE ITEM, EITHER PRODUCT, NOT NECESSARILY BOTH.
+#
+# "CTV + Video Ads" is a buy that runs both, and its report carries both. Amazon
+# Premium is sold the same way on paper - "Amazon Premium CTV + Video Ads" - but
+# an Amazon buy can deliver all its impressions through one of the two, so a
+# report showing CTV and no Video is a normal Amazon month, not a missing
+# product. Window World's July was exactly that.
+#
+# So this product's two halves are ONE expectation with two acceptable answers:
+# the report owes CTV or Video, and either satisfies it. Both are still allowed
+# on the report, and if NEITHER turns up that is still a finding.
+ANY_OF: list[tuple[str, frozenset]] = [
+    ("amazon premium", frozenset({"CTV", "Video"})),
+]
+
+
+def any_of_groups(raw_names) -> list[frozenset]:
+    """The either-or expectations these order line names carry."""
+    out: list[frozenset] = []
+    for name in raw_names or ():
+        flat = _flat(name)
+        for needle, grp in ANY_OF:
+            if needle in flat and grp not in out:
+                out.append(grp)
+    return out
+
+
 def formats_covered(expected) -> set[str]:
     """Everything the expected products print in their own right."""
     out: set[str] = set()

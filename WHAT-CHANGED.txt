@@ -1,48 +1,76 @@
-build 2026.08.25-44
+build 2026.08.25-45
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/config.py
+app/db.py
 app/main.py
-app/templates/base.html
+app/ingest.py
+app/recheck.py
+app/roster.py
+app/orders_io.py
+app/checks/products.py
+app/checks/rules.py
 app/templates/cycle.html
+app/templates/viewer.html
+tests/test_expected_products.py
 tests/test_manual_upload.py
-tests/test_rules.py
+tests/test_product_map.py
 
 
-1. Sign off several reports at once
--------------------------------------
-Every row in the still-open table now has a checkbox, and a bar above the table
-does the rest:
+1. A paused line item makes no claim either way
+-------------------------------------------------
+W&L Subaru's only Meta line is IO Paused and ended 30 June, and the July report
+was failed for a missing Meta section.
 
-  Select the ones that passed   ticks every visible row with nothing open
-  Clear selection
-  3 selected                    Mark reviewed   Mark needs fix
+A paused buy is not delivering, so it is not owed on the report. And if its
+product does turn up anyway, that is not a surprise either - the buy exists, it
+is just not running. Both directions, as you asked.
 
-Selected rows highlight, and the header checkbox takes everything on screen.
+An order line counts as live if ANY line item behind it is, so a client running
+one product across a live order and a paused one still owes it.
 
-Three things it is careful about:
+Investigate says which it was:
 
-  - ONLY WHAT IS ON SCREEN. Select-all and "the ones that passed" both skip
-    rows a filter is hiding. Signing off something nobody was looking at is
-    exactly what a bulk action should never do.
-  - The ids are collected at submit, not rendered per row, so a checkbox in a
-    filtered-out row cannot be posted with the rest.
-  - "The ones that passed" reads whether the report has anything OPEN, not the
-    status pill. A report can sit amber on a warning somebody has already
-    ticked off, and that one has passed.
-
-It needs to know who you are, same as any sign-off. With a name saved there is
-no name box; without one it asks, and remembers.
+    Meta · order 14885    2020-08-10 to 2026-06-30 · paused, so not owed either way
 
 
-2. The device warning starts at 20%
--------------------------------------
-"Device totals 15,066 against 17,535 eligible (-14.1%)" was a warning at the
-old 10% line. A device breakout runs a little under the eligible total on most
-reports - unknown-device filtering alone accounts for ten or twelve points - so
-that threshold was firing on the ordinary case, which is how a warning stops
-being read at all.
+2. Amazon Premium: CTV OR Video, not both
+-------------------------------------------
+"Amazon Premium CTV + Video Ads" is one line item that can put all of its
+impressions through one half, so Window World's July - CTV and no Video - is a
+normal Amazon month rather than a missing product.
+
+Both halves are now ONE expectation with two acceptable answers. Either
+satisfies it, both are allowed on the report, and if NEITHER turns up that is
+still a finding.
+
+"CTV + Video Ads" without Amazon is unchanged: that buy runs both, and
+Bloomsburg Chevrolet's report carries both.
 
 
-Tests: 351 passing.
+3. Investigate is not a wall of text any more
+-----------------------------------------------
+It printed both full lists, what they agreed on, and every order the client
+has - twenty lines to explain one missing Meta.
+
+"Both agree on" is gone: what matched is not what you are reading it for. And
+the per-order rows are filtered to the products the finding actually names, so
+a missing-Meta finding shows the Meta order and not the other six.
+
+
+4. The arrival rate is a hover
+--------------------------------
+"about 20 hours to go" stays on the tile. The rate, the windows it was measured
+over, the working-days figure and the caveat are all on the hover now - five
+lines of working under a headline number is four more than anybody reads, and
+it was pushing the tiles into two rows.
+
+
+5. "sign-off pulled"
+----------------------
+Fair - it needed explaining, which is a tag failing at its job. It now says
+"needs signing off again", and the hover says why: who signed it, and that a
+re-check later found a failure that was not there at the time.
+
+
+Tests: 360 passing.

@@ -229,3 +229,66 @@ def test_a_client_with_no_orders_at_all_still_says_so():
     s = _db()
     assert client_lines(s, "Someone Else", "99999") is None
     assert expected_products(s, "Someone Else", "99999", period="2026-07") is None
+
+
+# ------------------------------------------- W&L Subaru, order 14885
+#
+# The only Meta line item is IO Paused and ended on 30 June. The July report
+# was failed for a missing Meta section. A paused buy is not delivering, so it
+# is not owed on the report - and if its product does turn up, that is not a
+# surprise either. It makes no claim in either direction.
+from app.roster import quiet_products
+
+
+def _paused_db():
+    eng = _ce("sqlite://")
+    _B.metadata.create_all(eng)
+    s = _sm(bind=eng)()
+    s.add_all([
+        _OL(market="7 Mountains PA", client="W&L Subaru", account_ids="14885", product="Meta", live=False,
+            starts_on=_d.date(2020, 8, 10), ends_on=_d.date(2026, 6, 30),
+            flights=[["2020-08-10", "2026-06-30"]]),
+        _OL(market="7 Mountains PA", client="W&L Subaru", account_ids="14885", product="Video", live=True,
+            starts_on=_d.date(2020, 8, 10), ends_on=_d.date(2026, 12, 31),
+            flights=[["2020-08-10", "2026-12-31"]]),
+    ])
+    s.commit()
+    return s
+
+
+def test_a_paused_line_item_is_not_expected():
+    s = _paused_db()
+    assert expected_products(s, "W&L Subaru", "14885", period="2026-07") == {"Video"}
+
+
+def test_a_paused_product_on_the_report_is_not_a_surprise_either():
+    """"if a line item is paused we don't need an alert for or against"."""
+    s = _paused_db()
+    quiet = quiet_products(s, "W&L Subaru", "14885", period="2026-07")
+    assert "Meta" in quiet
+
+    from app.checks.rules import check_products
+    out = check_products({"expected_products": {"Video"},
+                          "products": {"Video", "Meta"},
+                          "quiet_products": quiet})
+    assert out == []
+
+
+def test_a_product_out_of_flight_is_quiet_too():
+    s = _paused_db()
+    assert quiet_products(s, "W&L Subaru", "14885", period="2027-06") >= {"Video"}
+
+
+def test_the_trace_says_why_it_was_left_out():
+    s = _paused_db()
+    rows = dict(expected_why(s, "W&L Subaru", "14885", period="2026-07"))
+    assert "paused, so not owed either way" in rows["Meta · order 14885"]
+
+
+def test_a_product_live_on_one_order_and_paused_on_another_is_live():
+    s = _paused_db()
+    s.add(_OL(market="7 Mountains PA", client="W&L Subaru", account_ids="14886", product="Meta", live=True,
+              starts_on=_d.date(2026, 1, 1), ends_on=_d.date(2026, 12, 31),
+              flights=[["2026-01-01", "2026-12-31"]]))
+    s.commit()
+    assert "Meta" in expected_products(s, "W&L Subaru", "14885", period="2026-07")

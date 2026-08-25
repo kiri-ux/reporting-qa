@@ -1119,7 +1119,8 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     """
     from .checks import run_all
     from .ingest import client_flight, open_batch
-    from .roster import attach_owners, expected_products, expected_why
+    from .roster import (attach_owners, expected_any, expected_products,
+                     expected_why, quiet_products)
     from .version import rules_version as _rv
 
     blob = await file.read()
@@ -1154,11 +1155,14 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
 
     exp = expected_products(db, client, account_ids, period=period)
     why = expected_why(db, client, account_ids, period=period)
+    any_of = expected_any(db, client, account_ids, period=period)
+    quiet = quiet_products(db, client, account_ids, period=period)
     flight = client_flight(db, client, account_ids)
     try:
         result = run_all(path, filename=file.filename, expected_products=exp,
                          flight=flight, period=period, market=market,
-                     expected_why=why)
+                     expected_why=why, expected_any=any_of,
+                     quiet_products=quiet)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
@@ -1206,7 +1210,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     """
     from .checks import run_all
     from .ingest import client_flight
-    from .roster import expected_products, expected_why
+    from .roster import (expected_any, expected_products, expected_why,
+                     quiet_products)
     from .version import rules_version as _rv
 
     rep = db.get(Report, report_id)
@@ -1246,10 +1251,13 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
 
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
+    any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
+    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(target, filename=rep.filename, expected_products=exp,
                      flight=flight, period=rep.period, market=rep.market or "",
-                     expected_why=why)
+                     expected_why=why, expected_any=any_of,
+                     quiet_products=quiet)
     rep.stored_path = str(target)
     rep.pages = result["pages"]
     rep.impressions = result["impressions"]
@@ -1286,7 +1294,8 @@ async def replace_report(report_id: int, request: Request,
     from .checks import run_all
     from .checks.parser import meta_from_filename
     from .ingest import client_flight
-    from .roster import expected_products, expected_why
+    from .roster import (expected_any, expected_products, expected_why,
+                     quiet_products)
 
     rep = db.get(Report, report_id)
     if not rep:
@@ -1316,11 +1325,14 @@ async def replace_report(report_id: int, request: Request,
 
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
+    any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
+    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
     flight = client_flight(db, rep.client, rep.account_ids)
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,
                          flight=flight, period=rep.period, market=rep.market or "",
-                     expected_why=why)
+                     expected_why=why, expected_any=any_of,
+                     quiet_products=quiet)
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",

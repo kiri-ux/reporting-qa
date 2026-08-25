@@ -256,7 +256,7 @@ def test_the_cycle_board_and_a_report_page_render_after_a_pulled_signoff(client)
 
     board = c.get("/cycle")
     assert board.status_code == 200
-    assert "sign-off pulled" in board.text
+    assert "needs signing off again" in board.text
     # And the name is not sitting in the reviewer column as though it stood.
     assert ">k</span>" not in board.text
 
