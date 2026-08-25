@@ -348,6 +348,78 @@ footer .n{margin-left:auto;max-width:58ch;text-align:right;color:var(--muted)}
   // rows. The dropdowns exist because free text cannot tell one column from
   // another - there is a Katie who is a trainer and a Katie who is a buyer, and
   // typing her name finds both.
+  // Card filtering. Same idea as the table filter, but cards carry their
+  // values as data- attributes rather than living in columns.
+  document.querySelectorAll('[data-cards]').forEach(function (box) {
+    var grid = document.getElementById(box.dataset.cards);
+    if (!grid) return;
+    var out = document.getElementById(box.dataset.count);
+    var wrap = document.querySelector('[data-cardfilters-for="' + box.dataset.cards + '"]');
+    var cards = Array.prototype.map.call(grid.children, function (el) {
+      return { el: el, hay: el.textContent.toLowerCase(), d: el.dataset };
+    });
+    var total = cards.length, selects = [], t;
+
+    var run = function () {
+      var terms = box.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      var picks = selects.filter(function (s) { return s.el.value; });
+      var shown = 0;
+      cards.forEach(function (c) {
+        var hit = terms.every(function (w) { return c.hay.indexOf(w) !== -1; })
+          && picks.every(function (s) {
+            return (c.d[s.key] || '').split(/\s*,\s*/)
+              .some(function (v) { return v.trim() === s.el.value; });
+          });
+        c.el.hidden = !hit;
+        if (hit) shown++;
+      });
+      if (out) out.textContent = shown === total
+        ? total.toLocaleString() + ' partners'
+        : shown.toLocaleString() + ' of ' + total.toLocaleString() + ' partners';
+    };
+
+    if (wrap) {
+      [['partner', 'Partner'], ['buyer', 'Buyer'], ['reporter', 'Reporter'],
+       ['trainer', 'Trainer'], ['status', 'Status']].forEach(function (pair) {
+        var key = pair[0], vals = {};
+        cards.forEach(function (c) {
+          (c.d[key] || '').split(/\s*,\s*/).forEach(function (v) {
+            v = v.trim();
+            if (v) vals[v] = (vals[v] || 0) + 1;
+          });
+        });
+        var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
+        if (names.length < 2) return;     // a filter with one option filters nothing
+        var f = document.createElement('div'); f.className = 'colf';
+        var lb = document.createElement('label'); lb.textContent = pair[1];
+        var sel = document.createElement('select');
+        sel.appendChild(new Option('All (' + names.length + ')', ''));
+        names.forEach(function (n) { sel.appendChild(new Option(n + '  (' + vals[n] + ')', n)); });
+        lb.htmlFor = sel.id = 'cardf-' + key;
+        f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
+        selects.push({ key: key, el: sel });
+        sel.addEventListener('change', function () {
+          sel.classList.toggle('set', !!sel.value);
+          run();
+        });
+      });
+      if (selects.length) {
+        var clear = document.createElement('button');
+        clear.type = 'button'; clear.className = 'mini'; clear.textContent = 'Clear';
+        clear.style.alignSelf = 'flex-end'; clear.style.marginBottom = '1px';
+        clear.addEventListener('click', function () {
+          box.value = '';
+          selects.forEach(function (s) { s.el.value = ''; s.el.classList.remove('set'); });
+          run();
+        });
+        wrap.appendChild(clear);
+      }
+    }
+
+    box.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 90); });
+    run();
+  });
+
   document.querySelectorAll('[data-filter]').forEach(function (box) {
     var table = document.getElementById(box.dataset.filter);
     if (!table) return;

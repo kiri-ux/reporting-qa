@@ -51,17 +51,34 @@
     </span>
   </div>
 
-  <div class="glist">
+  <div class="tools">
+    <input type="search" data-cards="glist" data-count="cnt-groups"
+           placeholder="Search partners...">
+    <span class="count" id="cnt-groups"></span>
+  </div>
+  <div class="colfilters" data-cardfilters-for="glist"></div>
+
+  <div class="glist" id="glist">
     {% for g in groups %}
       {% set d = deliveries.get(g.group) %}
-      <div class="gcard {% if g.ready %}done{% endif %}">
+      <div class="gcard {% if g.ready %}done{% endif %}"
+           data-partner="{{ g.group }}" data-buyer="{{ g.buyer }}"
+           data-reporter="{{ g.reporter }}" data-trainer="{{ g.trainer }}"
+           data-status="{{ 'Good to go' if g.ready else 'Open' }}">
         <div class="ghead">
           <div>
             <h3 style="margin:0">{{ g.group }}</h3>
             <p class="sub" style="margin:2px 0 0;font-size:12.5px">
-              {{ g.markets|length }} market{{ 's' if g.markets|length != 1 }} ·
               {{ g.expected|length }} report{{ 's' if g.expected|length != 1 }}
-              {%- if g.target %} · {{ g.target }}{% endif %}</p>
+              {%- if g.target == 'dropbox' %} · dropbox{% endif %}</p>
+            <div class="who">
+              {% if g.buyer %}<span class="wtag b" title="Buyer: {{ g.buyer }}">
+                <b>B</b>{{ g.buyer }}</span>{% endif %}
+              {% if g.reporter %}<span class="wtag r" title="Reporter: {{ g.reporter }}">
+                <b>R</b>{{ g.reporter }}</span>{% endif %}
+              {% if g.trainer %}<span class="wtag t" title="Trainer: {{ g.trainer }}">
+                <b>T</b>{{ g.trainer }}</span>{% endif %}
+            </div>
           </div>
           <span class="pct {% if g.ready %}ok{% endif %}">{{ g.pct }}%</span>
         </div>
@@ -218,6 +235,16 @@
 .s-ready{background:var(--ok)} .s-warnings{background:var(--gold)}
 .s-in{background:var(--velocity-50)} .s-needs_fix{background:var(--plum)}
 .s-errors{background:var(--cardinal)} .s-missing{background:var(--atlas-10)}
+.who{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.wtag{display:inline-flex;align-items:center;gap:5px;font-size:12px;
+ padding:2px 9px 2px 3px;border-radius:12px;background:var(--atlas-10);color:#3D5468;
+ white-space:nowrap}
+.wtag b{display:inline-flex;align-items:center;justify-content:center;
+ width:16px;height:16px;border-radius:50%;font-family:Agdasima,sans-serif;
+ font-size:11px;font-weight:700;background:var(--atlas);color:#fff}
+.wtag.r b{background:var(--velocity)}
+.wtag.t b{background:var(--plum)}
+.gcard[hidden]{display:none}
 .gtags{display:flex;flex-wrap:wrap;gap:5px}
 .gtags a{text-decoration:none}
 .gfoot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:auto;

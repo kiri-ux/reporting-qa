@@ -132,13 +132,25 @@ def _log_inbound(db: Session, *, source: str, sender: str, subject: str,
 
 
 def _guard(k: str | None, db: Session | None = None, source: str = "") -> None:
-    if k != settings.inbound_secret:
-        if db is not None:
-            _log_inbound(db, source=source, sender="", subject="", files=[],
-                         accepted=False,
-                         outcome="Rejected: the ?k= secret on the URL does not match "
-                                 "INBOUND_SECRET. Copy it again from Render.")
-        raise HTTPException(status_code=403, detail="bad key")
+    """Check the shared secret on the inbound URL.
+
+    The message names the two things to compare, because "bad key" on its own
+    sends people looking at the wrong end - the value on the Zap's URL, or the
+    one in Render, and there is no way to tell which is stale.
+    """
+    want = settings.inbound_secret
+    if k == want:
+        return
+    if k and k.strip() == want.strip():
+        return                       # a copy-paste picked up a trailing space
+    got = "missing" if not k else f"{len(k)} characters ending {k[-4:]!r}"
+    detail = (f"The ?k= value on the URL does not match INBOUND_SECRET. "
+              f"Render holds {len(want)} characters ending {want[-4:]!r}; "
+              f"the request sent {got}.")
+    if db is not None:
+        _log_inbound(db, source=source, sender="", subject="", files=[],
+                     accepted=False, outcome=detail)
+    raise HTTPException(status_code=403, detail=detail)
 
 
 # ---------------------------------------------------------------- inbound email

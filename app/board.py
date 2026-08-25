@@ -158,6 +158,9 @@ class GroupRow:
     group: str
     target: str
     expected: list[Expected]
+    buyer: str = ""
+    reporter: str = ""
+    trainer: str = ""
 
     @property
     def counts(self) -> dict:
@@ -195,11 +198,25 @@ def by_group(db: Session, period: str,
         if p.delivery_target and g not in targets:
             targets[g] = p.delivery_target
 
+    # The roster's own entry for the group, so a card can say who owns it
+    # without every caller having to look the partner up again.
+    people = {}
+    for p in idx.values():
+        g = p.group or p.partner
+        people.setdefault(g, p)
+
     groups: dict[str, list[Expected]] = {}
     for e in exp:
         groups.setdefault(e.group, []).append(e)
-    out = [GroupRow(group=g, target=targets.get(g, ""), expected=rows)
-           for g, rows in groups.items()]
+    out = []
+    for g, rows in groups.items():
+        p = people.get(g)
+        buyers = [b for b in dict.fromkeys(e.buyer for e in rows if e.buyer)]
+        out.append(GroupRow(
+            group=g, target=targets.get(g, ""), expected=rows,
+            buyer=", ".join(buyers) or (p.buyer if p else ""),
+            reporter=(p.reporting_team if p else ""),
+            trainer=(p.trainer if p else "")))
     out.sort(key=lambda g: (g.ready, g.group.lower()))   # unfinished first
     return out
 
