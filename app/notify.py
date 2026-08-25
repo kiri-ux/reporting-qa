@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import smtplib
 from email.message import EmailMessage
 
 import httpx
 
 from .config import settings
+
+log = logging.getLogger("reportqa.notify")
 
 SEV_EMOJI = {"fail": ":red_circle:", "warn": ":large_orange_circle:", "pass": ":large_green_circle:"}
 
@@ -81,7 +84,15 @@ def _html(batch, comp) -> str:
 def send_digest(batch, comp=None, extra_to: list[str] | None = None) -> bool:
     if not (settings.smtp_host and settings.digest_from):
         return False
-    to = list(dict.fromkeys(settings.digest_recipients + (extra_to or [])))
+    wanted = list(dict.fromkeys(settings.digest_recipients + (extra_to or [])))
+    to = [a for a in wanted if settings.is_internal(a)]
+    blocked = [a for a in wanted if a not in to]
+    if blocked:
+        # Loud, because silently dropping a recipient is its own kind of bug -
+        # someone will wonder why they never got the digest.
+        log.warning("digest: refused %d external recipient(s): %s. "
+                    "INTERNAL_DOMAINS is %s.",
+                    len(blocked), ", ".join(blocked), settings.internal_domains)
     if not to:
         return False
     msg = EmailMessage()

@@ -29,6 +29,8 @@ services:
         sync: false
       - key: DIGEST_FROM
         sync: false
+      - key: INTERNAL_DOMAINS
+        value: vicimediainc.com
       - key: DIGEST_TO
         sync: false
       - key: ORDERS_S3_BUCKET

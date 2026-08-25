@@ -1186,3 +1186,89 @@ def test_overlapping_orders_become_one_flight(tmp_path, monkeypatch):
     assert life, "an order ending in July owes a lifetime"
     assert life[0].starts_on == D("2024-03-01")
     assert life[0].ends_on == D("2026-07-31")
+
+
+def test_nothing_is_ever_emailed_to_a_client(monkeypatch, tmp_path):
+    """The digest is internal. It names failed checks, missing reports and
+    internal owners, and no part of it is written for a client to read.
+
+    The reporting roster carries each partner's OWN contacts - the people the
+    finished reports eventually go to - so a client address sits one wrong
+    join away from a recipient list at all times. This asserts the guard, not
+    the current call paths.
+    """
+    from app import notify as nmod
+
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self): pass
+        def login(self, *a): pass
+        def send_message(self, msg): sent["to"] = msg["To"]
+
+    monkeypatch.setattr(nmod.smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setattr(nmod.settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(nmod.settings, "digest_from", "report-qa@vicimediainc.com")
+    monkeypatch.setattr(nmod.settings, "smtp_user", "")
+    monkeypatch.setattr(nmod.settings, "digest_to", "jacob@vicimediainc.com")
+    monkeypatch.setattr(nmod.settings, "internal_domains", "vicimediainc.com")
+
+    class B:
+        market, period, failed, warned, clean = "7 Mountains KY", "2026-07", 1, 2, 3
+        reports, notified_at, id = [], None, 1
+
+    # every client address from the real roster, offered as a recipient
+    ok = nmod.send_digest(B(), None, extra_to=[
+        "wendy@7mountainscreative.com",         # 7 Mountains
+        "lhobbs@curtismedia.com",               # Curtis Media
+        "sarahreghitto@ccb-media.com",          # Cape Cod
+        "paulina@vicimediainc.com",             # one of ours
+    ])
+    assert ok
+    got = [a.strip() for a in sent["to"].split(",")]
+    assert sorted(got) == ["jacob@vicimediainc.com", "paulina@vicimediainc.com"], got
+    for client in ("7mountainscreative", "curtismedia", "ccb-media"):
+        assert client not in sent["to"], f"{client} was emailed"
+
+    # a subdomain of ours is still ours
+    sent.clear()
+    nmod.send_digest(B(), None, extra_to=["kiri@mail.vicimediainc.com"])
+    assert "kiri@mail.vicimediainc.com" in sent["to"]
+
+    # a lookalike domain is not
+    sent.clear()
+    nmod.send_digest(B(), None, extra_to=["someone@notvicimediainc.com"])
+    assert "notvicimediainc.com" not in sent["to"]
+
+    # with only external addresses offered, nothing is sent at all
+    sent.clear()
+    monkeypatch.setattr(nmod.settings, "digest_to", "")
+    assert nmod.send_digest(B(), None, extra_to=["wendy@7mountainscreative.com"]) is False
+    assert not sent
+
+
+def test_the_roster_client_addresses_never_reach_the_notifier():
+    """Belt and braces: the To: column is display-only.
+
+    It is read on the Partners page and in that CSV, and nowhere else. This
+    fails if anyone later wires Partner.recipients into a send path.
+    """
+    from pathlib import Path as _P
+    app_dir = _P(__file__).resolve().parent.parent / "app"
+    users = []
+    for f in app_dir.rglob("*.py"):
+        if f.name in ("db.py", "partners.py"):
+            continue                       # where it is defined and parsed
+        text = f.read_text()
+        if ".recipients" in text or "to_emails" in text:
+            users.append(f.name)
+    assert users in ([], ["main.py"]), f"client addresses referenced in {users}"
+    if users == ["main.py"]:
+        text = (app_dir / "main.py").read_text()
+        for line in text.splitlines():
+            if ".recipients" in line or "to_emails" in line:
+                assert "_csv_response" in text and "partners_csv" in text
+                assert "send_digest" not in line and "extra_to" not in line, line

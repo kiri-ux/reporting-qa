@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     digest_from: str = ""
     digest_to: str = ""          # comma separated, the always-cc list
+    # HARD LIMIT ON WHO CAN BE EMAILED. Anything outside these domains is
+    # dropped before send, whatever put it in the list. The roster carries the
+    # clients' own addresses for reference, and nothing this tool sends is
+    # written for a client to read.
+    internal_domains: str = "vicimediainc.com"
 
     # order list in S3. Leave the bucket blank to use manual upload only.
     orders_s3_bucket: str = ""
@@ -90,6 +95,30 @@ class Settings(BaseSettings):
     @property
     def orders_s3_keys(self) -> list[str]:
         return [k.strip() for k in self.orders_s3_key.split(",") if k.strip()]
+
+    @property
+    def internal_domain_list(self) -> list[str]:
+        return [d.strip().lower().lstrip("@")
+                for d in self.internal_domains.split(",") if d.strip()]
+
+    def is_internal(self, address: str) -> bool:
+        """Is this one of ours?
+
+        The reporting roster lists each partner's own contacts - the people the
+        finished reports go to - so a client address is always one wrong join
+        away from a recipient list. Nothing this tool sends is written for a
+        client to read: it names failed checks, missing reports and internal
+        owners. So the check is a domain allowlist rather than a promise that
+        the current code paths behave.
+        """
+        addr = (address or "").strip().lower()
+        if "@" not in addr:
+            return False
+        domain = addr.rsplit("@", 1)[1]
+        allowed = self.internal_domain_list
+        if not allowed:
+            return True                 # explicitly cleared: no restriction
+        return any(domain == d or domain.endswith("." + d) for d in allowed)
 
     @property
     def digest_recipients(self) -> list[str]:
