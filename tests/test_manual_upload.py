@@ -566,3 +566,66 @@ def test_the_rows_carry_whether_they_are_clear(client):
     assert 'class="rowpick"' in page
     assert 'data-clear="' in page
     assert "Select the ones that passed" in page
+
+
+# ------------------------------------------------------- the generic logo
+def test_the_header_logo_is_fingerprinted_and_stored(client):
+    """A partner's logo is on that partner's reports, a client's on that
+    client's, and the reporting tool's default is on everybody's - which is
+    what makes the last one findable without a list of 146 partner logos."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).logo_hash
+
+
+def test_the_same_report_twice_gives_the_same_fingerprint():
+    from app.checks.logo import header_logo_hash
+    a = header_logo_hash(FIXTURES / "benton_rodeo.pdf")
+    assert a and a == header_logo_hash(FIXTURES / "benton_rodeo.pdf")
+
+
+def test_two_partners_have_two_different_logos():
+    from app.checks.logo import header_logo_hash
+    assert (header_logo_hash(FIXTURES / "benton_rodeo.pdf")
+            != header_logo_hash(FIXTURES / "central_penn.pdf"))
+
+
+def test_an_unreadable_file_is_silent_rather_than_broken(tmp_path):
+    from app.checks.logo import header_logo_hash
+    junk = tmp_path / "not.pdf"
+    junk.write_bytes(b"this is not a pdf")
+    assert header_logo_hash(junk) == ""
+    assert header_logo_hash(tmp_path / "missing.pdf") == ""
+
+
+def test_a_logo_on_three_markets_is_the_tools_default():
+    from app.checks.rules import check_market_logo
+    ctx = {"logo_hash": "abc", "market": "7 Mountains PA",
+           "logo_shared_with": ["Alpha Media", "Beta Radio"]}
+    out = check_market_logo(ctx)
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert out[0]["where"] == "p1"
+    assert "3 different markets" in out[0]["detail"]
+
+
+def test_a_partner_group_covering_two_markets_is_not_accused():
+    """One logo across a two-market group is one partner's logo, not a
+    template."""
+    from app.checks.rules import check_market_logo
+    assert check_market_logo({"logo_hash": "abc", "market": "7 Mountains PA",
+                              "logo_shared_with": ["7 Mountains PA Altoona"]}) == []
+
+
+def test_a_logo_only_this_market_uses_is_fine():
+    from app.checks.rules import check_market_logo
+    assert check_market_logo({"logo_hash": "abc", "market": "7 Mountains PA",
+                              "logo_shared_with": ["7 Mountains PA"]}) == []
+
+
+def test_the_check_abstains_when_the_corner_could_not_be_read():
+    """No poppler, no page one, no Pillow. A check that cannot see the logo
+    says nothing about it rather than failing the report."""
+    from app.checks.rules import _rule_applies, check_market_logo
+    assert _rule_applies(check_market_logo, {"logo_hash": ""}) is False
+    assert _rule_applies(check_market_logo, {"logo_hash": "abc"}) is True

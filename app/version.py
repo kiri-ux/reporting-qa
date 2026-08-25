@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-45"
-BUILD_NOTES = ("A paused line item now makes no claim either way, an Amazon "
-               "Premium buy is satisfied by CTV or Video rather than both, and "
-               "Investigate shows only the orders the finding is actually "
-               "about. The arrival-rate working moved into a hover.")
+BUILD = "2026.08.25-46"
+BUILD_NOTES = ("A report using the reporting tool's default logo instead of the "
+               "station's is now a failure. It works out which mark is the "
+               "generic one from the reports themselves - a partner's logo is "
+               "on that partner's reports, the tool's is on everybody's.")
 
 # ---------------------------------------------------------------------------
 

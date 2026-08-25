@@ -627,6 +627,36 @@ def check_products(ctx) -> list[dict]:
 
 
 
+def check_market_logo(ctx) -> list[dict]:
+    """The corner of page one should carry somebody's logo, not the tool's.
+
+    The reporting tool prints a generic blue bar-chart icon when a partner has
+    no logo configured, and it goes to the client looking like a template
+    nobody finished. There is no list of a hundred and forty-six partner logos
+    to check against, and keeping one current would be its own job - so the
+    test is who the logo BELONGS to. A partner's logo is on that partner's
+    reports; a client's is on that client's; a generic one is on everybody's.
+    """
+    from .logo import GENERIC_AT
+
+    shared = list(ctx.get("logo_shared_with") or [])
+    here = (ctx.get("market") or "").strip()
+    others = sorted({m for m in shared if m and m != here})
+    if len(others) + 1 < GENERIC_AT:
+        return []
+    return [_f("generic_logo", "fail",
+               "The report is using the reporting tool's default logo",
+               f"The mark in the top-left corner of page one is on reports for "
+               f"{len(others) + 1} different markets, so it is not this "
+               f"partner's and not the client's. It should be the station logo, "
+               f"or the client's own.",
+               [("Markets carrying this same logo",
+                 ", ".join([here] + others) if here else ", ".join(others)),
+                ("What it should be",
+                 "the partner station's logo, or the client's")],
+               where="p1")]
+
+
 def check_date_range(ctx) -> list[dict]:
     """The printed date range has to match what the report claims to be.
 
@@ -954,6 +984,7 @@ CHECKS: list[tuple] = [
     (check_geofence_names, "Every geo-fencing row has a business name"),
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
+    (check_market_logo,    "Page one carries the partner's logo, not a generic one"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
@@ -1017,6 +1048,10 @@ def _rule_applies(rule, ctx) -> bool:
         return ctx.get("expected_products") is not None
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
+    if name == "check_market_logo":
+        # The corner could not be read - no poppler, no page one, no Pillow.
+        # A check that cannot see the logo says nothing about it.
+        return bool(ctx.get("logo_hash"))
     if name in ("check_headline_ctr",):
         return ctx.get("imps") is not None and ctx.get("clicks") is not None
     if name in ("check_line_items", "check_creative", "check_device",
@@ -1101,7 +1136,9 @@ def run_all(path: Path, filename: str | None = None,
             flight: tuple | None = None, period: str | None = None,
             market: str = "", expected_why: list | None = None,
             expected_any: list | None = None,
-            quiet_products: set | None = None) -> dict:
+            quiet_products: set | None = None,
+            logo_shared_with: list | None = None,
+            logo_hash: str = "") -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
     # a finding say WHERE on a forty-one page report to look.
@@ -1121,6 +1158,9 @@ def run_all(path: Path, filename: str | None = None,
         # Bought, but not owed this month - paused, or out of flight.
         # Neither expected nor a surprise.
         "quiet_products": quiet_products or set(),
+        # Other markets whose reports carry this same header logo.
+        "logo_shared_with": logo_shared_with or [],
+        "logo_hash": logo_hash or "",
         "path": path,
         "text": text,
         "page_text": per_page,

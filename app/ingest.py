@@ -265,13 +265,21 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                               period=batch.period)
         quiet = quiet_products(db, meta_guess["client"], meta_guess["account_ids"],
                                period=batch.period)
+        # The corner of page one, and which other markets print the same
+        # mark. Worked out here rather than inside the check because it takes
+        # a database question, and a check is handed facts rather than going
+        # looking for them.
+        from .checks.logo import header_logo_hash, logo_markets
+        logo = header_logo_hash(path)
+        logo_seen = logo_markets(db, logo)
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
         try:
             result = run_all(path, filename=name, expected_products=exp,
                              flight=flight, period=batch.period,
                              market=batch.market or "",
                      expected_why=why, expected_any=any_of,
-                     quiet_products=quiet)
+                     quiet_products=quiet,
+                     logo_hash=logo, logo_shared_with=logo_seen)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},
@@ -345,6 +353,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         # this answer is still the current one.
         from .version import rules_version
         rep.rules_version = rules_version()
+        rep.logo_hash = logo
         db.flush()
         attach_owners(db, rep)
         if not replaced:

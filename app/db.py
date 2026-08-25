@@ -105,6 +105,12 @@ class Report(Base):
     # findings are written once and a fixed rule does not reach back on its own.
     rules_version: Mapped[str] = mapped_column(String(32), default="", index=True)
 
+    # A fingerprint of page one's top-left corner, which is where the partner
+    # station's logo goes. Stored so that a logo turning up across several
+    # unrelated markets can be recognised as the reporting tool's default
+    # rather than anybody's.
+    logo_hash: Mapped[str] = mapped_column(String(32), default="", index=True)
+
     # How this copy got here. A report somebody uploaded by hand was put there
     # deliberately, and the automatic feed arriving later with its own copy is
     # not automatically an improvement on it.
@@ -464,6 +470,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "signoff_cleared_at", "TIMESTAMP"),
     ("order_lines", "flights", "JSON"),
     ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
+    ("reports", "logo_hash", "VARCHAR(32) DEFAULT '' NOT NULL"),
 ]
 
 

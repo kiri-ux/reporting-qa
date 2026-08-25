@@ -1157,12 +1157,19 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     why = expected_why(db, client, account_ids, period=period)
     any_of = expected_any(db, client, account_ids, period=period)
     quiet = quiet_products(db, client, account_ids, period=period)
+    # The corner of page one, and which other markets print the same mark.
+    # Computed here rather than inside the checks because it takes a database
+    # question, and a check is handed facts rather than going looking.
+    from .checks.logo import header_logo_hash, logo_markets
+    logo = header_logo_hash(path)
+    logo_seen = logo_markets(db, logo)
     flight = client_flight(db, client, account_ids)
     try:
         result = run_all(path, filename=file.filename, expected_products=exp,
                          flight=flight, period=period, market=market,
                      expected_why=why, expected_any=any_of,
-                     quiet_products=quiet)
+                     quiet_products=quiet,
+                     logo_hash=logo, logo_shared_with=logo_seen)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
@@ -1253,12 +1260,17 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    from .checks.logo import header_logo_hash, logo_markets
+    logo = header_logo_hash(target)
+    logo_seen = logo_markets(db, logo, exclude_id=rep.id)
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(target, filename=rep.filename, expected_products=exp,
                      flight=flight, period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
-                     quiet_products=quiet)
+                     quiet_products=quiet,
+                     logo_hash=logo, logo_shared_with=logo_seen)
     rep.stored_path = str(target)
+    rep.logo_hash = logo
     rep.pages = result["pages"]
     rep.impressions = result["impressions"]
     rep.clicks = result["clicks"]
@@ -1327,12 +1339,16 @@ async def replace_report(report_id: int, request: Request,
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    from .checks.logo import header_logo_hash, logo_markets
+    logo = header_logo_hash(path)
+    logo_seen = logo_markets(db, logo, exclude_id=rep.id)
     flight = client_flight(db, rep.client, rep.account_ids)
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,
                          flight=flight, period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
-                     quiet_products=quiet)
+                     quiet_products=quiet,
+                     logo_hash=logo, logo_shared_with=logo_seen)
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",
