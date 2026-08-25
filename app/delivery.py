@@ -1,13 +1,17 @@
 """Package a partner group's finished cycle and share it.
 
-When every report a group owes is good to go, its PDFs are zipped and pushed
-to wherever that partner takes delivery - a Google shared drive for most, a
-Dropbox folder for 7 Mountains - and the resulting anyone-with-the-link URL is
-recorded so it can be handed over.
+When every report a market owes is good to go, its PDFs are filed into the
+tree the team already keeps - `<parent>/<Market>/<cycle>/` - and the CYCLE
+FOLDER is shared by link. Google Drive for most markets, Dropbox for the 7
+Mountains ones.
 
-Both uploaders are optional. With no credentials configured the zip is still
-built and kept locally for download, so the cycle board works end to end
-before anyone touches a cloud console.
+A folder rather than a zip: a partner opening it sees the client names, can
+take the one report they need, or copy the whole folder into their own drive.
+A zip makes them download everything first.
+
+Both uploaders are optional. With no credentials configured a zip is built and
+kept locally for download instead, so the cycle board works end to end before
+anyone touches a cloud console.
 """
 from __future__ import annotations
 
@@ -98,52 +102,119 @@ def _drive_credentials():
         "service account keys, GOOGLE_SERVICE_ACCOUNT_JSON).")
 
 
-def upload_drive(path: Path, folder_name: str) -> tuple[str, str]:
-    """Upload into a Google shared drive and return (url, message).
+def _drive_folder(svc, name: str, parent: str) -> str:
+    """Find a folder by name under `parent`, or make one.
 
-    A folder per cycle inside the configured parent, so a partner coming back
-    next month finds this month beside last month rather than a pile of zips.
+    Matched case-insensitively against what is already there, because these
+    folders are maintained by hand and "7 Mountains PA Selinsgrove" against
+    "7 Mountains Pa Selinsgrove" would otherwise quietly create a second one
+    beside the real thing.
+
+    supportsAllDrives / includeItemsFromAllDrives are required on every call
+    that touches a shared drive. Without them the API behaves as if the folder
+    does not exist, which reads as a permissions problem.
+    """
+    q = (f"'{parent}' in parents and mimeType = "
+         f"'application/vnd.google-apps.folder' and trashed = false")
+    token, found = None, None
+    while True:
+        kw = dict(q=q, fields="nextPageToken, files(id, name)", pageSize=1000,
+                  supportsAllDrives=True, includeItemsFromAllDrives=True,
+                  corpora="allDrives")
+        if token:
+            kw["pageToken"] = token
+        page = svc.files().list(**kw).execute()
+        for f in page.get("files", []):
+            if f["name"].strip().lower() == name.strip().lower():
+                found = f["id"]
+                break
+        token = page.get("nextPageToken")
+        if found or not token:
+            break
+    if found:
+        return found
+    return svc.files().create(
+        body={"name": name, "parents": [parent],
+              "mimeType": "application/vnd.google-apps.folder"},
+        fields="id", supportsAllDrives=True).execute()["id"]
+
+
+def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str, int]:
+    """Put this market's reports where the team already keeps them.
+
+    The shared drive is already organised as
+    `01_Reporting Markets / <Market> / ...`, maintained by hand for years, so
+    the tool files into that rather than inventing a parallel tree next to it.
+    A cycle folder goes inside the market folder and the PDFs go inside that.
+
+    The CYCLE FOLDER is what gets shared, not a zip. A partner opening a folder
+    can see the client names, take the one they want, or copy the whole folder
+    into their own drive - none of which a zip lets them do without downloading
+    it first.
     """
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
     svc = build("drive", "v3", credentials=_drive_credentials(),
                 cache_discovery=False)
-
     parent = settings.drive_parent_folder_id.strip()
     if not parent:
-        raise RuntimeError("DRIVE_PARENT_FOLDER_ID is not set.")
+        raise RuntimeError("DRIVE_PARENT_FOLDER_ID is not set. It should be the "
+                           "id of the folder that holds one folder per market.")
 
-    # supportsAllDrives / includeItemsFromAllDrives are required on every call
-    # that touches a shared drive. Without them the API quietly behaves as if
-    # the folder does not exist, which reads as a permissions problem.
-    q = (f"name = '{folder_name}' and '{parent}' in parents "
-         f"and mimeType = 'application/vnd.google-apps.folder' and trashed = false")
-    found = svc.files().list(q=q, fields="files(id)", supportsAllDrives=True,
-                             includeItemsFromAllDrives=True,
-                             corpora="allDrives").execute().get("files", [])
-    if found:
-        folder_id = found[0]["id"]
-    else:
-        folder_id = svc.files().create(
-            body={"name": folder_name, "parents": [parent],
-                  "mimeType": "application/vnd.google-apps.folder"},
-            fields="id", supportsAllDrives=True).execute()["id"]
+    n = 0
+    market_folders: dict[str, str] = {}
+    cycle_folders: dict[str, str] = {}
+    for e in group.expected:
+        r = e.report
+        if not r or not r.stored_path or not Path(r.stored_path).exists():
+            log.warning("no stored file for %s / %s", e.market, e.client)
+            continue
+        if e.market not in market_folders:
+            market_folders[e.market] = _drive_folder(svc, e.market, parent)
+            cycle_folders[e.market] = _drive_folder(svc, cycle_label,
+                                                    market_folders[e.market])
+        suffix = " - Lifetime" if e.kind == "lifetime" else ""
+        name = f"{_safe(e.client)}{suffix}.pdf"
+        dest = cycle_folders[e.market]
 
-    media = MediaFileUpload(str(path), mimetype="application/zip", resumable=True)
-    f = svc.files().create(body={"name": path.name, "parents": [folder_id]},
-                           media_body=media, fields="id, webViewLink",
-                           supportsAllDrives=True).execute()
+        # Replace rather than duplicate, so re-running a delivery after a fix
+        # does not leave the partner looking at two versions of one report.
+        old = svc.files().list(
+            q=f"'{dest}' in parents and name = '{name.replace(chr(39), chr(92)+chr(39))}' "
+              f"and trashed = false",
+            fields="files(id)", supportsAllDrives=True,
+            includeItemsFromAllDrives=True, corpora="allDrives"
+        ).execute().get("files", [])
+        media = MediaFileUpload(r.stored_path, mimetype="application/pdf",
+                                resumable=True)
+        if old:
+            svc.files().update(fileId=old[0]["id"], media_body=media,
+                               supportsAllDrives=True).execute()
+        else:
+            svc.files().create(body={"name": name, "parents": [dest]},
+                               media_body=media, fields="id",
+                               supportsAllDrives=True).execute()
+        n += 1
 
-    svc.permissions().create(fileId=f["id"], supportsAllDrives=True,
-                             body={"role": "reader", "type": "anyone"}).execute()
-    return f.get("webViewLink", f"https://drive.google.com/file/d/{f['id']}/view"), \
-        "Uploaded to Google Drive, link sharing on."
+    if not cycle_folders:
+        raise RuntimeError("Nothing to upload - no report has a stored PDF.")
+
+    # One market per delivery, so there is exactly one folder to share.
+    links = []
+    for market, fid in cycle_folders.items():
+        svc.permissions().create(fileId=fid, supportsAllDrives=True,
+                                 body={"role": "reader", "type": "anyone"}).execute()
+        links.append(f"https://drive.google.com/drive/folders/{fid}")
+    where = " / ".join(list(cycle_folders)[:2])
+    return (links[0], f"{n} report{'s' if n != 1 else ''} filed under "
+                      f"{where} / {cycle_label}, folder shared by link.", n)
 
 
 # ---------------------------------------------------------------- Dropbox
-def upload_dropbox(path: Path, folder_name: str) -> tuple[str, str]:
-    """Upload to Dropbox and return (shared link, message)."""
+def upload_dropbox_folder(group, period: str, cycle_label: str) -> tuple[str, str, int]:
+    """Same tree as Drive: <base>/<Market>/<cycle>/<Client>.pdf, share the
+    cycle folder."""
     import dropbox
     from dropbox.files import WriteMode
     from dropbox.sharing import SharedLinkSettings, RequestedVisibility
@@ -159,41 +230,47 @@ def upload_dropbox(path: Path, folder_name: str) -> tuple[str, str]:
     dbx = dropbox.Dropbox(app_key=app_key, app_secret=app_secret,
                           oauth2_refresh_token=refresh)
 
-    base = (settings.dropbox_folder.strip().rstrip("/") or "")
-    dest = f"{base}/{folder_name}/{path.name}"
-    if not dest.startswith("/"):
-        dest = "/" + dest
+    base = settings.dropbox_folder.strip().rstrip("/")
+    if base and not base.startswith("/"):
+        base = "/" + base
 
-    # 150 MB is Dropbox's single-request ceiling; above it the upload has to be
-    # chunked into a session.
-    data = path.read_bytes()
-    if len(data) <= 140 * 1024 * 1024:
+    n, folders = 0, {}
+    for e in group.expected:
+        r = e.report
+        if not r or not r.stored_path or not Path(r.stored_path).exists():
+            continue
+        folder = f"{base}/{_safe(e.market)}/{cycle_label}"
+        folders[e.market] = folder
+        suffix = " - Lifetime" if e.kind == "lifetime" else ""
+        dest = f"{folder}/{_safe(e.client)}{suffix}.pdf"
+        data = Path(r.stored_path).read_bytes()
+        # 150 MB is Dropbox's single-request ceiling. A report is a fraction of
+        # that, so anything near it is a bug worth surfacing rather than
+        # silently chunking around.
+        if len(data) > 140 * 1024 * 1024:
+            raise RuntimeError(f"{dest} is {len(data) / 1048576:.0f} MB, which is "
+                               f"too large for one upload and far larger than a "
+                               f"report should ever be.")
         dbx.files_upload(data, dest, mode=WriteMode("overwrite"))
-    else:
-        chunk = 100 * 1024 * 1024
-        sess = dbx.files_upload_session_start(data[:chunk])
-        cursor = dropbox.files.UploadSessionCursor(session_id=sess.session_id,
-                                                   offset=chunk)
-        while cursor.offset < len(data) - chunk:
-            dbx.files_upload_session_append_v2(data[cursor.offset:cursor.offset + chunk],
-                                               cursor)
-            cursor.offset += chunk
-        dbx.files_upload_session_finish(
-            data[cursor.offset:], cursor,
-            dropbox.files.CommitInfo(path=dest, mode=WriteMode("overwrite")))
+        n += 1
 
+    if not folders:
+        raise RuntimeError("Nothing to upload - no report has a stored PDF.")
+
+    share = list(folders.values())[0]
     try:
         link = dbx.sharing_create_shared_link_with_settings(
-            dest, SharedLinkSettings(
+            share, SharedLinkSettings(
                 requested_visibility=RequestedVisibility.public)).url
     except Exception:
         # Already shared: Dropbox refuses to mint a second link, so read the
         # existing one rather than treating this as a failure.
-        links = dbx.sharing_list_shared_links(path=dest, direct_only=True).links
+        links = dbx.sharing_list_shared_links(path=share, direct_only=True).links
         if not links:
             raise
         link = links[0].url
-    return link, "Uploaded to Dropbox, public link created."
+    return link, (f"{n} report{'s' if n != 1 else ''} filed under "
+                  f"{share}, folder shared by link."), n
 
 
 # ---------------------------------------------------------------- orchestration
@@ -216,6 +293,32 @@ def deliver(db: Session, period: str, group_name: str, *,
         db.add(rec); db.commit(); return rec
 
     target = group.target or settings.delivery_target
+    label = dt.date.fromisoformat(period + "-01").strftime("%Y-%m %B")
+
+    if target in ("drive", "dropbox"):
+        try:
+            fn = upload_drive_folder if target == "drive" else upload_dropbox_folder
+            url, message, n = fn(group, period, label)
+        except ModuleNotFoundError as exc:
+            db.rollback()
+            rec = Delivery(period=period, group=group_name, target=target, ok=False,
+                           message=f"The {target} library is not installed on this "
+                                   f"deploy ({exc.name}). Redeploy so "
+                                   f"requirements.txt is picked up.")
+            db.add(rec); db.commit(); return rec
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            db.rollback()
+            rec = Delivery(period=period, group=group_name, target=target, ok=False,
+                           message=f"Upload failed: {type(exc).__name__}: {exc}")
+            db.add(rec); db.commit(); return rec
+        rec = Delivery(period=period, group=group_name, target=target, reports=n,
+                       share_url=url, ok=True, message=message)
+        db.add(rec); db.commit()
+        return rec
+
+    # No cloud target: build the zip and keep it here to download.
     out_dir = settings.data_dir / "deliveries" / period
     try:
         path, n = build_zip(group, period, out_dir)
@@ -224,41 +327,13 @@ def deliver(db: Session, period: str, group_name: str, *,
         rec = Delivery(period=period, group=group_name, target=target, ok=False,
                        message=f"Could not build the zip: {type(exc).__name__}: {exc}")
         db.add(rec); db.commit(); return rec
-
     if n == 0:
         rec = Delivery(period=period, group=group_name, target=target, ok=False,
                        message="Every report is marked ready but none has a stored PDF.")
         db.add(rec); db.commit(); return rec
-
-    label = dt.date.fromisoformat(period + "-01").strftime("%Y-%m %B")
-    url, message = "", "Zip built and kept here for download."
-    if target in ("drive", "dropbox"):
-        try:
-            url, message = (upload_drive if target == "drive"
-                            else upload_dropbox)(path, label)
-        except ModuleNotFoundError as exc:
-            db.rollback()
-            rec = Delivery(period=period, group=group_name, target=target, reports=n,
-                           bytes=path.stat().st_size, local_path=str(path), ok=False,
-                           message=f"Zip is ready to download, but the {target} "
-                                   f"library is not installed on this deploy "
-                                   f"({exc.name}). Redeploy so requirements.txt "
-                                   f"is picked up.")
-            db.add(rec); db.commit(); return rec
-        except Exception as exc:  # noqa: BLE001
-            import traceback
-            traceback.print_exc()
-            db.rollback()
-            rec = Delivery(period=period, group=group_name, target=target,
-                           reports=n, bytes=path.stat().st_size,
-                           local_path=str(path), ok=False,
-                           message=f"Zip built, but the upload failed: "
-                                   f"{type(exc).__name__}: {exc}")
-            db.add(rec); db.commit(); return rec
-
     rec = Delivery(period=period, group=group_name, target=target, reports=n,
-                   bytes=path.stat().st_size, local_path=str(path),
-                   share_url=url, ok=True, message=message)
+                   bytes=path.stat().st_size, local_path=str(path), ok=True,
+                   message="Zip built and kept here for download.")
     db.add(rec); db.commit()
     return rec
 

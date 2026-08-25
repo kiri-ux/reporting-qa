@@ -676,3 +676,106 @@ def test_a_mixed_s3_folder_still_imports(tmp_path, monkeypatch):
     res = rmod.import_orders(db, [export, junk], filename="z_export.csv",
                              period="2026-07")
     assert res["kept"] > 0, "one bad file should not lose the good ones"
+
+
+def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path):
+    """Reports must land in the shared drive's own tree, not a parallel one.
+
+    The drive is already organised as `01_Reporting Markets / <Market> / ...`
+    and maintained by hand. A market folder that already exists must be reused
+    - matched case-insensitively, since these were typed by people - and a
+    cycle folder created inside it. The CYCLE FOLDER is what gets shared.
+    """
+    from app import delivery as dmod
+    from app.board import Expected, GroupRow
+    from app.db import Report
+
+    # A stand-in Drive: folders by (parent, name), files by (parent, name).
+    folders = {("PARENT", "7 Mountains PA State College"): "EXISTING_MARKET_ID"}
+    files: dict[tuple[str, str], str] = {}
+    shared: list[str] = []
+    counter = {"n": 0}
+
+    class FakeFiles:
+        def list(self, q="", **kw):
+            self._q = q
+            return self
+
+        def create(self, body=None, media_body=None, **kw):
+            counter["n"] += 1
+            new_id = f"ID{counter['n']}"
+            parent = body["parents"][0]
+            if body.get("mimeType", "").endswith("folder"):
+                folders[(parent, body["name"])] = new_id
+            else:
+                files[(parent, body["name"])] = new_id
+            self._result = {"id": new_id}
+            return self
+
+        def update(self, fileId=None, **kw):
+            self._result = {"id": fileId}
+            return self
+
+        def execute(self):
+            if hasattr(self, "_result"):
+                r, self._result = self._result, None
+                del self._result
+                return r
+            q = self._q
+            parent = q.split("'")[1]
+            if "folder" in q:
+                return {"files": [{"id": i, "name": n}
+                                  for (p, n), i in folders.items() if p == parent]}
+            name = q.split("name = '")[1].split("'")[0]
+            hit = files.get((parent, name))
+            return {"files": [{"id": hit}] if hit else []}
+
+    class FakePerms:
+        def create(self, fileId=None, **kw):
+            shared.append(fileId)
+            return self
+
+        def execute(self):
+            return {}
+
+    class FakeSvc:
+        def files(self):
+            return FakeFiles()
+
+        def permissions(self):
+            return FakePerms()
+
+    monkeypatch.setattr(dmod, "_drive_credentials", lambda: object())
+    monkeypatch.setattr(dmod, "build", lambda *a, **k: FakeSvc(), raising=False)
+    import googleapiclient.discovery as disc
+    import googleapiclient.http as ghttp
+    monkeypatch.setattr(disc, "build", lambda *a, **k: FakeSvc())
+    monkeypatch.setattr(ghttp, "MediaFileUpload", lambda *a, **k: object())
+    monkeypatch.setattr(dmod.settings, "drive_parent_folder_id", "PARENT")
+
+    pdf = tmp_path / "r.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    def exp(market, client, kind):
+        return Expected(market=market, group=market, client=client, kind=kind,
+                        report=Report(severity="pass", review_state="reviewed",
+                                      findings=[], stored_path=str(pdf)))
+
+    group = GroupRow("7 Mountains PA State College", "drive", [
+        exp("7 Mountains PA State College", "Watsontown Trucking", "monthly"),
+        exp("7 Mountains PA State College", "Centre Hills", "lifetime"),
+    ])
+    url, msg, n = dmod.upload_drive_folder(group, "2026-08", "2026-08 August")
+
+    assert n == 2
+    # the hand-made market folder was reused, not duplicated
+    assert folders[("PARENT", "7 Mountains PA State College")] == "EXISTING_MARKET_ID"
+    assert sum(1 for (p, _) in folders if p == "PARENT") == 1
+    # a cycle folder was created inside it
+    cycle_id = folders[("EXISTING_MARKET_ID", "2026-08 August")]
+    # and the PDFs went inside the cycle folder, lifetime clearly labelled
+    assert ("Watsontown Trucking.pdf") in [n for (p, n) in files if p == cycle_id]
+    assert ("Centre Hills - Lifetime.pdf") in [n for (p, n) in files if p == cycle_id]
+    # the shared thing is the cycle folder, and the link points at it
+    assert shared == [cycle_id]
+    assert url.endswith(cycle_id)
