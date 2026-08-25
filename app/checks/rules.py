@@ -281,8 +281,14 @@ def check_products(ctx) -> list[dict]:
                       "On the report but not on any qualifying order: " + ", ".join(rogue) +
                       ". Expected: " + (", ".join(sorted(expected)) or "none") + "."))
     if not out:
+        # Worded as a confirmation, not a bare list. "Products match the order"
+        # above an unadorned "Social Mirror" reads like the thing it found
+        # wrong, which is the opposite of what it means.
+        names = ", ".join(sorted(found))
         out.append(_f("products_match", "info", "Products match the order",
-                      ", ".join(sorted(found)) or "no products detected"))
+                      (f"Nothing missing, nothing extra. Both the report and the "
+                       f"live orders show: {names}.") if names else
+                      "No products were detected on the report to compare."))
     return out
 
 

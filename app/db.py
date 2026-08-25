@@ -88,8 +88,43 @@ class Report(Base):
     reviewed_by: Mapped[str] = mapped_column(String(128), default="")
     reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     review_note: Mapped[str] = mapped_column(Text, default="")
+    # Indexes of findings a person has looked at and accepted. The finding
+    # stays on the report - it is a note about a known quirk, not a mistake -
+    # but it stops counting against the severity.
+    acked: Mapped[list] = mapped_column(JSON, default=list)
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
+
+    def is_acked(self, i: int) -> bool:
+        return i in (self.acked or [])
+
+    @property
+    def open_findings(self) -> list:
+        """Findings nobody has accepted yet."""
+        return [f for i, f in enumerate(self.findings or [])
+                if not self.is_acked(i) and (f.get("severity") in ("fail", "warn"))]
+
+    @property
+    def effective_severity(self) -> str:
+        """Severity counting only findings nobody has accepted.
+
+        A report can carry a finding that is true, understood and not worth
+        acting on - CTV excluded from the CTR base, a creative type that never
+        renders a preview. Ticking it off has to clear the flag without
+        deleting the note, or the next person to open the report re-discovers
+        it from scratch.
+        """
+        # No findings recorded at all: trust the stored verdict. A report that
+        # could not be parsed has severity "fail" and nothing itemised, and
+        # computing from an empty list would quietly call it clean.
+        if not self.findings:
+            return self.severity
+        levels = {f.get("severity") for f in self.open_findings}
+        if "fail" in levels:
+            return "fail"
+        if "warn" in levels:
+            return "warn"
+        return "pass"
 
     @property
     def ready(self) -> bool:
@@ -97,7 +132,7 @@ class Report(Base):
         they did not knowingly wave through."""
         if self.review_state == "waived":
             return True
-        return self.review_state == "reviewed" and self.severity != "fail"
+        return self.review_state == "reviewed" and self.effective_severity != "fail"
 
     @property
     def board_state(self) -> str:
@@ -106,9 +141,10 @@ class Report(Base):
             return "needs_fix"
         if self.ready:
             return "ready"
-        if self.severity == "fail":
+        sev = self.effective_severity
+        if sev == "fail":
             return "errors"
-        if self.severity == "warn":
+        if sev == "warn":
             return "warnings"
         return "in"
 
@@ -270,6 +306,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("partners", "partner_group", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("partners", "delivery_target", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("deliveries", "archive_url", "TEXT"),
+    ("reports", "acked", "JSON"),
 ]
 
 

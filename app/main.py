@@ -593,6 +593,28 @@ def people_view(request: Request, role: str = Query("reporter"),
         "total_clients": sum(r["clients"] for r in rows)})
 
 
+@app.post("/report/{report_id}/ack")
+def ack_finding(report_id: int, request: Request, index: int = Form(...),
+                on: str = Form(""), db: Session = Depends(get_db)):
+    """Accept or un-accept one finding.
+
+    Stored by index because a report can carry the same code more than once -
+    two thumbnails missing is two findings, and accepting one should not
+    silently accept the other.
+    """
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    if not 0 <= index < len(rep.findings or []):
+        raise HTTPException(400, "no such finding")
+    acked = set(rep.acked or [])
+    acked.add(index) if on else acked.discard(index)
+    rep.acked = sorted(acked)
+    db.commit()
+    back = request.headers.get("referer") or f"/report/{report_id}/view"
+    return RedirectResponse(back, status_code=303)
+
+
 @app.get("/report/{report_id}/view", response_class=HTMLResponse)
 def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db)):
     rep = db.get(Report, report_id)

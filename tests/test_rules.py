@@ -1052,3 +1052,49 @@ def test_process_batch_fills_in_a_blank_market(tmp_path, monkeypatch):
                                subject="FW: Daily report - All Client Data",
                                notify=False, coalesce=True)
     assert batch.market == "7 Mountains PA Selinsgrove", f"got {batch.market!r}"
+
+
+def test_accepting_a_finding_clears_the_flag_but_keeps_the_note():
+    """A report can carry a finding that is true, understood, and not worth
+    acting on - CTV excluded from the CTR base, a creative type that never
+    renders a preview. Ticking it off has to clear the status without deleting
+    the note, or the next person to open the report rediscovers it cold."""
+    import importlib
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    Report = db_mod.Report
+
+    r = Report(severity="warn", review_state="new", acked=[], findings=[
+        {"severity": "warn", "title": "1 creative preview did not render"},
+        {"severity": "warn", "title": "2 creative previews did not render"},
+        {"severity": "info", "title": "Products match the order"},
+    ])
+    assert r.effective_severity == "warn"
+    assert r.board_state == "warnings"
+    assert len(r.open_findings) == 2
+
+    # accepting one of two identical-looking warnings leaves the other open
+    r.acked = [0]
+    assert r.effective_severity == "warn"
+    assert len(r.open_findings) == 1
+    assert len(r.findings) == 3, "the note must not be deleted"
+
+    r.acked = [0, 1]
+    assert r.effective_severity == "pass"
+    assert r.board_state == "in"          # clean, but nobody has signed off
+    assert len(r.findings) == 3
+
+    r.review_state = "reviewed"
+    assert r.ready and r.board_state == "ready"
+
+    # a failure can be accepted too, and then it no longer blocks delivery
+    f = Report(severity="fail", review_state="reviewed", acked=[],
+               findings=[{"severity": "fail", "title": "Device breakout under total"}])
+    assert not f.ready and f.board_state == "errors"
+    f.acked = [0]
+    assert f.effective_severity == "pass"
+    assert f.ready, "an accepted failure should stop blocking the partner"
+
+    # un-accepting puts it back
+    f.acked = []
+    assert not f.ready
