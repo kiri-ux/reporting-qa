@@ -142,6 +142,27 @@
   </div>
   <div class="colfilters" data-cardfilters-for="glist"></div>
 
+  {# Saved views. The filters have been shareable since they went into the URL;
+     this is the same thing with a name on it, for the ones you build again
+     every month. The period is not saved - a view made in July should open on
+     whatever cycle you are on. #}
+  <div class="views">
+    {% for v in views %}
+      <a class="view{% if v.query and v.query in request.url.query %} on{% endif %}"
+         href="/cycle?period={{ period }}{% if v.query %}&{{ v.query }}{% endif %}"
+         title="{{ v.query|replace('&', ', ')|replace('=', ': ') or 'no filters' }}{% if v.created_by %} · saved by {{ v.created_by }}{% endif %}">{{ v.name }}</a>
+      <form method="post" action="/views/{{ v.id }}/delete" style="display:inline">
+        <button class="viewx" type="submit" title="Forget this view"
+                aria-label="Delete the view {{ v.name }}">&times;</button>
+      </form>
+    {% endfor %}
+    <form method="post" action="/views" class="viewsave">
+      <input type="hidden" name="query" value="">
+      <input type="text" name="name" placeholder="Save these filters as..." size="18">
+      <button class="mini" type="submit">Save view</button>
+    </form>
+  </div>
+
   <div class="glist" id="glist">
     {% for g in groups %}
       {% set d = deliveries.get(g.group) %}

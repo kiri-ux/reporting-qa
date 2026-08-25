@@ -94,3 +94,51 @@ def test_no_period_keeps_the_old_behaviour(db):
     _line(db, "Mobile Conquesting Display & Video", "2024-05-01", "2025-12-31")
     db.commit()
     assert _exp(db, period=None) == {"Mobile Conquesting Display & Video"}
+
+
+# ------------------------------------------- Blair Regional YMCA, order 31449
+#
+# Social Mirror CTV ran to 30 June 2026 and starts again on 1 August. Merged
+# across those two orders that is one flight from 2025 to December 2026, and
+# July - a month in which none ran at all - sits inside it. The July report was
+# failed twice for it: once for the product, once for the CTV publishers widget
+# the product would have owed.
+import datetime as _dt
+
+from app.roster import _ran_during
+
+
+class _Line:
+    def __init__(self, starts, ends, flights=None):
+        self.starts_on = starts
+        self.ends_on = ends
+        self.flights = flights or []
+
+
+def test_a_gap_between_two_flights_is_not_running():
+    line = _Line(_dt.date(2025, 1, 3), _dt.date(2026, 12, 31),
+                 [["2025-01-03", "2026-06-30"], ["2026-08-01", "2026-12-31"]])
+    assert _ran_during(line, "2026-06") is True
+    assert _ran_during(line, "2026-08") is True
+    assert _ran_during(line, "2026-07") is False, "July is the gap"
+
+
+def test_the_merged_span_is_what_got_this_wrong():
+    """The same line without its windows: the old answer, kept as the fallback
+    for rows loaded before the windows were recorded."""
+    line = _Line(_dt.date(2025, 1, 3), _dt.date(2026, 12, 31))
+    assert _ran_during(line, "2026-07") is True
+
+
+def test_one_continuous_flight_still_covers_its_months():
+    line = _Line(_dt.date(2026, 4, 1), _dt.date(2026, 8, 31),
+                 [["2026-04-01", "2026-08-31"]])
+    for p in ("2026-04", "2026-06", "2026-08"):
+        assert _ran_during(line, p) is True
+    assert _ran_during(line, "2026-03") is False
+    assert _ran_during(line, "2026-09") is False
+
+
+def test_an_open_ended_flight_runs_until_somebody_says_otherwise():
+    line = _Line(_dt.date(2026, 4, 1), None, [["2026-04-01", None]])
+    assert _ran_during(line, "2027-01") is True

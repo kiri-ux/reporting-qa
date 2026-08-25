@@ -156,9 +156,40 @@ def map_order_product(name: str) -> str | None:
     on whole words. "video ads" no longer wins inside "youtube+ video ads",
     because "youtube+ video ads" is longer and is tried first.
     """
+    got = map_order_products(name)
+    return got[0] if got else None
+
+
+# A product name can name two products. " + " is the IO tool's word for "and":
+# "CTV + Video Ads" is one line item selling both, and the report carries a CTV
+# section and a Video section for it. Read as CTV alone, the report's Video was
+# a product with no live order.
+#
+# Matched with spaces around it on purpose. "YouTube+ Video Ads" is one product
+# whose name happens to end in a plus, and splitting that would put a live
+# YouTube order back under Video - the bug this whole file exists for.
+PLUS = re.compile(r"\s\+\s")
+
+
+def map_order_products(name: str) -> list[str]:
+    """Every product an order line item is selling, in the order they appear."""
     key = _flat(name)
     if not key:
-        return None
+        return []
+    parts = [p.strip() for p in PLUS.split(key) if p.strip()]
+    if len(parts) > 1:
+        out: list[str] = []
+        for part in parts:
+            got = _map_one(part)
+            if got and got not in out:
+                out.append(got)
+        if out:
+            return out
+    got = _map_one(key)
+    return [got] if got else []
+
+
+def _map_one(key: str) -> str | None:
     flat = {_flat(k): v for k, v in ORDER_PRODUCT_MAP.items()}
     if key in flat:
         return flat[key]

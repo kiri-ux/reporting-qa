@@ -12,12 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-41"
-BUILD_NOTES = ("The order export is now re-read when the IMPORT rules change, "
-               "not just the product mapping - which is why order 55216 stayed "
-               "wrong after it was fixed. Re-check on a partner skips reports "
-               "already signed off, the 5% site rule needs volume behind it, "
-               "and there is a Share this view button.")
+BUILD = "2026.08.25-42"
+BUILD_NOTES = ("A product is only expected on a report if it actually ran that "
+               "month - a client who stopped in June and restarts in August has "
+               "a July that the merged flight was hiding. \"CTV + Video Ads\" is "
+               "read as both products. And filters can be saved as named views.")
 
 # ---------------------------------------------------------------------------
 

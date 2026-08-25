@@ -440,3 +440,60 @@ def test_un_ticking_does_not_tear_up_a_signoff(client):
     c.post(f"/report/{rep.id}/ack", data={"index": first, "on": ""})
     db.expire_all()
     assert db.get(dbm.Report, rep.id).review_state == "reviewed"
+
+
+# ------------------------------------------------------------- saved views
+def test_saving_a_view_names_the_filters_and_drops_the_period(client):
+    """A view saved while looking at July should open on whatever cycle you are
+    on, or it is wrong the moment the month turns."""
+    c, (db, dbm, imod) = client
+    c.post("/me", data={"who": "Kiri"})
+    c.post("/views", data={"name": "PA with errors",
+                           "query": "?period=2026-07&buyer=Lauren&status=Open&q=pa"},
+           follow_redirects=False)
+    row = db.query(dbm.SavedView).one()
+    assert row.name == "PA with errors"
+    assert "period" not in row.query
+    assert "buyer=Lauren" in row.query and "status=Open" in row.query
+    assert row.created_by == "Kiri"
+
+
+def test_a_saved_view_appears_on_the_board_as_a_link(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/views", data={"name": "Mine", "query": "?buyer=Lauren"})
+    page = c.get(f"/cycle?period={rep.period}").text
+    assert ">Mine</a>" in page
+    assert f"/cycle?period={rep.period}&buyer=Lauren" in page
+
+
+def test_saving_the_same_name_twice_replaces_it(client):
+    """Otherwise the list fills with three views all called "mine"."""
+    c, (db, dbm, imod) = client
+    c.post("/views", data={"name": "Mine", "query": "?buyer=Lauren"})
+    c.post("/views", data={"name": "Mine", "query": "?buyer=Paulina"})
+    row = db.query(dbm.SavedView).one()
+    assert "Paulina" in row.query
+
+
+def test_junk_in_the_query_is_not_saved(client):
+    """The query comes from the browser, so it is not trusted to be a filter."""
+    c, (db, dbm, imod) = client
+    c.post("/views", data={"name": "Mine",
+                           "query": "?buyer=Lauren&rows=all&evil=1"})
+    row = db.query(dbm.SavedView).one()
+    assert "evil" not in row.query and "rows" not in row.query
+
+
+def test_a_view_can_be_forgotten(client):
+    c, (db, dbm, imod) = client
+    c.post("/views", data={"name": "Mine", "query": "?buyer=Lauren"})
+    vid = db.query(dbm.SavedView).one().id
+    c.post(f"/views/{vid}/delete", follow_redirects=False)
+    assert db.query(dbm.SavedView).count() == 0
+
+
+def test_an_unnamed_view_is_not_saved(client):
+    c, (db, dbm, imod) = client
+    c.post("/views", data={"name": "  ", "query": "?buyer=Lauren"})
+    assert db.query(dbm.SavedView).count() == 0

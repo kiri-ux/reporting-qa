@@ -144,6 +144,21 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .copy:hover{border-color:var(--atlas);color:var(--atlas)}
 .copy.done{border-color:var(--ok);color:var(--ok)}
 
+/* ---- saved views ---- */
+.views{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:-4px 0 10px}
+.views .view{display:inline-block;font-size:12px;padding:5px 11px;border-radius:16px;
+ border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+ text-decoration:none}
+.views .view:hover{border-color:var(--velocity);color:var(--velocity)}
+.views .view.on{border-color:var(--atlas);background:var(--atlas);color:#fff}
+.views .viewx{background:none;border:0;color:var(--muted);cursor:pointer;
+ font-size:15px;line-height:1;padding:0 8px 0 2px}
+.views .viewx:hover{color:var(--crit)}
+.views .viewsave{display:flex;gap:6px;align-items:center;margin-left:6px}
+.views .viewsave input{font:inherit;font-size:12px;padding:5px 10px;
+ border:1px solid var(--line);border-radius:16px;background:var(--surface);
+ color:var(--ink)}
+
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;
  box-shadow:var(--shadow);padding:18px 20px}
 
@@ -456,6 +471,16 @@ body.fit .pdfwrap object{height:100%}
   btn.addEventListener('click', function () {
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  });
+
+  // Saving a view has to send the filters as they are NOW, not as they were
+  // when the page rendered. They are applied in the browser and written to the
+  // address bar from there, so the server never saw them.
+  document.querySelectorAll('.viewsave').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var q = f.querySelector('input[name="query"]');
+      if (q) q.value = window.location.search;
+    });
   });
 
   // Copy a link. navigator.clipboard needs a secure context, and this is also

@@ -1,77 +1,71 @@
-build 2026.08.25-41
+build 2026.08.25-42
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
+app/db.py
 app/main.py
-app/recheck.py
-app/checks/quality.py
+app/roster.py
+app/orders_io.py
+app/checks/products.py
 app/templates/base.html
 app/templates/cycle.html
-app/templates/viewer.html
-tests/test_quality.py
-tests/test_recheck.py
+tests/test_expected_products.py
+tests/test_manual_upload.py
+tests/test_product_map.py
 
 
-1. Order 55216, and why the fix did not stick
------------------------------------------------
-Same disease as the DOOH one, and I only cured half of it.
+1. A product is only expected if it ran THAT month
+----------------------------------------------------
+Blair Regional YMCA, order 31449. Social Mirror CTV ran to 30 June 2026 and
+starts again on 1 August. Two separate orders.
 
-The order export is parsed once and only the result is kept, so I made the S3
-sync re-read the file whenever the PRODUCT MAPPING changed. But the rule that
-rescues order 55216 - a live line item overruling a header that says "IO
-Pending Launch" - lives in orders_io.py, not in the mapping. That file was not
-part of the fingerprint, so the fix shipped and the loaded orders kept the old
-answer, exactly as before.
+The order list keeps one row per client and product with the WIDEST span
+across every order - first start to last end. That is the right answer for
+"when does this campaign end", and completely wrong for "was it running in
+July": merged, those two flights are one campaign from 2025 to December 2026,
+and July - a month in which no Social Mirror CTV ran at all - sits inside it.
 
-The fingerprint now covers every file whose output is baked into an order
-line: the product mapping, orders_io.py, and roster.py. On the first deploy
-after this the export is re-read on its own, and reports for any client whose
-product set moved are queued for a re-check.
+So the July report was failed twice for it. Once for the product, once for the
+Top CTV Publishers widget the product would have owed.
 
-54976 should come right in the same pass, for the same reason - it is the same
-shape of order. To check whether it is loaded at all, the Orders page search
-matches the whole row, so typing 54976 in it will find the order and line ids.
+Each order's own window is now kept alongside the merged span, and "did it run
+in July" is asked of the individual windows. The merged span is still there
+and still answers the end-date question.
 
-
-2. Re-check on a partner skips reports already signed off
------------------------------------------------------------
-"6 of 8" on a partner with one report pending, grinding through six that
-somebody had already read and signed. The button means "bring this partner up
-to date", and a signed-off report is up to date by definition.
-
-The count on the button follows the same rule, so it no longer says 8 when
-there are 2 to do.
-
-The BACKGROUND SWEEP still covers signed-off reports - that is how a rule
-change reaches one and pulls the sign-off if it finds a failure that was not
-there when they signed. This only narrows the button. A single signed-off
-report can still be re-read with "Check this file again" on its own page.
+Order rows loaded before this fall back to the old behaviour rather than
+guessing, and are replaced on the next order sync.
 
 
-3. The 5% site rule needs volume behind it
---------------------------------------------
-"Slicing Hero: Sword Master: 10 clicks on 183 impressions is 5.46%". One click
-either way moves that half a point, and 183 impressions of a 62,679-impression
-campaign is not something anybody is going to act on.
+2. "CTV + Video Ads" is two products
+--------------------------------------
+Bloomsburg Chevrolet, order 43852. One line item, product "CTV + Video Ads",
+and a report carrying a CTV section and a Video section - which is exactly
+what was bought. Read as CTV alone, the Video was a product with no live
+order.
 
-5% now applies from 1,000 impressions up. Below that the row is judged against
-15% instead of being dropped - because the case this check was written for was
-"Slicing Hero: Sword Master", 365 clicks on 783 impressions, 46.62%, and a
-flat impressions floor would have thrown it away. No volume makes 46% a
-coincidence.
+" + " in a product name is the IO tool's word for "and", and both sides now
+map. Two things it deliberately does not split:
 
+  - "YouTube+ Video Ads" - the plus belongs to the name. Splitting that puts a
+    live YouTube order back under Video, which is the bug this file exists for.
+    Only " + " with spaces around it counts.
+  - "Display & Video Ads" - an ampersand is the FORMAT a product is delivered
+    in, not a second product. "Meta Display & Video Ads" is Meta.
 
-4. Share this view
---------------------
-A button beside Download CSV that copies the current URL, filters and all.
-They have been in the address bar since build 39, but nobody thinks to select
-a URL they did not type.
-
-
-5. The where-pill is not cut off any more
--------------------------------------------
-"p9 · Site and App Perf…" in a column with room to spare. It wraps instead of
-truncating - the half that says WHERE is the point of it.
+There is a test that walks a product name through six format tails and expects
+the same answer each time.
 
 
-Tests: 314 passing.
+3. Saved filter views
+-----------------------
+Name the filters you are looking at and they become a chip under the filter
+row - click to load, x to forget. Saving the same name again replaces it.
+
+The period is deliberately NOT saved. A view built while looking at July should
+open on whatever cycle you are on, or it is wrong the moment the month turns.
+Only known filter keys are stored, since the query comes from the browser.
+
+The chip for the view you are currently on is highlighted.
+
+
+Tests: 328 passing.

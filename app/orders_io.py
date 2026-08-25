@@ -22,7 +22,7 @@ from dateutil import parser as dp
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .checks.products import map_order_product
+from .checks.products import map_order_product, map_order_products
 from .db import OrderLine
 
 SIGNATURE = {"client_business_unit", "orders_status", "product", "orders_end_date"}
@@ -211,35 +211,50 @@ def import_io_export(db: Session, sources, period: str | None = None,
                          + (f", line item {line_status}" if line_status else ""))
                     continue
 
-            product = map_order_product(product_raw)
-            if not product:
+            # A LINE ITEM CAN SELL TWO PRODUCTS.
+            #
+            # "CTV + Video Ads" is one line on the order and two sections on
+            # the report. Read as CTV alone, Bloomsburg Chevrolet's Video was
+            # a product with no live order - on a report where the buy was
+            # plainly both.
+            products = map_order_products(product_raw)
+            if not products:
                 skip(f"unmapped product: {product_raw}"); continue
 
             os_ = _date(r.get("orders_start_date"))
             if os_ and (order_start_min is None or os_ < order_start_min):
                 order_start_min = os_
 
-            k = (client, product)
-            if k not in kept:
-                kept[k] = {
-                    "market": _txt(r.get("client_business_unit")),
-                    "client": client, "product": product, "order_id": order_id,
-                    "campaign": product_raw, "starts_on": start, "ends_on": end,
-                    "manager": _txt(r.get("campaign_manager")),
-                    "orders": set(), "lines": set(),
-                }
-            else:                        # widest flight across that client's orders
-                cur = kept[k]
-                if start and (cur["starts_on"] is None or start < cur["starts_on"]):
-                    cur["starts_on"] = start
-                if end and (cur["ends_on"] is None or end > cur["ends_on"]):
-                    cur["ends_on"] = end
-            # Every order and line item that rolled into this row, so a client
-            # running one product across three orders can still be traced back.
-            if order_id:
-                kept[k]["orders"].add(order_id)
-            if line_id:
-                kept[k]["lines"].add(line_id)
+            for product in products:
+                k = (client, product)
+                if k not in kept:
+                    kept[k] = {
+                        "market": _txt(r.get("client_business_unit")),
+                        "client": client, "product": product, "order_id": order_id,
+                        "campaign": product_raw, "starts_on": start, "ends_on": end,
+                        "manager": _txt(r.get("campaign_manager")),
+                        "orders": set(), "lines": set(), "flights": [],
+                    }
+                else:                    # widest flight across that client's orders
+                    cur = kept[k]
+                    if start and (cur["starts_on"] is None or start < cur["starts_on"]):
+                        cur["starts_on"] = start
+                    if end and (cur["ends_on"] is None or end > cur["ends_on"]):
+                        cur["ends_on"] = end
+                # Each order's own window as well as the merged one. The merged
+                # span answers "when does this end"; only the individual windows
+                # can answer "was it running in July", and a client who stopped
+                # in June and restarts in August has a July the merged span
+                # hides completely.
+                kept[k]["flights"].append(
+                    [start.isoformat() if start else None,
+                     end.isoformat() if end else None])
+                # Every order and line item that rolled into this row, so a
+                # client running one product across three orders can be traced.
+                if order_id:
+                    kept[k]["orders"].add(order_id)
+                if line_id:
+                    kept[k]["lines"].add(line_id)
 
     if not rows_read:
         return {"kept": 0, "clients": 0, "skipped": {}, "guidance": {},
@@ -282,6 +297,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             line_ids=", ".join(sorted(v["lines"]))[:512],
             campaign=v["campaign"], product=product,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
+            flights=v["flights"],
             buyer=buyer, buyer_email=buyer_email,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))

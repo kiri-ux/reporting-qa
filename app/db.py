@@ -318,14 +318,46 @@ class OrderLine(Base):
     line_ids: Mapped[str] = mapped_column(String(512), default="")
     campaign: Mapped[str] = mapped_column(String(512), default="")
     product: Mapped[str] = mapped_column(String(128), default="", index=True)
+    # The WIDEST span across every order this client runs this product under -
+    # first start to last end. Right for "when does this campaign end", wrong
+    # for "was it running in July".
     starts_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     ends_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # EACH ORDER'S OWN WINDOW, kept because the widest span lies about the gaps.
+    #
+    # Blair Regional YMCA ran Social Mirror CTV to June 2026 and starts again in
+    # August. Merged, that is one flight from 2025 to December 2026, and July -
+    # a month in which no Social Mirror CTV ran at all - sits inside it. The
+    # July report was failed for a product nobody was running.
+    #
+    # A list of [start, end] ISO strings, either of which may be null.
+    flights: Mapped[list] = mapped_column(JSON, default=list)
     needs_lifetime: Mapped[bool] = mapped_column(Boolean, default=True)
     buyer: Mapped[str] = mapped_column(String(255), default="")
     team_member: Mapped[str] = mapped_column(String(255), default="")
     buyer_email: Mapped[str] = mapped_column(String(255), default="")
     team_email: Mapped[str] = mapped_column(String(255), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SavedView(Base):
+    """A named set of filters on the cycle board.
+
+    The filters have lived in the URL since build 39, which makes a view
+    shareable but not findable - you have to still have the link. This is the
+    same thing with a name on it.
+
+    The query string is stored rather than the whole URL: a view saved on July
+    should open on whatever cycle you are looking at, so the period is not part
+    of what is saved.
+    """
+    __tablename__ = "saved_views"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    query: Mapped[str] = mapped_column(String(2048), default="")
+    created_by: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
 class RecheckJob(Base):
@@ -425,6 +457,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_sync", "started_at", "TIMESTAMP"),
     ("order_sync", "map_version", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("reports", "signoff_cleared_at", "TIMESTAMP"),
+    ("order_lines", "flights", "JSON"),
 ]
 
 

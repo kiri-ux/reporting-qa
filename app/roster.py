@@ -258,16 +258,46 @@ def expected_products(db: Session, client: str, account_ids: str,
     return {l.product for l in hit if l.product}
 
 
+def _as_date(v):
+    if not v:
+        return None
+    if isinstance(v, dt.date):
+        return v
+    try:
+        return dt.date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
 def _ran_during(line, period: str) -> bool:
-    """Did this line item's flight touch the report's month at all?"""
+    """Did this product actually run in the report's month?
+
+    Asked of each order's OWN window, not of the merged span across them.
+    Blair Regional YMCA ran Social Mirror CTV until June 2026 and starts again
+    on 1 August. Merged, that is one flight from 2025 to December 2026, and
+    July - a month in which no Social Mirror CTV ran at all - sits inside it.
+    The July report was failed twice over for it: once for the product, once
+    for the CTV publishers widget the product would have owed.
+    """
     y, m = (int(x) for x in period.split("-"))
     start = dt.date(y, m, 1)
     end = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
-    if line.ends_on and line.ends_on < start:
-        return False
-    if line.starts_on and line.starts_on > end:
-        return False
-    return True
+
+    def touches(s, e) -> bool:
+        s, e = _as_date(s), _as_date(e)
+        if e and e < start:
+            return False
+        if s and s > end:
+            return False
+        return True
+
+    windows = [w for w in (getattr(line, "flights", None) or [])
+               if isinstance(w, (list, tuple)) and len(w) == 2]
+    if windows:
+        return any(touches(w[0], w[1]) for w in windows)
+    # Nothing recorded - an order line loaded before the windows were kept.
+    # Fall back to the merged span, which is what this used to do.
+    return touches(line.starts_on, line.ends_on)
 
 
 def completeness(db: Session, market: str, period: str) -> dict:

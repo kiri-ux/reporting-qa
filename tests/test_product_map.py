@@ -171,3 +171,35 @@ def test_a_matching_report_raises_nothing():
 
 def test_no_order_list_means_no_claim():
     assert check_products({"expected_products": None, "products": {"Video"}}) == []
+
+
+# ------------------------------------------- Bloomsburg Chevrolet, order 43852
+#
+# One line item, "CTV + Video Ads", and a report carrying both a CTV section
+# and a Video section. Read as CTV alone, the Video was a product with no live
+# order on a buy that was plainly both.
+from app.checks.products import map_order_products as mp
+
+
+def test_a_plus_in_the_product_name_means_two_products():
+    assert mp("CTV + Video Ads") == ["CTV", "Video"]
+    assert mp("Amazon Premium CTV + Video Ads") == ["CTV", "Video"]
+
+
+def test_a_plus_that_belongs_to_the_name_is_not_a_separator():
+    """"YouTube+ Video Ads" is one product whose name ends in a plus. Splitting
+    on it would put a live YouTube order back under Video - the original bug."""
+    assert mp("YouTube+ Video Ads") == ["YouTube"]
+    assert mp("Search Engine Optimization+") == ["SEO"]
+
+
+def test_an_ampersand_is_a_format_not_a_second_product():
+    """"Display & Video Ads" is how one product is delivered, not two."""
+    assert mp("Meta Display & Video Ads") == ["Meta"]
+    assert mp("TikTok Display & Video Ads") == ["TikTok"]
+    assert mp("Digital Out-Of-Home (DOOH) Display & Video Ads") == ["DOOH"]
+
+
+def test_the_single_answer_is_still_the_first_one():
+    assert m("CTV + Video Ads") == "CTV"
+    assert m("Video Ads") == "Video"

@@ -704,6 +704,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # 145 others, so the one thing you came to the page for - the link you
         # are about to send - was found by scrolling.
         "delivered": delivered,
+        "views": _saved_views(db),
         # How many reports on this board still carry an older answer, and per
         # partner so a card can offer to fix just that one.
         "stale": _stale_here(db, period, groups),
@@ -712,6 +713,52 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "configured": settings.delivery_configured,
         "today": dt.date.today(),
     })
+
+
+SAVED_KEYS = ("q", "only", "partner", "buyer", "reporter", "trainer", "status", "state")
+
+
+def _saved_views(db: Session) -> list:
+    from .db import SavedView
+    return list(db.scalars(select(SavedView).order_by(SavedView.name)).all())
+
+
+@app.post("/views")
+def save_view(request: Request, name: str = Form(""), query: str = Form(""),
+              db: Session = Depends(get_db)):
+    """Name the filters you are looking at, so you can get back to them."""
+    from urllib.parse import parse_qsl, urlencode
+
+    from .db import SavedView
+
+    back = request.headers.get("referer") or "/cycle"
+    name = name.strip()[:120]
+    if not name:
+        return RedirectResponse(back, status_code=303)
+    # The period is deliberately dropped. A view saved while looking at July
+    # should open on whatever cycle you are on, or it becomes wrong the moment
+    # the month turns.
+    keep = [(k, v) for k, v in parse_qsl(query.lstrip("?"))
+            if k in SAVED_KEYS and v]
+    row = db.scalar(select(SavedView).where(SavedView.name == name))
+    if row is None:
+        row = SavedView(name=name)
+        db.add(row)
+    row.query = urlencode(keep)[:2048]
+    row.created_by = whoami(request)
+    row.created_at = dt.datetime.utcnow()
+    db.commit()
+    return RedirectResponse(back, status_code=303)
+
+
+@app.post("/views/{view_id}/delete")
+def delete_view(view_id: int, request: Request, db: Session = Depends(get_db)):
+    from .db import SavedView
+    row = db.get(SavedView, view_id)
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return RedirectResponse(request.headers.get("referer") or "/cycle", status_code=303)
 
 
 @app.post("/me")
