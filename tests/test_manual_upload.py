@@ -497,3 +497,72 @@ def test_an_unnamed_view_is_not_saved(client):
     c, (db, dbm, imod) = client
     c.post("/views", data={"name": "  ", "query": "?buyer=Lauren"})
     assert db.query(dbm.SavedView).count() == 0
+
+
+# ------------------------------------------------------------- bulk sign-off
+def _second(imod, db, name="July 2026_Salem RV_52747.pdf"):
+    return _feed(imod, db, (FIXTURES / "salem_rv.pdf").read_bytes(), name).reports[0]
+
+
+def test_several_reports_can_be_signed_off_at_once(client):
+    """Most of a cycle is reports where everything passed, and ticking those
+    one at a time is the longest single job on the board."""
+    c, (db, dbm, imod) = client
+    a = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    b = _second(imod, db)
+    c.post("/me", data={"who": "Kiri"})
+
+    r = c.post("/reports/review", data={"ids": [a.id, b.id], "state": "reviewed"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    db.expire_all()
+    for rid in (a.id, b.id):
+        rep = db.get(dbm.Report, rid)
+        assert rep.review_state == "reviewed" and rep.reviewed_by == "Kiri"
+        assert rep.reviewed_at is not None
+
+
+def test_it_will_not_sign_for_somebody_it_cannot_name(client):
+    c, (db, dbm, imod) = client
+    a = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/reports/review", data={"ids": [a.id], "state": "reviewed"})
+    db.expire_all()
+    assert db.get(dbm.Report, a.id).review_state == "new"
+
+
+def test_a_typed_name_is_remembered_from_the_bulk_bar_too(client):
+    c, (db, dbm, imod) = client
+    a = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/reports/review", data={"ids": [a.id], "state": "reviewed",
+                                    "who": "Paulina"})
+    assert c.cookies.get("qa_user") == "Paulina"
+    db.expire_all()
+    assert db.get(dbm.Report, a.id).reviewed_by == "Paulina"
+
+
+def test_an_unknown_state_is_refused(client):
+    c, (db, dbm, imod) = client
+    a = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/me", data={"who": "Kiri"})
+    r = c.post("/reports/review", data={"ids": [a.id], "state": "shipped"})
+    assert r.status_code == 400
+
+
+def test_an_empty_selection_changes_nothing(client):
+    c, (db, dbm, imod) = client
+    a = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/me", data={"who": "Kiri"})
+    c.post("/reports/review", data={"state": "reviewed"}, follow_redirects=False)
+    db.expire_all()
+    assert db.get(dbm.Report, a.id).review_state == "new"
+
+
+def test_the_rows_carry_whether_they_are_clear(client):
+    """"Select the ones that passed" is driven off this, not off the status
+    pill - a report can be amber for a warning somebody has already accepted."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    page = c.get(f"/cycle?period={rep.period}").text
+    assert 'class="rowpick"' in page
+    assert 'data-clear="' in page
+    assert "Select the ones that passed" in page

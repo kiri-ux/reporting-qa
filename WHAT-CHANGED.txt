@@ -1,97 +1,48 @@
-build 2026.08.25-43
+build 2026.08.25-44
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
+app/config.py
 app/main.py
-app/ingest.py
-app/recheck.py
-app/roster.py
-app/checks/rules.py
-app/checks/products.py
-tests/test_expected_products.py
-tests/test_product_map.py
-tests/test_recheck.py
-tests/test_required_widgets.py
+app/templates/base.html
+app/templates/cycle.html
+tests/test_manual_upload.py
+tests/test_rules.py
 
 
-1. "How can we fix these once and for all" - here is the actual cause
-----------------------------------------------------------------------
-It is one bug, and it has been behind most of the product findings you have
-been sending me.
+1. Sign off several reports at once
+-------------------------------------
+Every row in the still-open table now has a checkbox, and a bar above the table
+does the rest:
 
-expected_products matched a client's orders BY ACCOUNT ID, and only fell back
-to matching by name IF THE ID MATCH FOUND NOTHING:
+  Select the ones that passed   ticks every visible row with nothing open
+  Clear selection
+  3 selected                    Mark reviewed   Mark needs fix
 
-    hit = [lines matching the report's order id]
-    if not hit:
-        hit = [lines matching the client name]
+Selected rows highlight, and the header checkbox takes everything on screen.
 
-River Valley Builders' report carries order 31050. The id match found
-something, so the name match never ran - and their live Live Chat order, which
-sits under 31171, was invisible. The report was then failed twice: once for a
-Live Chat "with no live order" that was sitting right there, and once for two
-products that had stopped in 2024, which were the only orders anybody was
-looking at.
+Three things it is careful about:
 
-That is also what happened with 43619 back at the start, and it is why these
-keep coming back in different costumes - I kept fixing the symptom.
+  - ONLY WHAT IS ON SCREEN. Select-all and "the ones that passed" both skip
+    rows a filter is hiding. Signing off something nobody was looking at is
+    exactly what a bulk action should never do.
+  - The ids are collected at submit, not rendered per row, so a checkbox in a
+    filtered-out row cannot be posted with the rest.
+  - "The ones that passed" reads whether the report has anything OPEN, not the
+    status pill. A report can sit amber on a warning somebody has already
+    ticked off, and that one has passed.
 
-Every order for the client now counts, matched by id OR by name, together.
-
-And so this is self-diagnosing next time rather than costing three rounds:
-Investigate on a product finding now lists every order that was considered, its
-dates, and whether it counted:
-
-    Live Chat · order 31171     2024-07-17 to 2026-12-31 · counted
-    Meta · order 31050          2024-12-06 to 2026-07-31 · counted
-    Mobile Conquesting · 31050  2023-05-05 to 2024-04-30; 2024-05-01 to
-                                2024-06-30 · not running in 2026-07
-    Social Mirror · order 31050 2024-07-17 to 2024-11-30 · not running in 2026-07
-
-If one of these is still wrong, that panel says which order and which date is
-being read wrong, and I can fix it from the screenshot.
+It needs to know who you are, same as any sign-off. With a name saved there is
+no name box; without one it asks, and remembers.
 
 
-2. Field Of Dreams: Display is the Mobile Conquesting buy
------------------------------------------------------------
-Reported three times, and right every time. One product on the order, and a
-report carrying a Display slice, a "Field Of Dreams - AI Display" line item and
-a Display Creative Performance widget - all of which IS Mobile Conquesting. The
-order calls the product "Mobile Conquesting Display & Video Ads"; Display and
-Video are the formats it is delivered in.
-
-A product on the report is no longer rogue when an ordered product is what
-prints it. The list is deliberately narrow - only the products whose order name
-literally says "Display & Video Ads" (Mobile Conquesting, Meta, TikTok, DOOH,
-Performance Max) plus Native Display. Social Mirror and CTV are not on it, so
-this does not quietly stop catching real ones.
-
-It only ever FORGIVES a product on the report. A Mobile Conquesting order does
-not owe a Display section.
+2. The device warning starts at 20%
+-------------------------------------
+"Device totals 15,066 against 17,535 eligible (-14.1%)" was a warning at the
+old 10% line. A device breakout runs a little under the eligible total on most
+reports - unknown-device filtering alone accounts for ten or twelve points - so
+that threshold was firing on the ordinary case, which is how a warning stops
+being read at all.
 
 
-3. Media Player is a device
------------------------------
-Flagged as "not a device TapClicks reports" on a report whose own table
-describes it: "A personal device, either mobile or stationary, that plays
-media, such as Smart Speakers and iPods".
-
-Added - but the real fix is that a row TapClicks has written a description for
-is a device, whatever the hard-coded list says. A list has to be updated by
-somebody who has already seen the new name; the description is in the report.
-Junk rows arrive with nothing beside them, which is how those are still caught.
-
-
-4. Device findings say which page
------------------------------------
-Both of them carry the page and widget pill now.
-
-
-5. The Re-check dot that would not clear
-------------------------------------------
-The button skips reports already signed off (build 41). The stale count it is
-coloured by did not - so pressing it did the work it could and the number it is
-judged by never moved. Both count the same reports now.
-
-
-Tests: 343 passing.
+Tests: 351 passing.

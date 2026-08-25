@@ -324,6 +324,13 @@
    means the box comes back on every one of a thousand rows. #}
 {% macro reportrows(items, me) %}{% for e in items %}
       <tr>
+        {# The row's own checkbox. data-clear says this report has nothing
+           open, which is what "Select the ones that passed" acts on. #}
+        <td class="pick">{% if e.report %}
+          <input type="checkbox" class="rowpick" value="{{ e.report.id }}"
+                 data-clear="{{ 1 if not e.report.open_findings else 0 }}"
+                 aria-label="Select {{ e.client }}">
+        {% endif %}</td>
         <td class="nw">{{ e.market }}</td>
         <td><b>{{ e.client }}</b>
           {# The order id is what gets quoted when raising this with anyone,
@@ -444,8 +451,24 @@
     <span class="count" id="cnt-cycle"></span>
   </div>
   <div class="colfilters" data-filters-for="tbl-cycle"></div>
+
+  {# Bulk sign-off. Most of a cycle is reports where everything passed, and
+     ticking those one at a time is the longest single job on this board. #}
+  <form method="post" action="/reports/review" class="bulk" data-bulk="tbl-cycle">
+    <button type="button" class="mini" data-pick="clear">Select the ones that passed</button>
+    <button type="button" class="mini" data-pick="none" hidden>Clear selection</button>
+    <span class="picked" aria-live="polite"></span>
+    {% if not whoami(request) %}
+      <input type="text" name="who" placeholder="Your name" size="12">
+    {% endif %}
+    <button class="mini ok" name="state" value="reviewed" disabled>Mark reviewed</button>
+    <button class="mini warn" name="state" value="needs_fix" disabled>Mark needs fix</button>
+  </form>
+
   <div class="tw"><table id="tbl-cycle">
-    <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
+    <thead><tr><th class="pick"><input type="checkbox" class="pickall"
+        aria-label="Select every report shown"></th>
+    <th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
     <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
     <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>

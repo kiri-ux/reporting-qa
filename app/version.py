@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-43"
-BUILD_NOTES = ("The product check was only ever looking at the orders whose id "
-               "was on the report, so a client's second live order was invisible "
-               "- the cause of most of the false product findings. It now looks "
-               "at all of them and shows its working under Investigate.")
+BUILD = "2026.08.25-44"
+BUILD_NOTES = ("Tick several reports and sign them off together, with one "
+               "button that takes only the ones where every check passed. The "
+               "device-under warning now starts at 20% instead of firing on "
+               "the ordinary case.")
 
 # ---------------------------------------------------------------------------
 

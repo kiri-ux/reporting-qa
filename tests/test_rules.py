@@ -1954,3 +1954,18 @@ def test_no_widget_check_fires_on_the_real_fixtures():
                  if x["code"] in ("completion_over_100", "unknown_device",
                                   "widget_missing")]
         assert not noisy, f"{f}: {[x['title'] for x in noisy]}"
+
+
+# ------------------------------------------- the device-under warning at 20%
+def test_the_device_under_warning_starts_at_20_percent():
+    """It fired at 10%, which is where a normal report sits - unknown-device
+    filtering alone accounts for ten or twelve - so it was warning on the
+    ordinary case and nobody was reading it."""
+    from app.config import settings as _s
+    assert _s.device_under_tolerance_pct == 20.0
+
+
+def test_fourteen_percent_under_is_no_longer_a_warning():
+    """The one on screen: 15,066 against 17,535 eligible, -14.1%."""
+    from app.checks.rules import check_device
+    assert 15066 / 17535 - 1 > -0.20

@@ -102,7 +102,11 @@ class Settings(BaseSettings):
     # creative types that never carry a preview image
     no_preview_creative_types: str = "Audio,HTML5"
     # device may run under the eligible total by this much before we flag it
-    device_under_tolerance_pct: float = 10.0
+    # 20%, not 10. A device breakout runs a little under the eligible
+    # total on most reports - unknown-device filtering alone accounts
+    # for ten or twelve - so at 10% this was warning on the normal case
+    # and nobody was reading it.
+    device_under_tolerance_pct: float = 20.0
 
     class Config:
         env_file = ".env"

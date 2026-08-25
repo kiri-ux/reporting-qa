@@ -144,6 +144,17 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .copy:hover{border-color:var(--atlas);color:var(--atlas)}
 .copy.done{border-color:var(--ok);color:var(--ok)}
 
+/* ---- bulk sign-off ---- */
+.bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.bulk .picked{font-size:12px;color:var(--muted);min-width:9ch}
+.bulk .picked.some{color:var(--atlas);font-weight:600}
+.bulk input[type=text]{font:inherit;font-size:12px;padding:5px 10px;
+ border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.bulk button[disabled]{opacity:.45;cursor:not-allowed}
+th.pick,td.pick{width:28px;padding-left:10px;padding-right:0}
+td.pick input,th.pick input{cursor:pointer;width:15px;height:15px}
+tr.picked{background:#EAF2FB}
+
 /* ---- saved views ---- */
 .views{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:-4px 0 10px}
 .views .view{display:inline-block;font-size:12px;padding:5px 11px;border-radius:16px;
@@ -481,6 +492,78 @@ body.fit .pdfwrap object{height:100%}
       var q = f.querySelector('input[name="query"]');
       if (q) q.value = window.location.search;
     });
+  });
+
+  // BULK SIGN-OFF.
+  //
+  // The ids go into the form as hidden inputs at submit time rather than being
+  // rendered per row: the table is filtered in the browser, and a checkbox in
+  // a hidden row would otherwise be posted along with the rest.
+  document.querySelectorAll('[data-bulk]').forEach(function (form) {
+    var table = document.getElementById(form.dataset.bulk);
+    if (!table) return;
+    var boxes = function () {
+      return Array.prototype.slice.call(table.querySelectorAll('.rowpick'));
+    };
+    var visible = function (cb) {
+      var tr = cb.closest('tr');
+      return tr && !tr.hidden;
+    };
+    var out = form.querySelector('.picked');
+    var none = form.querySelector('[data-pick="none"]');
+    var all = table.querySelector('.pickall');
+
+    var paint = function () {
+      var on = boxes().filter(function (cb) { return cb.checked; });
+      form.querySelectorAll('button[name="state"]').forEach(function (b) {
+        b.disabled = on.length === 0;
+      });
+      if (out) {
+        out.textContent = on.length ? on.length + ' selected' : '';
+        out.classList.toggle('some', on.length > 0);
+      }
+      if (none) none.hidden = on.length === 0;
+      boxes().forEach(function (cb) {
+        var tr = cb.closest('tr');
+        if (tr) tr.classList.toggle('picked', cb.checked);
+      });
+      var shown = boxes().filter(visible);
+      if (all) {
+        all.checked = shown.length > 0 && shown.every(function (cb) { return cb.checked; });
+      }
+    };
+
+    table.addEventListener('change', function (ev) {
+      if (ev.target.classList.contains('rowpick')) paint();
+      if (ev.target.classList.contains('pickall')) {
+        var want = ev.target.checked;
+        boxes().filter(visible).forEach(function (cb) { cb.checked = want; });
+        paint();
+      }
+    });
+
+    form.addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('[data-pick]') : null;
+      if (!b) return;
+      // Only what is on screen. Selecting rows a filter is hiding is how a
+      // bulk action signs off something nobody was looking at.
+      boxes().forEach(function (cb) {
+        cb.checked = b.dataset.pick === 'clear'
+          && visible(cb) && cb.dataset.clear === '1';
+      });
+      paint();
+    });
+
+    form.addEventListener('submit', function () {
+      form.querySelectorAll('input[name="ids"]').forEach(function (el) { el.remove(); });
+      boxes().filter(function (cb) { return cb.checked; }).forEach(function (cb) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = 'ids'; h.value = cb.value;
+        form.appendChild(h);
+      });
+    });
+
+    paint();
   });
 
   // Copy a link. navigator.clipboard needs a secure context, and this is also

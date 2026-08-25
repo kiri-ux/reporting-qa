@@ -778,6 +778,38 @@ def set_me(request: Request, who: str = Form("")):
     return resp
 
 
+@app.post("/reports/review")
+def review_many(request: Request, ids: list[int] = Form([]), state: str = Form(""),
+                who: str = Form(""), db: Session = Depends(get_db)):
+    """Sign off a set of reports at once.
+
+    Most of a cycle is reports where every check passed, and ticking them one
+    at a time is the longest single job on the board. This is not a shortcut
+    past reading them - it is for the screenful you have just read and agree
+    with, which is why the page defaults the selection to nothing and gives
+    you a one-click way to take only the ones that passed.
+    """
+    back = request.headers.get("referer") or "/cycle"
+    if state not in {"reviewed", "waived", "needs_fix"}:
+        raise HTTPException(400, "unknown review state")
+    name = who.strip() or whoami(request)
+    if not name or not ids:
+        return RedirectResponse(back, status_code=303)
+    now = dt.datetime.utcnow()
+    # Capped. The form is built from what is on screen, but the request is not
+    # trusted to be, and a runaway list should not become a table scan.
+    for rep in db.scalars(select(Report).where(Report.id.in_(ids[:500]))).all():
+        rep.review_state = state
+        rep.reviewed_by = name
+        rep.reviewed_at = now
+        rep.signoff_cleared_at = None
+    db.commit()
+    resp = RedirectResponse(back, status_code=303)
+    if who.strip():
+        _remember(resp, who)
+    return resp
+
+
 @app.post("/report/{report_id}/review")
 def review_report(report_id: int, request: Request, state: str = Form(...),
                   who: str = Form(""), db: Session = Depends(get_db)):
