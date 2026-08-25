@@ -12,7 +12,18 @@
   {% if s3 %}
     <div class="panel">
       <p style="margin:0 0 10px"><b>S3</b> <code class="acct">{{ s3_uri }}</code></p>
-      {% if sync %}
+      {% if running %}
+        {# Refreshes itself rather than asking anyone to. The window is short
+           and the alternative is staring at a stale page wondering. #}
+        <meta http-equiv="refresh" content="10">
+        <p class="sub" style="margin:0 0 12px;font-size:14px">
+          <span class="spin" aria-hidden="true"></span>
+          <b>Sync running</b> since
+          {{ (running.started_at or running.synced_at).strftime('%H:%M') }} UTC.
+          It downloads the whole export and parses a couple of million rows, so
+          give it a minute or two. This page refreshes itself - you can leave it
+          or close the tab, the sync keeps going either way.</p>
+      {% elif sync %}
         <p class="sub" style="margin:0 0 12px;font-size:14px">
           {% if sync.ok %}
             Last synced {{ sync.synced_at.strftime('%b %d, %Y at %H:%M') }} UTC ·
@@ -35,7 +46,8 @@
         <p class="sub" style="margin:0 0 12px;font-size:14px">Not synced yet.</p>
       {% endif %}
       <form action="/orders/sync" method="post" style="display:inline">
-        <button class="btn" type="submit">Sync from S3 now</button>
+        <button class="btn" type="submit" {% if running %}disabled{% endif %}>
+          {{ 'Sync running...' if running else 'Sync from S3 now' }}</button>
       </form>
       <p class="sub" style="font-size:13px;margin-top:12px">
         Every incoming batch refreshes this first, so a campaign added or ended since the

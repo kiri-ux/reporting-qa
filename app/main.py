@@ -375,7 +375,7 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
 
 @app.get("/orders", response_class=HTMLResponse)
 def orders_view(request: Request, view: str = Query("clients"),
-                db: Session = Depends(get_db)):
+                sync: str = Query(""), db: Session = Depends(get_db)):
     lines = [l for l in db.scalars(
         select(OrderLine).order_by(OrderLine.market, OrderLine.client)).all()
         if not _excluded(l.market)]
@@ -383,6 +383,8 @@ def orders_view(request: Request, view: str = Query("clients"),
     legend = [{"code": c, "bg": h, "fg": ink_on(h), "name": n} for c, h, n, _ in PRODUCTS]
     clients = _client_rollup(db, lines) if view == "clients" else []
     from .orders_io import guidance_from_loaded
+    from .orders_s3 import running_sync
+    running = running_sync(db)
     sync_rec = last_sync(db)
     guidance = (sync_rec.guidance if sync_rec and sync_rec.guidance
                 else guidance_from_loaded(db))
@@ -391,7 +393,7 @@ def orders_view(request: Request, view: str = Query("clients"),
     # as an empty cell.
     no_roster = sorted({c["partner"] for c in clients if not c["in_roster"] and c["partner"]})
     return templates.TemplateResponse(request, "orders.html", {
-        "lines": lines, "sync": sync_rec, "guidance": guidance,
+        "lines": lines, "sync": sync_rec, "guidance": guidance, "running": running,
         "s3": settings.s3_configured,
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster,
@@ -637,6 +639,70 @@ def ack_finding(report_id: int, request: Request, index: int = Form(...),
     return RedirectResponse(back, status_code=303)
 
 
+@app.post("/report/{report_id}/replace")
+async def replace_report(report_id: int, request: Request,
+                         file: UploadFile = File(...), who: str = Form(""),
+                         db: Session = Depends(get_db)):
+    """Swap in a corrected PDF and re-run every check against it.
+
+    Acrobat cannot edit a file that lives on a server, so the round trip is
+    download, fix, come back. This makes the return half one step instead of
+    re-sending the whole batch: the report keeps its place on the board, its
+    notes and its history, and the checks re-run so the new file is judged
+    rather than assumed good.
+    """
+    from .checks import run_all
+    from .checks.parser import meta_from_filename
+    from .ingest import client_flight
+    from .roster import expected_products
+
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    blob = await file.read()
+    if not blob[:5] == b"%PDF-":
+        raise HTTPException(400, "That is not a PDF.")
+
+    path = Path(rep.stored_path) if rep.stored_path else None
+    if path is None:
+        store = settings.data_dir / f"batch-{rep.batch_id}"
+        store.mkdir(parents=True, exist_ok=True)
+        path = store / (rep.filename or f"report-{rep.id}.pdf")
+    path.write_bytes(blob)
+
+    exp = expected_products(db, rep.client, rep.account_ids)
+    flight = client_flight(db, rep.client, rep.account_ids)
+    try:
+        result = run_all(path, filename=rep.filename, expected_products=exp,
+                         flight=flight, period=rep.period)
+    except Exception as exc:  # noqa: BLE001
+        rep.severity = "fail"
+        rep.findings = [{"code": "unreadable", "severity": "fail",
+                         "title": "The replacement could not be read",
+                         "detail": str(exc)}]
+        rep.checks = []
+        db.commit()
+        return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+
+    rep.stored_path = str(path)
+    rep.pages = result["pages"]
+    rep.impressions = result["impressions"]
+    rep.clicks = result["clicks"]
+    rep.products = ", ".join(result.get("products") or [])
+    rep.severity = result["severity"]
+    rep.findings = result["findings"]
+    rep.checks = result.get("checks") or []
+    # A replacement is a new file, so previous acceptances and the sign-off no
+    # longer refer to what is on screen. The note is kept - it is about the
+    # client, not about that particular copy.
+    rep.acked = []
+    rep.review_state = "new"
+    rep.reviewed_at = None
+    rep.reviewed_by = who.strip() or rep.reviewed_by
+    db.commit()
+    return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+
+
 @app.get("/report/{report_id}/view", response_class=HTMLResponse)
 def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db)):
     rep = db.get(Report, report_id)
@@ -677,23 +743,42 @@ async def orders_import(file: UploadFile = File(...), period: str = Form(""),
     return RedirectResponse(f"/orders?imported={n}", status_code=303)
 
 
-@app.post("/orders/sync")
-def orders_sync(db: Session = Depends(get_db)):
-    """A failed sync must land back on /orders with the reason on screen. A
-    bare 500 tells you nothing and hides the message the sync already wrote."""
+def _run_sync(claim_id: int) -> None:
+    """The actual work, off the request."""
+    db = SessionLocal()
     try:
-        sync_orders(db, force=True)
+        sync_orders(db, force=True, claim_id=claim_id)
     except Exception as exc:  # noqa: BLE001
         import traceback
         traceback.print_exc()
         db.rollback()
         try:
-            db.add(OrderSync(source="", ok=False, rows=0,
+            from .orders_s3 import _close
+            _close(db, claim_id)
+            db.add(OrderSync(source="", ok=False, rows=0, state="done",
                              message=f"Sync crashed: {type(exc).__name__}: {exc}"))
             db.commit()
-        except Exception:  # noqa: BLE001 - never let logging the error be the error
+        except Exception:  # noqa: BLE001
             db.rollback()
-    return RedirectResponse("/orders", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/orders/sync")
+def orders_sync(background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Start the sync and answer immediately.
+
+    It downloads about 850 MB and parses a couple of million rows. Doing that
+    inside the request meant the browser sat on an open connection for minutes
+    with no response - which is what made the page look hung. The order list
+    now shows a running state and refreshes itself.
+    """
+    from .orders_s3 import begin_sync
+    claim = begin_sync(db)
+    if claim is None:
+        return RedirectResponse("/orders?sync=already", status_code=303)
+    background.add_task(_run_sync, claim.id)
+    return RedirectResponse("/orders?sync=started", status_code=303)
 
 
 @app.post("/batch/{batch_id}/renotify")

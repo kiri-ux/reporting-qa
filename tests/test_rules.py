@@ -1458,3 +1458,56 @@ def test_line_item_ids_survive_the_rollup(tmp_path, monkeypatch):
         # and the order id column holds order ids, not line ids
         assert l.account_ids
         assert l.account_ids != l.line_ids
+
+
+def test_replacing_a_pdf_rechecks_it_and_resets_sign_off(tmp_path, monkeypatch):
+    """A replacement is a new file. The checks have to run against it, and any
+    acceptance or sign-off that described the old copy has to clear - otherwise
+    a corrected report inherits a green tick nobody gave it."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'rp.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from fastapi.testclient import TestClient
+    from app import main as mmod
+    importlib.reload(mmod)
+
+    db = db_mod.SessionLocal()
+    b = db_mod.Batch(market="7 Mountains KY", period="2026-07"); db.add(b); db.flush()
+    old = tmp_path / "old.pdf"
+    old.write_bytes((FIXTURES / "benton_rodeo.pdf").read_bytes())
+    r = db_mod.Report(batch_id=b.id, client="Benton Rodeo", account_ids="19042",
+                      period="2026-07", filename="Benton Rodeo.pdf",
+                      stored_path=str(old), severity="fail", acked=[0],
+                      review_state="reviewed", reviewed_by="Jacob",
+                      reviewed_at=dt.datetime.utcnow(),
+                      review_note="Waiting on a re-pull from Tap",
+                      findings=[{"severity": "fail", "title": "old problem"}])
+    db.add(r); db.commit()
+    rid = r.id
+
+    c = TestClient(mmod.app)
+    fixed = (FIXTURES / "salem_rv.pdf").read_bytes()
+    resp = c.post(f"/report/{rid}/replace",
+                  files={"file": ("fixed.pdf", fixed, "application/pdf")},
+                  follow_redirects=False)
+    assert resp.status_code == 303
+    db.expire_all()
+    r = db.get(db_mod.Report, rid)
+
+    assert Path(r.stored_path).read_bytes() == fixed, "the file was not swapped"
+    assert r.checks, "the checks did not re-run"
+    assert r.findings != [{"severity": "fail", "title": "old problem"}]
+    assert r.acked == [], "an acceptance of the old file carried over"
+    assert r.review_state == "new" and r.reviewed_at is None, "sign-off carried over"
+    assert r.review_note == "Waiting on a re-pull from Tap", "the note was lost"
+
+    # something that is not a PDF is refused outright
+    bad = c.post(f"/report/{rid}/replace",
+                 files={"file": ("notes.txt", b"hello", "text/plain")},
+                 follow_redirects=False)
+    assert bad.status_code == 400

@@ -116,6 +116,10 @@ th{font-family:Agdasima,sans-serif;font-size:13px;font-weight:700;letter-spacing
 td{padding:9px 14px;border-bottom:1px solid var(--line-2);vertical-align:top}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover td{background:var(--velocity-10)}
+/* Number columns hug their content. Stretched across a wide table, a
+   right-aligned value drifts far from its own header and reads as belonging
+   to the next one - which is how a warning count got read as a failure. */
+th.w1,td.w1{width:1%;white-space:nowrap;padding-left:18px}
 td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* ---- status ---- */
@@ -251,6 +255,12 @@ tr[hidden]{display:none}
  background:var(--surface);color:var(--ink-2)}
 .mini:hover:not(:disabled){border-color:var(--velocity);color:var(--velocity)}
 .mini:disabled{opacity:.45;cursor:default}
+.btn:disabled{opacity:.55;cursor:default}
+.spin{display:inline-block;width:11px;height:11px;margin-right:7px;border-radius:50%;
+ border:2px solid var(--velocity-50);border-top-color:var(--velocity);
+ animation:spin .8s linear infinite;vertical-align:-1px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
 
 /* ---- back to top ---- */
 .totop{position:fixed;right:22px;bottom:22px;z-index:30;width:42px;height:42px;

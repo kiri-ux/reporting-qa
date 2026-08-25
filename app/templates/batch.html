@@ -52,9 +52,12 @@
 <section>
   <h2>Expected but not received ({{ comp.missing|length }})</h2>
   <div class="tw"><table>
-    <thead><tr><th>Client</th><th>Accounts</th><th>Market</th><th>Buyer</th><th>Team member</th></tr></thead>
+    <thead><tr><th>Client</th><th>Order</th><th>Partner</th><th>Buyer</th><th>Reporter</th></tr></thead>
     <tbody>{% for m in comp.missing %}
-      <tr><td>{{ m.client }}</td><td class="acct">{{ m.accounts }}</td><td>{{ m.market }}</td>
+      <tr><td>{{ m.client }}</td>
+          <td class="acct">{{ m.accounts }}{% if m.line_ids %}<br>
+            <span style="color:var(--muted)">{{ m.line_ids }}</span>{% endif %}</td>
+          <td>{{ m.market }}</td>
           <td>{{ m.buyer }}</td><td>{{ m.team }}</td></tr>
     {% endfor %}</tbody></table></div>
 </section>
@@ -65,9 +68,12 @@
   <h2>Lifetime reports due ({{ comp.lifetime_due|length }})</h2>
   <p class="sub" style="margin-bottom:12px">Campaigns that ended inside this period and have no lifetime report in the batch.</p>
   <div class="tw"><table>
-    <thead><tr><th>Client</th><th>Accounts</th><th>Campaign ended</th><th>Buyer</th><th>Team member</th></tr></thead>
+    <thead><tr><th>Client</th><th>Order</th><th>Campaign ended</th><th>Buyer</th><th>Reporter</th></tr></thead>
     <tbody>{% for m in comp.lifetime_due %}
-      <tr><td>{{ m.client }}</td><td class="acct">{{ m.accounts }}</td><td class="mono">{{ m.ended }}</td>
+      <tr><td>{{ m.client }}</td>
+          <td class="acct">{{ m.accounts }}{% if m.line_ids %}<br>
+            <span style="color:var(--muted)">{{ m.line_ids }}</span>{% endif %}</td>
+          <td class="mono">{{ m.ended }}</td>
           <td>{{ m.buyer }}</td><td>{{ m.team }}</td></tr>
     {% endfor %}</tbody></table></div>
 </section>

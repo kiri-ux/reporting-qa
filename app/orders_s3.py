@@ -48,6 +48,44 @@ def last_sync(db: Session) -> OrderSync | None:
     return db.scalars(select(OrderSync).order_by(desc(OrderSync.id)).limit(1)).first()
 
 
+# A sync that has been "running" longer than this is assumed dead - a deploy
+# or a restart mid-import - and stops blocking the next attempt.
+STALE_RUN_MINUTES = 30
+
+
+def running_sync(db: Session) -> OrderSync | None:
+    rec = db.scalars(select(OrderSync).where(OrderSync.state == "running")
+                     .order_by(desc(OrderSync.id)).limit(1)).first()
+    if rec is None:
+        return None
+    started = rec.started_at or rec.synced_at
+    if (dt.datetime.utcnow() - started).total_seconds() > STALE_RUN_MINUTES * 60:
+        rec.state = "done"
+        rec.ok = False
+        rec.message = ("Interrupted - the service restarted while this sync was "
+                       "running. Nothing was lost; run it again.")
+        db.commit()
+        return None
+    return rec
+
+
+def begin_sync(db: Session) -> OrderSync | None:
+    """Claim the sync. Returns None if one is already in flight.
+
+    The claim is a row rather than an in-process flag because there are two
+    gunicorn workers, and a lock one of them holds means nothing to the other.
+    """
+    if running_sync(db) is not None:
+        return None
+    now = dt.datetime.utcnow()
+    rec = OrderSync(source=f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}",
+                    state="running", started_at=now, synced_at=now, ok=True,
+                    message="Downloading and parsing the export...")
+    db.add(rec)
+    db.commit()
+    return rec
+
+
 DATA_EXTS = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls")
 
 
@@ -119,6 +157,15 @@ def head() -> tuple[str, dt.datetime | None]:
     return f"{len(parts)}f-{digest[:40]}", newest
 
 
+def _close(db: Session, claim_id: int | None) -> None:
+    if claim_id is None:
+        return
+    rec = db.get(OrderSync, claim_id)
+    if rec is not None and rec.state == "running":
+        db.delete(rec)                  # the claim itself is not history
+        db.commit()
+
+
 def _fail(db: Session, source: str, message: str, prev: OrderSync | None,
           etag: str = "", lm: dt.datetime | None = None) -> OrderSync:
     """Record a failed sync.
@@ -136,10 +183,19 @@ def _fail(db: Session, source: str, message: str, prev: OrderSync | None,
     return rec
 
 
-def sync(db: Session, *, force: bool = False) -> OrderSync:
+def sync(db: Session, *, force: bool = False, claim_id: int | None = None) -> OrderSync:
     """Refresh the order list from S3. Returns the sync record either way."""
     source = f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
-    prev = last_sync(db)
+    prev = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+                      .order_by(desc(OrderSync.id)).limit(1)).first()
+    try:
+        return _sync(db, source, prev, force=force)
+    finally:
+        _close(db, claim_id)
+
+
+def _sync(db: Session, source: str, prev: OrderSync | None, *,
+          force: bool = False) -> OrderSync:
 
     if not settings.s3_configured:
         return _fail(db, "", "No S3 bucket configured.", None)

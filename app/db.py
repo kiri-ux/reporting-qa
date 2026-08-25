@@ -282,6 +282,10 @@ class OrderSync(Base):
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     message: Mapped[str] = mapped_column(Text, default="")
     guidance: Mapped[dict] = mapped_column(JSON, default=dict)
+    # running | done. A sync downloads ~850 MB and parses a couple of million
+    # rows; holding a browser request open for that is what made the page hang.
+    state: Mapped[str] = mapped_column(String(16), default="done")
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 # --------------------------------------------------------------------------
@@ -316,6 +320,8 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "acked", "JSON"),
     ("reports", "checks", "JSON"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
+    ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
+    ("order_sync", "started_at", "TIMESTAMP"),
 ]
 
 

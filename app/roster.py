@@ -258,6 +258,19 @@ def completeness(db: Session, market: str, period: str) -> dict:
     period_end = (dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1))
     period_start = dt.date(y, m, 1)
 
+    # "Team member" was a column from the original schema that nothing fills
+    # any more - the IO export has no such field, so it rendered empty on every
+    # row. The reporter is the person actually wanted here, and that lives on
+    # the partner roster.
+    from .partners import find as find_partner
+    pcache: dict[str, object] = {}
+
+    def reporter_for(market: str) -> str:
+        if market not in pcache:
+            pcache[market] = find_partner(db, market)
+        p = pcache[market]
+        return p.reporting_team if p else ""
+
     missing, lifetime_due = [], []
     for ol in lines:
         ids = _keyify(ol.client, ol.account_ids)
@@ -267,11 +280,13 @@ def completeness(db: Session, market: str, period: str) -> dict:
             continue
         if not ids or not (ids & got_ids):
             missing.append({"client": ol.client, "accounts": ol.account_ids,
-                            "market": ol.market, "buyer": ol.buyer, "team": ol.team_member})
+                            "line_ids": ol.line_ids, "market": ol.market,
+                            "buyer": ol.buyer, "team": reporter_for(ol.market)})
         if ol.needs_lifetime and ol.ends_on and period_start <= ol.ends_on <= period_end:
             if not (ids & life_ids):
                 lifetime_due.append({"client": ol.client, "accounts": ol.account_ids,
-                                     "market": ol.market, "ended": ol.ends_on.isoformat(),
-                                     "buyer": ol.buyer, "team": ol.team_member})
+                                     "line_ids": ol.line_ids, "market": ol.market,
+                                     "ended": ol.ends_on.isoformat(),
+                                     "buyer": ol.buyer, "team": reporter_for(ol.market)})
     return {"expected": len(lines), "received": len(got),
             "missing": missing, "lifetime_due": lifetime_due}
