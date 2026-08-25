@@ -30,7 +30,9 @@ def test_grid_rows_joins_a_name_that_wrapped_below_its_own_numbers(sample):
     assert "Alpha Roofing - Severe Thunderstorm Weather Trigger Mobile" in names
     # The whole summary grid, not just the ten rows on page one - and each row
     # once, though two grid titles both end in "Line Item Performance".
-    assert len(names) == 3756
+    # 3,756 in the main grid plus the ten DOOH rows, which count in "DOOH Ads
+    # Served" and were being thrown away.
+    assert len(names) == 3766
 
 
 def test_section_at_names_the_page_a_fault_is_on(sample):
@@ -630,3 +632,56 @@ def test_a_display_creative_widget_really_does_mean_display_ran():
             "Preview Image   Creative Name   Impressions   Clicks   CTR\n"
             "                Field Of Dreams_7.14__888x138   11,199   117   1.04%\n")
     assert "Display" in detect(text, extract_tables(text, strict=True))
+
+
+# ---------------------------------------------------------------------- DOOH
+DOOH_AND_REST = ("DOOH ADS - PAGE 1\n"
+                 "DOOH Line Item Performance\n"
+                 "Strategy Name                       DOOH Ads Served\n"
+                 "\n"
+                 "Service One CU - Venue Targeting DOOH Video    36,666\n"
+                 "\n"
+                 "LINE ITEMS - PAGE 1\n"
+                 "Line Item Performance\n"
+                 "Line Item Name          Impressions   Clicks   CTR\n"
+                 "Service One CU - Auto Loans     64,242   500   0.78%\n"
+                 "Service One CU - AI CTV         36,057   103   0.29%\n")
+
+
+def test_a_dooh_row_counts_towards_the_line_item_total():
+    """DOOH counts in "DOOH Ads Served" and has no clicks or CTR column, so its
+    rows are a name and one number. The three-cell rule that keeps prose out of
+    every other grid threw all of them away, and Service One Credit Union was
+    failed for a line item sum that came up short by exactly its DOOH figure."""
+    rows = q.line_item_totals(DOOH_AND_REST)
+    dooh = [r for r in rows if "DOOH" in r[0]]
+    assert dooh == [("Service One CU - Venue Targeting DOOH Video", 36666.0, 0.0)]
+    assert sum(r[1] for r in rows) == 36666 + 64242 + 36057
+
+
+def test_a_dooh_row_brings_no_clicks_with_it():
+    """There is no clicks column to read, and inventing one would break the
+    other half of the same check."""
+    assert all(r[2] == 0.0 for r in q.line_item_totals(DOOH_AND_REST)
+               if "DOOH" in r[0])
+
+
+def test_the_two_cell_rule_is_only_used_on_dooh_grids():
+    """Everywhere else a two-cell line is a wrapped name or a stray caption,
+    and taking them as rows is how a grid runs away with itself."""
+    text = ("LINE ITEMS - PAGE 1\n"
+            "Line Item Performance\n"
+            "Line Item Name    Impressions   Clicks   CTR\n"
+            "Acme - AI Display     14,524   163   1.12%\n"
+            "Some caption           99\n")
+    names = [n for n, _ in q.line_item_names(text)]
+    assert names == ["Acme - AI Display Some caption 99"] or "Some caption" not in names
+
+
+def test_the_samples_line_items_now_include_its_dooh(sample):
+    rows = q.line_item_totals(sample)
+    dooh = [r for r in rows if "DOOH" in r[0]]
+    assert len(dooh) == 10
+    assert sum(r[1] for r in dooh) == 9540
+    # and the whole grid now lands within half a percent of the top line
+    assert abs(sum(r[1] for r in rows) - 5_168_436) / 5_168_436 < 0.005

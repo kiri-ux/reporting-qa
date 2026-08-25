@@ -12,12 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-30"
-BUILD_NOTES = ("A line item that says IO Live is reported even when its order "
-               "header still says pending. The board's stale counts are two "
-               "queries rather than two per partner, which is what had slowed "
-               "it down. A partner's Re-check button shows its own progress "
-               "instead of sitting there looking untouched.")
+BUILD = "2026.08.25-31"
+BUILD_NOTES = ("DOOH counts in ads served, not impressions, and its rows were "
+               "being thrown away - so a report was failed for a line item sum "
+               "short by exactly its DOOH figure. The two line item findings "
+               "now carry their own working instead of sharing one, and a "
+               "remainder smaller than the rounding is not a failure.")
 # ---------------------------------------------------------------------------
 
 

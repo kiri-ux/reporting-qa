@@ -301,3 +301,50 @@ def test_a_run_over_everything_walks_forward_instead_of_looping(live):
     assert first and first[0].id == rep.id
     assert _stale_batch(s, 25, scoped=False, stale_only=False,
                         after=rep.id) == []
+
+
+# ------------------------------------------------- the two findings differ
+def test_the_impressions_and_clicks_findings_carry_different_working():
+    """Both showed the same Investigate panel, which is no help at all when the
+    question is which of the two numbers is wrong."""
+    from app.checks.rules import check_line_items
+    text = ("LINE ITEMS - PAGE 1\n"
+            "Line Item Performance\n"
+            "Line Item Name              Impressions   Clicks   CTR\n"
+            "Acme - Auto Loans/Banking       64,242   500   0.78%\n"
+            "Acme - AI CTV                   36,057   900   2.50%\n")
+    out = check_line_items({"text": text, "imps": 500000.0, "clicks": 100.0})
+    assert len(out) == 2
+    labels = [[t["label"] for t in f["trace"]] for f in out]
+    assert labels[0] != labels[1]
+    assert "Their impressions" in labels[0] and "Their clicks" in labels[1]
+    assert "Largest line items" in labels[0]
+    assert "Left unexplained" in labels[1]
+
+
+def test_a_remainder_smaller_than_the_rounding_is_not_a_failure():
+    """Service One: 103 clicks over the top line, 111 of them on CTV. The eight
+    left over is 0.27% of the campaign and was being called a failure."""
+    from app.checks.rules import check_line_items
+    text = ("Line Item Performance\n"
+            "Line Item Name        Impressions   Clicks   CTR\n"
+            "Acme - Auto Loans        64,242   500   0.78%\n"
+            "Acme - AI CTV            36,057   111   0.31%\n"
+            "Acme - Facebook          61,790   2,500   4.05%\n")
+    out = check_line_items({"text": text, "imps": 162089.0, "clicks": 3008.0})
+    f = next(x for x in out if "clicks" in x["code"])
+    assert f["severity"] == "info"
+    assert "all but 8" in f["detail"]
+
+
+def test_a_remainder_that_matters_is_still_a_failure():
+    from app.checks.rules import check_line_items
+    text = ("Line Item Performance\n"
+            "Line Item Name        Impressions   Clicks   CTR\n"
+            "Acme - Auto Loans        64,242   500   0.78%\n"
+            "Acme - AI CTV            36,057   111   0.31%\n"
+            "Acme - Facebook          61,790   2,500   4.05%\n")
+    out = check_line_items({"text": text, "imps": 162089.0, "clicks": 2000.0})
+    f = next(x for x in out if "clicks" in x["code"])
+    assert f["severity"] == "fail"
+    assert "unaccounted for" in f["detail"]

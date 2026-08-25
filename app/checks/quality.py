@@ -56,7 +56,8 @@ def _looks_like_row(t: str) -> bool:
     return len(cells) >= 3 and all(NUMERIC.match(c) for c in cells[1:])
 
 
-def grid_rows(text: str, start: int, stop_at_new_section: bool = True) -> list[tuple[str, int]]:
+def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
+              min_cells: int = 3) -> list[tuple[str, int]]:
     """Rows of a grid, as (first cell, offset), with wrapped cells joined.
 
     TapClicks wraps a long name onto the lines BELOW its own numbers, so a row
@@ -97,7 +98,7 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True) -> list[t
         if _is_chrome(line):
             continue
         cells = [c for c in re.split(r"\s{2,}", t) if c]
-        if len(cells) >= 3 and all(NUMERIC.match(c) for c in cells[1:]):
+        if len(cells) >= min_cells and all(NUMERIC.match(c) for c in cells[1:]):
             if cur:
                 rows.append((" ".join(cur), cur_at))
             cur, cur_at = [cells[0]], at
@@ -109,7 +110,7 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True) -> list[t
             break
         if cur is not None and len(cells) == 1:
             cur.append(t)
-        elif cur is not None and len(cells) >= 3:
+        elif cur is not None and len(cells) >= min_cells:
             rows.append((" ".join(cur), cur_at))
             cur = None
     if cur:
@@ -198,7 +199,12 @@ def line_item_names(text: str) -> list[tuple[str, int]]:
     seen: set[int] = set()
     out: list[tuple[str, int]] = []
     for m in LINE_ITEM_GRID.finditer(text):
-        for name, at in grid_rows(text, m.end()):
+        # DOOH counts in "DOOH Ads Served" and has no clicks or CTR column, so
+        # its rows are a name and one number. The three-cell rule that keeps
+        # prose out of every other grid was throwing all of them away, and the
+        # line item sum came up short by exactly the DOOH figure.
+        two = m.group(1).strip().upper().startswith("DOOH")
+        for name, at in grid_rows(text, m.end(), min_cells=2 if two else 3):
             if at not in seen:
                 seen.add(at)
                 out.append((name, at))
@@ -227,6 +233,12 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
                     pass
         if len(vals) >= 2:
             out.append((name, vals[0], vals[1]))
+        elif len(vals) == 1:
+            # DOOH counts in "DOOH Ads Served" and has no clicks column, so its
+            # rows carry one number. Skipping them left the line item sum
+            # 36,666 short of a top line that plainly included them - exactly
+            # the DOOH figure, on a report that was then failed for it.
+            out.append((name, vals[0], 0.0))
     return out
 
 

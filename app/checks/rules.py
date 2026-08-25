@@ -223,47 +223,67 @@ def check_line_items(ctx) -> list[dict]:
     si = sum(r[1] for r in rows)
     sc = sum(r[2] for r in rows)
     biggest = sorted(rows, key=lambda r: -r[1])[:6]
-    trace = [("Top-line impressions", f"{imps:,.0f}"),
-             ("Top-line clicks", f"{clicks:,.0f}" if clicks is not None else "not stated"),
-             ("Line items counted", f"{len(rows)}"),
-             ("They total", f"{si:,.0f} impressions, {sc:,.0f} clicks"),
-             ("Difference", f"{si - imps:+,.0f} impressions"),
-             ("Largest line items", "; ".join(f"{_short_name(n, 48)}: {i:,.0f}"
-                                              for n, i, _c in biggest))]
-
-    # A tolerance, because a DOOH line is measured in ads served rather than
-    # impressions and never joins this sum. Half a percent of the campaign, or
-    # two impressions on a tiny one, whichever is larger.
-    slack = max(2.0, imps * 0.005)
     out = []
+
+    # A tolerance, because a top-ten grid is not the whole campaign and a
+    # rounding difference is not a finding. Half a percent, or two on a tiny
+    # report, whichever is larger.
+    slack = max(2.0, imps * 0.005)
     if abs(si - imps) > slack:
         out.append(_f("line_items_impressions", "fail",
                       "Line items do not sum to the top line",
                       f"Line items total {si:,.0f} impressions against a stated "
                       f"{imps:,.0f} ({si - imps:+,.0f}, "
-                      f"{(si - imps) / imps * 100:+.2f}%).", trace))
-    if clicks is not None:
-        cslack = max(2.0, clicks * 0.005)
-        gap = sc - clicks
-        if abs(gap) > cslack:
-            # The Clicks tile is filtered on some templates and not on others.
-            # When the excess is exactly the CTV, YouTube and PMax clicks, the
-            # tile is the filtered one and nothing is wrong.
-            excl = sum(r[2] for r in rows if CTR_EXCLUDED.search(r[0]))
-            trace.append(("Clicks on CTV / OTT / YouTube / PMax line items",
-                          f"{excl:,.0f}"))
-            if excl and abs(gap - excl) <= max(2.0, excl * 0.02):
-                out.append(_f("clicks_exclude_products", "info",
-                              "The top-line clicks leave CTV, YouTube and PMax out",
-                              f"Line items total {sc:,.0f} clicks against a stated "
-                              f"{clicks:,.0f}. The {gap:+,.0f} difference is the "
-                              f"{excl:,.0f} clicks on CTV, YouTube and PMax line "
-                              f"items, which that tile excludes. Expected.", trace))
-            else:
-                out.append(_f("line_items_clicks", "fail",
-                              "Line item clicks do not sum to the top line",
-                              f"Line items total {sc:,.0f} clicks against a stated "
-                              f"{clicks:,.0f} ({gap:+,.0f}).", trace))
+                      f"{(si - imps) / imps * 100:+.2f}%).",
+                      [("Top-line impressions", f"{imps:,.0f}"),
+                       ("Line items counted", f"{len(rows)}"),
+                       ("Their impressions", f"{si:,.0f}"),
+                       ("Difference", f"{si - imps:+,.0f} impressions"),
+                       ("Largest line items",
+                        "; ".join(f"{_short_name(n, 48)}: {i:,.0f}"
+                                  for n, i, _c in biggest))]))
+
+    if clicks is None:
+        return out
+
+    gap = sc - clicks
+    # The Clicks tile is filtered on some templates and not on others: it can
+    # leave out CTV, OTT, YouTube and PMax. So the question is not whether the
+    # two numbers differ but how much of the difference those products explain,
+    # and whether what is left over is worth anybody's time.
+    excl = sum(r[2] for r in rows if CTR_EXCLUDED.search(r[0]))
+    unexplained = gap - excl
+    ctrace = [("Top-line clicks", f"{clicks:,.0f}"),
+              ("Line items counted", f"{len(rows)}"),
+              ("Their clicks", f"{sc:,.0f}"),
+              ("Difference", f"{gap:+,.0f} clicks"),
+              ("Clicks on CTV / OTT / YouTube / PMax line items", f"{excl:,.0f}"),
+              ("Left unexplained", f"{unexplained:+,.0f} clicks")]
+
+    # Material is measured against the campaign, not against the excluded
+    # products. Eight clicks adrift on a report with three thousand of them is
+    # a rounding difference, however it is arrived at.
+    material = max(5.0, clicks * 0.005)
+    if abs(gap) <= max(2.0, clicks * 0.005):
+        return out
+    if abs(unexplained) <= material:
+        out.append(_f("clicks_exclude_products", "info",
+                      "The top-line clicks leave CTV, YouTube and PMax out",
+                      f"Line items total {sc:,.0f} clicks against a stated "
+                      f"{clicks:,.0f}. The CTV, OTT, YouTube and PMax line items "
+                      f"carry {excl:,.0f} clicks, which that tile excludes and "
+                      f"which accounts for "
+                      + ("all of the " if unexplained == 0 else
+                         f"all but {abs(unexplained):,.0f} of the ")
+                      + f"{abs(gap):,.0f} difference. Expected.", ctrace))
+    else:
+        out.append(_f("line_items_clicks", "fail",
+                      "Line item clicks do not sum to the top line",
+                      f"Line items total {sc:,.0f} clicks against a stated "
+                      f"{clicks:,.0f} ({gap:+,.0f}). The CTV, OTT, YouTube and "
+                      f"PMax line items carry {excl:,.0f}, which that tile can "
+                      f"exclude - that still leaves {abs(unexplained):,.0f} "
+                      f"clicks unaccounted for.", ctrace))
     return out
 
 
