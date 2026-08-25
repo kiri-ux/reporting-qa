@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-54"
-BUILD_NOTES = ("The automatic sweep no longer re-reads reports you have signed "
-               "off - they are counted on the board instead, for a deliberate "
-               "pass before you package. And the Orders page now recommends the "
-               "cheapest pull rather than leaving you to work it out.")
+BUILD = "2026.08.25-55"
+BUILD_NOTES = ("The yellow bar is gone - the orders button in the top bar says "
+               "it. Both syncs are labelled, Share moved down to the filter "
+               "row, and Investigate shows the one flight that settles it "
+               "rather than every flight on the order.")
 
 # ---------------------------------------------------------------------------
 

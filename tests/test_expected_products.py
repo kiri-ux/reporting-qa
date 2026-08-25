@@ -292,3 +292,42 @@ def test_a_product_live_on_one_order_and_paused_on_another_is_live():
               flights=[["2026-01-01", "2026-12-31"]]))
     s.commit()
     assert "Meta" in expected_products(s, "W&L Subaru", "14885", period="2026-07")
+
+
+# ------------------------------------------- the trace, readable
+def test_the_trace_shows_the_flight_that_settles_it_not_all_of_them():
+    """"2024-12-13 to 2026-12-31; 2026-02-06 to 2026-12-31" is a wall of dates
+    you have to subtract in your head. The question is always the same: which
+    flight covers this month, or if none does, how close the nearest came."""
+    s = _paused_db()
+    s.add(_OL(market="m", client="W&L Subaru", account_ids="14885",
+              product="TikTok", live=True, starts_on=_d.date(2024, 12, 13),
+              ends_on=_d.date(2026, 12, 31),
+              flights=[["2024-12-13", "2026-12-31"], ["2026-02-06", "2026-12-31"]]))
+    s.commit()
+    rows = dict(expected_why(s, "W&L Subaru", "14885", period="2026-07"))
+    line = rows["TikTok · order 14885"]
+    assert line.startswith("2024-12-13 to 2026-12-31")
+    assert "+1 more covering 2026-07" in line
+    assert ";" not in line, "it is still listing every window"
+
+
+def test_a_product_that_stopped_says_when_rather_than_listing_flights():
+    s = _paused_db()
+    s.add(_OL(market="m", client="W&L Subaru", account_ids="14885",
+              product="Social Mirror", live=True,
+              starts_on=_d.date(2025, 1, 3), ends_on=_d.date(2026, 6, 30),
+              flights=[["2025-01-03", "2025-06-30"], ["2025-08-01", "2026-06-30"]]))
+    s.commit()
+    rows = dict(expected_why(s, "W&L Subaru", "14885", period="2026-07"))
+    assert rows["Social Mirror · order 14885"].startswith("ran to 2026-06-30")
+
+
+def test_a_product_that_has_not_started_says_when_it_will():
+    s = _paused_db()
+    s.add(_OL(market="m", client="W&L Subaru", account_ids="14885",
+              product="DOOH", live=True, starts_on=_d.date(2026, 8, 1),
+              ends_on=None, flights=[["2026-08-01", None]]))
+    s.commit()
+    rows = dict(expected_why(s, "W&L Subaru", "14885", period="2026-07"))
+    assert rows["DOOH · order 14885"].startswith("starts 2026-08-01")

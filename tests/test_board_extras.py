@@ -97,8 +97,12 @@ def test_the_recheck_control_is_a_button_not_a_banner():
     assert 'class="note stale"' not in cycle
     assert "on this board were judged by older checking code" not in cycle
     # it lives with Download CSV, and it says how many
-    assert 'class="sync"' in cycle and "{{ stale.total }}</button>" in cycle
+    assert 'class="sync"' in cycle and "{{ stale.total }} checks</button>" in cycle
     assert cycle.index('class="sync"') < cycle.index("Download CSV")
+    # And the orders re-read is a button beside it rather than a yellow bar
+    # across the width of the board.
+    assert 'class="stalebar"' not in cycle
+    assert ">orders</button>" in cycle
 
 
 def test_the_button_becomes_a_progress_readout_while_it_runs():

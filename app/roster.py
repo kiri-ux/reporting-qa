@@ -351,12 +351,46 @@ def expected_why(db: Session, client: str, account_ids: str,
         return [("Orders found for this client", "none - no claim is made")]
 
     def when(l) -> str:
-        wins = [w for w in (getattr(l, "flights", None) or [])
-                if isinstance(w, (list, tuple)) and len(w) == 2]
+        """The ONE window that settles it, not every window on the order.
+
+        A client running a product across four overlapping flights printed all
+        four - "2024-12-13 to 2026-12-31; 2026-02-06 to 2026-12-31; ..." - which
+        is a wall of dates you have to subtract in your head. The question is
+        always the same: which flight covers this month, or if none does, how
+        close the nearest one came.
+        """
+        wins = [(_as_date(a), _as_date(b))
+                for w in (getattr(l, "flights", None) or [])
+                if isinstance(w, (list, tuple)) and len(w) == 2
+                for a, b in [w]]
         if not wins:
-            wins = [[l.starts_on, l.ends_on]]
-        return "; ".join(f"{_as_date(a) or '?'} to {_as_date(b) or 'open'}"
-                         for a, b in wins)
+            wins = [(l.starts_on, l.ends_on)]
+
+        def show(a, b) -> str:
+            return f"{a or '?'} to {b or 'open'}"
+
+        if not period:
+            a, b = wins[0]
+            return show(a, b) + (f" (+{len(wins) - 1} more)" if len(wins) > 1 else "")
+
+        y, m = (int(x) for x in period.split("-"))
+        first = dt.date(y, m, 1)
+        last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+        covering = [(a, b) for a, b in wins
+                    if not (b and b < first) and not (a and a > last)]
+        if covering:
+            a, b = covering[0]
+            extra = len(covering) - 1
+            return show(a, b) + (f" (+{extra} more covering {period})" if extra else "")
+        # Nothing covers the month. The nearest end date is what somebody wants
+        # to see - "it stopped in June" answers the question on its own.
+        ended = [b for _a, b in wins if b]
+        if ended:
+            return f"ran to {max(ended)}"
+        started = [a for a, _b in wins if a]
+        if started:
+            return f"starts {min(started)}"
+        return show(*wins[0])
 
     rows: list[tuple[str, str]] = []
     for l in sorted(hit, key=lambda x: (x.product or "", x.account_ids or "")):

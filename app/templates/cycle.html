@@ -91,7 +91,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
          before they hand a link over. #}
       {% if jobs.all %}
         <span class="sync busy" data-job="*"><span class="spin"></span><b
-          >{{ jobs.all.done }} of {{ jobs.all.total or '?' }}</b></span>
+          >{{ jobs.all.done }} of {{ jobs.all.total or '?' }}</b> checks</span>
       {% elif stale.total %}
         <form method="post" action="/cycle/recheck" style="display:inline">
           <input type="hidden" name="period" value="{{ period }}">
@@ -101,19 +101,9 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6" fill="none"
                     stroke="currentColor" stroke-width="2.2"
                     stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>{{ stale.total }}</button>
+            </svg>{{ stale.total }} checks</button>
         </form>
       {% endif %}
-      {# The filters are already in the address bar. This is the button that
-         says so - nobody thinks to select a URL they did not type. #}
-      <button type="button" class="copy" data-copy-url title="Copy a link to this view">
-        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-          <path d="M10 14a4 4 0 006 .5l3-3a4 4 0 00-5.5-5.5L12 7.5"
-                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <path d="M14 10a4 4 0 00-6-.5l-3 3A4 4 0 0010.5 18L12 16.5"
-                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg><span>Share this view</span>
-      </button>
       {# Two different syncs live here now, so each says which it is on hover.
          This one re-reads the ORDER LIST; the one to its left re-reads the
          reports. #}
@@ -151,26 +141,9 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
     </span>
   </div>
 
-  {% if orders_stale %}
-    {# The findings on this board were worked out against order data that an
-       older version of the import produced. Saying so beats the alternative,
-       which is somebody reporting the same false positive a third time. #}
-    <div class="stalebar">
-      <b>The order list was read by older code.</b>
-      Product findings on this board may be answering from the old version of
-      it. The re-read runs on its own in the background - this does it now.
-      {% if orders_syncing %}
-        {# It answers immediately and works in the background, so an unchanged
-           banner read as nothing having happened. It had. #}
-        <span class="mini busy"><span class="spin"></span>Re-reading now</span>
-      {% else %}
-        <form method="post" action="/orders/sync" style="display:inline">
-          <input type="hidden" name="back" value="/cycle?period={{ period }}">
-          <button class="mini" type="submit">Re-read the orders</button>
-        </form>
-      {% endif %}
-    </div>
-  {% endif %}
+  {# The yellow bar is gone. The orders button in the top bar turns amber and
+     says the same thing on hover, which is enough - a full-width banner for a
+     condition that clears itself was shouting. #}
 
   <div class="tools">
     <input type="search" data-cards="glist" data-count="cnt-groups"
@@ -183,7 +156,12 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
       Only started</button>
     <span class="count" id="cnt-groups"></span>
   </div>
-  <div class="colfilters" data-cardfilters-for="glist"></div>
+  {# The saved views and the share button sit ON the filter row now - they are
+     all the same thought ("this set of filters"), and split across two rows
+     they read as two unrelated toolbars. The JS appends the dropdowns into
+     .colfilters and this rides along at its end. #}
+  <div class="colfilters" data-cardfilters-for="glist">
+  </div>
 
   {# Saved views. The filters have been shareable since they went into the URL;
      this is the same thing with a name on it, for the ones you build again
@@ -204,6 +182,16 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
       <input type="text" name="name" placeholder="Save these filters as..." size="18">
       <button class="mini" type="submit">Save view</button>
     </form>
+    {# The filters have been in the address bar since build 39. This is the
+       button that says so - nobody thinks to select a URL they did not type. #}
+    <button type="button" class="copy" data-copy-url title="Copy a link to this view">
+      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+        <path d="M10 14a4 4 0 006 .5l3-3a4 4 0 00-5.5-5.5L12 7.5"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M14 10a4 4 0 00-6-.5l-3 3A4 4 0 0010.5 18L12 16.5"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg><span>Share</span>
+    </button>
   </div>
 
   <div class="glist" id="glist">

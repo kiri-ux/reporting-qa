@@ -1,83 +1,52 @@
-build 2026.08.25-54
+build 2026.08.25-55
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/main.py
-app/recheck.py
-app/templates/base.html
+app/roster.py
 app/templates/cycle.html
-app/templates/orders.html
-tests/test_recheck.py
+app/templates/viewer.html
+tests/test_board_extras.py
+tests/test_expected_products.py
+tests/test_order_remap.py
 
 
-1. "Are we also checking already reviewed reports?"
------------------------------------------------------
-We were. We are not any more, and you are right that we should not be.
+1. The yellow bar is gone
+---------------------------
+Off both the board and the report page. The orders button in the top right
+turns amber and says the same thing on hover, which is enough - a full-width
+banner for a condition that clears itself was shouting.
 
-The sweep exists so a fixed rule reaches the reports it already got wrong, and
-a signed-off report is as capable of carrying a wrong answer as any other. But
-with a rule changing several times a day, sweeping them re-reads finished work
-over and over - and every pass that finds a new failure pulls somebody's
-sign-off. The queue never empties and the board keeps un-reviewing itself. That
-is what your 838 was.
+Both syncs are labelled now and sit together:
 
-So the automatic sweep now covers only what is still in your way. Reports you
-have signed off are LEFT ALONE, and counted in the top bar instead:
+    [refresh] 642 checks   [swap] orders   Download CSV
 
-    [check icon] 24 signed off
-
-Press it and it re-reads exactly those. That is worth doing once before you
-package a cycle, and it is a decision rather than something that happens while
-you are mid-flow. Nothing is hidden: the count is on screen, and the hover says
-what it means.
-
-The per-partner Re-check button already worked this way since build 41, so the
-sweep and the button now agree.
+"checks" re-reads the reports, "orders" re-reads the order list. Each says
+which on hover, and each spins in place while it runs.
 
 
-2. The rules for "needs signing off again"
---------------------------------------------
-Exactly one thing does it. A report that was Reviewed or Waived goes back to
-unreviewed when a re-check produces a FAILURE THAT WAS NOT THERE WHEN IT WAS
-SIGNED.
-
-  - Matched on code AND title, so one of four "Row CTR does not match" findings
-    appearing is a new failure even though that code was already present.
-  - Warnings never do it. Only failures.
-  - A failure you had already accepted never does it - accepting it is what
-    "I have seen this" means.
-  - A failure that was there before and is still there does not do it either.
-    Nothing changed.
-
-When it happens the name stays on the row so you know whose sign-off went, the
-tag reads "needs signing off again", and the hover says who signed it and why
-it was taken off.
-
-Given item 1, this now only happens when YOU ask for it - the deliberate pass,
-the partner Re-check button, or a replaced file.
+2. Share moved down
+---------------------
+It is on the filter row now, beside Save view, and it is just "Share" with the
+link icon. The saved views, the save box and the share button are all the same
+thought - "this set of filters" - and split across two rows they read as two
+unrelated toolbars.
 
 
-3. The cheapest way to pull the orders
-----------------------------------------
-You can pick one partner or all partners, 2,000 days maximum. One pull per
-partner is 146 runs. Two all-partner windows is two runs and twice the whole
-board's rows. Neither is the answer.
+3. Investigate: the flight that settles it, not all of them
+-------------------------------------------------------------
+    Meta · order 43279
+    2024-12-13 to 2026-12-31; 2026-02-06 to 2026-12-31 · counted
 
-The Orders page now works out and shows the third option:
+That is a wall of dates you have to subtract in your head, and you were right
+that it is not useful. The question is always the same one: which flight covers
+this month, or if none does, how close the nearest came. So:
 
-    1. ALL PARTNERS, <today minus 2,000 days> to today
-       Covers N of 146 partners completely.
-    2. Then one pull each for the few partners with something still running
-       that started before that cutoff - and only the part BEFORE the cutoff,
-       because the bulk pull already has the rest of them.
+    Meta · order 43279          2024-12-13 to 2026-12-31 (+1 more covering 2026-07) · counted
+    Social Mirror · order 43279 ran to 2026-06-30 · not running in 2026-07
+    TikTok · order 43279        starts 2026-08-01 · not running in 2026-07
 
-So each extra run is a narrow slice of one partner's history rather than
-another copy of the board. Total rows are the board once plus a handful, and
-total runs are one plus however few stragglers you actually have.
-
-The exact dates and the straggler list are computed from your loaded orders and
-printed on the page - I cannot tell you the numbers from here, but that panel
-can as soon as you open it.
+One line, one fact, and the two that are NOT running now say why in three words
+instead of asking you to compare four date ranges against July.
 
 
-Tests: 404 passing.
+Tests: 407 passing.

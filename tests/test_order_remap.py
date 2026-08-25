@@ -247,13 +247,15 @@ def test_the_order_re_read_is_not_gated_behind_the_report_sweep(monkeypatch):
     assert before < after, "the re-read still runs only when the sweep is on"
 
 
-def test_the_report_page_says_it_too(monkeypatch):
-    """A product finding is disputed on the report page, so the fact that
-    settles it belongs on the report page."""
+def test_the_stale_orders_banner_is_a_button_not_a_bar():
+    """A full-width yellow bar for a condition that clears itself was
+    shouting. The orders button in the top bar turns amber and says the same
+    thing on hover."""
     from pathlib import Path as _P
-    tpl = _P("app/templates/viewer.html").read_text()
-    assert "orders_stale" in tpl
-    assert "Re-read the orders" in tpl
+    assert 'class="stalebar"' not in _P("app/templates/viewer.html").read_text()
+    cycle = _P("app/templates/cycle.html").read_text()
+    assert 'class="stalebar"' not in cycle
+    assert "orders_stale" in cycle, "the amber state still has to be driven by it"
 
 
 # ------------------------------------------- budgets, merged in from a sheet
