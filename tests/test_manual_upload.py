@@ -312,3 +312,92 @@ def test_the_reports_that_arrived_sort_above_the_ones_that_have_not(client):
     first_missing = body.find("AAA Client")
     assert arrived != -1 and first_missing != -1
     assert arrived < first_missing, "the report you can open is below the ones you cannot"
+
+
+# ------------------------------------------------------------- the light sign-in
+def test_saving_a_name_puts_it_in_the_topbar_and_takes_the_boxes_away(client):
+    """A name, not a login. Typing it into every row is what made people stop
+    signing off at all."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+
+    page = c.get(f"/cycle?period={rep.period}").text
+    assert 'name="who" placeholder="Your name"' in page
+
+    c.post("/me", data={"who": "Kiri"}, follow_redirects=False)
+    page = c.get(f"/cycle?period={rep.period}").text
+    assert ">Kiri</b>" in page and "not you?" in page
+    assert 'placeholder="Your name" size="10"' not in page, "still asking on every row"
+
+    view = c.get(f"/report/{rep.id}/view").text
+    assert 'name="who" placeholder="Your name"' not in view
+
+
+def test_signing_off_with_no_typed_name_uses_the_remembered_one(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/me", data={"who": "Kiri"})
+    c.post(f"/report/{rep.id}/review", data={"state": "reviewed", "who": ""},
+           follow_redirects=False)
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).reviewed_by == "Kiri"
+
+
+def test_a_typed_name_beats_the_remembered_one(client):
+    """Otherwise a signed-in person could never sign for whoever is sitting
+    next to them."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/me", data={"who": "Kiri"})
+    c.post(f"/report/{rep.id}/review", data={"state": "reviewed", "who": "Paulina"})
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).reviewed_by == "Paulina"
+
+
+def test_the_first_signoff_remembers_you(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post(f"/report/{rep.id}/review", data={"state": "reviewed", "who": "Jacob"})
+    assert c.cookies.get("qa_user") == "Jacob"
+
+
+def test_accepting_the_last_finding_is_a_review(client):
+    """Going through every finding and ticking it off IS reading the report.
+    Asking for a signature afterwards asks the same question twice."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    open_n = len(rep.open_findings)
+    assert open_n, "fixture carries no findings to tick off"
+    c.post("/me", data={"who": "Kiri"})
+
+    for i, f in enumerate(rep.findings):
+        if f.get("severity") in ("fail", "warn"):
+            c.post(f"/report/{rep.id}/ack", data={"index": i, "on": "1"},
+                   follow_redirects=False)
+    db.expire_all()
+    r = db.get(dbm.Report, rep.id)
+    assert not r.open_findings
+    assert r.review_state == "reviewed" and r.reviewed_by == "Kiri"
+
+
+def test_it_does_not_sign_for_somebody_it_cannot_name(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    for i, f in enumerate(rep.findings):
+        if f.get("severity") in ("fail", "warn"):
+            c.post(f"/report/{rep.id}/ack", data={"index": i, "on": "1"})
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).review_state == "new"
+
+
+def test_un_ticking_does_not_tear_up_a_signoff(client):
+    """A sign-off is a person's decision. Un-accepting is them working on it."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/me", data={"who": "Kiri"})
+    first = next(i for i, f in enumerate(rep.findings)
+                 if f.get("severity") in ("fail", "warn"))
+    c.post(f"/report/{rep.id}/review", data={"state": "reviewed", "who": "Kiri"})
+    c.post(f"/report/{rep.id}/ack", data={"index": first, "on": ""})
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).review_state == "reviewed"

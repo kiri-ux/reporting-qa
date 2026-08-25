@@ -21,6 +21,16 @@ CHROME = ("Digital Marketing Report", "Date range ", "Created On ",
 
 NUMERIC = re.compile(r"^\$?-?[\d,]+(?:\.\d+)?%?$")
 
+# TapClicks prints a small icon before the first row of a grid, and it comes
+# out of the PDF as a private-use glyph. Harmless while the first line of a
+# name was being discarded; the moment names started at their real first line
+# it turned up on the front of them.
+ICON = re.compile(r"[-]+\s*")
+
+
+def _clean_cell(s: str) -> str:
+    return ICON.sub("", s).strip()
+
 # The wording a widget title tends to end in. On its own this is not enough to
 # end a grid - see _title_of_next_widget.
 NEXT_WIDGET = re.compile(
@@ -60,9 +70,25 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
               min_cells: int = 3) -> list[tuple[str, int]]:
     """Rows of a grid, as (first cell, offset), with wrapped cells joined.
 
-    TapClicks wraps a long name onto the lines BELOW its own numbers, so a row
-    is "a line whose cells after the first are all numeric" and every text-only
-    line after it belongs to the row above.
+    A row is "a line whose cells after the first are all numeric", and the text
+    lines around it are the rest of its name.
+
+    WHICH row they belong to is the subtlety. TapClicks centres a row
+    vertically, so a name on three lines prints its numbers on the MIDDLE one -
+    the name wraps above its own figures as well as below. Treating every text
+    line as the tail of the row above therefore did two things at once: it
+    threw away the first line of every name, which is the half carrying the
+    client, and it glued the next row's opening line onto the previous row's
+    name.
+
+    On Window World that put "Amazon CTV" and the start of the next line item
+    into one name, so BOTH line items read as CTV, both were left out of the
+    clicks total, and the CTR check went on to divide by an empty set.
+
+    Rows of one grid all open the same way - "<Client> - ..." - so the opening
+    is learned from the first row and used to cut the block of text lines
+    between two rows into the tail of the one above and the head of the one
+    below.
 
     Ending a grid is the hard part. The page-header section is one boundary,
     but several grids share a section, and without a second one a line item
@@ -77,6 +103,26 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
     cur: list[str] | None = None
     cur_at = 0
     here = section_at(text, start)
+    pending: list[str] = []          # text lines whose row is not settled yet
+    lead = ""                        # how a row of this grid opens
+
+    def split_pending() -> list[str]:
+        """The part of the held text that belongs to the row ABOVE.
+
+        Whatever is left is the opening of the row about to start. With no
+        lead learned yet - the first row of the grid - everything held is that
+        first row's opening, because there is no row above it to own it.
+        """
+        nonlocal pending
+        block, pending = pending, []
+        if not lead:
+            pending = block
+            return []
+        for j, t in enumerate(block):
+            if t.startswith(lead):
+                pending = block[j:]
+                return block[:j]
+        return block
 
     lines, pos = [], start
     for line in text[start:].split("\n"):
@@ -99,21 +145,36 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
             continue
         cells = [c for c in re.split(r"\s{2,}", t) if c]
         if len(cells) >= min_cells and all(NUMERIC.match(c) for c in cells[1:]):
-            if cur:
+            tail = split_pending()
+            if cur is not None:
+                cur.extend(tail)
                 rows.append((" ".join(cur), cur_at))
-            cur, cur_at = [cells[0]], at
+            head = pending
+            pending = []
+            cur, cur_at = head + [_clean_cell(cells[0])], at
+            if not lead:
+                # The opening of the first row, which every other row of this
+                # grid repeats. Two words is enough to recognise "Window World"
+                # without demanding the whole client name match character for
+                # character - and short enough that a one-word client still
+                # yields something.
+                lead = " ".join(" ".join(cur).split()[:2])
             continue
         # No "only once rows have started" guard here: a grid with no rows at
         # all is exactly the case that ran on into the next widget and reported
         # a DOOH publisher list as twenty badly named strategies.
         if _title_of_next_widget(lines, i):
             break
-        if cur is not None and len(cells) == 1:
-            cur.append(t)
+        if len(cells) == 1:
+            c = _clean_cell(t)
+            if c:
+                pending.append(c)
         elif cur is not None and len(cells) >= min_cells:
+            cur.extend(split_pending())
             rows.append((" ".join(cur), cur_at))
             cur = None
-    if cur:
+    if cur is not None:
+        cur.extend(split_pending())
         rows.append((" ".join(cur), cur_at))
     return rows
 

@@ -71,7 +71,15 @@ body{margin:0;background:var(--plane);color:var(--ink);
 .topbar .where{font-size:13px;color:var(--muted);border-left:1px solid var(--line);
  padding-left:16px}
 .topbar .right{margin-left:auto;font-size:12px;color:var(--muted);
- font-variant-numeric:tabular-nums;white-space:nowrap}
+ font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;
+ align-items:center;gap:14px}
+.topbar .me b{color:var(--atlas);font-weight:600}
+.topbar .mein{display:flex;gap:6px;align-items:center}
+.topbar .mein input{font:inherit;font-size:12px;padding:5px 10px;
+ border:1px solid var(--line);border-radius:14px;background:var(--surface);
+ color:var(--ink)}
+.linkish{background:none;border:0;padding:0 0 0 6px;font:inherit;font-size:11px;
+ color:var(--velocity);cursor:pointer;text-decoration:underline}
 .topbar::after{content:'';position:absolute;left:0;right:0;bottom:-3px;height:3px;
  background:linear-gradient(90deg,var(--atlas) 0%,var(--velocity) 46%,var(--teal) 100%)}
 
@@ -385,7 +393,26 @@ body.fit .pdfwrap object{height:100%}
 <header class="topbar">
   <h1>Report QA</h1>
   <span class="where">{% block where %}{% endblock %}</span>
-  <span class="right">{{ build_label }}</span>
+  <span class="right">
+    {# A name, not a login. Nothing here is authorised by it - it is who to put
+       against a sign-off, so that it does not have to be typed on every row. #}
+    {% set me = whoami(request) %}
+    {% if me %}
+      <span class="me" title="Sign-offs are recorded under this name">
+        <b>{{ me }}</b>
+        <form method="post" action="/me" style="display:inline">
+          <button type="submit" class="linkish" title="Forget this name on this browser">not you?</button>
+        </form>
+      </span>
+    {% else %}
+      <form method="post" action="/me" class="mein">
+        <input type="text" name="who" placeholder="Your name" size="12"
+               aria-label="Your name, for sign-offs">
+        <button type="submit" class="mini">Save</button>
+      </form>
+    {% endif %}
+    <span>{{ build_label }}</span>
+  </span>
 </header>
 
 <main>{% block body %}{% endblock %}</main>
@@ -481,11 +508,13 @@ body.fit .pdfwrap object{height:100%}
       btn.classList.toggle('set', chosen.length > 0);
     };
 
-    // The count is how many rows carry that value. On a Partner filter every
-    // partner appears exactly once, so it was a column of 1s that looked like
-    // it meant something. Show it only where it varies.
-    var informative = names.some(function (n) { return counts[n] !== 1; });
-
+    // The count is how many rows carry that value, and a 1 is never worth
+    // printing - it is the default, it is what every row of a Partner filter
+    // says, and a column of them reads as a number that means something.
+    //
+    // This was a per-MENU test before ("show them only if any of them varies")
+    // and one partner with two cards was enough to bring the whole column of
+    // 1s back. Judged per row, it cannot come back.
     names.forEach(function (n) {
       var row = document.createElement('label');
       row.className = 'multirow';
@@ -494,7 +523,7 @@ body.fit .pdfwrap object{height:100%}
       var txt = document.createElement('span');
       txt.textContent = n;
       row.appendChild(cb); row.appendChild(txt);
-      if (informative) {
+      if (counts[n] > 1) {
         var ct = document.createElement('i');
         ct.textContent = counts[n];
         row.appendChild(ct);
@@ -525,6 +554,18 @@ body.fit .pdfwrap object{height:100%}
     wrap.reset = function () {
       chosen.length = 0;
       menu.querySelectorAll('input').forEach(function (cb) { cb.checked = false; });
+      paint();
+    };
+    // Used when a saved view is opened. Values not in this menu are dropped
+    // rather than kept: a bookmark from last cycle can name a partner that is
+    // not on this board, and a filter for something absent shows nothing at
+    // all, which reads as a broken page.
+    wrap.setChosen = function (want) {
+      chosen.length = 0;
+      menu.querySelectorAll('input').forEach(function (cb) {
+        cb.checked = want.indexOf(cb.value) !== -1;
+        if (cb.checked) chosen.push(cb.value);
+      });
       paint();
     };
     paint();
@@ -563,11 +604,42 @@ body.fit .pdfwrap object{height:100%}
       });
     });
 
+    // The tiles at the top are the same numbers as the cards, added up. Filter
+    // to one buyer and leaving them at the whole board's totals is the summary
+    // answering a question nobody is asking any more.
+    var tiles = document.querySelector('[data-tiles="' + box.dataset.cards + '"]');
+    var tileEl = {}, lifeEl = null, paceEl = null, filteredEl = null;
+    if (tiles) {
+      tiles.querySelectorAll('[data-tile]').forEach(function (el) {
+        tileEl[el.dataset.tile] = el;
+      });
+      lifeEl = tiles.querySelector('[data-tile-life]');
+      paceEl = tiles.querySelector('[data-tile-pace]');
+      filteredEl = tiles.querySelector('[data-tile-filtered]');
+    }
+
+    var retotal = function (visible, filtered) {
+      if (!tiles) return;
+      var sum = { total: 0, life: 0, missing: 0, review: 0, fail: 0, ready: 0, sent: 0 };
+      visible.forEach(function (c) {
+        for (var k in sum) sum[k] += parseInt(c.d['n' + k.charAt(0).toUpperCase() + k.slice(1)] || 0, 10);
+      });
+      ['total', 'missing', 'review', 'fail', 'ready', 'sent'].forEach(function (k) {
+        if (tileEl[k]) tileEl[k].textContent = sum[k].toLocaleString();
+      });
+      if (tileEl.groups) tileEl.groups.textContent = visible.length.toLocaleString();
+      if (lifeEl) lifeEl.textContent = sum.life ? ' · ' + sum.life.toLocaleString() + ' lifetime' : '';
+      // The projection is built from the whole cycle's arrival rate. Applied to
+      // a subset it would be a number with nothing behind it, so it steps aside.
+      if (paceEl) paceEl.hidden = filtered;
+      if (filteredEl) filteredEl.hidden = !filtered;
+    };
+
     var run = function () {
       var terms = box.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
       var picks = selects.filter(function (s) { return s.el.chosen.length; });
       var ons = toggles.filter(function (t) { return t.classList.contains('on'); });
-      var shown = 0;
+      var shown = 0, visible = [];
       cards.forEach(function (c) {
         var hit = terms.every(function (w) { return c.hay.indexOf(w) !== -1; })
           && picks.every(function (s) {
@@ -577,11 +649,48 @@ body.fit .pdfwrap object{height:100%}
           })
           && ons.every(function (t) { return c.d[t.dataset.key] === '1'; });
         c.el.hidden = !hit;
-        if (hit) shown++;
+        if (hit) { shown++; visible.push(c); }
       });
       if (out) out.textContent = shown === total
         ? total.toLocaleString() + ' partners'
         : shown.toLocaleString() + ' of ' + total.toLocaleString() + ' partners';
+      retotal(visible, shown !== total);
+      remember(terms.length ? box.value.trim() : '', picks, ons);
+    };
+
+    // THE VIEW LIVES IN THE URL.
+    //
+    // These filters were browser state and nothing else, so "the PA partners
+    // with errors" could not be bookmarked, sent to somebody, or survive a
+    // reload. replaceState rather than pushState: filtering is not navigation,
+    // and forty entries of Back to undo one search is not a history.
+    var remember = function (q, picks, ons) {
+      if (!window.history || !history.replaceState) return;
+      var u = new URL(window.location.href);
+      ['q', 'only'].concat(selects.map(function (s) { return s.key; }))
+        .forEach(function (k) { u.searchParams.delete(k); });
+      if (q) u.searchParams.set('q', q);
+      picks.forEach(function (s) { u.searchParams.set(s.key, s.el.chosen.join('|')); });
+      if (ons.length) u.searchParams.set('only', ons.map(function (t) {
+        return t.dataset.key;
+      }).join('|'));
+      history.replaceState(null, '', u.toString());
+    };
+
+    var restore = function () {
+      var p = new URLSearchParams(window.location.search);
+      if (p.get('q')) box.value = p.get('q');
+      var only = (p.get('only') || '').split('|').filter(Boolean);
+      toggles.forEach(function (t) {
+        if (only.indexOf(t.dataset.key) !== -1) {
+          t.classList.add('on');
+          t.setAttribute('aria-pressed', 'true');
+        }
+      });
+      selects.forEach(function (s) {
+        var want = (p.get(s.key) || '').split('|').filter(Boolean);
+        if (want.length) s.el.setChosen(want);
+      });
     };
 
     if (wrap) {
@@ -619,6 +728,8 @@ body.fit .pdfwrap object{height:100%}
     }
 
     box.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 90); });
+    // After the menus exist, so a saved view can tick their boxes.
+    restore();
     run();
   });
 

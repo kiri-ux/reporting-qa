@@ -796,3 +796,106 @@ def test_the_pdf_is_served_uncacheable():
     from app import main
     src = inspect.getsource(main.report_file)
     assert "no-store" in src
+
+
+# --------------------------------------------- Window World, order 51329
+#
+# Three findings on one report, all from one parsing fault. TapClicks centres a
+# row vertically, so a name on three lines prints its numbers on the MIDDLE
+# one. Reading every text line as the tail of the row above threw away the
+# first line of each name and glued the next row's opening onto the previous
+# row's - which put "Amazon CTV" into both line items.
+WINDOW_WORLD = """ Line Item Performance
+ Line Item Name                                       Impressions      Clicks      CTR    X the National Avg (.07%)
+ Window World - Bowling Green - Home
+ Improvement and Reno/DIY Home Improvement                 26,480           7    0.03%                       0.38
+ Amazon CTV
+ Window World - Bowling Green -
+ Siding/Gutters/Windows/Doors Products Video               18,834          84    0.45%                       6.37
+ Amazon
+
+ Amazon Premium Site and App Performance
+ Name                                                 Impressions      Clicks      CTR
+ Samsung TV Plus- STV                                      10,424           1    0.01%
+"""
+
+
+def test_a_name_that_wraps_above_its_numbers_keeps_its_first_line():
+    rows = q.line_item_totals(WINDOW_WORLD)
+    names = [r[0] for r in rows]
+    assert names[0].startswith("Window World - Bowling Green - Home")
+    assert names[1].startswith("Window World - Bowling Green - Siding")
+
+
+def test_the_next_rows_opening_does_not_land_on_this_rows_name():
+    """This is the bug itself: 'Amazon CTV' in the Video line's name made both
+    line items read as CTV, so both were left out of the clicks total."""
+    rows = q.line_item_totals(WINDOW_WORLD)
+    assert rows[0][0].endswith("Amazon CTV")
+    assert "CTV" not in rows[1][0]
+    assert rows[1][0].endswith("Video Amazon")
+
+
+def test_the_numbers_stay_with_the_right_rows():
+    rows = q.line_item_totals(WINDOW_WORLD)
+    assert [(r[1], r[2]) for r in rows] == [(26480.0, 7.0), (18834.0, 84.0)]
+
+
+def test_only_the_ctv_line_is_left_out_of_the_clicks_total():
+    """84 stated, 91 across the line items, and the 7 are the Amazon CTV line.
+    Reported as unaccounted-for, it was a failure on a correct report."""
+    from app.checks.rules import CLICKS_EXCLUDED, check_line_items
+    rows = q.line_item_totals(WINDOW_WORLD)
+    excluded = [r for r in rows if CLICKS_EXCLUDED.search(r[0])]
+    assert [r[2] for r in excluded] == [7.0]
+
+    out = check_line_items({"text": WINDOW_WORLD, "imps": 45314, "clicks": 84})
+    assert not [f for f in out if f["severity"] == "fail"]
+
+
+def test_the_ctr_check_survives_every_line_being_excluded():
+    """It crashed - "check_headline_ctr could not run: division by zero" - and
+    a crash is not a verdict. An Amazon CTV plus Amazon Video buy really can
+    have nothing left once the footnote's exclusions come out."""
+    from app.checks.rules import check_headline_ctr
+    text = """ Line Item Performance
+ Line Item Name              Impressions   Clicks    CTR
+ Acme - Behavioral CTV            10,000       50   0.50%
+ Acme - Retargeting OTT           10,000       50   0.50%
+"""
+    out = check_headline_ctr({"text": text, "imps": 20000, "clicks": 100,
+                              "ctr": 0.90})
+    assert out and "nothing left to divide" in out[0]["detail"]
+
+
+def test_an_icon_glyph_is_not_part_of_a_name():
+    """TapClicks prints a small icon before the first row of a grid, and it
+    comes out of the PDF as a private-use character."""
+    text = (" Line Item Performance\n"
+            " Line Item Name        Impressions   Clicks   CTR\n"
+            "  Acme - Behavioral Display     1,000        5   0.50%\n")
+    rows = q.line_item_totals(text)
+    assert rows and rows[0][0].startswith("Acme")
+
+
+def test_amazon_only_ctv_does_not_owe_a_top_ctv_publishers_widget():
+    """Amazon Premium is bought as CTV but prints its publishers as "Amazon
+    Premium Site and App Performance". Window World ran nothing but Amazon and
+    was failed for a widget that does not exist for it."""
+    from app.checks.rules import check_required_widgets
+    text = ("AMAZON ADS - PAGE 1\n"
+            "Amazon Inventory Source Performance\n"
+            "Amazon Premium Site and App Performance\n")
+    out = check_required_widgets({"text": text, "products": {"CTV"}})
+    assert [f["title"] for f in out] == []
+
+
+def test_a_report_with_real_ctv_as_well_still_owes_the_widget():
+    """Amazon covers Amazon. It does not cover the other half of a mixed buy."""
+    from app.checks.rules import check_required_widgets
+    text = ("CTV ADS - PAGE 1\n"
+            "AMAZON ADS - PAGE 1\n"
+            "Amazon Inventory Source Performance\n"
+            "Amazon Premium Site and App Performance\n")
+    out = check_required_widgets({"text": text, "products": {"CTV"}})
+    assert [f["title"] for f in out] == ["No Top CTV Publishers widget"]

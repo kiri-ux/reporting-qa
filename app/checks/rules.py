@@ -187,13 +187,18 @@ def check_headline_ctr(ctx) -> list[dict]:
                        f"{kept_c:,.0f} clicks over {kept_i:,.0f} impressions is "
                        f"{kept_c / kept_i * 100:.3f}%, which matches. The "
                        f"report's own footnote says so. Expected.", trace)]
+        # Guarded. Every line item on the report can be one the footnote
+        # excludes - an Amazon CTV plus Amazon Video buy is exactly that - and
+        # dividing by the empty remainder turned a check into a crash, which
+        # reached the screen as "check_headline_ctr could not run".
+        filtered = f"{kept_c / kept_i * 100:.3f}%" if kept_i else "nothing left to divide"
         return [_f("headline_ctr", "fail",
                    "Top-line CTR does not match its own numbers",
                    f"Report states {ctr:.2f}%. All {clicks:,.0f} clicks over all "
                    f"{imps:,.0f} impressions is {plain:.3f}%. Leaving out CTV, "
                    f"OTT, YouTube and Performance Max as the footnote says, "
-                   f"{kept_c:,.0f} over {kept_i:,.0f} is "
-                   f"{kept_c / kept_i * 100:.3f}%. Neither is the stated rate.", trace)]
+                   f"{kept_c:,.0f} over {kept_i:,.0f} is {filtered}. "
+                   f"Neither is the stated rate.", trace)]
 
     if excluded_here:
         # The products the footnote excludes are on this report, and the line
@@ -782,12 +787,28 @@ def check_required_widgets(ctx) -> list[dict]:
                       if not have else f"Only {have} of {n} {title} widgets",
                       detail))
 
+    # AMAZON'S CTV HAS ITS OWN PUBLISHER WIDGET.
+    #
+    # Amazon Premium is bought as "Amazon Premium CTV + Video Ads" and maps to
+    # CTV, so the CTV rule asked for Top CTV Publishers. Amazon does not print
+    # one - its publishers arrive as Amazon Premium Site and App Performance,
+    # which was on the report all along. Window World ran nothing but Amazon
+    # and was failed for a widget that does not exist for it.
+    #
+    # Only when Amazon is the ONLY CTV on the report. A buy with both still
+    # owes the widget for the half that is not Amazon.
+    amazon_only_ctv = (heads.get(W_AMZ_SITE, 0) > 0
+                       and "CTV ADS" not in secs
+                       and "SOCIAL MIRROR CTV ADS" not in secs)
+
     # Widgets owed once per product family that ran.
     wanted: dict[str, list[str]] = {}
     for fam_codes, section, titles, why in REQUIRED_WIDGETS:
         if not (codes & fam_codes or section in secs):
             continue
         for t in titles:
+            if t == W_CTV_PUBS and amazon_only_ctv:
+                continue
             wanted.setdefault(t, []).append(why)
     for title, whys in wanted.items():
         owed(title, len(whys), " and ".join(whys))

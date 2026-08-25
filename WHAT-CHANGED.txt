@@ -1,59 +1,122 @@
-build 2026.08.25-38
+build 2026.08.25-39
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
 app/main.py
+app/checks/quality.py
+app/checks/rules.py
 app/templates/base.html
 app/templates/cycle.html
+app/templates/viewer.html
+tests/test_board_extras.py
 tests/test_manual_upload.py
+tests/test_quality.py
 
 
-1. The client link is at the top now
---------------------------------------
-A delivered partner sorts in among 145 others, so the one thing you came to
-the page for - the link you were about to send - was found by scrolling.
+1. Window World - Bowling Green: three findings, one bug
+---------------------------------------------------------
+All three came from the same parsing fault, and it is worse than the three
+findings suggested - it has been quietly corrupting line item names on every
+report where a name is long enough to wrap.
 
-There is now a CLIENT LINKS panel directly under the counts, listing every
-partner delivered this cycle with an Open button and a Copy button. It is
-built from the deliveries rather than from the partner list, so a partner
-whose orders shift after its reports went out does not take its link off the
-page with it.
+TapClicks centres a table row vertically, so a name spread over three lines
+prints its NUMBERS on the middle one - the name wraps above its own figures as
+well as below. The parser assumed every text line was the tail of the row
+above it, which did two things at once:
 
-The same Copy button is on the partner card too, next to Client link.
+  - it threw away the first line of every wrapped name, the half carrying the
+    client
+  - it glued the next row's opening line onto the previous row's name
 
-Copy falls back to the old execCommand path when the clipboard API is not
-available - the board is opened over plain http on the office network, where
-that API is simply absent, and a button that silently does nothing is worse
-than one that says "Press Ctrl+C".
+On this report that put "Amazon CTV" into BOTH line items. Everything else
+followed:
 
+  "Line item clicks do not sum to the top line" - both lines read as CTV, so
+  both were taken out of the clicks total, leaving 84 clicks "unaccounted for"
+  on a report where 84 is the correct answer. Only the Amazon CTV line's 7
+  clicks come out; 91 - 7 = 84.
 
-2. Partners delivered, as a number
-------------------------------------
-A sixth tile in the top row: how many partners are delivered, out of the total,
-with "N ready to package" underneath when there are any. The other five tiles
-count reports; this is the one the cycle is actually judged on.
+  "Check check_headline_ctr could not run - division by zero" - with every line
+  excluded there was nothing left to divide by. A crash is not a verdict; the
+  division is guarded now and says "nothing left to divide" instead.
 
-It is counted before the partner filter is applied - filtering to one partner
-narrows the list below, it should not make the cycle look like it has one
-partner in it.
+Rows of one grid all open the same way ("<Client> - ..."), so the opening is
+learned from the first row and used to cut the block of text between two rows
+into the tail of the one above and the head of the one below.
 
-
-3. Arrived reports sort to the top
-------------------------------------
-728 of 1,271 have not been sent yet, so in market order the reports there is
-something to DO about sat below a screenful of "Not received" - and with the
-150-row cap they could be cut off the page entirely.
-
-The still-open table now puts everything that has arrived first, keeping market
-and client order inside each half.
+One thing that fell out of fixing it: TapClicks prints a small icon before the
+first row of a grid, which comes out of the PDF as a private-use character. It
+was harmless while the first line of each name was being discarded. It is
+stripped now.
 
 
-4. See reports no longer jumps you down
------------------------------------------
-The link carried a #reports anchor, which scrolled straight past the partner
-card you had just clicked - and that card is what tells you what you are
-looking at, so the table arrived with its heading off screen. The anchor is
-gone; the page loads at the top with the filtered card in view.
+2. Top CTV Publishers on an Amazon-only report
+------------------------------------------------
+Amazon Premium is bought as "Amazon Premium CTV + Video Ads" and maps to CTV,
+so the CTV rule asked for a Top CTV Publishers widget. Amazon does not print
+one - its publishers arrive as "Amazon Premium Site and App Performance",
+which was on page 8 all along.
+
+The widget is no longer owed when Amazon is the only CTV on the report. A
+mixed buy still owes it for the half that is not Amazon.
 
 
-Tests: 289 passing.
+3. A name, remembered
+-----------------------
+Type your name once in the top right and it stays on that browser. The name
+box disappears from every sign-off row and from the report page; the topbar
+shows who you are with a "not you?" to clear it.
+
+It is a cookie, not a login. Nothing is authorised by it and it is not treated
+as a security boundary - the board is behind the office network and everyone
+on it can already do everything. What sign-off needs is attribution, and
+typing it into every row is what made people stop.
+
+Signing off for the first time remembers you, so there is no separate step to
+find before the thing you came to do. A typed name still wins over the
+remembered one, for signing on behalf of whoever is next to you.
+
+
+4. Ticking off the last finding signs the report off
+------------------------------------------------------
+Going through every finding and accepting it IS reading the report. Asking for
+a signature afterwards asks the same question twice, and the answer was a
+screen of reports at "in, unreviewed" that somebody had in fact been through.
+
+Only on the way in, and only from "new". Un-ticking something does not tear up
+a sign-off, and a report already at needs fix or waived has a decision on it
+that this will not overwrite. It needs to know who you are, so it does nothing
+until a name is saved.
+
+
+5. The tiles add up what is on screen
+---------------------------------------
+Filter to one buyer and the counts at the top now follow - expected, not
+received, in review, errors, good to go, partners delivered. They were the
+whole board's totals regardless, which is the summary answering a question
+nobody is asking any more.
+
+The "hours to go" projection steps aside while a filter is on and says "of 710
+on the whole board" instead. That rate is measured across the whole cycle;
+applied to a subset it would be a number with nothing behind it.
+
+
+6. The filters live in the URL
+--------------------------------
+Search text, every dropdown, and the "Only started" toggle now write
+themselves into the address bar, so a view can be bookmarked or sent to
+somebody. Opening that URL puts the filters back.
+
+replaceState, not pushState - filtering is not navigation, and forty Back
+presses to undo one search is not a history. A saved view naming a partner
+that is not on this board drops that one rather than showing nothing.
+
+
+7. No more 1s in the filter menus
+-----------------------------------
+A count of 1 is never worth printing. It was tested per menu before ("show
+them only if any of them varies") and one partner with two cards was enough to
+bring the whole column of 1s back. Tested per row, it cannot.
+
+
+Tests: 304 passing.

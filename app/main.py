@@ -63,11 +63,37 @@ def _working_days(h):
 templates.env.filters["humanhours"] = _human_hours
 templates.env.filters["workingdays"] = _working_days
 # Chrome that every page needs and no view should have to remember to pass.
+# ---------------------------------------------------------------- who is here
+#
+# A NAME IN A COOKIE, NOT A LOGIN.
+#
+# The board is behind the office network and everyone on it is allowed to do
+# everything here, so a password would protect nothing and cost a support
+# request every time somebody forgot theirs. What sign-off actually needs is
+# attribution: a name against "I looked at this". Typing it into every row is
+# what made people stop doing it.
+#
+# So the name is remembered in a plain cookie on that browser. It is not a
+# security boundary and is not treated as one - nothing is authorised by it.
+USER_COOKIE = "qa_user"
+USER_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+
+def whoami(request: Request) -> str:
+    return (request.cookies.get(USER_COOKIE) or "").strip()[:128]
+
+
+def _remember(response, who: str) -> None:
+    response.set_cookie(USER_COOKIE, who.strip()[:128],
+                        max_age=USER_COOKIE_MAX_AGE, samesite="lax", path="/")
+
+
 templates.env.globals.update(
     head_tags=brand.HEAD_TAGS,
     build_label=version.label(),
     build_notes=version.BUILD_NOTES,
     build_service=version.service(),
+    whoami=whoami,
     nav="",
 )
 
@@ -684,6 +710,18 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     })
 
 
+@app.post("/me")
+def set_me(request: Request, who: str = Form("")):
+    """Remember who is at this browser, or forget them."""
+    back = request.headers.get("referer") or "/cycle"
+    resp = RedirectResponse(back, status_code=303)
+    if who.strip():
+        _remember(resp, who)
+    else:
+        resp.delete_cookie(USER_COOKIE, path="/")
+    return resp
+
+
 @app.post("/report/{report_id}/review")
 def review_report(report_id: int, request: Request, state: str = Form(...),
                   who: str = Form(""), db: Session = Depends(get_db)):
@@ -692,13 +730,22 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
         raise HTTPException(404)
     if state not in {"new", "reviewed", "waived", "needs_fix"}:
         raise HTTPException(400, "unknown review state")
+    # Typed name wins, then the one this browser remembers. Falling back the
+    # other way round would mean a signed-in person could never sign for
+    # somebody sitting next to them.
+    name = who.strip() or whoami(request)
     rep.review_state = state
-    rep.reviewed_by = who.strip()
+    rep.reviewed_by = name
     rep.reviewed_at = dt.datetime.utcnow() if state != "new" else None
     rep.signoff_cleared_at = None        # a fresh decision, whatever went before
     db.commit()
     back = request.headers.get("referer") or "/cycle"
-    return RedirectResponse(back, status_code=303)
+    resp = RedirectResponse(back, status_code=303)
+    # First sign-off of the day remembers you, so there is no separate step to
+    # find before the thing you came to do.
+    if who.strip():
+        _remember(resp, who)
+    return resp
 
 
 @app.post("/cycle/{period}/deliver")
@@ -853,8 +900,29 @@ def ack_finding(report_id: int, request: Request, index: int = Form(...),
     acked = set(rep.acked or [])
     acked.add(index) if on else acked.discard(index)
     rep.acked = sorted(acked)
+
+    # ACCEPTING THE LAST ONE IS A REVIEW.
+    #
+    # Going through every finding and ticking it off IS reading the report -
+    # asking for a signature afterwards is asking the same question twice, and
+    # the answer was a screen full of reports sitting at "in, unreviewed" that
+    # somebody had in fact been through.
+    #
+    # Only on the way in, and only from "new": un-ticking something does not
+    # tear up a sign-off, and a report already marked needs fix or waived has
+    # a decision on it that this must not overwrite.
+    auto = False
+    name = whoami(request)
+    if on and name and rep.review_state == "new" and not rep.open_findings:
+        rep.review_state = "reviewed"
+        rep.reviewed_by = name
+        rep.reviewed_at = dt.datetime.utcnow()
+        rep.signoff_cleared_at = None
+        auto = True
     db.commit()
     back = request.headers.get("referer") or f"/report/{report_id}/view"
+    if auto and "#" not in back:
+        back += "#signoff"
     return RedirectResponse(back, status_code=303)
 
 

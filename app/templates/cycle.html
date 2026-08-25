@@ -31,10 +31,12 @@
 </div>
 
 <section>
-  <div class="cards">
-    <div><b>{{ summary.total }}</b><span>Expected{% if summary.lifetimes %}
-      · {{ summary.lifetimes }} lifetime{% endif %}</span></div>
-    <div class="c-fail"><b>{{ summary.missing }}</b><span>Not received</span>
+  {# data-tiles marks these as re-addable from the partner cards below. #}
+  <div class="cards" data-tiles="glist">
+    <div><b data-tile="total">{{ summary.total }}</b><span>Expected<span
+      data-tile-life>{% if summary.lifetimes %} · {{ summary.lifetimes }} lifetime{% endif %}</span></span></div>
+    <div class="c-fail"><b data-tile="missing">{{ summary.missing }}</b><span>Not received</span>
+      <div data-tile-pace>
       {% if pace.hours %}<p class="eta">{{ pace.hours|humanhours }} to go</p>{% endif %}
       {% if pace.rate %}
         <p class="pacenote">
@@ -60,15 +62,21 @@
             in it to mean anything, not a measurement.</p>
         </details>
       {% endif %}
+      </div>
+      {# Shown instead of the projection once a filter is on. The rate is the
+         whole cycle's arrival rate; applying it to a subset would be a number
+         with no meaning behind it. #}
+      <p class="pacenote" data-tile-filtered hidden>of {{ summary.missing }} on the
+        whole board</p>
     </div>
-    <div><b>{{ summary['in'] + summary.warnings }}</b><span>In, awaiting review</span></div>
-    <div class="c-fail"><b>{{ summary.errors + summary.needs_fix }}</b><span>Errors or needs fix</span></div>
-    <div class="c-ok"><b>{{ summary.ready }}</b><span>Good to go</span></div>
+    <div><b data-tile="review">{{ summary['in'] + summary.warnings }}</b><span>In, awaiting review</span></div>
+    <div class="c-fail"><b data-tile="fail">{{ summary.errors + summary.needs_fix }}</b><span>Errors or needs fix</span></div>
+    <div class="c-ok"><b data-tile="ready">{{ summary.ready }}</b><span>Good to go</span></div>
     {# Reports, reports, reports - and then the question the cycle is actually
        judged on, which is how many partners are finished and sent. #}
-    <div class="c-ok"><b>{{ delivered.count }}</b><span>Partners delivered</span>
+    <div class="c-ok"><b data-tile="sent">{{ delivered.count }}</b><span>Partners delivered</span>
       {% if delivered.groups %}
-        <p class="pacenote">of {{ delivered.groups }}{% if delivered.ready %} ·
+        <p class="pacenote">of <span data-tile="groups">{{ delivered.groups }}</span>{% if delivered.ready %} ·
           {{ delivered.ready }} ready to package{% endif %}</p>
       {% endif %}
     </div>
@@ -158,6 +166,17 @@
            data-reporter="{{ g.reporter }}" data-trainer="{{ g.trainer }}"
            data-status="{{ 'Good to go' if g.ready else 'Open' }}"
            data-arrived="{{ 1 if g.counts.missing < g.expected|length else 0 }}"
+           {# The counts travel with the card so the tiles at the top can be
+              re-added from whatever is on screen. Filtering to one buyer and
+              still reading "1271 expected" is the tiles answering a question
+              nobody asked any more. #}
+           data-n-total="{{ g.expected|length }}"
+           data-n-life="{{ g.expected|selectattr('kind','equalto','lifetime')|list|length }}"
+           data-n-missing="{{ g.counts.missing }}"
+           data-n-review="{{ g.counts['in'] + g.counts.warnings }}"
+           data-n-fail="{{ g.counts.errors + g.counts.needs_fix }}"
+           data-n-ready="{{ g.counts.ready }}"
+           data-n-sent="{{ 1 if d and d.ok else 0 }}"
            data-search="{{ g.group }} {{ g.markets|join(' ') }}">
         <div class="ghead">
           <div>
@@ -295,7 +314,10 @@
 </section>
 
 {% if rows or done %}
-{% macro reportrows(items) %}{% for e in items %}
+{# `me` is passed in rather than read from the context: a macro does not
+   reliably see template variables, and a silently-undefined name here
+   means the box comes back on every one of a thousand rows. #}
+{% macro reportrows(items, me) %}{% for e in items %}
       <tr>
         <td class="nw">{{ e.market }}</td>
         <td><b>{{ e.client }}</b>
@@ -375,8 +397,10 @@
              report and judging it are the same action. #}
           <a class="pill pdf" href="/report/{{ e.report.id }}/view">View PDF</a>
           <form method="post" action="/report/{{ e.report.id }}/review" class="signoff">
-            <input type="text" name="who" placeholder="Your name" size="10"
-                   value="{{ e.report.signed_off_by }}">
+            {% if not me %}
+              <input type="text" name="who" placeholder="Your name" size="10"
+                     value="{{ e.report.signed_off_by }}">
+            {% endif %}
             <button class="mini ok" name="state" value="reviewed"
                     {% if e.report.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
             <button class="mini warn" name="state" value="needs_fix"
@@ -419,7 +443,7 @@
     <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
     <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
     <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
-    <tbody>{{ reportrows(rows) }}</tbody></table></div>
+    <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>
   {{ capnote(rows|length, row_total) }}
   {% else %}
     <p class="allclear">Nothing open{% if filter_group %} for {{ filter_group }}{% endif %}.</p>
@@ -445,7 +469,7 @@
       <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
     <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
     <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
-      <tbody>{{ reportrows(done) }}</tbody></table></div>
+      <tbody>{{ reportrows(done, whoami(request)) }}</tbody></table></div>
     {{ capnote(done|length, done_total) }}
   </details>
 </section>

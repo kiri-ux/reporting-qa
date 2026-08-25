@@ -53,12 +53,17 @@ def test_is_seo_matches_what_the_order_export_actually_writes():
     assert not is_seo("Social Mirror Ads")
 
 
-def test_a_filter_hides_its_count_column_when_every_count_is_one():
+def test_a_filter_never_prints_a_count_of_one():
     """On a Partner filter each partner appears exactly once, so the counts were
-    a column of 1s that looked like they meant something."""
+    a column of 1s that looked like they meant something.
+
+    Judged per menu first ("show them only if any of them varies") - and one
+    partner with two cards was enough to bring the whole column back. Judged
+    per row it cannot.
+    """
     base = (TPL / "base.html").read_text()
-    assert "var informative = names.some(" in base
-    assert "if (informative) {" in base
+    assert "var informative" not in base
+    assert "if (counts[n] > 1) {" in base
 
 
 def test_site_ctr_findings_are_absent_from_every_real_fixture():

@@ -126,7 +126,12 @@
       {# The name sits on its own line so the three verdicts stay on one row.
          Wrapping split them two-and-one, which read as though Waive belonged
          to something else. #}
-      <input type="text" name="who" placeholder="Your name" value="{{ rep.signed_off_by }}">
+      {# Nothing to type once the browser knows who you are. That box, on every
+         row of a thousand-row board, is why sign-offs went untyped. #}
+      {% set me = whoami(request) %}
+      {% if not me %}
+        <input type="text" name="who" placeholder="Your name" value="{{ rep.signed_off_by }}">
+      {% endif %}
       <div class="verdicts">
         <button class="mini ok" name="state" value="reviewed"
                 {% if rep.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
