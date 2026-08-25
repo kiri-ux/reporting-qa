@@ -26,6 +26,26 @@ _HERE = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
+
+
+def _eastern(value, fmt: str = "%b %-d at %-I:%M %p"):
+    """Show a stored time where the people reading it actually are.
+
+    Everything is stored in UTC, which is right, and shown in UTC, which was
+    not - "reviewed at 03:18" for something done at eleven o'clock the previous
+    evening reads as a different day's work. Naive timestamps are treated as
+    UTC because that is what the database holds.
+    """
+    if not value:
+        return ""
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+    if getattr(value, "tzinfo", None) is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(ZoneInfo("America/New_York")).strftime(fmt) + " ET"
+
+
+templates.env.filters["et"] = _eastern
 # Chrome that every page needs and no view should have to remember to pass.
 templates.env.globals.update(
     head_tags=brand.HEAD_TAGS,

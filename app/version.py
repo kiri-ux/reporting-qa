@@ -12,13 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-20"
-BUILD_NOTES = ("Seven new checks that read the report's words: strategy lines "
-               "with no product in the name, text clipped by a column, blank "
-               "ad screenshots, unnamed or retargeting-named conversions, "
-               "unnamed creatives, Social Mirror ad sizes, and any widget that "
-               "printed an error instead of its data. Reports can be "
-               "re-checked in place without being re-sent.")
+BUILD = "2026.08.25-22"
+BUILD_NOTES = ("An Investigate button on every arithmetic finding, showing the "
+               "numbers the rule used. The top-line CTR now accounts for CTV, "
+               "YouTube and PMax being left out of both halves. The device "
+               "breakout is measured against the top line, not a guessed "
+               "subset. Line items are read off the whole grid, not page one.")
 # ---------------------------------------------------------------------------
 
 

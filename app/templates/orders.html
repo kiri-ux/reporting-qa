@@ -19,23 +19,23 @@
         <p class="sub" style="margin:0 0 12px;font-size:14px">
           <span class="spin" aria-hidden="true"></span>
           <b>Sync running</b> since
-          {{ (running.started_at or running.synced_at).strftime('%H:%M') }} UTC.
+          {{ (running.started_at or running.synced_at)|et('%-I:%M %p') }}.
           It downloads the whole export and parses a couple of million rows, so
           give it a minute or two. This page refreshes itself - you can leave it
           or close the tab, the sync keeps going either way.</p>
       {% elif sync %}
         <p class="sub" style="margin:0 0 12px;font-size:14px">
           {% if sync.ok %}
-            Last synced {{ sync.synced_at.strftime('%b %d, %Y at %H:%M') }} UTC ·
+            Last synced {{ sync.synced_at|et('%b %-d, %Y at %-I:%M %p') }} ·
             {{ sync.rows }} lines
             {% if sync.last_modified %} · object last modified
-              {{ sync.last_modified.strftime('%b %d, %Y %H:%M') }} UTC{% endif %}
+              {{ sync.last_modified|et('%b %-d, %Y %-I:%M %p') }}{% endif %}
           {% else %}
             {# The timestamp is the point. Without it a failure written weeks
                ago by a build that has since been fixed reads exactly like one
                that happened on the last click. #}
             <span style="color:var(--crit)"><b>Last sync failed</b>
-              {{ sync.synced_at.strftime('%b %d, %Y at %H:%M') }} UTC:</span><br>
+              {{ sync.synced_at|et('%b %-d, %Y at %-I:%M %p') }}:</span><br>
             <span style="color:var(--crit)">{{ sync.message }}</span>
             {% if lines %}<br>
               <span class="acct">{{ lines|length }} order lines are still loaded from

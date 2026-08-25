@@ -33,7 +33,7 @@
     <th>Files</th><th data-col="Result">Result</th><th>What happened</th></tr></thead>
     <tbody>{% for r in rows %}
       <tr>
-        <td class="mono nw">{{ r.received_at.strftime('%b %d, %H:%M') }}</td>
+        <td class="mono nw">{{ r.received_at|et('%b %-d, %-I:%M %p') }}</td>
         <td class="nw">{{ r.source }}</td>
         <td style="font-size:13px">{{ r.sender or '—' }}</td>
         <td style="font-size:13px;max-width:32ch">{{ r.subject or '—' }}</td>

@@ -17,7 +17,8 @@ from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
 from .quality import (check_blank_screenshots, check_conversion_names,
                       check_creative_names, check_social_mirror_sizes,
                       check_strategy_categorized, check_truncated_text,
-                      check_widget_errors, line_item_names, creative_rows,
+                      check_social_placement_totals, check_widget_errors,
+                      line_item_names, creative_rows, PLACEMENT_GRID,
                       CONVERSION_HEADER, SOCIAL_MIRROR_GRID)
 
 LINE_ITEM = re.compile(r"Line Item Performance$")
@@ -25,8 +26,46 @@ CREATIVE = re.compile(r"(Creative Performance|Creative Group Performance)$")
 DEVICE_TITLES = ("Device Performance", "Device")
 
 
-def _f(code, sev, title, detail):
-    return {"code": code, "severity": sev, "title": title, "detail": detail}
+# Private-use glyphs are TapClicks' icon font leaking into the text layer, and
+# a device name arrives with its whole Description column glued on. Neither
+# belongs in a panel somebody is reading to settle an argument.
+_PUA = re.compile(r"[\ue000-\uf8ff]")
+
+
+def _clean(v: str) -> str:
+    v = _PUA.sub("", str(v))
+    return re.sub(r"\s{2,}", " ", v).strip()
+
+
+def _short_name(name: str, limit: int = 28) -> str:
+    """A row label without the description that followed it into the cell.
+
+    The device grid puts a sentence of explanation in the next column and the
+    layout dump glues it on, so "Desktop" arrives as "Desktop A personal
+    computing device that remains stationary at one location." A known device
+    name is matched outright; everything else is cut at the first sentence.
+    """
+    n = _clean(name)
+    low = n.lower()
+    for d in sorted(KNOWN_DEVICES, key=len, reverse=True):
+        if low.startswith(d):
+            return n[:len(d)]
+    n = n.split(".")[0].strip()
+    return n if len(n) <= limit else n[:limit - 1].rstrip() + "\u2026"
+
+
+def _f(code, sev, title, detail, trace=None):
+    """A finding, optionally carrying the arithmetic behind it.
+
+    `trace` is a list of (label, value) pairs - the numbers the rule actually
+    used and where they came from. The viewer hides it behind an Investigate
+    button, because the question a disputed finding always raises is "where did
+    that figure come from" and the answer should not require reading the code.
+    """
+    out = {"code": code, "severity": sev, "title": title, "detail": detail}
+    if trace:
+        out["trace"] = [{"label": _clean(l), "value": _clean(v)} for l, v in trace]
+    return out
 
 
 # A line item name ends with its product, e.g. "... - Geo-Retargeting Mobile",
@@ -67,59 +106,160 @@ def _ctv_totals(ctx) -> tuple[float, float]:
     return imps, clicks
 
 
+# What the top-line CTR leaves out. The report says so itself, in the footnote
+# under the tiles: "CTR and Total Engagement Rate do not include impressions or
+# view-throughs from CTV, YouTube, or PMax campaigns." The TapClicks widget
+# behind it excludes strategy names matching *CTV*, *OTT*, *Performance Max*,
+# *PMax* and *YouTube*.
+#
+# Both halves of the fraction are filtered, which is what the old handling got
+# wrong: it took CTV impressions out of the denominator and left every click in
+# the numerator, so it only ever recognised the case by accident. On a report
+# running CTV the honest arithmetic is filtered clicks over filtered
+# impressions, and the line item grid is where that breakdown lives.
+CTR_EXCLUDED = re.compile(r"\bCTV\b|\bOTT\b|YouTube|Performance Max|\bPMax\b", re.I)
+
+CTR_FOOTNOTE = "do not include impressions or view-throughs"
+
+
+def _ctr_basis(ctx) -> tuple[float, float, float, float] | None:
+    """(kept impressions, kept clicks, all impressions, all clicks).
+
+    None when the line item grid is not complete enough to divide by - if its
+    own total is well short of the headline, a subtotal off it is not a number
+    anybody should act on.
+    """
+    from .quality import line_item_totals
+    rows = line_item_totals(ctx.get("text") or "")
+    if not rows:
+        return None
+    all_i = sum(r[1] for r in rows)
+    all_c = sum(r[2] for r in rows)
+    imps = ctx.get("imps") or 0
+    if not all_i or not imps or abs(all_i - imps) / imps > 0.02:
+        return None                 # the grid does not describe this campaign
+    keep = [r for r in rows if not CTR_EXCLUDED.search(r[0])]
+    return sum(r[1] for r in keep), sum(r[2] for r in keep), all_i, all_c
+
+
 def check_headline_ctr(ctx) -> list[dict]:
     imps, clicks, ctr = ctx["imps"], ctx["clicks"], ctx["ctr"]
     if not imps or clicks is None or ctr is None:
         return []
-    if abs(clicks / imps * 100 - ctr) <= 0.011:
+    plain = clicks / imps * 100
+    if abs(plain - ctr) <= 0.011:
         return []
 
-    # The footnote says CTR excludes CTV. When it does, the stated rate divides
-    # non-CTV clicks by non-CTV impressions while the headline impression count
-    # still shows everything. Expected, but worth naming so nobody re-raises it.
-    ctv_i, _ctv_c = _ctv_totals(ctx)
-    if ctv_i and imps - ctv_i > 0:
-        ex_ctv = clicks / (imps - ctv_i) * 100
-        if abs(ex_ctv - ctr) <= 0.011:
-            return [_f("ctv_ctr_base", "info", "CTR is calculated excluding CTV",
-                       f"Stated {ctr:.2f}%. Against all {int(imps):,} impressions that would be "
-                       f"{clicks / imps * 100:.3f}%, but against the {int(imps - ctv_i):,} non-CTV "
-                       f"impressions it is {ex_ctv:.3f}%, which matches. Expected behaviour.")]
+    basis = _ctr_basis(ctx)
+    excluded_here = CTR_EXCLUDED.search(ctx.get("text") or "")
+    trace = [("Top-line impressions", f"{imps:,.0f}"),
+             ("Top-line clicks", f"{clicks:,.0f}"),
+             ("Stated CTR", f"{ctr:.2f}%"),
+             ("Clicks / impressions", f"{plain:.3f}%")]
+    if basis:
+        kept_i, kept_c, all_i, all_c = basis
+        trace += [
+            ("Line items on the report", f"{all_i:,.0f} impressions, {all_c:,.0f} clicks"),
+            ("Left out of the CTR tile", "strategy names matching CTV, OTT, "
+                                         "YouTube, Performance Max, PMax"),
+            ("After leaving those out", f"{kept_i:,.0f} impressions, {kept_c:,.0f} clicks"),
+            ("Filtered clicks / filtered impressions",
+             f"{kept_c / kept_i * 100:.3f}%" if kept_i else "n/a")]
+        if kept_i and abs(kept_c / kept_i * 100 - ctr) <= 0.011:
+            return [_f("ctr_excludes_products", "info",
+                       "CTR is calculated with CTV, YouTube and PMax left out",
+                       f"Stated {ctr:.2f}%. Against all {imps:,.0f} impressions "
+                       f"that would be {plain:.3f}%, but the tile leaves CTV, "
+                       f"OTT, YouTube and Performance Max out of both halves - "
+                       f"{kept_c:,.0f} clicks over {kept_i:,.0f} impressions is "
+                       f"{kept_c / kept_i * 100:.3f}%, which matches. The "
+                       f"report's own footnote says so. Expected.", trace)]
+        return [_f("headline_ctr", "fail",
+                   "Top-line CTR does not match its own numbers",
+                   f"Report states {ctr:.2f}%. All {clicks:,.0f} clicks over all "
+                   f"{imps:,.0f} impressions is {plain:.3f}%. Leaving out CTV, "
+                   f"OTT, YouTube and Performance Max as the footnote says, "
+                   f"{kept_c:,.0f} over {kept_i:,.0f} is "
+                   f"{kept_c / kept_i * 100:.3f}%. Neither is the stated rate.", trace)]
+
+    if excluded_here:
+        # The products the footnote excludes are on this report, and the line
+        # item grid cannot say how much of the campaign they are. Claiming the
+        # rate is wrong would be guessing.
+        return [_f("ctr_unverifiable", "info",
+                   "CTR could not be checked against its own numbers",
+                   f"Stated {ctr:.2f}%, against {plain:.3f}% for all "
+                   f"{clicks:,.0f} clicks over all {imps:,.0f} impressions. The "
+                   f"tile leaves CTV, OTT, YouTube and Performance Max out of "
+                   f"both halves and this report runs at least one of them, so "
+                   f"the two are not comparable - and the line item grid does "
+                   f"not add up to the headline, so the filtered rate cannot be "
+                   f"worked out either.", trace)]
+
     return [_f("headline_ctr", "fail", "Top-line CTR does not match its own numbers",
-               f"Report states {ctr:.2f}%. {int(clicks):,} clicks / {int(imps):,} impressions "
-               f"= {clicks / imps * 100:.3f}%.")]
+               f"Report states {ctr:.2f}%. {clicks:,.0f} clicks / {imps:,.0f} impressions "
+               f"= {plain:.3f}%.", trace)]
 
 
 def check_line_items(ctx) -> list[dict]:
+    """The line items have to add up to the campaign they describe.
+
+    Read off the summary grid rather than the strict table parser. The parser
+    stops when the column alignment shifts, which on a long report is after
+    about seventeen rows - so this check was comparing a page of line items
+    against a whole campaign and failing every large report for it.
+    """
+    from .quality import line_item_totals
     imps, clicks = ctx["imps"], ctx["clicks"]
-    tables = [t for t in ctx["tables"] if LINE_ITEM.search(t.title or "")]
-    if not tables or not imps:
+    if not imps:
         return []
-    si = sum(t.total("Impressions") for t in tables)
-    sc = sum(t.total("Clicks") for t in tables)
+    rows = line_item_totals(ctx.get("text") or "")
+    if not rows:
+        return []
+    si = sum(r[1] for r in rows)
+    sc = sum(r[2] for r in rows)
+    biggest = sorted(rows, key=lambda r: -r[1])[:6]
+    trace = [("Top-line impressions", f"{imps:,.0f}"),
+             ("Top-line clicks", f"{clicks:,.0f}" if clicks is not None else "not stated"),
+             ("Line items counted", f"{len(rows)}"),
+             ("They total", f"{si:,.0f} impressions, {sc:,.0f} clicks"),
+             ("Difference", f"{si - imps:+,.0f} impressions"),
+             ("Largest line items", "; ".join(f"{_short_name(n, 48)}: {i:,.0f}"
+                                              for n, i, _c in biggest))]
+
+    # A tolerance, because a DOOH line is measured in ads served rather than
+    # impressions and never joins this sum. Half a percent of the campaign, or
+    # two impressions on a tiny one, whichever is larger.
+    slack = max(2.0, imps * 0.005)
     out = []
-    if abs(si - imps) > 1:
+    if abs(si - imps) > slack:
         out.append(_f("line_items_impressions", "fail",
                       "Line items do not sum to the top line",
-                      f"Line items total {si:,.0f} impressions against a stated {imps:,.0f} "
-                      f"({si - imps:+,.0f})."))
-    if clicks is not None and abs(sc - clicks) > 0.5:
-        _ctv_i, ctv = _ctv_totals(ctx)
-        # allow a click or two of slack: a wrapped line-item name can leave one
-        # row on the wrong side of the CTV test
-        if ctv > 0 and abs((sc - clicks) - ctv) <= 2:
-            out.append(_f("ctv_click_base", "info",
-                          "CTV clicks excluded from the top line",
-                          f"Line items total {sc:.0f} clicks against a stated {clicks:.0f}. "
-                          f"The {sc - clicks:.0f} difference is the CTV line items, which is "
-                          f"expected behaviour."))
-        else:
-            gap = abs(sc - clicks)
-            material = gap > 5 or (clicks and gap / clicks > 0.005)
-            out.append(_f("line_items_clicks", "fail" if material else "warn",
-                          "Line item clicks do not sum to the top line",
-                          f"Line items total {sc:.0f} clicks against a stated {clicks:.0f} "
-                          f"({sc - clicks:+.0f})."))
+                      f"Line items total {si:,.0f} impressions against a stated "
+                      f"{imps:,.0f} ({si - imps:+,.0f}, "
+                      f"{(si - imps) / imps * 100:+.2f}%).", trace))
+    if clicks is not None:
+        cslack = max(2.0, clicks * 0.005)
+        gap = sc - clicks
+        if abs(gap) > cslack:
+            # The Clicks tile is filtered on some templates and not on others.
+            # When the excess is exactly the CTV, YouTube and PMax clicks, the
+            # tile is the filtered one and nothing is wrong.
+            excl = sum(r[2] for r in rows if CTR_EXCLUDED.search(r[0]))
+            trace.append(("Clicks on CTV / OTT / YouTube / PMax line items",
+                          f"{excl:,.0f}"))
+            if excl and abs(gap - excl) <= max(2.0, excl * 0.02):
+                out.append(_f("clicks_exclude_products", "info",
+                              "The top-line clicks leave CTV, YouTube and PMax out",
+                              f"Line items total {sc:,.0f} clicks against a stated "
+                              f"{clicks:,.0f}. The {gap:+,.0f} difference is the "
+                              f"{excl:,.0f} clicks on CTV, YouTube and PMax line "
+                              f"items, which that tile excludes. Expected.", trace))
+            else:
+                out.append(_f("line_items_clicks", "fail",
+                              "Line item clicks do not sum to the top line",
+                              f"Line items total {sc:,.0f} clicks against a stated "
+                              f"{clicks:,.0f} ({gap:+,.0f}).", trace))
     return out
 
 
@@ -143,8 +283,18 @@ def check_creative(ctx) -> list[dict]:
 
 
 def check_device(ctx) -> list[dict]:
-    """Device breakout excludes Mobile Conquesting, PPC, YouTube, LinkedIn and
-    Performance Max, so it is compared against device-eligible impressions only."""
+    """The device breakout cannot describe more impressions than were served.
+
+    It used to be compared against a "device-eligible" subtotal - the campaign
+    with Mobile Conquesting, PPC, YouTube, LinkedIn and Performance Max taken
+    out, on the belief that the device widget leaves those out. Some reports
+    do not: Credit King's device table sums to 193,744 against a headline of
+    193,746, the whole campaign, and got failed for exceeding a subset it was
+    never confined to.
+
+    So the ceiling is the headline, which is a fact, and the eligible subtotal
+    is only used to notice a breakout that has come in far too LOW.
+    """
     dev = None
     for t in ctx["tables"]:
         if (t.title or "").strip() in DEVICE_TITLES or (t.title or "").endswith("Device Performance"):
@@ -153,6 +303,8 @@ def check_device(ctx) -> list[dict]:
     if dev is None or not ctx["imps"]:
         return []
     device_total = dev.total("Impressions")
+    imps = ctx["imps"]
+
     excluded = settings.excluded_products
     eligible = 0.0
     li = [t for t in ctx["tables"] if LINE_ITEM.search(t.title or "")]
@@ -160,20 +312,31 @@ def check_device(ctx) -> list[dict]:
         for name, v in t.body:
             if not is_device_excluded(name, excluded):
                 eligible += v.get("Impressions", 0.0)
-    if eligible <= 0:
-        return []
-    diff = device_total - eligible
-    pct = diff / eligible * 100
-    if pct > 1:
+
+    trace = [("Device breakout total", f"{device_total:,.0f} impressions"),
+             ("Top-line impressions", f"{imps:,.0f}"),
+             ("Device rows", ", ".join(f"{_short_name(n)}: {v.get('Impressions', 0):,.0f}"
+                                       for n, v in dev.body[:8]) or "none")]
+    if eligible > 0:
+        trace.append(("Line items outside " + ", ".join(sorted(excluded)),
+                      f"{eligible:,.0f} impressions"))
+
+    over = device_total - imps
+    if imps and over / imps * 100 > 1:
         return [_f("device_over", "fail",
                    "Device breakout exceeds what was served",
-                   f"Device totals {device_total:,.0f} against {eligible:,.0f} device-eligible "
-                   f"impressions (+{pct:.1f}%). Filtering can only remove impressions.")]
-    if pct < -settings.device_under_tolerance_pct:
-        return [_f("device_under", "warn",
-                   "Device breakout well under the eligible total",
-                   f"Device totals {device_total:,.0f} against {eligible:,.0f} eligible "
-                   f"({pct:.1f}%). Unknown-device filtering does not usually account for this.")]
+                   f"Device totals {device_total:,.0f} against a top line of "
+                   f"{imps:,.0f} (+{over / imps * 100:.1f}%). A breakdown cannot "
+                   f"describe more impressions than the campaign served.", trace)]
+
+    if eligible > 0:
+        pct = (device_total - eligible) / eligible * 100
+        if pct < -settings.device_under_tolerance_pct:
+            return [_f("device_under", "warn",
+                       "Device breakout well under the eligible total",
+                       f"Device totals {device_total:,.0f} against {eligible:,.0f} "
+                       f"eligible ({pct:.1f}%). Unknown-device filtering does not "
+                       f"usually account for this.", trace)]
     return []
 
 
@@ -586,6 +749,8 @@ CHECKS: list[tuple] = [
     (check_creative_names,  "Every creative row says which creative it is"),
     (check_social_mirror_sizes, "No Social Mirror creative is named with an ad size"),
     (check_widget_errors,   "No widget printed an error instead of its data"),
+    (check_social_placement_totals,
+     "Social placements add up to no more than their platform totals"),
 ]
 
 # Why a rule had nothing to do. "Nothing to check against" is true of every
@@ -610,6 +775,7 @@ SKIP_WHY = {
     "check_creative_names": "no creative grid on the report",
     "check_widget_errors": "",
     "check_social_mirror_sizes": "no Social Mirror creative grid on the report",
+    "check_social_placement_totals": "no social placement grid on the report",
 }
 
 RULES = [fn for fn, _ in CHECKS]
@@ -664,6 +830,8 @@ def _rule_applies(rule, ctx) -> bool:
     if name == "check_social_mirror_sizes":
         return any(SOCIAL_MIRROR_GRID.search(t) for t, _n in
                    creative_rows(ctx.get("text") or ""))
+    if name == "check_social_placement_totals":
+        return bool(PLACEMENT_GRID.search(ctx.get("text") or ""))
     if name == "check_geofence_names":
         # No geo-fencing on the report means nothing was verified. Reporting a
         # pass would claim every business name is filled in on a table that is

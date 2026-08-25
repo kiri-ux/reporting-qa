@@ -44,15 +44,65 @@ def test_device_excludes_mobile_conquesting():
     assert "device_under" not in codes(FIXTURES / "watsontown.pdf")
 
 
-def test_ctv_click_base_is_informational_not_a_failure():
-    assert "ctv_click_base" in codes(FIXTURES / "watsontown.pdf")
-    assert "line_items_clicks" not in codes(FIXTURES / "watsontown.pdf")
+def test_a_filtered_clicks_tile_is_informational_not_a_failure():
+    """The Clicks tile leaves CTV, YouTube and PMax out on some templates.
+
+    Renamed from ctv_click_base: the exclusion is not CTV alone, which is the
+    bug this replaced - it recognised only the CTV case and failed the rest.
+    """
+    c = codes(FIXTURES / "watsontown.pdf")
+    assert "clicks_exclude_products" in c and "line_items_clicks" not in c
 
 
-def test_ctv_ctr_base_recognised():
-    """Central Penn states 0.20%, which is clicks over non-CTV impressions."""
+def test_a_filtered_ctr_tile_is_recognised():
+    """Central Penn's stated CTR is filtered clicks over filtered impressions.
+
+    The old handling took CTV impressions out of the denominator and left every
+    click in the numerator, so it only matched by luck. Both halves are
+    filtered, and by five product patterns, not one.
+    """
     c = codes(FIXTURES / "central_penn.pdf")
-    assert "ctv_ctr_base" in c and "headline_ctr" not in c
+    assert "ctr_excludes_products" in c and "headline_ctr" not in c
+
+
+def test_the_line_item_sum_reads_the_whole_grid():
+    """It used to read the strict table parser, which stops after about
+    seventeen rows - so every long report was failed for line items that did
+    not add up to a campaign it had only seen a page of."""
+    r = run_all(FIXTURES / "watsontown.pdf")
+    f = next((x for x in r["findings"]
+              if x["code"] in ("line_items_impressions", "clicks_exclude_products")), None)
+    assert f is not None
+    counted = next(t["value"] for t in f["trace"] if t["label"] == "Line items counted")
+    assert int(counted) == 14
+
+
+def test_a_device_breakout_matching_the_top_line_is_fine():
+    """Credit King's device table sums to the whole campaign because YouTube is
+    in it. The ceiling is the top line, not our guess at an eligible subset."""
+    from app.checks.rules import check_device
+    from app.checks.parser import Table
+
+    dev = Table(title="Device Performance", rows=[
+        ("Mobile", {"Impressions": 113867.0}), ("Desktop", {"Impressions": 55003.0}),
+        ("Tablet", {"Impressions": 19835.0}), ("Streaming Device", {"Impressions": 3443.0}),
+        ("Connected TV", {"Impressions": 1596.0})])
+    li = Table(title="Line Item Performance", rows=[
+        ("Acme - AI YouTube", {"Impressions": 40018.0}),
+        ("Acme - Behavioral Display", {"Impressions": 153728.0})])
+    assert check_device({"tables": [dev, li], "imps": 193746.0}) == []
+
+
+def test_a_device_breakout_over_the_top_line_still_fails():
+    from app.checks.rules import check_device
+    from app.checks.parser import Table
+    dev = Table(title="Device Performance",
+                rows=[("Mobile", {"Impressions": 109559.0})])
+    li = Table(title="Line Item Performance",
+               rows=[("Acme - Display", {"Impressions": 105174.0})])
+    out = check_device({"tables": [dev, li], "imps": 105174.0})
+    assert len(out) == 1 and out[0]["code"] == "device_over"
+    assert out[0]["trace"]
 
 
 def test_missing_thumbnail_counted():

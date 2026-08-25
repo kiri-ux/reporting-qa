@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ rep.client }} · Report QA{% endblock %}
-{% block where %}<a href="/cycle">Cycle</a> / {{ rep.client }}{% endblock %}
+{% block where %}<a href="/cycle">Cycle</a>
+  {%- if rep.market %} / <a href="/cycle?group={{ rep.market|urlencode }}">{{ rep.market }}</a>{% endif %}
+  / {{ rep.client }}{% endblock %}
 {% block bodyclass %}fit{% endblock %}
 {% block body %}
 {# One row, not a stacked title block. Every pixel here comes out of the PDF. #}
@@ -56,6 +58,19 @@
                   <span class="fdetail">{{ f.detail }}</span>{% endif %}
               </span>
             </form>
+            {% if f.trace %}
+              {# The question a disputed finding always raises is "where did
+                 that number come from". This is the answer, in the rule's own
+                 figures, without anyone having to read the code. #}
+              <details class="probe">
+                <summary>Investigate</summary>
+                <dl>
+                  {% for row in f.trace %}
+                    <dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>
+                  {% endfor %}
+                </dl>
+              </details>
+            {% endif %}
           </li>
         {% endfor %}
       </ul>
@@ -126,7 +141,7 @@
       <p class="sub" style="font-size:12.5px;margin-top:8px">
         {{ rep.review_state|replace('_', ' ')|title }} by
         {{ rep.reviewed_by or 'someone' }},
-        {{ rep.reviewed_at.strftime('%b %d at %H:%M') }} UTC.</p>
+        {{ rep.reviewed_at|et('%b %-d at %-I:%M %p') }}.</p>
     {% endif %}
 
     <h2 style="margin-top:22px">Re-run the checks</h2>
@@ -134,11 +149,8 @@
        A deploy that fixes a rule does not reach back and fix them, so this is
        how a report gets a second opinion without being re-sent. #}
     <form method="post" action="/report/{{ rep.id }}/recheck">
-      <button class="mini">Check this file again</button>
+      <button class="mini" title="Re-reads the PDF already here with today's rules. Use it after a fix has gone out. Accepted findings and the sign-off reset.">Check this file again</button>
     </form>
-    <p class="sub" style="font-size:12px;margin-top:6px;max-width:46ch">
-      Re-reads the PDF already here with today's rules. Use it after a fix has
-      gone out. Accepted findings and the sign-off reset.</p>
 
     <h2 style="margin-top:22px">Replace the file</h2>
     {# Acrobat cannot edit a file that lives on a server. The round trip is
@@ -146,12 +158,17 @@
        checks re-run so the new file is judged rather than assumed good. #}
     <form method="post" action="/report/{{ rep.id }}/replace"
           enctype="multipart/form-data" class="repform">
-      <input type="file" name="file" accept="application/pdf,.pdf" required>
-      <button class="mini" type="submit">Upload the corrected PDF</button>
+      <label class="drop" id="drop">
+        <input type="file" name="file" accept="application/pdf,.pdf" required>
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20">
+          <path d="M12 16V4m0 0L7 9m5-5l5 5M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"
+                fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="dtext">Drop the corrected PDF here, or <u>choose a file</u></span>
+      </label>
+      <button class="mini" type="submit" title="Re-runs every check. Accepted findings and the sign-off reset, since they described the old file. Your note is kept.">Upload the corrected PDF</button>
     </form>
-    <p class="sub" style="font-size:12px;margin-top:6px">Re-runs every check.
-      Accepted findings and the sign-off reset, since they described the old
-      file. Your note is kept.</p>
 
     <h2 style="margin-top:22px">Notes</h2>
     {# Saved on its own button, so writing a note does not also mark the report
@@ -250,6 +267,42 @@ details[open] > .cksum::before{content:'▾ '}
  background:var(--surface);color:var(--ink)}
 .noteform textarea:focus{outline:none;border-color:var(--velocity);
  box-shadow:0 0 0 3px var(--velocity-10)}
+/* Investigate: shut by default, because most findings are read and acted on
+   without anyone needing the arithmetic. */
+.probe{margin:2px 0 0 30px}
+.probe summary{font-size:12px;font-weight:700;color:var(--velocity);cursor:pointer;
+ list-style:none;padding:2px 0;font-family:'GT Walsheim Pro',sans-serif}
+.probe summary::-webkit-details-marker{display:none}
+.probe summary::before{content:"\25B8";display:inline-block;margin-right:5px;
+ transition:transform .12s}
+.probe[open] summary::before{transform:rotate(90deg)}
+/* Stacked, not two columns. The rail is ~340px and a label like "Line items
+   outside LinkedIn, Mobile Conquesting, PPC, Performance Max, YouTube" takes
+   the whole width on its own - as a grid column it pushed every value off the
+   side of the panel. */
+.probe dl{margin:6px 0 10px;padding:10px 12px;border-radius:9px;
+ background:var(--atlas-10);font-size:12px}
+.probe dt{color:var(--ink-2);font-size:11px;letter-spacing:.02em;
+ margin-top:8px;line-height:1.35}
+.probe dt:first-child{margin-top:0}
+.probe dd{margin:1px 0 0;color:var(--ink);
+ font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:11.5px;line-height:1.45;overflow-wrap:anywhere;
+ font-variant-numeric:tabular-nums}
+
+/* A drop target reads as somewhere to put a file. The browser's own file input
+   reads as a button next to the words "No file chosen". */
+.drop{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;
+ border:1.5px dashed var(--line);border-radius:12px;color:var(--ink-2);
+ background:var(--surface);transition:border-color .12s,background .12s,color .12s}
+.drop:hover,.drop.over{border-color:var(--velocity);color:var(--velocity);
+ background:var(--velocity-10)}
+.drop.over{border-style:solid}
+.drop input[type=file]{position:absolute;width:1px;height:1px;opacity:0;
+ pointer-events:none}
+.dtext{font-size:13px}
+.drop.has .dtext{color:var(--ink);font-weight:600}
+
 .signoff{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .verdicts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .signoff input{font:inherit;font-size:13px;padding:6px 11px;border:1px solid var(--line);
@@ -265,4 +318,56 @@ details[open] > .cksum::before{content:'▾ '}
   .pdfwrap object{height:72vh}
 }
 </style>
+<script>
+// Drag and drop is a convenience over the same input, not a second upload
+// path - the file lands in the field the form already posts, so the server
+// side is untouched and the button still works with the keyboard.
+(function () {
+  var drop = document.getElementById('drop');
+  if (!drop) return;
+  var input = drop.querySelector('input[type=file]');
+  var text = drop.querySelector('.dtext');
+  var idle = text.innerHTML;
+
+  var show = function () {
+    if (input.files && input.files.length) {
+      text.textContent = input.files[0].name;
+      drop.classList.add('has');
+    } else {
+      text.innerHTML = idle;
+      drop.classList.remove('has');
+    }
+  };
+  input.addEventListener('change', show);
+
+  ['dragenter', 'dragover'].forEach(function (e) {
+    drop.addEventListener(e, function (ev) {
+      ev.preventDefault(); drop.classList.add('over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (e) {
+    drop.addEventListener(e, function (ev) {
+      ev.preventDefault(); drop.classList.remove('over');
+    });
+  });
+  drop.addEventListener('drop', function (ev) {
+    var files = ev.dataTransfer && ev.dataTransfer.files;
+    if (!files || !files.length) return;
+    // Only PDFs, so a stray screenshot does not silently replace a report.
+    if (!/\.pdf$/i.test(files[0].name)) {
+      text.textContent = files[0].name + ' is not a PDF';
+      return;
+    }
+    input.files = files;
+    show();
+  });
+  // The page also swallows drops outside the target, so a missed drop does not
+  // navigate away from a half-finished review.
+  ['dragover', 'drop'].forEach(function (e) {
+    window.addEventListener(e, function (ev) {
+      if (!drop.contains(ev.target)) ev.preventDefault();
+    });
+  });
+})();
+</script>
 {% endblock %}

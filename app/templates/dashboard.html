@@ -26,7 +26,7 @@
     <tbody>
     {% for b in batches %}
       <tr>
-        <td class="mono">{{ b.received_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="mono">{{ b.received_at|et('%Y-%m-%d %-I:%M %p') }}</td>
         <td>{{ b.market or '—' }}</td>
         <td class="mono">{{ b.period }}</td>
         <td class="acct">{{ b.source }}</td>

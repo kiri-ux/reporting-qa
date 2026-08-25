@@ -202,6 +202,31 @@ def line_item_names(text: str) -> list[tuple[str, int]]:
     return out
 
 
+def line_item_totals(text: str) -> list[tuple[str, float, float]]:
+    """(name, impressions, clicks) for every line item on the report.
+
+    The report's own footnote says the top-line CTR leaves CTV, YouTube and
+    PMax out of BOTH halves of the fraction, so checking it needs the campaign
+    broken down far enough to leave them out too. This grid is the only place
+    that breakdown exists in the text.
+    """
+    out = []
+    for name, at in line_item_names(text):
+        eol = text.find("\n", at)
+        line = text[at:eol if eol > 0 else len(text)]
+        cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
+        vals = []
+        for c in cells[1:]:
+            if NUMERIC.match(c) and not c.endswith("%"):
+                try:
+                    vals.append(float(c.replace(",", "").lstrip("$")))
+                except ValueError:
+                    pass
+        if len(vals) >= 2:
+            out.append((name, vals[0], vals[1]))
+    return out
+
+
 def check_strategy_categorized(ctx) -> list[dict]:
     """Every strategy line has to name the product it runs."""
     text = ctx.get("text") or ""
@@ -574,3 +599,157 @@ def check_widget_errors(ctx) -> list[dict]:
                f"error instead of its data",
                "TapClicks could not build the widget and wrote the reason into "
                "the page. Re-pull the report: " + _sample(hits))]
+
+
+# ------------------------------------------- 8. social placement vs its totals
+# Three numbers describe the same campaign on the same page: the placement
+# grid, the three platform tiles beside the funnel, and the funnel itself. The
+# funnel is a picture, so it is out of reach, but the other two are readable.
+#
+# They do not add up to each other, and that is expected: the grid shows the
+# top ten placements and Meta has more than ten, so the grid is always a
+# subset. What is NOT expected is the grid exceeding the tile, which can only
+# mean a placement is being counted twice.
+PLATFORM_TILES = (
+    ("facebook", "Facebook News Feed Performance"),
+    ("audience", "Audience Network Performance"),
+    ("instagram", "Instagram Performance"),
+)
+
+PLACEMENT_GRID = re.compile(r"^[ \t]*Social Placement Performance[ \t]*$", re.M)
+NUM = re.compile(r"[\d,]+(?:\.\d+)?%?")
+
+
+def _platform_of(placement: str) -> str:
+    p = placement.lower()
+    if p.startswith("audience network"):
+        return "audience"
+    if p.startswith("instagram"):
+        return "instagram"
+    if p.startswith("facebook"):
+        return "facebook"
+    return ""                       # Threads, Messenger, Unknown - unassigned
+
+
+def _row_numbers(text: str, at: int, name: str) -> tuple[float, float] | None:
+    """(impressions, clicks) off the row that starts at this offset."""
+    eol = text.find("\n", at)
+    line = text[at:eol if eol > 0 else len(text)]
+    nums = [n for n in NUM.findall(line[len(line) - len(line.lstrip()) + len(name):])
+            if not n.endswith("%")]
+    vals = []
+    for n in nums:
+        try:
+            vals.append(float(n.replace(",", "")))
+        except ValueError:
+            pass
+    return (vals[0], vals[1]) if len(vals) >= 2 else None
+
+
+def _tile(text: str, title: str) -> tuple[float, float, float] | None:
+    """(impressions, clicks, ctr) off a three-number platform tile."""
+    i = text.find(title)
+    if i < 0:
+        return None
+    for line in text[i + len(title):i + 1500].split("\n"):
+        nums = NUM.findall(line)
+        if len(nums) < 3:
+            continue
+        pct = [n for n in nums if n.endswith("%")]
+        plain = [n for n in nums if not n.endswith("%")]
+        if len(plain) >= 2 and pct:
+            try:
+                return (float(plain[0].replace(",", "")),
+                        float(plain[1].replace(",", "")),
+                        float(pct[0].rstrip("%").replace(",", "")))
+            except ValueError:
+                return None
+    return None
+
+
+def _placement_rows(text: str, start: int) -> list[tuple[str, float, float]]:
+    """(placement, impressions, clicks) from the Social Placement grid.
+
+    grid_rows cannot read this one: a "Where your ads appear" column of prose
+    sits between the name and the numbers, so "every cell after the first is a
+    number" is false of every row. Here the rule is the other way round - the
+    LAST three cells are the numbers, and everything before them is the name
+    and its description.
+    """
+    rows = []
+    here = section_at(text, start)
+    for line in text[start:].split("\n"):
+        t = line.strip()
+        if not t:
+            continue
+        m = PAGE_HEADER.match(line)
+        if m:
+            if m.group(1).strip() != here:
+                break
+            continue
+        if _is_chrome(line):
+            continue
+        cells = [c for c in re.split(r"\s{2,}", t) if c]
+        if len(cells) < 3 or len(line) - len(line.lstrip()) > 2:
+            continue                # a wrapped description line, not a row
+        tail = cells[-3:]
+        if not all(NUM.fullmatch(c) for c in tail) or not tail[-1].endswith("%"):
+            continue
+        try:
+            rows.append((cells[0], float(tail[0].replace(",", "")),
+                         float(tail[1].replace(",", ""))))
+        except ValueError:
+            continue
+    return rows
+
+
+def check_social_placement_totals(ctx) -> list[dict]:
+    """The placement grid and the platform tiles have to agree with each other.
+
+    Only in one direction. The grid is capped at ten placements and Meta has
+    more than ten, so a grid that comes in UNDER its tile is the normal case
+    and says nothing. A grid that comes in over it is a placement counted
+    twice.
+    """
+    text = ctx.get("text") or ""
+    m = PLACEMENT_GRID.search(text)
+    if not m:
+        return []
+
+    sums: dict[str, list[float]] = {}
+    for name, imps, clicks in _placement_rows(text, m.end()):
+        plat = _platform_of(name)
+        if not plat:
+            continue                # Threads, Messenger, Unknown
+        cur = sums.setdefault(plat, [0.0, 0.0])
+        cur[0] += imps
+        cur[1] += clicks
+
+    out = []
+    for key, title in PLATFORM_TILES:
+        tile = _tile(text, title)
+        if not tile:
+            continue
+        imps, clicks, ctr = tile
+
+        # The tile has to agree with itself before it can be used as a total.
+        if imps and abs((clicks / imps * 100) - ctr) > 0.05:
+            out.append(_f("tile_ctr", "fail", f"{title} CTR does not match its "
+                          f"own numbers",
+                          f"{clicks:,.0f} clicks on {imps:,.0f} impressions is "
+                          f"{clicks / imps * 100:.2f}%, but the tile prints "
+                          f"{ctr:.2f}%."))
+
+        got = sums.get(key)
+        if not got:
+            continue
+        for label, i, total in (("impressions", 0, imps), ("clicks", 1, clicks)):
+            if got[i] > total + 0.5:
+                out.append(_f("placement_over_total", "fail",
+                              f"Placement rows exceed the {title.split()[0]} total",
+                              f"The placement grid adds up to {got[i]:,.0f} "
+                              f"{label} for {title.split(' Performance')[0]}, "
+                              f"but the total beside it says {total:,.0f}. The "
+                              f"grid is a subset of the total, so it cannot be "
+                              f"larger - a placement is being counted twice."))
+    return out

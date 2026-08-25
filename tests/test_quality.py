@@ -277,3 +277,84 @@ def test_every_real_fixture_stays_clean_of_the_new_rules():
             if out:
                 noisy.setdefault(f.name, []).extend(x["title"] for x in out)
     assert noisy == {}, noisy
+
+
+# ------------------------------------------- social placement vs its totals
+def test_the_placement_grid_is_read_despite_its_prose_column(sample):
+    """A "Where your ads appear" paragraph sits between the name and the
+    numbers, so "every cell after the first is a number" is false of every row.
+    """
+    m = q.PLACEMENT_GRID.search(sample)
+    rows = q._placement_rows(sample, m.end())
+    assert len(rows) == 10
+    assert rows[0] == ("Facebook Feed", 389012.0, 9887.0)
+    assert rows[-1][0] == "Unknown"
+
+
+def test_the_platform_tiles_are_read(sample):
+    assert q._tile(sample, "Facebook News Feed Performance") == (810307.0, 16116.0, 1.99)
+    assert q._tile(sample, "Instagram Performance") == (201135.0, 2778.0, 1.38)
+
+
+def test_a_grid_under_its_total_is_fine(sample):
+    """The grid shows ten placements and Meta has more than ten, so coming in
+    under the total is the normal case and says nothing."""
+    assert q.check_social_placement_totals({"text": sample}) == []
+
+
+def test_a_grid_over_its_total_is_a_double_count():
+    text = ("PUBLISHERS & INVENTORY - PAGE 1\n"
+            "Social Placement Performance\n"
+            " Placement      Where your ads appear   Impressions   Clicks   CTR\n"
+            "Facebook Feed   Your ads appear here.      20,000       400   2.00%\n"
+            "Facebook Reels  Your ads appear here.      20,000       400   2.00%\n"
+            "Facebook News Feed Performance\n"
+            "  35,785   857   2.39%\n"
+            "  Impressions  Clicks  CTR\n")
+    out = q.check_social_placement_totals({"text": text})
+    assert any(f["code"] == "placement_over_total" for f in out)
+
+
+def test_a_tile_whose_ctr_disagrees_with_itself_is_found():
+    text = ("Social Placement Performance\n"
+            "Facebook News Feed Performance\n"
+            "  35,785   857   9.99%\n"
+            "  Impressions  Clicks  CTR\n")
+    out = q.check_social_placement_totals({"text": text})
+    assert any(f["code"] == "tile_ctr" for f in out)
+
+
+def test_threads_and_unknown_are_not_counted_against_a_platform(sample):
+    """Neither belongs to Facebook or Instagram, and adding them to either
+    would push the grid over the total and invent a double count."""
+    assert q._platform_of("Threads") == ""
+    assert q._platform_of("Unknown") == ""
+    assert q._platform_of("Instagram Reels") == "instagram"
+    assert q._platform_of("Audience Network (Native, Banner, and Interstital)") == "audience"
+
+
+# ---------------------------------------------------------------- the working
+def test_a_trace_is_cleaned_before_anyone_reads_it():
+    """TapClicks' icon font leaks private-use glyphs into the text layer, and a
+    device name arrives with its whole Description column glued on."""
+    from app.checks.rules import _clean, _short_name
+    assert _clean("Site and App  Performance") == "Site and App Performance"
+    assert _short_name(
+        "Desktop A personal computing device that remains stationary.") == "Desktop"
+    assert _short_name("Connected TV An internet enabled device") == "Connected TV"
+    assert _short_name("Acme - Behavioral Display", 60) == "Acme - Behavioral Display"
+
+
+def test_the_ctr_finding_carries_its_arithmetic():
+    """The point of the trace: the numbers that produced the verdict, without
+    anyone having to read the code to find out where they came from."""
+    from app.checks.rules import run_all
+    pdf = Path(__file__).parent / "fixtures" / "central_penn.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    r = run_all(pdf)
+    f = next(x for x in r["findings"] if x["code"] == "ctr_excludes_products")
+    labels = [t["label"] for t in f["trace"]]
+    assert "Stated CTR" in labels
+    assert "After leaving those out" in labels
+    assert "Filtered clicks / filtered impressions" in labels
