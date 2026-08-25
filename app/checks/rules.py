@@ -705,8 +705,19 @@ PCT = re.compile(r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*%")
 # the PAGE FOOTER comes first whenever a widget ends near the bottom of a page
 # - and missing it swept a DOOH report's Site and App rows into its device
 # table, which then read as twenty-one unrecognised devices.
+# THE NEXT WIDGET'S TITLE, WHICH IS INDENTED LIKE EVERY OTHER LINE.
+#
+# This anchored on "^\S" - a title starting in column ONE. pdftotext -layout
+# indents the entire page, so that never matched anything, and a widget block
+# ran on until it hit the page footer or a fixed character limit.
+#
+# R&R Heating's device table has two rows and is followed by Top CTV
+# Publishers, well inside the limit - so Plex, Sling TV, TCL Channel and Tubi
+# were read as devices and the report was warned for six devices TapClicks does
+# not report, none of which were devices or claimed to be.
 WIDGET_END = re.compile(
-    r"(^\S.*(?:Performance|Publishers|Breakout|Screenshots)\s*$"
+    r"(^\s*\S.*(?:Performance|Publishers|Breakout|Screenshots|Details|"
+    r"Conversions|by Strategy|by Day|by Creative|by Ad Size)\s*$"
     r"|Digital Marketing Report|Date range \w{3} \d{2}, \d{4})", re.M)
 
 
@@ -881,6 +892,16 @@ def _heading_counts(text: str) -> dict[str, int]:
     return out
 
 
+def _dooh_only(ctx) -> bool:
+    """Is DOOH the only thing on this report?
+
+    A billboard has no site and no app, so the widgets that list them are not
+    owed - there would be nothing in them.
+    """
+    products = {p for p in (ctx.get("products") or set())}
+    return bool(products) and products <= {"DOOH"}
+
+
 def check_required_widgets(ctx) -> list[dict]:
     """Products that owe a particular widget have to actually carry it."""
     from ..product_codes import code_for
@@ -949,7 +970,10 @@ def check_required_widgets(ctx) -> list[dict]:
     # BARCK+ targeting owes the generic site and app breakout. The report
     # names its own BARCK+ widget, so this does not depend on knowing which
     # products carry BARCK+ - if the targeting ran, the report says so.
-    if BARCK.search(text):
+    #
+    # Except on a DOOH-only report. A billboard has no site and no app: there
+    # is nothing for that widget to list, and TapClicks does not print one.
+    if BARCK.search(text) and not _dooh_only(ctx):
         owed(W_SITE_APP, 1, "BARCK+ targeting")
     return out
 

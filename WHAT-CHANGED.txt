@@ -1,59 +1,36 @@
-build 2026.08.25-48
+build 2026.08.25-49
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/db.py
-app/main.py
-app/ingest.py
-app/recheck.py
-app/checks/logo.py
 app/checks/rules.py
-app/templates/base.html
-app/templates/viewer.html
-tests/test_manual_upload.py
+tests/test_required_widgets.py
 
 
-1. The logo check was guessing, and the guess was wrong
---------------------------------------------------------
-Ken Waddell's report carries the SEVEN MOUNTAINS logo. It is correct. It got
-failed anyway, because the rule was: a logo on three or more markets cannot be
-any one partner's, so it must be the tool's.
+1. "6 unrecognised devices" that were not devices
+---------------------------------------------------
+R&R Heating's device table has two rows, Connected TV and Streaming Device,
+both real. The six it complained about - Publisher Image, Plex, TCL Channel,
+Sling TV, Tubi - are the TOP CTV PUBLISHERS widget underneath it, plus one of
+its column headers.
 
-Seven Mountains runs 7 Mountains PA, 7 Mountains PA Altoona and 7 Mountains KY
-as separate markets on this board, and prints one logo across all of them. Any
-threshold that catches the tool's default also catches every group covering
-more than a couple of markets. There is no number that works.
+The boundary that is supposed to stop a widget at the next widget's title
+anchored on a title starting in COLUMN ONE. pdftotext -layout indents the whole
+page, so it never matched anything - and every widget block ran on until it hit
+the page footer or a fixed character limit. On a report where the device table
+is short and the publishers widget starts right after it, that meant reading
+one widget's rows as the other's.
 
-SO IT NO LONGER GUESSES. It is told, once.
-
-On any report page there is now a PAGE-ONE LOGO block showing the exact crop
-the check compares - the picture, not the fingerprint - with one button:
-
-    [This is the tool's default logo]
-
-Press it on any report carrying the generic blue chart icon and every report
-with that mark fails from then on, including the ones already on the board:
-they are queued for a re-check the moment you mark it. Nothing else fails.
-"It is a real logo" takes it back.
-
-Until you mark one, the check has nothing to compare against and shows as
-skipped rather than guessing. So on this deploy it goes quiet until you point
-at the bad one - one click, and no false positives to argue with afterwards.
+This is not only the device check. Every rule that reads a widget block - the
+completion rates, among others - was working with the same runaway boundary and
+is now bounded correctly.
 
 
-2. The finding's paragraph is gone
-------------------------------------
-"The mark in the top-left corner of page one is on reports for 4 different
-markets, so it is not this partner's and not the client's..." - the title said
-it, and the paragraph was explaining a guess that is not being made any more.
-The finding is now just "Page one carries the reporting tool's default logo".
+2. A DOOH-only report does not owe a site and app breakout
+------------------------------------------------------------
+A billboard has no site and no app. There is nothing for that widget to list
+and TapClicks does not print one, so it is no longer owed when DOOH is the only
+product on the report. A report running DOOH alongside anything else still owes
+it for the rest.
 
 
-3. "Saved as ... whatever the file is called on your machine"
----------------------------------------------------------------
-Fair. It now reads:
-
-    Renamed to July 2026_Expree Credit Union -KY 53921.pdf
-
-
-Tests: 375 passing.
+Tests: 379 passing.

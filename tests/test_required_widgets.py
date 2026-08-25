@@ -194,3 +194,49 @@ def test_device_findings_say_which_page():
     out = check_devices_known({"text": text, "page_text": [text],
                                "page_of": lambda o: 8})
     assert out and out[0].get("where", "").startswith("p8")
+
+
+# ------------------------------------------- R&R Heating: the publishers grid
+def test_a_short_device_table_does_not_read_the_next_widget_as_devices():
+    """Six unrecognised devices on a report whose device table has two rows,
+    both of them real. Plex, TCL Channel, Sling TV and Tubi are CTV
+    PUBLISHERS - the widget after the device one.
+
+    The block boundary anchored on a title starting in column one, and
+    pdftotext -layout indents the whole page, so it never matched and the block
+    ran on into whatever came next.
+    """
+    text = (" Device Performance\n"
+            " Device Name    Description                        Impressions   Clicks   CTR\n"
+            " Connected TV   An internet enabled device that provides streaming\n"
+            "                content directly on the TV.            14,999       24   0.16%\n"
+            " Streaming Device  A stick/dongle device that connects to a TV and\n"
+            "                provides streaming content.             8,104        6   0.07%\n"
+            "\n"
+            " Top CTV Publishers\n"
+            " Publisher Image   Publisher              Impressions   Clicks   CTR\n"
+            "                   Plex: Stream Movies, Shows, Live TV      900     1   0.11%\n"
+            "                   TCL Channel                              800     0   0.00%\n"
+            "                   Sling TV                                 700     0   0.00%\n"
+            "                   Tubi - Movies & TV Shows                 600     0   0.00%\n")
+    assert check_devices_known({"text": text}) == []
+
+
+def test_the_widget_boundary_matches_an_indented_title():
+    from app.checks.rules import WIDGET_END
+    assert WIDGET_END.search("   Top CTV Publishers\n")
+    assert WIDGET_END.search("  Display Creative Performance\n")
+
+
+# ------------------------------------------- a billboard has no site and no app
+def test_a_dooh_only_report_does_not_owe_the_site_and_app_widget():
+    text = ("DOOH ADS - PAGE 1\nBARCK+ Zip Code Performance\n"
+            "DOOH Line Item Performance\n")
+    assert check_required_widgets({"text": text, "products": {"DOOH"}}) == []
+
+
+def test_a_report_running_something_else_as_well_still_owes_it():
+    text = ("DOOH ADS - PAGE 1\nBARCK+ Zip Code Performance\n"
+            "DOOH Line Item Performance\n")
+    out = check_required_widgets({"text": text, "products": {"DOOH", "Display"}})
+    assert [f["title"] for f in out] == ["No Site and App Performance widget"]
