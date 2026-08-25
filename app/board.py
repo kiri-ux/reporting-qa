@@ -39,6 +39,7 @@ class Expected:
     client: str
     kind: str                      # "monthly" | "lifetime"
     account_ids: str = ""
+    line_ids: str = ""
     products: list = field(default_factory=list)
     # The client's whole flight: FIRST start and LAST end across every order,
     # because two overlapping orders are one continuous campaign even though
@@ -115,10 +116,16 @@ def expected_for(db: Session, period: str) -> list[Expected]:
             if e is None:
                 e = rows[k] = Expected(
                     market=l.market, group=group, client=l.client, kind=kind,
-                    account_ids=l.account_ids, buyer=l.buyer,
+                    account_ids=l.account_ids, line_ids=l.line_ids, buyer=l.buyer,
                     reporter=(p.reporting_team if p else ""))
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
+            # A client's lifetime covers several products, so its line ids are
+            # the union of them - not whichever line happened to be first.
+            for lid in (l.line_ids or "").split(","):
+                lid = lid.strip()
+                if lid and lid not in e.line_ids:
+                    e.line_ids = (e.line_ids + ", " + lid).strip(", ")
             if l.starts_on and (e.starts_on is None or l.starts_on < e.starts_on):
                 e.starts_on = l.starts_on
             if l.ends_on and (e.ends_on is None or l.ends_on > e.ends_on):

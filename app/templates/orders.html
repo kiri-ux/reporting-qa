@@ -177,7 +177,8 @@
             <span class="chip" data-name="{{ p.name }}" tabindex="0"
                   style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
           {% endfor %}</span><span class="sr">{% for p in c.products %}{{ p.name }} {% endfor %}</span></td>
-          <td class="acct">{{ c.orders }}</td>
+          <td class="acct">{{ c.orders }}
+            {% if c.line_ids %}<br><span style="color:var(--muted)">{{ c.line_ids }}</span>{% endif %}</td>
           <td class="mono nw">{{ c.starts or '' }}</td>
           <td class="mono nw">{{ c.ends or '' }}</td>
           <td>{{ c.buyer }}</td>
@@ -208,7 +209,9 @@
       <th>Start</th><th>End</th><th data-col="Buyer">Buyer</th></tr></thead>
       <tbody>{% for l in lines %}
         <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
-            <td>{{ l.product }}</td><td class="acct">{{ l.account_ids }}</td>
+            <td>{{ l.product }}</td>
+            <td class="acct">{{ l.account_ids }}
+              {% if l.line_ids %}<br><span style="color:var(--muted)">{{ l.line_ids }}</span>{% endif %}</td>
             <td class="mono nw">{{ l.starts_on or '' }}</td>
             <td class="mono nw">{{ l.ends_on or '' }}</td>
             <td class="nw">{{ l.buyer }}</td></tr>

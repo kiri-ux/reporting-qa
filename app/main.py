@@ -329,7 +329,7 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
                 partner_cache[l.market] = find_partner(db, l.market)
             p = partner_cache[l.market]
             row = by[key] = {
-                "partner": l.market, "client": l.client, "orders": set(),
+                "partner": l.market, "client": l.client, "orders": set(), "lines": set(),
                 "products": [], "codes": set(), "starts": None, "ends": None,
                 "buyers": [], "reporter": p.reporting_team if p else "",
                 "trainer": p.trainer if p else "", "_partner": p,
@@ -342,6 +342,9 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
             row["products"].append(pl)
         if l.account_ids:
             row["orders"].add(l.account_ids)
+        for lid in (l.line_ids or "").split(","):
+            if lid.strip():
+                row["lines"].add(lid.strip())
         # RESOLVE THE BUYER HERE, not only at import.
         #
         # The stored buyer is whatever the export's campaign manager said at
@@ -364,6 +367,7 @@ def _client_rollup(db: Session, lines: list[OrderLine]) -> list[dict]:
         r.pop("_partner", None)
         r["products"].sort(key=lambda p: p["code"])
         r["orders"] = ", ".join(sorted(r["orders"]))
+        r["line_ids"] = ", ".join(sorted(r.pop("lines")))
         r["buyer"] = ", ".join(r["buyers"])
     out.sort(key=lambda r: (r["partner"].lower(), r["client"].lower()))
     return out
@@ -420,20 +424,20 @@ def orders_csv(view: str = Query("clients"), db: Session = Depends(get_db)):
         rows = [[c["partner"], c["client"],
                  " ".join(p["code"] for p in c["products"]),
                  ", ".join(p["name"] for p in c["products"]),
-                 c["orders"], c["starts"] or "", c["ends"] or "",
+                 c["orders"], c["line_ids"], c["starts"] or "", c["ends"] or "",
                  c["buyer"], c["reporter"], c["trainer"],
                  "yes" if c["lifetime"] else "", "" if c["in_roster"] else "not on roster"]
                 for c in _client_rollup(db, lines)]
         return _csv_response(f"report-qa-clients-{today}.csv",
                              ["Partner", "Client", "Products", "Product names", "Order",
-                              "Start", "End", "Buyer", "Reporter", "Trainer",
+                              "Line items", "Start", "End", "Buyer", "Reporter", "Trainer",
                               "Lifetime due", "Roster"], rows)
-    rows = [[l.market, l.client, l.product, l.account_ids,
+    rows = [[l.market, l.client, l.product, l.account_ids, l.line_ids,
              l.starts_on or "", l.ends_on or "", l.buyer, l.buyer_email]
             for l in lines]
     return _csv_response(f"report-qa-order-lines-{today}.csv",
-                         ["Partner", "Client", "Product", "Order", "Start", "End",
-                          "Buyer", "Buyer email"], rows)
+                         ["Partner", "Client", "Product", "Order", "Line items",
+                          "Start", "End", "Buyer", "Buyer email"], rows)
 
 
 @app.get("/partners.csv")
@@ -521,13 +525,15 @@ def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
     from .cycle import current_period
     period = period or current_period()
     rows = [[e.market, e.client, e.kind, ", ".join(e.products),
-             e.account_ids, e.starts_on or "", e.ends_on or "", e.buyer, e.reporter,
+             e.account_ids, e.line_ids, e.starts_on or "", e.ends_on or "",
+             e.buyer, e.reporter,
              e.state, e.report.reviewed_by if e.report else "",
              e.report.review_note if e.report else ""]
             for e in expected_for(db, period)]
     return _csv_response(f"report-qa-cycle-{period}.csv",
                          ["Partner", "Client", "Kind", "Products",
-                          "Order", "Starts", "Ends", "Buyer", "Reporter", "Status",
+                          "Order", "Line items", "Starts", "Ends", "Buyer",
+                          "Reporter", "Status",
                           "Reviewed by", "Note"], rows)
 
 

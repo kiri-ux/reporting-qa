@@ -1424,3 +1424,37 @@ def test_every_check_reports_whether_it_ran():
     for c in r["checks"]:
         if c["state"] in ("failed", "flagged"):
             assert c["count"] >= 1
+
+
+def test_line_item_ids_survive_the_rollup(tmp_path, monkeypatch):
+    """One report row can cover several line items, so all their ids have to
+    be kept. The order id alone does not point at one line when a client runs
+    three products under it."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'li.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import orders_io as oi, board as bmod
+    importlib.reload(oi); importlib.reload(bmod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+
+    res = oi.import_io_export(db, IO_EXPORT.read_bytes(), period="2026-07")
+    assert res["kept"] > 0
+    lines = db.scalars(db_mod.select(db_mod.OrderLine)).all() \
+        if hasattr(db_mod, "select") else db.query(db_mod.OrderLine).all()
+
+    with_ids = [l for l in lines if l.line_ids]
+    assert with_ids, "no line item ids were captured at all"
+    # at least one row rolled up more than a single line item
+    multi = [l for l in with_ids if "," in l.line_ids]
+    assert multi, "a multi-line row lost all but one id"
+    for l in with_ids:
+        for part in l.line_ids.split(","):
+            assert part.strip().isdigit(), f"{l.line_ids!r} is not a list of ids"
+        # and the order id column holds order ids, not line ids
+        assert l.account_ids
+        assert l.account_ids != l.line_ids

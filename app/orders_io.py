@@ -198,6 +198,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     "client": client, "product": product, "order_id": order_id,
                     "campaign": product_raw, "starts_on": start, "ends_on": end,
                     "manager": _txt(r.get("campaign_manager")),
+                    "orders": set(), "lines": set(),
                 }
             else:                        # widest flight across that client's orders
                 cur = kept[k]
@@ -205,6 +206,12 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     cur["starts_on"] = start
                 if end and (cur["ends_on"] is None or end > cur["ends_on"]):
                     cur["ends_on"] = end
+            # Every order and line item that rolled into this row, so a client
+            # running one product across three orders can still be traced back.
+            if order_id:
+                kept[k]["orders"].add(order_id)
+            if line_id:
+                kept[k]["lines"].add(line_id)
 
     if not rows_read:
         return {"kept": 0, "clients": 0, "skipped": {}, "guidance": {},
@@ -235,7 +242,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
             fallbacks += 1
 
         db.add(OrderLine(
-            market=market, client=client, account_ids=v["order_id"],
+            market=market, client=client,
+            account_ids=", ".join(sorted(v["orders"]))[:255] or v["order_id"],
+            line_ids=", ".join(sorted(v["lines"]))[:512],
             campaign=v["campaign"], product=product,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
             buyer=buyer, buyer_email=buyer_email,

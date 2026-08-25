@@ -252,6 +252,10 @@ class OrderLine(Base):
     market: Mapped[str] = mapped_column(String(128), index=True)
     client: Mapped[str] = mapped_column(String(255))
     account_ids: Mapped[str] = mapped_column(String(255), default="")
+    # The export's own line item ids, which is what the IO tool and TapClicks
+    # both key on. The order id alone is not enough to point at one line when
+    # a client runs several products under it.
+    line_ids: Mapped[str] = mapped_column(String(512), default="")
     campaign: Mapped[str] = mapped_column(String(512), default="")
     product: Mapped[str] = mapped_column(String(128), default="", index=True)
     starts_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
@@ -311,6 +315,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("deliveries", "archive_url", "TEXT"),
     ("reports", "acked", "JSON"),
     ("reports", "checks", "JSON"),
+    ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
 ]
 
 

@@ -185,7 +185,8 @@
         <td><b>{{ e.client }}</b>
           {# The order id is what gets quoted when raising this with anyone,
              so it sits with the client rather than only inside the PDF. #}
-          {% if e.account_ids %}<br><span class="oid">{{ e.account_ids }}</span>{% endif %}</td>
+          {% if e.account_ids %}<br><span class="oid" title="Order id">{{ e.account_ids }}</span>{% endif %}
+          {% if e.line_ids %}<span class="oid lid" title="Line item ids">{{ e.line_ids }}</span>{% endif %}</td>
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
           <span class="chip" data-name="{{ p.name }}" tabindex="0"
                 style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
@@ -197,7 +198,7 @@
           {% if e.starts_on or e.ends_on %}<br>
             <span class="acct">{{ e.starts_on or '?' }} &rarr; {{ e.ends_on or 'open' }}</span>
           {% endif %}
-          {% else %}<span class="acct">monthly</span>{% endif %}</td>
+          {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
         <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
           {% if e.report %}
@@ -277,9 +278,12 @@
 .pill.pdf{background:var(--velocity-10);color:var(--velocity);text-decoration:none;
  display:inline-block;margin-bottom:5px}
 .pill.pdf:hover{background:var(--velocity);color:#fff;text-decoration:none}
+.p-month{background:var(--velocity-10);color:var(--velocity)}
 .oid{display:inline-block;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;
  background:var(--atlas-10);color:#3D5468;padding:1px 8px;border-radius:20px;
  margin-top:3px;user-select:all}
+.oid.lid{background:transparent;color:var(--muted);
+ box-shadow:inset 0 0 0 1px var(--line);margin-left:4px}
 .notetag{display:inline-block;font-family:Agdasima,sans-serif;font-size:12px;
  font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;
  border-radius:20px;background:var(--warn-bg);color:var(--warn);margin-right:5px;
