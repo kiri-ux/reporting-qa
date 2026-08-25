@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # of a field being empty rather than a decision. Someone configuring SMTP
     # for an unrelated reason should not accidentally start mailing people, so
     # this has to be turned on deliberately.
+    # Pin the board to one cycle while a month is being re-run. The dropdown
+    # still switches freely; this only decides where /cycle lands with no
+    # period in the URL. Set it to "" to go back to following the calendar.
+    default_period: str = "2026-07"
+
     notifications_enabled: bool = False
 
     slack_webhook_url: str = ""

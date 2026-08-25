@@ -463,7 +463,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     from .cycle import current_period, cycle_for, recent_periods
     from .delivery import latest_deliveries
 
-    period = period or current_period()
+    period = period or settings.default_period or current_period()
     prune_old_pdfs(db)          # cheap, and keeps the disk from filling silently
     cyc = cycle_for(period)
     exp = expected_for(db, period)
@@ -475,9 +475,14 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         rows = [e for e in rows if e.state == state]
     from .product_codes import pill
     chips = {e.ident: [pill(p) for p in e.products] for e in rows}
+    # A pinned period outside the last thirteen months would not be in the
+    # dropdown, and the board would show a cycle you could not switch back to.
+    periods = recent_periods()
+    if period not in periods:
+        periods = sorted(set(periods) | {period}, reverse=True)
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
-        "periods": recent_periods(), "groups": groups, "rows": rows,
+        "periods": periods, "groups": groups, "rows": rows,
         "summary": summary(exp), "state_label": STATE_LABEL,
         "filter_group": group, "filter_state": state,
         "deliveries": latest_deliveries(db, period),
@@ -525,7 +530,7 @@ def delivery_file(delivery_id: int, db: Session = Depends(get_db)):
 def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
     from .board import expected_for
     from .cycle import current_period
-    period = period or current_period()
+    period = period or settings.default_period or current_period()
     rows = [[e.market, e.client, e.kind, ", ".join(e.products),
              e.account_ids, e.line_ids, e.starts_on or "", e.ends_on or "",
              e.buyer, e.reporter,
@@ -674,7 +679,7 @@ async def replace_report(report_id: int, request: Request,
     flight = client_flight(db, rep.client, rep.account_ids)
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,
-                         flight=flight, period=rep.period)
+                         flight=flight, period=rep.period, market=rep.market or "")
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",
@@ -708,8 +713,55 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     rep = db.get(Report, report_id)
     if not rep:
         raise HTTPException(404)
+    from .checks.rules import SKIP_WHY
     return templates.TemplateResponse(request, "viewer.html",
-                                      {"nav": "cycle", "rep": rep})
+                                      {"nav": "cycle", "rep": rep,
+                                       "skip_why": SKIP_WHY})
+
+
+@app.post("/report/{report_id}/recheck")
+def report_recheck(report_id: int, db: Session = Depends(get_db)):
+    """Run every check again against the file already on disk.
+
+    Findings are written once, at the moment a report arrives, and then stored.
+    So a deploy that fixes a rule does not fix the reports that rule already
+    got wrong - they keep showing yesterday's answer until something re-reads
+    the PDF. This is that something, and it needs no re-upload.
+    """
+    from .checks.rules import run_all
+    from .ingest import client_flight
+    from .roster import expected_products
+
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    path = Path(rep.stored_path or "")
+    if not path.exists():
+        rep.findings = (rep.findings or []) + [{
+            "code": "missing_file", "severity": "warn",
+            "title": "The stored PDF is gone",
+            "detail": "Checks could not be re-run because the file is no longer "
+                      "on disk. Old PDFs are pruned after "
+                      f"{settings.keep_pdf_months} months. Upload it again below."}]
+        db.commit()
+        return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+
+    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    flight = client_flight(db, rep.client, rep.account_ids)
+    result = run_all(path, filename=rep.filename, expected_products=exp,
+                     flight=flight, period=rep.period, market=rep.market or "")
+    rep.findings = result["findings"]
+    rep.checks = result.get("checks") or []
+    rep.severity = result["severity"]
+    rep.products = ", ".join(result.get("products") or [])
+    # An acceptance was given to a finding that may no longer exist, and a
+    # sign-off was given to a different answer. Both have to be re-earned.
+    rep.acked = []
+    if rep.review_state in ("reviewed", "waived"):
+        rep.review_state = "new"
+        rep.reviewed_at = None
+    db.commit()
+    return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 
 
 @app.get("/partners", response_class=HTMLResponse)

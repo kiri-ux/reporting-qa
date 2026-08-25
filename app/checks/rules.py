@@ -14,6 +14,11 @@ from .parser import (as_number, date_range, SKIP_LINE, Table, extract_tables, he
                      meta_from_filename, meta_from_text, page_count, page_ink_pct,
                      pdf_text, tokens)
 from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
+from .quality import (check_blank_screenshots, check_conversion_names,
+                      check_creative_names, check_social_mirror_sizes,
+                      check_strategy_categorized, check_truncated_text,
+                      check_widget_errors, line_item_names, creative_rows,
+                      CONVERSION_HEADER, SOCIAL_MIRROR_GRID)
 
 LINE_ITEM = re.compile(r"Line Item Performance$")
 CREATIVE = re.compile(r"(Creative Performance|Creative Group Performance)$")
@@ -574,7 +579,38 @@ CHECKS: list[tuple] = [
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
+    (check_strategy_categorized, "Every strategy line names the product it runs"),
+    (check_truncated_text,  "No text is cut off for want of space"),
+    (check_blank_screenshots, "Every ad screenshot rendered"),
+    (check_conversion_names, "Every conversion is named for what the user did"),
+    (check_creative_names,  "Every creative row says which creative it is"),
+    (check_social_mirror_sizes, "No Social Mirror creative is named with an ad size"),
+    (check_widget_errors,   "No widget printed an error instead of its data"),
 ]
+
+# Why a rule had nothing to do. "Nothing to check against" is true of every
+# skipped rule and tells you nothing about which one you are looking at.
+SKIP_WHY = {
+    "check_products": "no order list loaded for this client",
+    "check_date_range": "the report prints no date range",
+    "check_headline_ctr": "no top-line impressions or clicks on the report",
+    "check_line_items": "no grids on the report",
+    "check_creative": "no grids on the report",
+    "check_device": "no grids on the report",
+    "check_row_math": "no grids on the report",
+    "check_rate_ceiling": "no grids on the report",
+    "check_completion_rates": "no completion widget on the report",
+    "check_devices_known": "no device breakout on the report",
+    "check_required_widgets": "none of this report's products owe a widget",
+    "check_geofence_names": "no geo-fencing table on the report",
+    "check_strategy_categorized": "no line item grid on the report",
+    "check_truncated_text": "no line item grid on the report",
+    "check_blank_screenshots": "no ad screenshot widget on the report",
+    "check_conversion_names": "no conversion breakout on the report",
+    "check_creative_names": "no creative grid on the report",
+    "check_widget_errors": "",
+    "check_social_mirror_sizes": "no Social Mirror creative grid on the report",
+}
 
 RULES = [fn for fn, _ in CHECKS]
 
@@ -617,6 +653,17 @@ def _rule_applies(rule, ctx) -> bool:
         codes = {code_for(p) for p in (ctx.get("products") or set())}
         owed = {"YT"} | {c for cs, _s, _t, _w in REQUIRED_WIDGETS for c in cs}
         return bool(codes & owed)
+    if name in ("check_strategy_categorized", "check_truncated_text"):
+        return bool(line_item_names(ctx.get("text") or ""))
+    if name == "check_blank_screenshots":
+        return "Ad Screenshots" in (ctx.get("text") or "")
+    if name == "check_conversion_names":
+        return bool(CONVERSION_HEADER.search(ctx.get("text") or ""))
+    if name == "check_creative_names":
+        return bool(creative_rows(ctx.get("text") or ""))
+    if name == "check_social_mirror_sizes":
+        return any(SOCIAL_MIRROR_GRID.search(t) for t, _n in
+                   creative_rows(ctx.get("text") or ""))
     if name == "check_geofence_names":
         # No geo-fencing on the report means nothing was verified. Reporting a
         # pass would claim every business name is filled in on a table that is
@@ -632,7 +679,8 @@ def _rule_applies(rule, ctx) -> bool:
 
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
-            flight: tuple | None = None, period: str | None = None) -> dict:
+            flight: tuple | None = None, period: str | None = None,
+            market: str = "") -> dict:
     text = pdf_text(path)
     is_lifetime = meta_from_filename(filename or path.name)["is_lifetime"]
     imps, clicks, ctr = headline(text)
@@ -649,6 +697,9 @@ def run_all(path: Path, filename: str | None = None,
         "is_lifetime": bool(is_lifetime),
         "period": period,
         "flight": flight,
+        # Needed by the Social Mirror ad-size rule, which Curtis is exempt from.
+        "market": market,
+        "client": meta_from_filename(filename or path.name).get("client", ""),
     }
     findings: list[dict] = []
     checks: list[dict] = []

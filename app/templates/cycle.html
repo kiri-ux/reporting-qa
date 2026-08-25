@@ -30,15 +30,6 @@
   </form>
 </div>
 
-{% if not notify.enabled %}
-<div class="note" style="border-left-color:var(--atlas-50);background:var(--atlas-10)">
-  <b>Nothing is emailed or posted to Slack.</b> Notifications are off, so this board and
-  the links you hand over are the only output. Turn them on with
-  <code>NOTIFICATIONS_ENABLED=true</code> once you have SMTP set up - and even then only
-  <code>{{ notify.domains }}</code> addresses can receive anything.
-</div>
-{% endif %}
-
 <section>
   <div class="cards">
     <div><b>{{ summary.total }}</b><span>Expected{% if summary.lifetimes %}
@@ -80,7 +71,8 @@
            data-partner="{{ g.group }}" data-buyer="{{ g.buyer }}"
            data-reporter="{{ g.reporter }}" data-trainer="{{ g.trainer }}"
            data-status="{{ 'Good to go' if g.ready else 'Open' }}"
-           data-arrived="{{ 1 if g.counts.missing < g.expected|length else 0 }}">
+           data-arrived="{{ 1 if g.counts.missing < g.expected|length else 0 }}"
+           data-search="{{ g.group }} {{ g.markets|join(' ') }}">
         <div class="ghead">
           <div>
             <h3 style="margin:0">{{ g.group }}</h3>
@@ -94,6 +86,11 @@
                 <b>R</b>{{ g.reporter }}</span>{% endif %}
               {% if g.trainer %}<span class="wtag t" title="Trainer: {{ g.trainer }}">
                 <b>T</b>{{ g.trainer }}</span>{% endif %}
+              {# SEO is pulled outside TapClicks and owned by a different
+                 person, so when a group has an SEO line it needs its own tag -
+                 the B tag is the wrong name to chase for it. #}
+              {% if g.seo %}<span class="wtag s" title="SEO: {{ g.seo }}">
+                <b>S</b>{{ g.seo }}</span>{% endif %}
             </div>
           </div>
           <span class="pct {% if g.ready %}ok{% endif %}">{{ g.pct }}%</span>
@@ -283,6 +280,7 @@
  font-size:11px;font-weight:700;background:var(--atlas);color:#fff}
 .wtag.r b{background:var(--velocity)}
 .wtag.t b{background:var(--plum)}
+.wtag.s b{background:var(--ok)}
 .gcard[hidden]{display:none}
 .gtags{display:flex;flex-wrap:wrap;gap:5px}
 .gtags a{text-decoration:none}

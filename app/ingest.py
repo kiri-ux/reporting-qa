@@ -256,7 +256,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
         try:
             result = run_all(path, filename=name, expected_products=exp,
-                             flight=flight, period=batch.period)
+                             flight=flight, period=batch.period,
+                             market=batch.market or "")
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},

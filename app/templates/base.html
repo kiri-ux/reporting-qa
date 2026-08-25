@@ -474,8 +474,15 @@ body.fit .pdfwrap object{height:100%}
     if (!grid) return;
     var out = document.getElementById(box.dataset.count);
     var wrap = document.querySelector('[data-cardfilters-for="' + box.dataset.cards + '"]');
+    // A card carrying data-search says what it wants searched. Without it the
+    // haystack is the whole card, so "Search partners" also matched every
+    // buyer, reporter, trainer and status word printed on it.
     var cards = Array.prototype.map.call(grid.children, function (el) {
-      return { el: el, hay: el.textContent.toLowerCase(), d: el.dataset };
+      return {
+        el: el,
+        hay: (el.dataset.search || el.textContent).toLowerCase(),
+        d: el.dataset
+      };
     });
     var total = cards.length, selects = [], t;
 

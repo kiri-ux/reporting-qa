@@ -199,6 +199,10 @@ class GroupRow:
     buyer: str = ""
     reporter: str = ""
     trainer: str = ""
+    # Only set when this group actually has an SEO line item this cycle. SEO is
+    # pulled outside TapClicks and belongs to a different person, so a card
+    # showing only the buyer sends the chase to the wrong desk.
+    seo: str = ""
 
     @property
     def counts(self) -> dict:
@@ -250,11 +254,14 @@ def by_group(db: Session, period: str,
     for g, rows in groups.items():
         p = people.get(g)
         buyers = [b for b in dict.fromkeys(e.buyer for e in rows if e.buyer)]
+        from .partners import is_seo
+        has_seo = any(is_seo(prod) for e in rows for prod in (e.products or []))
         out.append(GroupRow(
             group=g, target=targets.get(g, ""), expected=rows,
             buyer=", ".join(buyers) or (p.buyer if p else ""),
             reporter=(p.reporting_team if p else ""),
-            trainer=(p.trainer if p else "")))
+            trainer=(p.trainer if p else ""),
+            seo=((p.seo if p else "") if has_seo else "")))
     out.sort(key=lambda g: (g.ready, g.group.lower()))   # unfinished first
     return out
 

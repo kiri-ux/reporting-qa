@@ -12,11 +12,13 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-18"
-BUILD_NOTES = ("A product whose flight ended before the report's month is no "
-               "longer expected on it. An \"Only started\" button on the cycle "
-               "board hides the partners nothing has arrived for. Sign-off "
-               "keeps its three verdicts on one line and says what Waive does.")
+BUILD = "2026.08.25-20"
+BUILD_NOTES = ("Seven new checks that read the report's words: strategy lines "
+               "with no product in the name, text clipped by a column, blank "
+               "ad screenshots, unnamed or retargeting-named conversions, "
+               "unnamed creatives, Social Mirror ad sizes, and any widget that "
+               "printed an error instead of its data. Reports can be "
+               "re-checked in place without being re-sent.")
 # ---------------------------------------------------------------------------
 
 

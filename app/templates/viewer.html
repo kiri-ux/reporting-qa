@@ -95,7 +95,8 @@
                 {% endif %}
               </span>
               <span>{{ c.label }}{% if c.state == 'skipped' %}
-                <i class="ckwhy">nothing to check against</i>{% endif %}</span>
+                <i class="ckwhy">{{ skip_why.get(c.key, 'nothing to check against') }}</i>
+                {% endif %}</span>
             </li>
           {% endfor %}
         </ul>
@@ -120,18 +121,24 @@
         {% endif %}
       </div>
     </form>
-    {% if rep.effective_severity == 'fail' and rep.review_state != 'waived' %}
-      <p class="sub" style="font-size:12px;margin-top:6px;max-width:46ch">
-        <b>Waive</b> sends it as it is - for a failure you have looked at and
-        decided not to fix. The finding stays on the record, but the report
-        stops holding up its partner's link.</p>
-    {% endif %}
+
     {% if rep.reviewed_at %}
       <p class="sub" style="font-size:12.5px;margin-top:8px">
         {{ rep.review_state|replace('_', ' ')|title }} by
         {{ rep.reviewed_by or 'someone' }},
         {{ rep.reviewed_at.strftime('%b %d at %H:%M') }} UTC.</p>
     {% endif %}
+
+    <h2 style="margin-top:22px">Re-run the checks</h2>
+    {# The findings on a report are whatever the rules said the day it arrived.
+       A deploy that fixes a rule does not reach back and fix them, so this is
+       how a report gets a second opinion without being re-sent. #}
+    <form method="post" action="/report/{{ rep.id }}/recheck">
+      <button class="mini">Check this file again</button>
+    </form>
+    <p class="sub" style="font-size:12px;margin-top:6px;max-width:46ch">
+      Re-reads the PDF already here with today's rules. Use it after a fix has
+      gone out. Accepted findings and the sign-off reset.</p>
 
     <h2 style="margin-top:22px">Replace the file</h2>
     {# Acrobat cannot edit a file that lives on a server. The round trip is

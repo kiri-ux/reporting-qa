@@ -6,23 +6,27 @@ last line ended on New Year's Eve 2025, and the July 2026 report was failed for
 not carrying it.
 """
 import datetime as dt
-import importlib
 
 import pytest
 
 
 @pytest.fixture()
-def db(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'t.db'}")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    from app import config as cfg_mod
-    importlib.reload(cfg_mod)
-    from app import db as db_mod
-    importlib.reload(db_mod)
-    db_mod.init_db()
-    s = db_mod.SessionLocal()
+def db(tmp_path):
+    """A throwaway database built from the live metadata.
+
+    Reloading app.db here would re-register its mappers, and every test that
+    ran afterwards without reloading would fail to resolve 'Batch'. Building a
+    second engine off the same Base leaves the module alone.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base
+    engine = create_engine(f"sqlite:///{tmp_path/'t.db'}")
+    Base.metadata.create_all(engine)
+    s = sessionmaker(bind=engine)()
     yield s
     s.close()
+    engine.dispose()
 
 
 CLIENT = "Ashley HomeStore - Blacksburg, Virginia"
