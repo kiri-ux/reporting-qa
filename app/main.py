@@ -649,6 +649,7 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     rep.review_state = state
     rep.reviewed_by = who.strip()
     rep.reviewed_at = dt.datetime.utcnow() if state != "new" else None
+    rep.signoff_cleared_at = None        # a fresh decision, whatever went before
     db.commit()
     back = request.headers.get("referer") or "/cycle"
     return RedirectResponse(back, status_code=303)

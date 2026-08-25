@@ -501,6 +501,17 @@ def check_geofence_names(ctx) -> list[dict]:
                f"latitude or longitude. Expected if the fence was built from an address list.")]
 
 
+def _product_trace(expected: set, found: set) -> list[tuple[str, str]]:
+    """Both full lists, behind Investigate.
+
+    They belong somewhere - "why is that expected?" is a fair question - just
+    not on the line that is supposed to name the problem.
+    """
+    return [("Live orders say", ", ".join(sorted(expected)) or "nothing"),
+            ("Detected on the report", ", ".join(sorted(found)) or "nothing"),
+            ("Both agree on", ", ".join(sorted(expected & found)) or "nothing")]
+
+
 def check_products(ctx) -> list[dict]:
     """Compare the products on the report against the products the client's live
     orders say should be there. Skips silently when no order list is loaded."""
@@ -510,21 +521,23 @@ def check_products(ctx) -> list[dict]:
     found = ctx["products"]
     expected = {p for p in expected if p not in NOT_IN_MONTHLY_REPORT}
 
+    # THE FINDING NAMES THE DIFFERENCE, NOTHING ELSE.
+    #
+    # It used to print both full lists and leave you to subtract them - four
+    # product names to read before you could see which one was the problem, on
+    # a line whose whole job was to name it. The products that matched are not
+    # what anybody is looking for here.
     out = []
     missing = sorted(expected - found)
     if missing:
         out.append(_f("product_missing", "fail",
-                      f"{len(missing)} product{'s' if len(missing) > 1 else ''} on the order "
-                      f"but not on the report",
-                      "Expected from live orders and absent here: " + ", ".join(missing) +
-                      ". On the report: " + (", ".join(sorted(found)) or "nothing detected") + "."))
+                      "Ordered but not on the report: " + ", ".join(missing),
+                      "", trace=_product_trace(expected, found)))
     rogue = sorted(found - expected)
     if rogue and expected:
         out.append(_f("product_rogue", "fail",
-                      f"{len(rogue)} product{'s' if len(rogue) > 1 else ''} on the report "
-                      f"with no live order",
-                      "On the report but not on any qualifying order: " + ", ".join(rogue) +
-                      ". Expected: " + (", ".join(sorted(expected)) or "none") + "."))
+                      "On the report with no live order: " + ", ".join(rogue),
+                      "", trace=_product_trace(expected, found)))
     # NOTHING IS RAISED WHEN THEY MATCH.
     #
     # An "everything is fine" line read as an accusation on a narrow screen -

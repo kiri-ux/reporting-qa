@@ -448,3 +448,50 @@ def test_the_ctr_side_still_excludes_youtube():
     assert not CLICKS_EXCLUDED.search("Acme - Performance Max")
     for both in ("Acme - AI CTV", "Acme - Retargeting OTT"):
         assert CTR_EXCLUDED.search(both) and CLICKS_EXCLUDED.search(both)
+
+
+# ------------------------------------------------------------- the pulled sign-off
+#
+# "Why does this one have a k if it's not reviewed?" - because a re-check found
+# a new failure, pulled the sign-off, and left the reviewer's name printed
+# beside a report in the unreviewed state. The name has to survive (somebody
+# has to be told whose sign-off went) but it must not read as a sign-off.
+import datetime as _dt
+
+from app.db import Report as _Report
+
+
+def _signed(name="k", state="reviewed"):
+    r = _Report(client="Awaken Bakery", filename="x.pdf", period="2026-07")
+    r.review_state = state
+    r.reviewed_by = name
+    r.reviewed_at = _dt.datetime(2026, 8, 20)
+    return r
+
+
+def test_a_standing_signoff_shows_the_name():
+    assert _signed().signed_off_by == "k"
+    assert _signed(state="waived").signed_off_by == "k"
+    assert _signed(state="needs_fix").signed_off_by == "k"
+
+
+def test_a_pulled_signoff_shows_no_name():
+    r = _signed()
+    r.review_state = "new"
+    r.reviewed_at = None
+    r.signoff_cleared_at = _dt.datetime(2026, 8, 25)
+    assert r.signed_off_by == ""
+    assert "k signed this off" in r.signoff_pulled
+
+
+def test_a_report_nobody_ever_signed_says_nothing():
+    r = _Report(client="x", filename="x.pdf", period="2026-07")
+    assert r.signed_off_by == "" and r.signoff_pulled == ""
+
+
+def test_the_recheck_marks_the_pull_rather_than_erasing_who():
+    from app.recheck import _new_failures
+    old = [{"code": "a", "title": "One"}]
+    new = [{"code": "a", "title": "One"}, {"code": "b", "title": "Two",
+                                           "severity": "fail"}]
+    assert _new_failures(old, [], new) == ["Two"]

@@ -272,8 +272,10 @@
                thing wrong, which is the opposite of what it means. #}
             {% set open = e.report.open_findings %}
             {% if open %}
-              {% for f in open[:3] %}{{ f.title or f.detail }}{% if f.where %}
-                <span class="wpill">{{ f.where }}</span>{% endif %}<br>{% endfor %}
+              {# No page reference here. This column is for deciding which
+                 reports to open; the page number only matters once you have
+                 opened one, and it is on the report page where it is useful. #}
+              {% for f in open[:3] %}{{ f.title or f.detail }}<br>{% endfor %}
               {% if open|length > 3 %}
                 <span class="acct">+{{ open|length - 3 }} more</span><br>{% endif %}
             {% elif e.report.acked %}
@@ -288,8 +290,14 @@
           {% else %}<span class="empty">Not received</span>{% endif %}
         </td>
         <td class="nw">{{ e.reporter }}
-          {% if e.report and e.report.reviewed_by %}<br>
-            <span class="acct">{{ e.report.reviewed_by }}</span>{% endif %}</td>
+          {# Only a sign-off that still stands. The name outlives a re-check
+             that pulled it, so that the person can be told - printing it
+             regardless put an initial beside a report nobody had reviewed. #}
+          {% if e.report and e.report.signed_off_by %}<br>
+            <span class="acct">{{ e.report.signed_off_by }}</span>{% endif %}
+          {% if e.report and e.report.signoff_pulled %}<br>
+            <span class="pendtag" title="{{ e.report.signoff_pulled }}">sign-off pulled</span>
+          {% endif %}</td>
         <td class="nw">
           {% if not e.report %}
             {# Some reports never come through the feed - pulled by hand, sent
@@ -314,7 +322,7 @@
           <a class="pill pdf" href="/report/{{ e.report.id }}/view">View PDF</a>
           <form method="post" action="/report/{{ e.report.id }}/review" class="signoff">
             <input type="text" name="who" placeholder="Your name" size="10"
-                   value="{{ e.report.reviewed_by }}">
+                   value="{{ e.report.signed_off_by }}">
             <button class="mini ok" name="state" value="reviewed"
                     {% if e.report.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
             <button class="mini warn" name="state" value="needs_fix"

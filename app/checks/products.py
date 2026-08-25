@@ -64,6 +64,11 @@ ORDER_PRODUCT_MAP = {
     "native display ads": "Native Display",
     "display ads": "Display",
     "social mirror ads": "Social Mirror",
+    # Sold as its own line item, and the report gives it its own widgets, so it
+    # is its own product on both sides. Read as plain Social Mirror it went
+    # missing from the expected list entirely.
+    "social mirror ctv ads": "Social Mirror CTV",
+    "social mirror ctv": "Social Mirror CTV",
     "video ads": "Video",
     "online audio ads": "Online Audio",
     "connected tv ads": "CTV",
@@ -95,6 +100,35 @@ ORDER_PRODUCT_MAP = {
 # Products that never appear in the standard monthly report, so their absence is
 # not a finding. SEO is delivered as its own report.
 NOT_IN_MONTHLY_REPORT = {"SEO"}
+
+# What the name STARTS with, when the exact name is not in the map above. The
+# IO tool grows new spellings faster than anybody updates a dictionary -
+# "TikTok Display & Video Ads", "Digital Out-Of-Home (DOOH) Display & Video
+# Ads" - and every one of them ends in a format the generic keys match. Read
+# left to right and the answer is never in doubt.
+#
+# Order matters: the longer name first wherever one leads with the other
+# ("social mirror ctv" before "social mirror", "connected tv" before "ctv").
+PRODUCT_LEADS: list[tuple[str, str]] = [
+    ("DOOH", r"(?:digital out of home|dooh)\b"),
+    ("Mobile Conquesting", r"mobile conquesting\b"),
+    ("Native Display", r"native display\b"),
+    ("Performance Max", r"performance max\b"),
+    ("Social Mirror CTV", r"social mirror ctv\b"),
+    ("Social Mirror", r"social mirror\b"),
+    ("Online Audio", r"online audio\b"),
+    ("CTV", r"(?:amazon premium|connected tv|ctv)\b"),
+    ("YouTube", r"youtube\+?\b"),
+    ("TikTok", r"tiktok\b"),
+    ("Meta", r"(?:meta|facebook|instagram)\b"),
+    ("PPC", r"(?:pay per click|ppc|google ads)\b"),
+    ("SEO", r"(?:search engine optimization|seo)\b"),
+    ("Live Chat", r"live chat\b"),
+    ("Video", r"video\b"),
+    ("Display", r"display\b"),
+    ("Online Audio", r"audio\b"),
+]
+
 
 
 PUNCT = re.compile(r"[^a-z0-9+]+")
@@ -128,6 +162,15 @@ def map_order_product(name: str) -> str | None:
     flat = {_flat(k): v for k, v in ORDER_PRODUCT_MAP.items()}
     if key in flat:
         return flat[key]
+
+    # The product LEADS the name; whatever follows is the format it is sold in.
+    # "TikTok Display & Video Ads" is TikTok, and no amount of matching inside
+    # the tail gets that right, because "video ads" really is in there. So the
+    # opening words are read on their own, before anything else is tried.
+    for product, rx in PRODUCT_LEADS:
+        if re.match(rx, key):
+            return product
+
     # Earliest match wins, longest breaks the tie. Specificity is not length:
     # "DOOH Display & Video Ads" contains both "dooh" and "video ads", and
     # sorting by length alone handed a billboard order to Video. The product

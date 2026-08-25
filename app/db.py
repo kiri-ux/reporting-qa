@@ -91,6 +91,11 @@ class Report(Base):
     reviewed_by: Mapped[str] = mapped_column(String(128), default="")
     reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     review_note: Mapped[str] = mapped_column(Text, default="")
+    # When a re-check pulled a sign-off because a new failure appeared. The
+    # name stays on the row - somebody has to be told - but the report is back
+    # to unreviewed, and showing the name as though it were still signed is how
+    # a report reads as reviewed when nobody has read this answer.
+    signoff_cleared_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # Indexes of findings a person has looked at and accepted. The finding
     # stays on the report - it is a note about a known quirk, not a mistake -
     # but it stops counting against the severity.
@@ -113,6 +118,26 @@ class Report(Base):
     pending_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
+
+    @property
+    def signed_off_by(self) -> str:
+        """The name to show as having signed this off, or "".
+
+        Only when the sign-off still stands. `reviewed_by` outlives a reset so
+        the person can be told, and printing it regardless put a reviewer's
+        initial beside a report in the unreviewed state.
+        """
+        if self.review_state in ("reviewed", "waived", "needs_fix"):
+            return self.reviewed_by or ""
+        return ""
+
+    @property
+    def signoff_pulled(self) -> str:
+        """Why this report went back to unreviewed, or ""."""
+        if self.review_state == "new" and self.signoff_cleared_at and self.reviewed_by:
+            return (f"{self.reviewed_by} signed this off, then a re-check found a "
+                    f"failure that was not there at the time")
+        return ""
 
     @property
     def has_pending(self) -> bool:
@@ -354,6 +379,9 @@ class OrderSync(Base):
     # rows; holding a browser request open for that is what made the page hang.
     state: Mapped[str] = mapped_column(String(16), default="done")
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Which version of the product mapping read this export. An unchanged file
+    # still has to be read again when the code interpreting it changes.
+    map_version: Mapped[str] = mapped_column(String(32), default="")
 
 
 # --------------------------------------------------------------------------
@@ -395,6 +423,8 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
     ("order_sync", "started_at", "TIMESTAMP"),
+    ("order_sync", "map_version", "VARCHAR(32) DEFAULT '' NOT NULL"),
+    ("reports", "signoff_cleared_at", "TIMESTAMP"),
 ]
 
 

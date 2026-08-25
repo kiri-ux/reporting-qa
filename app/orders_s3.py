@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import OrderSync
 from .roster import import_orders
+from .version import product_map_version
 
 
 class CredentialsMissing(RuntimeError):
@@ -200,7 +201,18 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     if not settings.s3_configured:
         return _fail(db, "", "No S3 bucket configured.", None)
 
-    if not force and prev and prev.ok:
+    # "UNCHANGED" IS ABOUT THE ANSWER, NOT THE FILE.
+    #
+    # The export is not stored; every line item is mapped to a product on the
+    # way in and only the product is kept. So when the mapping code is fixed,
+    # the orders already loaded still carry the old answer - and the ETag test
+    # below, doing exactly what it was built to do, means the file is never
+    # read again to correct them. A live TikTok order sat on the board as a
+    # Video order for that reason. The mapping is part of the input.
+    mapv = product_map_version()
+    remap = bool(prev and prev.ok and (prev.map_version or "") != mapv)
+
+    if not force and not remap and prev and prev.ok:
         age = (dt.datetime.utcnow() - prev.synced_at).total_seconds() / 60
         if age < settings.orders_refresh_minutes:
             return prev
@@ -212,7 +224,7 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     except Exception as exc:
         return _fail(db, source, f"Could not reach S3: {exc}", prev)
 
-    if not force and prev and prev.ok and prev.etag == etag:
+    if not force and not remap and prev and prev.ok and prev.etag == etag:
         prev.synced_at = dt.datetime.utcnow()          # unchanged, just touch it
         db.commit()
         return prev
@@ -249,8 +261,11 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
             # only sign that somebody's order headers are out of date.
             msg += (f", {result['header_overruled']:,} line item(s) kept on "
                     f"their own status against an order header that disagreed")
+    if remap:
+        msg += ", re-read because the product mapping changed"
     rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],
                     etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + ".",
+                    map_version=mapv,
                     guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {})
     db.add(rec); db.commit()
     if tmpdir:

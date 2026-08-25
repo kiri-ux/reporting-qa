@@ -91,3 +91,83 @@ def test_every_product_on_a_real_order_maps_to_something():
                  "Video Ads", "Digital Out-Of-Home (DOOH) Display & Video Ads",
                  "YouTube+ Video Ads", "Meta Display & Video Ads"):
         assert m(name) is not None, name
+
+
+# ------------------------------------------------------------ SKyPAC, order 51251
+#
+# Two live line items - "TikTok Display & Video Ads" and "YouTube+ Video Ads" -
+# and the board said the client was running Video. Nothing in the export says
+# Video; the word is in the FORMAT half of both names. The report was then
+# failed twice: once for a Video product that did not exist, and once for the
+# TikTok and YouTube that did.
+def test_the_product_leads_the_name_and_the_format_follows_it():
+    assert m("TikTok Display & Video Ads") == "TikTok"
+    assert m("YouTube+ Video Ads") == "YouTube"
+    assert m("Meta Display & Video Ads") == "Meta"
+    assert m("Mobile Conquesting Display & Video Ads") == "Mobile Conquesting"
+
+
+def test_skypacs_live_line_items_produce_no_phantom_video():
+    live = ["TikTok Display & Video Ads", "YouTube+ Video Ads",
+            "Social Mirror Ads", "Social Mirror CTV Ads"]
+    assert {m(x) for x in live} == {"TikTok", "YouTube", "Social Mirror",
+                                    "Social Mirror CTV"}
+
+
+def test_social_mirror_ctv_is_its_own_product():
+    """It is its own line item to order and its own widget on the report.
+
+    Read as plain Social Mirror it vanished from the expected list, and the
+    report's Social Mirror CTV pages came out as a product nobody had bought.
+    """
+    assert m("Social Mirror CTV Ads") == "Social Mirror CTV"
+    assert m("Social Mirror Ads") == "Social Mirror"
+
+
+def test_an_unseen_format_tail_does_not_change_the_product():
+    """The IO tool grows spellings faster than any dictionary is updated."""
+    for tail in ("", " Ads", " Display Ads", " Display & Video Ads",
+                 " Video Ads", " Display, Video & Audio Ads"):
+        assert m("TikTok" + tail) == "TikTok", tail
+        assert m("Native Display" + tail) == "Native Display", tail
+
+
+# ------------------------------------------------- what the finding actually says
+from app.checks.rules import check_products
+
+
+def _ctx(expected, found):
+    return {"expected_products": set(expected), "products": set(found)}
+
+
+def test_the_finding_names_only_the_difference():
+    """It printed both full lists and left you to subtract them.
+
+    "Expected from live orders and absent here: Video. On the report: Social
+    Mirror, Social Mirror CTV, TikTok, YouTube." - five product names to read
+    before you can see that the answer is Video.
+    """
+    out = check_products(_ctx(["Social Mirror", "Video"],
+                              ["Social Mirror", "TikTok"]))
+    titles = [f["title"] for f in out]
+    assert "Ordered but not on the report: Video" in titles
+    assert "On the report with no live order: TikTok" in titles
+    # The products that matched are not what anybody is reading this line for.
+    assert not any("Social Mirror" in t for t in titles)
+
+
+def test_the_full_lists_are_still_there_behind_investigate():
+    """"Why is that expected?" is a fair question - just not on the line whose
+    job is to name the problem."""
+    out = check_products(_ctx(["Video"], ["TikTok"]))
+    trace = {r["label"]: r["value"] for r in out[0]["trace"]}
+    assert trace["Live orders say"] == "Video"
+    assert trace["Detected on the report"] == "TikTok"
+
+
+def test_a_matching_report_raises_nothing():
+    assert check_products(_ctx(["TikTok", "YouTube"], ["TikTok", "YouTube"])) == []
+
+
+def test_no_order_list_means_no_claim():
+    assert check_products({"expected_products": None, "products": {"Video"}}) == []

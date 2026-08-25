@@ -126,7 +126,7 @@
       {# The name sits on its own line so the three verdicts stay on one row.
          Wrapping split them two-and-one, which read as though Waive belonged
          to something else. #}
-      <input type="text" name="who" placeholder="Your name" value="{{ rep.reviewed_by }}">
+      <input type="text" name="who" placeholder="Your name" value="{{ rep.signed_off_by }}">
       <div class="verdicts">
         <button class="mini ok" name="state" value="reviewed"
                 {% if rep.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
@@ -145,6 +145,11 @@
         {{ rep.review_state|replace('_', ' ')|title }} by
         {{ rep.reviewed_by or 'someone' }},
         {{ rep.reviewed_at|et('%b %-d at %-I:%M %p') }}.</p>
+    {% endif %}
+
+    {% if rep.signoff_pulled %}
+      <p class="sub" style="font-size:12.5px;margin-top:8px">
+        {{ rep.signoff_pulled }}. It needs signing off again.</p>
     {% endif %}
 
     {% if rep.has_pending %}

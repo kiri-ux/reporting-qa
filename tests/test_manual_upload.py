@@ -236,3 +236,26 @@ def test_something_that_is_not_a_pdf_is_refused(client):
                      "kind": "monthly"},
                files={"file": ("notes.txt", b"not a pdf at all", "text/plain")})
     assert r.status_code == 400
+
+
+# ------------------------------------------------------ the pages still render
+def test_the_cycle_board_and_a_report_page_render_after_a_pulled_signoff(client):
+    """A pulled sign-off touches both templates. A NameError in one of them is
+    a 500 on the page somebody works from all day."""
+    import datetime as _dt
+    c, (db, dbm, imod) = client
+    rep_id = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0].id
+    r = db.get(dbm.Report, rep_id)
+    r.review_state, r.reviewed_by = "new", "k"
+    r.signoff_cleared_at = _dt.datetime(2026, 8, 25)
+    db.commit()
+
+    page = c.get(f"/report/{rep_id}/view")
+    assert page.status_code == 200
+    assert "k signed this off" in page.text
+
+    board = c.get("/cycle")
+    assert board.status_code == 200
+    assert "sign-off pulled" in board.text
+    # And the name is not sitting in the reviewer column as though it stood.
+    assert ">k</span>" not in board.text

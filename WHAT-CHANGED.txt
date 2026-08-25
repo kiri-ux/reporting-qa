@@ -1,94 +1,105 @@
-build 2026.08.25-36
+build 2026.08.25-37
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
 app/db.py
 app/main.py
-app/ingest.py
-app/checks/rules.py
+app/recheck.py
+app/orders_io.py
+app/orders_s3.py
 app/checks/products.py
+app/checks/rules.py
 app/templates/cycle.html
 app/templates/viewer.html
-tests/test_manual_upload.py
+tests/test_order_remap.py     (new)
 tests/test_product_map.py
 tests/test_recheck.py
-tests/test_rules.py
+tests/test_manual_upload.py
 
 
-1. Upload a report by hand to an order that is still pending
-------------------------------------------------------------
-Every "Not received" row on the cycle board now has an Upload button. Pick a
-PDF and it lands against that order the same as a mailed one: checked, scored,
-on the board, openable. It is stamped source="manual" so the tool knows a
-person put it there.
+1. Why the product error kept coming back after I "fixed" it
+--------------------------------------------------------------
+This is the important one, and it's worse than it looked.
 
-The file is renamed to the name the order says it should have, so a hand upload
-does not break folder matching or delivery later.
+The order export is not stored. Every line item is turned into a product name
+on the way in and only the product is kept. So fixing the mapping code does
+nothing for the orders already in the database - and the S3 sync skips any
+file whose ETag has not changed, so the export is never read again to correct
+them. The wrong answer stands until somebody happens to upload a new export.
 
+That is why 52753 still said DOOH after the DOOH fix shipped. The code was
+right; the data it was reading had been mapped by the old code.
 
-2. The feed no longer quietly overwrites your work
----------------------------------------------------
-Before, a second PDF for the same client and month replaced the first one on
-disk. If you had already reviewed that report, or uploaded it yourself, it was
-gone and the findings were re-run against a file you never chose.
-
-Now a report is protected once it is either:
-  - reviewed or waived (signed off by somebody), or
-  - uploaded by hand.
-
-A new file arriving for a protected report is held to one side instead. The
-report page shows a block saying a new file came in, when, and what it was
-called, with three things you can do:
-
-  Open it        - view the waiting PDF before deciding
-  Use the new file - swap it in, re-check, and clear the sign-off
-  Keep this one    - throw the new file away
-
-Unprotected reports still get replaced automatically, as before. Nothing about
-the normal path changed.
-
-Under the hood this needed a fix in ingest: a batch that coalesces a whole
-market writes several PDFs at once, and writing straight to the final filename
-overwrote a copy already sitting there - including, in one case, one that had
-been signed off. Files now land under a unique temporary name and are only
-moved into place once it is clear they are allowed to.
+Fixed by making the mapping part of what "unchanged" means. The sync now
+records which version of the mapping read the export, and re-reads it when
+that version moves - automatically, in the background, on the first deploy
+after a mapping change. After a re-read, reports for any client whose product
+set actually moved are queued for a re-check. Only those clients: restamping
+everything would re-read every PDF in the cycle daily for the same answer.
 
 
-3. YouTube clicks - false positive, fixed
+2. SKyPAC, order 51251 - no Video anywhere
 -------------------------------------------
-"8 clicks unaccounted for" was wrong. The CTR tile and the CLICKS tile do not
-filter the same way, and I had them sharing one filter.
+Two live line items: "TikTok Display & Video Ads" and "YouTube+ Video Ads".
+Neither is a Video product. The words "Video Ads" are in the FORMAT half of
+both names, and the matcher was finding them there.
 
-  CTR tile:    excludes CTV, OTT, YouTube, Performance Max
-  Clicks tile: excludes CTV and OTT only
+The rule now is that the product LEADS the name and everything after it is the
+format it is sold in. No amount of matching inside the tail gets "TikTok
+Display & Video Ads" right, because "video ads" really is in there.
 
-Service One settles it: line items 3,111, tile 3,008, difference 103. The CTV
-and OTT lines carry 61 + 41 + 1 + 0 = 103 exactly. The YouTube+ line's 8 clicks
-are in the tile, which is why they looked unaccounted for.
+Also on that order: "Social Mirror CTV Ads" was not being mapped at all, so it
+dropped out of the expected list and the report's Social Mirror CTV pages came
+out as a product nobody had bought. It is its own line item to order and its
+own widget on the report, so it is now its own product on both sides.
 
+SKyPAC's four live line items now come out as TikTok, YouTube, Social Mirror,
+Social Mirror CTV - which is exactly what the report carries. No finding.
 
-4. DOOH orders read as Video - false negative, fixed
-------------------------------------------------------
-Order 52753 reported "2 products on the report with no live order: DOOH,
-YouTube" when the DOOH order was right there.
-
-The IO tool writes DOOH as "Digital Out-Of-Home (DOOH) Display & Video Ads".
-The hyphens and brackets meant the DOOH key never matched, and the generic
-"video ads" key matched inside the "Display & Video Ads" tail - so a billboard
-order came through as Video. That double-counted Video and left the report's
-real DOOH pages looking like a product nobody ordered.
-
-Three fixes in products.py:
-  - punctuation is flattened before matching, so hyphens and brackets cannot
-    hide a product name
-  - added the plain "digital out of home", "dooh", "connected tv" and "ctv"
-    spellings
-  - when a name contains two product words, the earliest one wins rather than
-    the longest. "DOOH Display & Video Ads" leads with the product; "Display &
-    Video Ads" is the format that follows it.
-
-Verified against all six line items of order 52753 and 20 product names in
-total: no mismatches.
+There is a test that walks a product name through six different format tails
+("", " Ads", " Display Ads", " Display & Video Ads", ...) and expects the same
+answer each time, because the IO tool grows new spellings faster than anybody
+updates a dictionary.
 
 
-Tests: 265 passing.
+3. The findings say only what is wrong
+----------------------------------------
+Before:
+  1 product on the order but not on the report
+  Expected from live orders and absent here: Video. On the report: Social
+  Mirror, Social Mirror CTV, TikTok, YouTube.
+
+After:
+  Ordered but not on the report: Video
+  On the report with no live order: TikTok, YouTube
+
+Five product names to read before you could find the one that mattered. The
+two full lists are still there under Investigate, along with what both sides
+agree on, because "why is that expected?" is a fair question - just not on the
+line whose job is to name the problem.
+
+
+4. The stray "k" on an unreviewed row
+---------------------------------------
+Paulina's row showed "k" under the reporter and "k" in the sign-off box, on a
+report in the ERRORS state with all three buttons live.
+
+What happened: k signed it off, a re-check found a failure that was not there
+when she signed, and the sign-off was correctly pulled - but her name stayed
+printed as though it still stood.
+
+The name has to survive, because somebody has to be told whose sign-off went.
+So it is now marked as pulled instead: the row shows a "sign-off pulled" tag
+that says on hover who signed it and why it went, the name is gone from the
+reviewer column and the input box, and the report page says the same thing in
+a sentence. Signing off again clears it.
+
+
+5. No page reference on the board
+-----------------------------------
+The "p6 - Site and App Performance" pill is off the cycle board. That column is
+for deciding which reports to open; the page number matters once you have
+opened one, and it is still on the report page where it is useful.
+
+
+Tests: 286 passing (up from 265 - 21 new).

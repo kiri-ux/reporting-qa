@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 
 from dateutil import parser as dp
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .checks.products import map_order_product
@@ -244,6 +245,13 @@ def import_io_export(db: Session, sources, period: str | None = None,
         return {"kept": 0, "clients": 0, "skipped": {}, "guidance": {},
                 "rows_read": 0, "duplicate_rows": 0, "files": len(sources)}
 
+    # What the old list said, before it is thrown away. A report's product
+    # check is an answer about the ORDERS as much as about the PDF, so a client
+    # whose product set just changed is carrying a stale verdict - and nothing
+    # else would ever notice, because the PDF has not changed and the checking
+    # code has not changed either.
+    before = _products_by_client(db)
+
     if replace:
         db.query(OrderLine).delete()
 
@@ -279,12 +287,56 @@ def import_io_export(db: Session, sources, period: str | None = None,
         ))
     db.commit()
 
+    restamped = _restamp_changed_clients(db, before)
+
     guidance = _export_guidance(_date(date_min), _date(date_max), order_start_min)
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,
-            "header_overruled": header_overruled,
+            "header_overruled": header_overruled, "restamped": restamped,
             "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}
+
+
+def _norm_client(name: str) -> str:
+    """Loose enough that one client is one client.
+
+    "Service One Credit Union (1)" is a browser's second download of the same
+    report, not a second credit union - and a comparison that reads them as two
+    quietly skips the report that needed re-reading.
+    """
+    s = re.sub(r"\s*\(\d+\)\s*$", "", (name or "").strip())
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def _products_by_client(db: Session) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for line in db.scalars(select(OrderLine)).all():
+        out.setdefault(_norm_client(line.client), set()).add(line.product or "")
+    return out
+
+
+def _restamp_changed_clients(db: Session, before: dict[str, set[str]]) -> int:
+    """Queue a re-check for every report whose client's products moved.
+
+    Only the ones that moved. Clearing the stamp on all twelve hundred reports
+    after every sync would re-read every PDF in the cycle daily, for an answer
+    that is the same one it already had on all but a handful of them.
+    """
+    from .db import Report
+
+    after = _products_by_client(db)
+    changed = {c for c in set(before) | set(after)
+               if before.get(c, set()) != after.get(c, set())}
+    if not changed:
+        return 0
+    n = 0
+    for rep in db.scalars(select(Report).where(Report.rules_version != "")).all():
+        if _norm_client(rep.client) in changed:
+            rep.rules_version = ""          # the sweep picks it up from here
+            n += 1
+    if n:
+        db.commit()
+    return n
 
 
 def guidance_from_loaded(db: Session) -> dict:

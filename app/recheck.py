@@ -127,6 +127,10 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
         # leaving the sign-off would ship a report nobody has actually read.
         rep.review_state = "new"
         rep.reviewed_at = None
+        # The name stays - somebody has to be told whose sign-off went - but it
+        # is marked as pulled, so the row stops showing an initial beside a
+        # report that is back to unreviewed.
+        rep.signoff_cleared_at = dt.datetime.utcnow()
         reset = True
     db.commit()
     return {"ok": True, "was": was_sev, "now": rep.severity,
@@ -211,6 +215,43 @@ def sweep_once(db: Session, limit: int = BATCH, *, scoped: bool = True,
     return done
 
 
+def _remap_orders_if_stale() -> None:
+    """Re-read the order export when the code that interprets it has changed.
+
+    Reports get this treatment already: a rule changes, the reports it judged
+    are re-read. The order list needs the same and did not have it - the export
+    is parsed into products once and only the products are kept, so a mapping
+    fix left every loaded order carrying the old answer, and the ETag test
+    meant the file was never read again to correct it.
+
+    Best effort. No S3, no credentials, someone else already syncing - none of
+    those are this thread's problem, and none of them should stop the report
+    sweep that runs after it.
+    """
+    from .db import OrderSync
+    from .version import product_map_version
+
+    db = SessionLocal()
+    try:
+        prev = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+                          .order_by(OrderSync.id.desc()).limit(1)).first()
+        if prev is None or not prev.ok:
+            return                        # nothing loaded, so nothing is stale
+        if (prev.map_version or "") == product_map_version():
+            return
+        from .orders_s3 import begin_sync, sync as sync_orders
+        claim = begin_sync(db)
+        if claim is None:
+            return                        # the other worker has it
+        log.info("re-reading the order export: the product mapping changed")
+        rec = sync_orders(db, force=True, claim_id=claim.id)
+        log.info("order re-read: %s", getattr(rec, "message", ""))
+    except Exception as exc:              # noqa: BLE001
+        log.warning("could not re-read the order export: %s", exc)
+    finally:
+        db.close()
+
+
 def start_sweeper() -> None:
     """Run the sweep in the background until nothing is stale.
 
@@ -227,6 +268,7 @@ def start_sweeper() -> None:
     def run():
         import time
         time.sleep(5)                     # let the first requests through
+        _remap_orders_if_stale()
         while True:
             db = SessionLocal()
             started = time.monotonic()
