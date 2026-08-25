@@ -12,12 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-23"
-BUILD_NOTES = ("Reports are re-checked automatically when the checking code "
-               "changes - no button needed. YouTube+ orders are no longer "
-               "filed under Video, which was failing those reports twice over. "
-               "A site clicking above 5% is flagged. See reports turns into "
-               "the way back out once it has done its job.")
+BUILD = "2026.08.25-24"
+BUILD_NOTES = ("Filter menus drop the count column where every count is 1, "
+               "which was the whole Partner list. Everything from -23: "
+               "automatic re-checking, the YouTube+ product fix, the 5% site "
+               "rule, and See reports turning into the way back out.")
 # ---------------------------------------------------------------------------
 
 

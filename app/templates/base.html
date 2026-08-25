@@ -425,6 +425,11 @@ body.fit .pdfwrap object{height:100%}
       btn.classList.toggle('set', chosen.length > 0);
     };
 
+    // The count is how many rows carry that value. On a Partner filter every
+    // partner appears exactly once, so it was a column of 1s that looked like
+    // it meant something. Show it only where it varies.
+    var informative = names.some(function (n) { return counts[n] !== 1; });
+
     names.forEach(function (n) {
       var row = document.createElement('label');
       row.className = 'multirow';
@@ -432,9 +437,12 @@ body.fit .pdfwrap object{height:100%}
       cb.type = 'checkbox'; cb.value = n;
       var txt = document.createElement('span');
       txt.textContent = n;
-      var ct = document.createElement('i');
-      ct.textContent = counts[n];
-      row.appendChild(cb); row.appendChild(txt); row.appendChild(ct);
+      row.appendChild(cb); row.appendChild(txt);
+      if (informative) {
+        var ct = document.createElement('i');
+        ct.textContent = counts[n];
+        row.appendChild(ct);
+      }
       menu.appendChild(row);
       cb.addEventListener('change', function () {
         var at = chosen.indexOf(n);

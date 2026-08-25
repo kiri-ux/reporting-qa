@@ -51,3 +51,33 @@ def test_is_seo_matches_what_the_order_export_actually_writes():
     assert is_seo("Search Engine Optimization+")
     assert is_seo("SEO")
     assert not is_seo("Social Mirror Ads")
+
+
+def test_a_filter_hides_its_count_column_when_every_count_is_one():
+    """On a Partner filter each partner appears exactly once, so the counts were
+    a column of 1s that looked like they meant something."""
+    base = (TPL / "base.html").read_text()
+    assert "var informative = names.some(" in base
+    assert "if (informative) {" in base
+
+
+def test_site_ctr_findings_are_absent_from_every_real_fixture():
+    """Asked directly: does the site/app CTR mismatch happen on live reports?
+
+    It does not. A hundred site rows across five real reports all print a CTR
+    that matches their own two columns. Only the assembled everything-sample
+    disagrees with itself, which is worth knowing before anyone raises it with
+    TapClicks.
+    """
+    from pathlib import Path as _P
+    from app.checks.parser import pdf_text
+    from app.checks.quality import site_rows
+
+    bad = {}
+    for f in sorted((_P(__file__).parent / "fixtures").glob("*.pdf")):
+        for _t, name, imps, clicks, printed in site_rows(pdf_text(f)):
+            if printed is None or not imps:
+                continue
+            if abs(clicks / imps * 100 - printed) > 0.05:
+                bad.setdefault(f.stem, []).append(name)
+    assert bad == {}, bad
