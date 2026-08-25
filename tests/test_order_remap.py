@@ -338,3 +338,126 @@ def test_a_repeated_column_still_reads_the_last_one():
     src = inspect.getsource(mod._open_source)
     assert "LAST ONE WINS" in src
     assert 'key = key + ".1"' not in src
+
+
+# ------------------------------------------- pacing: a full month vs the budget
+def test_the_spend_tiles_are_read_off_a_real_report():
+    """The Spend Overview prints a tile per product. Two tiles share a line -
+    "PPC Ad Cost" and "PPC Cost-Per-Click" - and their values share the line
+    below, so the first dollar amount is the cost-per-click as often as the
+    cost. The value belonging to a tile is the one nearest its own column."""
+    from pathlib import Path as _P
+    import pytest as _pt
+    sample = _P("/root/work/sample.txt")
+    if not sample.exists():
+        _pt.skip("everything-sample not present")
+    from app.checks.spend import report_spend, tile_value
+    got = report_spend(sample.read_text())
+    assert got["PPC"] == 4037.06
+    assert got["LinkedIn"] == 562.37
+    assert got["Performance Max"] == 7027.70
+    assert tile_value(sample.read_text(), "PPC Cost-Per-Click") == 0.96
+
+
+def test_half_a_months_budget_adrift_is_flagged():
+    from app.checks.rules import check_pacing
+    ctx = {"text": " PPC Ad Cost\n Amount spent\n $400.00\n", "is_lifetime": False,
+           "budgets": {"PPC": 1000.0}}
+    out = check_pacing(ctx)
+    assert len(out) == 1 and out[0]["severity"] == "warn"
+    assert "60% under budget" in out[0]["title"]
+
+
+def test_a_normal_month_says_nothing():
+    from app.checks.rules import check_pacing
+    for spent in ("$900.00", "$1,000.00", "$1,400.00"):
+        ctx = {"text": f" PPC Ad Cost\n Amount spent\n {spent}\n",
+               "is_lifetime": False, "budgets": {"PPC": 1000.0}}
+        assert check_pacing(ctx) == [], spent
+
+
+def test_overspending_by_half_is_flagged_too():
+    from app.checks.rules import check_pacing
+    ctx = {"text": " PPC Ad Cost\n Amount spent\n $1,600.00\n",
+           "is_lifetime": False, "budgets": {"PPC": 1000.0}}
+    out = check_pacing(ctx)
+    assert out and "60% over budget" in out[0]["title"]
+
+
+def test_a_lifetime_report_is_not_paced():
+    """It covers a campaign's whole flight, and a monthly budget says nothing
+    about that."""
+    from app.checks.rules import check_pacing, _rule_applies
+    ctx = {"text": " PPC Ad Cost\n x\n $10.00\n", "is_lifetime": True,
+           "budgets": {"PPC": 1000.0}}
+    assert check_pacing(ctx) == []
+    assert _rule_applies(check_pacing, ctx) is False
+
+
+def test_no_budget_loaded_means_no_claim():
+    from app.checks.rules import check_pacing, _rule_applies
+    ctx = {"text": " PPC Ad Cost\n x\n $10.00\n", "is_lifetime": False, "budgets": {}}
+    assert _rule_applies(check_pacing, ctx) is False
+
+
+def test_a_product_whose_spend_is_not_on_the_report_is_skipped():
+    """Most products print no spend at all. Comparing a budget against nothing
+    would fail every one of them."""
+    from app.checks.rules import check_pacing
+    ctx = {"text": "nothing here\n", "is_lifetime": False,
+           "budgets": {"Display": 1000.0}}
+    assert check_pacing(ctx) == []
+
+
+def test_budgets_are_summed_across_the_flights_that_ran(db):
+    from app.roster import budgets_for
+    db.add_all([
+        OrderLine(market="m", client="Two Flights", account_ids="1", product="PPC",
+                  live=True, budget=600, flights=[["2026-07-01", "2026-07-15"]]),
+        OrderLine(market="m", client="Two Flights", account_ids="1", product="PPC",
+                  live=True, budget=400, flights=[["2026-07-16", "2026-07-31"]]),
+        OrderLine(market="m", client="Two Flights", account_ids="1", product="PPC",
+                  live=True, budget=999, flights=[["2025-01-01", "2025-02-01"]]),
+        OrderLine(market="m", client="Two Flights", account_ids="1", product="Meta",
+                  live=False, budget=500, flights=[["2026-07-01", "2026-07-31"]]),
+    ])
+    db.commit()
+    got = budgets_for(db, "Two Flights", "1", period="2026-07")
+    assert got == {"PPC": 1000.0}, "paused lines and other months must not count"
+
+
+def test_a_line_with_no_budget_on_file_contributes_nothing(db):
+    """"No budget loaded" and "a budget of nothing" are different claims and
+    only one of them is true."""
+    from app.roster import budgets_for
+    db.add(OrderLine(market="m", client="No Budget", account_ids="2",
+                     product="PPC", live=True, budget=None,
+                     flights=[["2026-07-01", "2026-07-31"]]))
+    db.commit()
+    assert budgets_for(db, "No Budget", "2", period="2026-07") == {}
+
+
+def test_the_pull_range_is_per_partner_and_oldest_first(db):
+    """One date for 146 partners is why the guidance says 2018. Per partner,
+    almost none of them need it."""
+    import datetime as _d
+    db.add_all([
+        OrderLine(market="Recent Radio", client="a", account_ids="1", live=True,
+                  product="PPC", starts_on=_d.date(2026, 5, 1)),
+        OrderLine(market="Old Media", client="b", account_ids="2", live=True,
+                  product="PPC", starts_on=_d.date(2018, 3, 4)),
+        OrderLine(market="Old Media", client="c", account_ids="3", live=True,
+                  product="Meta", starts_on=_d.date(2026, 1, 1)),
+        # A finished line must not drag a partner's date backwards.
+        OrderLine(market="Recent Radio", client="d", account_ids="4", live=False,
+                  product="Meta", starts_on=_d.date(2011, 1, 1)),
+    ])
+    db.commit()
+
+    from app.main import pull_range_rows
+    got = pull_range_rows(db)
+    assert [(m, e.isoformat()) for m, e, _n in got] == [
+        ("Old Media", "2018-03-04"),
+        ("Recent Radio", "2026-05-01"),
+    ], "oldest first, and a finished line must not drag a partner back"
+    assert dict((m, n) for m, _e, n in got)["Old Media"] == 2

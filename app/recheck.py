@@ -95,8 +95,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     """Re-read this report's PDF with today's rules. Returns what changed."""
     from .checks.rules import run_all
     from .ingest import client_flight
-    from .roster import (expected_any, expected_products, expected_why,
-                     quiet_products)
+    from .roster import (budgets_for, expected_any, expected_products,
+                     expected_why, quiet_products)
 
     path = Path(rep.stored_path or "")
     if not path.exists():
@@ -110,6 +110,7 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     # The corner of page one, and which other markets print the same mark.
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
@@ -123,7 +124,7 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen)
+                     logo_known=logo_seen, budgets=budgets)
 
     was_sev = rep.severity
     old_findings, old_acked = list(rep.findings or []), list(rep.acked or [])
@@ -292,14 +293,24 @@ def start_sweeper() -> None:
     immediately, so the overlap costs a duplicate read at worst, never a wrong
     answer.
     """
-    if not settings.auto_recheck or _running.is_set():
+    if _running.is_set():
         return
     _running.set()
 
     def run():
         import time
         time.sleep(5)                     # let the first requests through
+        # OUTSIDE THE auto_recheck GATE, deliberately.
+        #
+        # This used to sit behind it, so on a deploy with the automatic report
+        # sweep turned off the order export was never re-read either - and the
+        # board went on answering from order data an older import produced,
+        # with nothing to show for it but the same product finding coming back.
+        # Re-reading the orders is not the same job as re-reading the PDFs.
         _remap_orders_if_stale()
+        if not settings.auto_recheck:
+            _running.clear()
+            return
         while True:
             db = SessionLocal()
             started = time.monotonic()

@@ -1,56 +1,75 @@
-build 2026.08.25-51
+build 2026.08.25-52
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/db.py
 app/main.py
-app/budgets.py            (new)
-app/orders_io.py
+app/ingest.py
+app/recheck.py
+app/roster.py
+app/checks/spend.py       (new)
+app/checks/rules.py
 app/templates/orders.html
 tests/test_order_remap.py
 
 
-Budgets, without re-pulling the whole export
-----------------------------------------------
-There is a BUDGETS panel on the Orders page now. Drop the Performance Max sheet
-in and it fills the money columns on the lines it names.
+1. Pacing: a full month against a full month's budget
+-------------------------------------------------------
+New check. It reads the spend the report itself prints and compares it to what
+the order says that product should spend in a month. More than 50% adrift
+either way is a warning:
 
-IT MERGES, IT DOES NOT REPLACE. That is the whole point and it is worth being
-explicit: your 368-row PMax file put through the normal import would have
-deleted every order for every other product on the board and left PMax
-standing. This one reads, matches and updates - it never deletes a row and
-never creates one, so dropping in a single-product sheet is safe.
+    PPC spend is 60% under budget
+    The report shows $400.00 against a monthly budget of $1,000.00. Half a
+    month's budget adrift is usually a reporting fault rather than a media one -
+    a wrong date range, a line item missing from the pull, or two flights added
+    together.
 
-  - Matched on line item id, falling back to order id.
-  - Reads Monthly Campaign Budget, and the per-product spend columns for Meta,
-    PPC and LinkedIn.
-  - Anything in the sheet that is not on the board yet is counted and reported
-    rather than quietly dropped - that is the sheet being ahead of the sync,
-    and it is worth seeing.
-  - Where one order has several flights, the last row wins. A client running
-    one product across two flights has two rows and the later one is what this
-    month is paced against.
+Where the numbers come from:
 
-Run against your file on a scratch database: 368 rows read, every one carrying
-a budget, matching correctly on both paths and leaving unrelated lines alone.
+  - Spend: the Spend Overview tiles - "PPC Ad Cost", "LinkedIn Ad Cost",
+    "Performance Max Cost". Read off the TILE rather than by adding up a cost
+    grid, because the grid is a top-N list on most reports so its total is not
+    the campaign's.
+  - Budget: Monthly Campaign Budget on the order, summed across the line items
+    that were actually running that month. Paused lines and other months do not
+    count.
 
+Four things it will not do:
 
-The display spelling of the export
-------------------------------------
-Your sheet uses the IO tool's display names - "Order's Status", "Client
-Business Unit", "Monthly Campaign Budget". The nightly S3 file uses snake_case.
-Same columns, and the reader only knew one spelling, so a perfectly good file
-would have been rejected with a confusing message about not looking like an
-export. It now takes either.
+  - A LIFETIME report is never paced. It covers a whole flight and a monthly
+    budget says nothing about it.
+  - A product whose spend the report does not print is skipped, not failed.
+    Most products print no spend at all.
+  - A line with no budget on file contributes nothing rather than zero. "No
+    budget loaded" and "a budget of nothing" are different claims and only one
+    of them is true.
+  - With no budgets loaded for a client the check shows as skipped.
 
-The main import also reads the four money columns when they are present, so
-when you do re-pull, the budgets come with it and the panel becomes a
-stopgap you no longer need.
-
-One thing this nearly broke, caught by a test: the export carries two
-`end_date` columns, and the second is the one that has always been read.
-Normalising the headers silently switched it to the first, which changed which
-rows survived the date filter. Last-one-wins is restored and pinned.
+One subtlety worth knowing about: two tiles share a line ("PPC Ad Cost" and
+"PPC Cost-Per-Click") and their values share the line underneath, so taking the
+first dollar amount gives the cost-per-click as often as the cost. The value is
+matched to its tile by COLUMN. Verified against the everything-sample: PPC
+$4,037.06, LinkedIn $562.37, Performance Max $7,027.70, and the cost-per-click
+correctly read as $0.96 rather than mistaken for a cost.
 
 
-Tests: 387 passing.
+2. Pull range by partner
+--------------------------
+Yes - and this is worth doing.
+
+TapClicks filters the export on the line item's START date, not on delivery, so
+one campaign that began in 2018 and is still running forces the whole range
+back to 2018. But that is one date for a hundred and forty-six partners, and
+almost none of them need it.
+
+There is a "Pull range by partner" link on the Orders page now. It gives, per
+partner, the earliest start date of a line item that is STILL RUNNING, oldest
+first, with a count of live line items. A campaign that finished in 2011 does
+not need to be in the pull and no longer sets anybody's date.
+
+Open it and the top few rows are the partners genuinely forcing an old range.
+Pull those on their own and the rest in a narrow window, and a daily sync stops
+being a couple of million rows.
+
+
+Tests: 397 passing.

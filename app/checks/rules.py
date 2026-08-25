@@ -627,6 +627,56 @@ def check_products(ctx) -> list[dict]:
 
 
 
+# HOW FAR OFF BUDGET IS WORTH SAYING SOMETHING ABOUT.
+#
+# Half. This is not a pacing tool - a campaign that underspends by 8% is a
+# media question and not this tool's business. Half the budget missing, or half
+# again over it, on a FULL month, is the shape of a reporting fault: a product
+# reported for the wrong date range, a line item missing from the pull, two
+# flights added together.
+PACING_BAND = 0.5
+
+
+def check_pacing(ctx) -> list[dict]:
+    """A full month's spend should look like a full month's budget.
+
+    Only whole months. A lifetime report covers a campaign's entire flight and
+    a monthly budget says nothing about it, and a report for a part-month would
+    be under by exactly the part that has not happened yet.
+    """
+    if ctx.get("is_lifetime"):
+        return []
+    budgets = ctx.get("budgets") or {}
+    if not budgets:
+        return []
+    from .spend import report_spend
+
+    spent = report_spend(ctx.get("text") or "")
+    out = []
+    for product, budget in sorted(budgets.items()):
+        if not budget or budget <= 0:
+            continue
+        got = spent.get(product)
+        if got is None:
+            continue                    # this report does not print its spend
+        ratio = got / budget
+        if abs(ratio - 1.0) < PACING_BAND:
+            continue
+        way = "under" if ratio < 1 else "over"
+        out.append(_f("pacing", "warn",
+                      f"{product} spend is {abs(1 - ratio) * 100:.0f}% {way} budget",
+                      f"The report shows ${got:,.2f} against a monthly budget of "
+                      f"${budget:,.2f}. Half a month's budget adrift is usually a "
+                      f"reporting fault rather than a media one - a wrong date "
+                      f"range, a line item missing from the pull, or two flights "
+                      f"added together.",
+                      [("Spend on the report", f"${got:,.2f}"),
+                       ("Monthly budget on the order", f"${budget:,.2f}"),
+                       ("That is", f"{ratio * 100:.0f}% of budget"),
+                       ("Flagged at", f"{PACING_BAND * 100:.0f}% either way")]))
+    return out
+
+
 def check_market_logo(ctx) -> list[dict]:
     """The corner of page one must not carry the reporting tool's own mark.
 
@@ -995,6 +1045,7 @@ CHECKS: list[tuple] = [
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
     (check_market_logo,    "Page one carries the partner's logo, not a generic one"),
+    (check_pacing,         "A full month's spend is close to a full month's budget"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
@@ -1058,6 +1109,10 @@ def _rule_applies(rule, ctx) -> bool:
         return ctx.get("expected_products") is not None
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
+    if name == "check_pacing":
+        # Needs a budget on the order AND a spend on the report. Most products
+        # print no spend at all, and most orders have no budget loaded yet.
+        return bool(ctx.get("budgets")) and not ctx.get("is_lifetime")
     if name == "check_market_logo":
         # Two ways to have nothing to say: the corner could not be read at
         # all, or nobody has ever marked the tool's default logo, so there
@@ -1149,7 +1204,7 @@ def run_all(path: Path, filename: str | None = None,
             expected_any: list | None = None,
             quiet_products: set | None = None,
             logo_generic: bool = False, logo_known: bool = False,
-            logo_hash: str = "") -> dict:
+            logo_hash: str = "", budgets: dict | None = None) -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
     # a finding say WHERE on a forty-one page report to look.
@@ -1170,6 +1225,8 @@ def run_all(path: Path, filename: str | None = None,
         # Neither expected nor a surprise.
         "quiet_products": quiet_products or set(),
         # Other markets whose reports carry this same header logo.
+        # What the order says each product should spend in a month.
+        "budgets": budgets or {},
         "logo_generic": bool(logo_generic),
         # Has anybody marked ANY logo as the default yet? Until somebody
         # has, this check has nothing to compare against and abstains.

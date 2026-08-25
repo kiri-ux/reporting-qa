@@ -1196,7 +1196,8 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     from .checks import run_all
     from .ingest import client_flight, open_batch
     from .roster import (attach_owners, expected_any, expected_products,
-                     expected_why, quiet_products)
+                     expected_why, quiet_products,
+                     budgets_for)
     from .version import rules_version as _rv
 
     blob = await file.read()
@@ -1233,6 +1234,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     why = expected_why(db, client, account_ids, period=period)
     any_of = expected_any(db, client, account_ids, period=period)
     quiet = quiet_products(db, client, account_ids, period=period)
+    budgets = budgets_for(db, client, account_ids, period=period)
     # The corner of page one, and which other markets print the same mark.
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
@@ -1247,7 +1249,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen)
+                     logo_known=logo_seen, budgets=budgets)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
@@ -1295,8 +1297,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     """
     from .checks import run_all
     from .ingest import client_flight
-    from .roster import (expected_any, expected_products, expected_why,
-                     quiet_products)
+    from .roster import (budgets_for, expected_any, expected_products,
+                     expected_why, quiet_products)
     from .version import rules_version as _rv
 
     rep = db.get(Report, report_id)
@@ -1338,6 +1340,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(target)
     logo_bad = is_generic(db, logo)
@@ -1348,7 +1351,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen)
+                     logo_known=logo_seen, budgets=budgets)
     rep.stored_path = str(target)
     rep.logo_hash = logo
     rep.pages = result["pages"]
@@ -1386,8 +1389,8 @@ async def replace_report(report_id: int, request: Request,
     from .checks import run_all
     from .checks.parser import meta_from_filename
     from .ingest import client_flight
-    from .roster import (expected_any, expected_products, expected_why,
-                     quiet_products)
+    from .roster import (budgets_for, expected_any, expected_products,
+                     expected_why, quiet_products)
 
     rep = db.get(Report, report_id)
     if not rep:
@@ -1419,6 +1422,7 @@ async def replace_report(report_id: int, request: Request,
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(path)
     logo_bad = is_generic(db, logo)
@@ -1430,7 +1434,7 @@ async def replace_report(report_id: int, request: Request,
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen)
+                     logo_known=logo_seen, budgets=budgets)
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",
@@ -1537,6 +1541,56 @@ async def partners_import(file: UploadFile = File(...), db: Session = Depends(ge
     from .partners import import_partners
     import_partners(db, await file.read())
     return RedirectResponse("/partners", status_code=303)
+
+
+def pull_range_rows(db: Session) -> list[tuple]:
+    """(partner, earliest start still running, live line items), oldest first.
+
+    Only lines that are STILL RUNNING. A campaign that finished in 2011 does
+    not need to be in the pull, and letting it set a partner's date is how one
+    dead line item keeps a daily sync at a couple of million rows.
+    """
+    rows = db.execute(
+        select(OrderLine.market,
+               func.min(OrderLine.starts_on),
+               func.count(OrderLine.id))
+        .where(OrderLine.live.is_(True))
+        .group_by(OrderLine.market)).all()
+    return sorted(((m, e, n) for m, e, n in rows),
+                  key=lambda r: (r[1] or dt.date.max, r[0] or ""))
+
+
+@app.get("/orders/pull-range.csv")
+def pull_range_csv(db: Session = Depends(get_db)):
+    """The earliest start date each partner's pull actually needs.
+
+    TapClicks filters the export on the line item's START date, not on
+    delivery, so a campaign that began in 2018 and is still running is only in
+    the file if the range reaches back to 2018. That is why the guidance says
+    2018 for the whole board - but it is one date for a hundred and forty-six
+    partners, and almost none of them need it.
+
+    Per partner, most of them need a range measured in months. Pull those
+    narrow and the handful of genuinely old ones on their own, and a daily sync
+    stops being a couple of million rows.
+    """
+    import csv as _csv
+    import io as _io
+
+    rows = pull_range_rows(db)
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(["Partner", "Pull from", "Live line items",
+                "Why", "Oldest still-running campaign"])
+    for market, earliest, n in rows:
+        w.writerow([market or "(no partner)",
+                    earliest.isoformat() if earliest else "",
+                    n,
+                    "the earliest start date of a line item still running",
+                    earliest.isoformat() if earliest else ""])
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition":
+                             'attachment; filename="pull-range-by-partner.csv"'})
 
 
 @app.post("/orders/budgets")

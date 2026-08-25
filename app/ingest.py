@@ -18,7 +18,8 @@ from .config import settings
 from .db import Batch, KnownLogo, Report
 from .notify import post_slack, send_digest
 from .roster import (attach_owners, completeness, expected_any,
-                     expected_products, expected_why, quiet_products)
+                     expected_products, expected_why, quiet_products,
+                     budgets_for)
 
 log = logging.getLogger("reportqa.ingest")
 
@@ -266,6 +267,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                               period=batch.period)
         quiet = quiet_products(db, meta_guess["client"], meta_guess["account_ids"],
                                period=batch.period)
+        budgets = budgets_for(db, meta_guess["client"], meta_guess["account_ids"],
+                              period=batch.period)
         # The corner of page one, and which other markets print the same
         # mark. Worked out here rather than inside the check because it takes
         # a database question, and a check is handed facts rather than going
@@ -282,7 +285,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen)
+                     logo_known=logo_seen, budgets=budgets)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},

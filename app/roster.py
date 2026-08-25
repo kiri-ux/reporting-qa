@@ -273,6 +273,28 @@ def quiet_products(db: Session, client: str, account_ids: str,
     return out
 
 
+def budgets_for(db: Session, client: str, account_ids: str,
+                period: str | None = None) -> dict:
+    """What each of this client's live products should spend in the month.
+
+    Summed across the line items that were actually running, because a client
+    running one product on two flights is buying both. A line with no budget
+    loaded contributes nothing rather than zero - "no budget on file" and "a
+    budget of nothing" are different claims and only one of them is true.
+    """
+    hit = client_lines(db, client, account_ids) or []
+    if period:
+        hit = [l for l in hit if _ran_during(l, period)]
+    out: dict[str, float] = {}
+    for l in hit:
+        if not l.product or not getattr(l, "live", True):
+            continue
+        if l.budget is None:
+            continue
+        out[l.product] = out.get(l.product, 0.0) + float(l.budget)
+    return out
+
+
 def expected_any(db: Session, client: str, account_ids: str,
                  period: str | None = None) -> list:
     """Expectations this client's orders satisfy with EITHER product.

@@ -122,6 +122,22 @@
 {% endif %}
 
 <section>
+  <h2>Narrowing the pull</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:13.5px;margin:0 0 10px">
+      TapClicks filters the export on the line item's <b>start date</b>, not on
+      delivery, which is why the range above reaches back to 2018 - one campaign
+      that began then and is still running would otherwise be missing. But that
+      is one date for every partner, and almost none of them need it.
+      <a href="/orders/pull-range.csv">Pull range by partner</a> gives the
+      earliest date each one actually needs, oldest first. Pull the handful of
+      genuinely old partners on their own and the rest in a narrow range, and a
+      daily sync stops being a couple of million rows.
+    </p>
+  </div>
+</section>
+
+<section>
   <h2>Budgets</h2>
   <div class="panel">
     <form action="/orders/budgets" method="post" enctype="multipart/form-data"

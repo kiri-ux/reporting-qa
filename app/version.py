@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-51"
-BUILD_NOTES = ("Budgets can be filled in from a single-product sheet without "
-               "re-pulling the whole export - it merges rather than replaces, "
-               "so a Performance Max file cannot wipe everything else. The IO "
-               "tool's display column names are now recognised too.")
+BUILD = "2026.08.25-52"
+BUILD_NOTES = ("A full month whose spend is half its budget adrift is now a "
+               "warning - that is the shape of a reporting fault, not a media "
+               "one. And Pull range by partner gives the earliest date each "
+               "partner's export actually needs, instead of 2018 for all of them.")
 
 # ---------------------------------------------------------------------------
 
