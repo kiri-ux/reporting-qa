@@ -350,6 +350,7 @@ def test_a_lifetime_paces_against_its_own_campaign_only(monkeypatch):
             self.total_impressions = self.total_budget = None
             self.order_starts_on, self.order_ends_on = s, e
             self.sold_with, self.live, self.flights = "", True, None
+            self.line_ids, self.account_ids = product, ""
 
     lines = [L("Mobile Conquesting", dt.date(2025, 12, 17), dt.date(2026, 7, 13), 166666),
              L("Display", dt.date(2026, 7, 28), dt.date(2026, 10, 14), 250000)]
@@ -361,3 +362,33 @@ def test_a_lifetime_paces_against_its_own_campaign_only(monkeypatch):
     own = R.ordered_for(None, "Field Of Dreams", "51118", "2026-07", lifetime=True,
                         window=(dt.date(2025, 12, 17), dt.date(2026, 7, 13)))
     assert set(own) == {"Mobile Conquesting"}
+
+
+def test_a_grouped_buy_counts_its_goal_once(monkeypatch):
+    """"CTV + Video Ads" is one line item sold as two products, so the import
+    writes two order rows for it - both carrying the SAME monthly goal, because
+    it is one goal. Grouped back into one pacing row and then added, it came out
+    doubled: Russell Law's lifetime was measured against 250,000 impressions on
+    a campaign sold 125,000, and finished "45% under"."""
+    import datetime as dt
+
+    from app import roster as R
+
+    class L:
+        def __init__(self, product):
+            self.product = product
+            self.sold_with = "CTV, Video"
+            self.line_ids, self.account_ids = "120341", "51091"
+            self.starts_on = self.order_starts_on = dt.date(2026, 2, 15)
+            self.ends_on = self.order_ends_on = dt.date(2026, 7, 15)
+            self.impressions, self.budget = 50000, None
+            self.total_impressions = self.total_budget = None
+            self.live, self.flights, self.canceled = True, None, False
+
+    monkeypatch.setattr(R, "client_lines", lambda *a, **k: [L("CTV"), L("Video")])
+    life = R.ordered_for(None, "Russell Law", "51091", "2026-07", lifetime=True)
+    assert list(life) == ["CTV, Video"]
+    assert life["CTV, Video"]["impressions"] == 250000.0     # 5 months x 50,000
+
+    month = R.ordered_for(None, "Russell Law", "51091", "2026-07")
+    assert month["CTV, Video"]["impressions"] == 50000.0

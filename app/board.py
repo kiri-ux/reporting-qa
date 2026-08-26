@@ -262,7 +262,12 @@ def expected_for(db: Session, period: str,
         # Performance Max was re-flighted to run to the end of the year, and
         # the old flight's 31 July end was putting a lifetime on the board that
         # nobody owes.
-        life = cyc.needs_lifetime(l.order_ends_on or l.ends_on)
+        # SEO IS NOT OWED A LIFETIME. It is bought by the month and reported
+        # on by the month; there is no campaign that finishes and no
+        # delivery-to-date to sum up. An SEO-only client was getting a lifetime
+        # row nobody was ever going to pull.
+        life = (not is_seo(l.product)) and cyc.needs_lifetime(
+            l.order_ends_on or l.ends_on)
         if not live and not life:
             continue
         if l.market in pcache:

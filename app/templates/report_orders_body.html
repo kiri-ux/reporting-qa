@@ -41,7 +41,9 @@
     <thead><tr><th>Product</th><th>Would be</th><th>Raw name on the order</th>
       <th>Order</th><th>Line items</th><th>Live</th>
       <th>Ran in {{ rep.period }}</th><th>Flights</th>
-      <th style="text-align:right">Budget</th></tr></thead>
+      <th style="text-align:right">Impressions<br><span class="acct">a month</span></th>
+      <th style="text-align:right">Budget<br><span class="acct">a month</span></th>
+      <th style="text-align:right">Ad spend</th></tr></thead>
     <tbody>
       {% for r in rows %}
         <tr>
@@ -64,7 +66,15 @@
             {% endif %}
           </td>
           <td class="mono nw" style="text-align:right">
-            {% if r.budget %}${{ '{:,.2f}'.format(r.budget) }}{% endif %}</td>
+            {% if r.impressions %}{{ '{:,.0f}'.format(r.impressions) }}{% endif %}
+            {%- if r.total_impressions %}<br><span class="acct"
+              title="Campaign total on the order">{{ '{:,.0f}'.format(r.total_impressions) }} total</span>{% endif %}</td>
+          <td class="mono nw" style="text-align:right">
+            {% if r.budget %}${{ '{:,.2f}'.format(r.budget) }}{% endif %}
+            {%- if r.total_budget %}<br><span class="acct"
+              title="Campaign total on the order">${{ '{:,.0f}'.format(r.total_budget) }} total</span>{% endif %}</td>
+          <td class="mono nw" style="text-align:right">
+            {% if r.spend %}${{ '{:,.2f}'.format(r.spend) }}{% endif %}</td>
         </tr>
       {% endfor %}
     </tbody>

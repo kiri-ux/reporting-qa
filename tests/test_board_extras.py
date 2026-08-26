@@ -369,3 +369,19 @@ def test_the_rate_ceiling_finding_carries_its_page_and_widget():
             "Completion Performance\n  Strategy   101.16%\n")
     out = check_rate_ceiling({"text": text, "page_of": lambda _o: 12})
     assert out[0]["where"] == "p12 · Completion Performance"
+
+
+def test_seo_is_never_owed_a_lifetime():
+    """It is bought by the month and reported on by the month. There is no
+    campaign that finishes and no delivery-to-date to sum up."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "board.py").read_text()
+    assert "life = (not is_seo(l.product)) and cyc.needs_lifetime(" in src
+
+
+def test_the_order_panel_shows_what_the_month_was_bought_to_do():
+    html = (TPL / "report_orders_body.html").read_text()
+    for col in ("Impressions", "Budget", "Ad spend"):
+        assert col in html
+    for field in ("r.impressions", "r.budget", "r.spend",
+                  "r.total_impressions", "r.total_budget"):
+        assert field in html

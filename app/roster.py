@@ -366,6 +366,14 @@ def ordered_for(db: Session, client: str, account_ids: str,
     if window and window[0]:
         hit = [l for l in hit if _overlaps(l, window[0], window[1])]
     out: dict[str, dict] = {}
+    # AND ONE GOAL PER LINE ITEM, COUNTED ONCE.
+    #
+    # "CTV + Video Ads" is one line item sold as two products, so the import
+    # writes two order rows for it - both carrying the SAME monthly goal,
+    # because it is one goal. Grouped back into one pacing row and then added,
+    # it came out doubled: Russell Law's lifetime was measured against 250,000
+    # impressions on a campaign sold 125,000, and finished "45% under".
+    counted: set[tuple] = set()
     for l in hit:
         if not l.product:
             continue
@@ -377,6 +385,12 @@ def ordered_for(db: Session, client: str, account_ids: str,
         name = getattr(l, "sold_with", "") or l.product
         row = out.setdefault(name, {"budget": None, "impressions": None,
                                     "basis": "", "started": None, "days": None})
+        # The line item ids behind this row. Two order rows carrying the same
+        # ids are two halves of one buy, and its figures belong to it once.
+        stamp = (name, getattr(l, "line_ids", "") or "", l.account_ids or "")
+        if stamp in counted:
+            continue
+        counted.add(stamp)
         if not lifetime:
             # WHEN IT LAUNCHED, AND HOW MUCH OF THE MONTH IT HAD.
             #

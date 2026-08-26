@@ -861,9 +861,14 @@ def check_lifetime_goal(ctx) -> list[dict]:
         trace.append(("Goal is", basis))
     for product, want in sorted(ordered.items()):
         if want.get("impressions"):
+            # A GROUPED BUY TAKES THE DELIVERY OF BOTH HALVES. "CTV, Video" is
+            # one row here and two products on the report, so looking it up by
+            # its joined name found nothing and the trace read "0 of 250,000"
+            # under a report that had served 137,296.
+            got_p = sum(served["by_product"].get(x.strip(), 0.0)
+                        for x in product.split(","))
             trace.append((product,
-                          f"{served['by_product'].get(product, 0):,.0f} of "
-                          f"{want['impressions']:,.0f}"))
+                          f"{got_p:,.0f} of {want['impressions']:,.0f}"))
     return [_f("lifetime_short_of_goal", "warn",
                f"Campaign finished {short / goal * 100:.0f}% under its goal",
                f"{got:,.0f} impressions served against {goal:,.0f} sold"

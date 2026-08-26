@@ -2090,7 +2090,13 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
             "canceled": bool(getattr(l, "canceled", False)),
             "flights": getattr(l, "flights", None) or [],
             "starts": l.starts_on, "ends": l.ends_on,
-            "budget": l.budget,
+            # WHAT THE MONTH WAS BOUGHT TO DO. The panel exists to answer
+            # "what is this finding actually judging", and the goal is half of
+            # every pacing answer - it was the one column not on the table.
+            "budget": l.budget, "spend": getattr(l, "spend", None),
+            "impressions": getattr(l, "impressions", None),
+            "total_budget": getattr(l, "total_budget", None),
+            "total_impressions": getattr(l, "total_impressions", None),
             "ran": _ran_during(l, rep.period) if rep.period else None,
         })
     from .orders_s3 import running_sync
