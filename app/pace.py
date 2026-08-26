@@ -69,7 +69,7 @@ def pace(db: Session, period: str, outstanding: int,
 
     if out["rate"] is None:
         # Nothing recent enough to quote. Fall back to the whole cycle, which
-        # is a weaker claim and is labelled as one.
+        # is a weaker claim and is labeled as one.
         span = max((now - seen[0]).total_seconds() / 3600, 0.05)
         if len(seen) >= ENOUGH:
             out["rate"] = len(seen) / span

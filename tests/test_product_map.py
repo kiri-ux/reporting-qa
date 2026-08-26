@@ -39,7 +39,7 @@ def test_a_key_only_counts_on_whole_words():
     assert m("Videos of Ads") != "Video"
 
 
-def test_seo_is_recognised_even_though_it_has_no_report_section():
+def test_seo_is_recognized_even_though_it_has_no_report_section():
     assert m("Search Engine Optimization+") == "SEO"
 
 

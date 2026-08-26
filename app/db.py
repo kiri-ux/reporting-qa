@@ -107,7 +107,7 @@ class Report(Base):
 
     # A fingerprint of page one's top-left corner, which is where the partner
     # station's logo goes. Stored so that a logo turning up across several
-    # unrelated markets can be recognised as the reporting tool's default
+    # unrelated markets can be recognized as the reporting tool's default
     # rather than anybody's.
     logo_hash: Mapped[str] = mapped_column(String(32), default="", index=True)
 
@@ -361,6 +361,10 @@ class OrderLine(Base):
     # to 2026-07-31.
     order_starts_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     order_ends_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # The whole campaign, not one month of it. A lifetime report is measured
+    # against these; a monthly against the two above.
+    total_impressions: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_budget: Mapped[float | None] = mapped_column(Float, nullable=True)
     needs_lifetime: Mapped[bool] = mapped_column(Boolean, default=True)
     buyer: Mapped[str] = mapped_column(String(255), default="")
     team_member: Mapped[str] = mapped_column(String(255), default="")
@@ -519,6 +523,8 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "impressions", "DOUBLE PRECISION"),
     ("order_lines", "order_starts_on", "DATE"),
     ("order_lines", "order_ends_on", "DATE"),
+    ("order_lines", "total_impressions", "DOUBLE PRECISION"),
+    ("order_lines", "total_budget", "DOUBLE PRECISION"),
 ]
 
 

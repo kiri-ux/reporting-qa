@@ -173,6 +173,9 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     result = run_all(path, filename=rep.filename, expected_products=exp,
                      flight=flight,
                      flight_lines=flight_lines(db, rep.client, rep.account_ids),
+                     # What the report row says it is - a person may have said
+                     # so on the upload form, and that outranks the filename.
+                     is_lifetime=bool(rep.is_lifetime),
                      period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,

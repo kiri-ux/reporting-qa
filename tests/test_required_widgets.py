@@ -137,7 +137,7 @@ def test_the_sample_device_table_is_all_known(sample):
 
     The device block ran until the next heading, and a table that ends near the
     bottom of a page hits "Digital Marketing Report" first - so the footer was
-    read as a row and reported as an unrecognised device.
+    read as a row and reported as an unrecognized device.
     """
     assert check_devices_known({"text": sample}) == []
 
@@ -198,7 +198,7 @@ def test_device_findings_say_which_page():
 
 # ------------------------------------------- R&R Heating: the publishers grid
 def test_a_short_device_table_does_not_read_the_next_widget_as_devices():
-    """Six unrecognised devices on a report whose device table has two rows,
+    """Six unrecognized devices on a report whose device table has two rows,
     both of them real. Plex, TCL Channel, Sling TV and Tubi are CTV
     PUBLISHERS - the widget after the device one.
 

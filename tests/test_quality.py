@@ -40,8 +40,8 @@ def test_section_at_names_the_page_a_fault_is_on(sample):
     assert q.section_at(sample, i) == "TIKTOK CONVERSIONS"
 
 
-# ------------------------------------------------- strategy categorisation
-def test_uncategorised_strategy_lines_are_found(sample):
+# ------------------------------------------------- strategy categorization
+def test_uncategorized_strategy_lines_are_found(sample):
     out = q.check_strategy_categorized({"text": sample})
     assert len(out) == 1 and out[0]["severity"] == "fail"
     detail = out[0]["detail"]
@@ -201,7 +201,7 @@ def test_a_populated_screenshot_row_passes():
 
 
 def test_is_blank_separates_an_ad_from_an_empty_cell():
-    """A real ad has thousands of colours; an empty cell has the table fill and
+    """A real ad has thousands of colors; an empty cell has the table fill and
     its border. There is nothing in between, which is why the threshold is a
     flat count."""
     from PIL import Image
@@ -800,7 +800,7 @@ def test_the_pdf_is_served_uncacheable():
 
 # --------------------------------------------- Window World, order 51329
 #
-# Three findings on one report, all from one parsing fault. TapClicks centres a
+# Three findings on one report, all from one parsing fault. TapClicks centers a
 # row vertically, so a name on three lines prints its numbers on the MIDDLE
 # one. Reading every text line as the tail of the row above threw away the
 # first line of each name and glued the next row's opening onto the previous

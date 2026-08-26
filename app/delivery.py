@@ -73,7 +73,7 @@ def report_filename(e) -> str:
 def build_zip(group: GroupRow, period: str, out_dir: Path) -> tuple[Path, int]:
     """One zip per group, foldered by market.
 
-    Partners open these to pull one client's PDF, so the inside is organised
+    Partners open these to pull one client's PDF, so the inside is organized
     the way they think - market, then the file - rather than as a flat dump of
     200 similarly-named PDFs.
     """
@@ -104,7 +104,7 @@ DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
 def _drive_credentials():
     """OAuth first, service account key second.
 
-    Most Workspace organisations now enforce the org policy
+    Most Workspace organizations now enforce the org policy
     `iam.disableServiceAccountKeyCreation`, which does not restrict what a key
     can do - it stops the key existing at all. There is no code change that
     gets around that, so the primary path is a refresh token from a person who
@@ -206,7 +206,7 @@ def _drive_folder(svc, name: str, parent: str) -> str:
 def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str, int]:
     """Put this market's reports where the team already keeps them.
 
-    The shared drive is already organised as
+    The shared drive is already organized as
     `01_Reporting Markets / <Market> / ...`, maintained by hand for years, so
     the tool files into that rather than inventing a parallel tree next to it.
     A cycle folder goes inside the market folder and the PDFs go inside that.

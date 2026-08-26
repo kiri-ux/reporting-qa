@@ -75,9 +75,9 @@ def _rows_from_xlsx(raw: bytes, sheet: str | None = None) -> list[list[str]]:
 def import_orders(db: Session, raw, filename: str = "orders.csv",
                   sheet: str | None = None, replace: bool = True,
                   period: str | None = None):
-    """Returns the IO export's result dict when it recognises that format,
+    """Returns the IO export's result dict when it recognizes that format,
     otherwise a plain row count."""
-    """Accepts CSV or XLSX, and recognises the IO tool's own export, which needs
+    """Accepts CSV or XLSX, and recognizes the IO tool's own export, which needs
     its own eligibility rules rather than being read as a flat list."""
     from pathlib import Path as _P
     from .orders_io import import_io_export, looks_like_io_export
@@ -213,7 +213,7 @@ def attach_owners(db: Session, report: Report) -> None:
     """Stamp the market and the owner onto a report from its order lines.
 
     THE SAME MATCHER THE PRODUCT CHECK USES. This had its own - account ids
-    first, then an exact match on the normalised client name - and it missed
+    first, then an exact match on the normalized client name - and it missed
     everything the two spellings disagreed on. A report whose market never got
     stamped shows as "no market" on the board and belongs to no partner at all:
     eighty-six of them turned up on one logo. `client_lines` matches on id OR
@@ -302,27 +302,36 @@ def budgets_for(db: Session, client: str, account_ids: str,
 
 
 def ordered_for(db: Session, client: str, account_ids: str,
-                period: str | None = None) -> dict:
-    """What each live product was bought to do this month.
+                period: str | None = None, lifetime: bool = False) -> dict:
+    """What each product was bought to do - this month, or in total.
 
     {product: {"budget": float|None, "impressions": float|None}}, summed over
-    the line items that were actually running. None stays None: "the order
-    does not say" is not "the order says nothing", and a pacing line that
-    treats the two the same reads 100% under on a column that is simply absent.
+    the line items behind it. None stays None: "the order does not say" is not
+    "the order says nothing", and a pacing line that treats the two the same
+    reads 100% under on a column that is simply absent.
+
+    A LIFETIME IS MEASURED AGAINST THE WHOLE CAMPAIGN. Its report covers every
+    month the campaign ran, so comparing it to one month's budget says the
+    client is nine hundred percent over. It also counts every line item, live
+    or not - a campaign that finished is exactly what a lifetime reports on.
     """
     hit = client_lines(db, client, account_ids) or []
-    if period:
+    if period and not lifetime:
         hit = [l for l in hit if _ran_during(l, period)]
+    fields = (("total_budget", "budget"), ("total_impressions", "impressions")) \
+        if lifetime else (("budget", "budget"), ("impressions", "impressions"))
     out: dict[str, dict] = {}
     for l in hit:
-        if not l.product or not getattr(l, "live", True):
+        if not l.product:
+            continue
+        if not lifetime and not getattr(l, "live", True):
             continue
         row = out.setdefault(l.product, {"budget": None, "impressions": None})
-        for field in ("budget", "impressions"):
-            v = getattr(l, field, None)
+        for src, key in fields:
+            v = getattr(l, src, None)
             if v is None:
                 continue
-            row[field] = float(v) if row[field] is None else row[field] + float(v)
+            row[key] = float(v) if row[key] is None else row[key] + float(v)
     return out
 
 

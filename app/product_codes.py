@@ -73,7 +73,7 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9+/() -]", " ", s)).strip()
 
 
-# Aliases normalised the same way product names are, so "&" vs "and" and
+# Aliases normalized the same way product names are, so "&" vs "and" and
 # stray punctuation cannot silently stop a match.
 _MATCHERS: list[tuple[str, tuple[str, ...]]] = [
     (code, tuple(sorted((_norm(a) for a in aliases), key=len, reverse=True)))
@@ -82,7 +82,7 @@ _MATCHERS: list[tuple[str, tuple[str, ...]]] = [
 
 
 def code_for(product: str) -> str:
-    """Abbreviation for a product name, or a short fallback if unrecognised."""
+    """Abbreviation for a product name, or a short fallback if unrecognized."""
     n = _norm(product)
     if not n:
         return ""

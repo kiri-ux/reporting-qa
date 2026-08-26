@@ -51,7 +51,7 @@ def post_slack(batch, comp=None) -> bool:
 def _html(batch, comp) -> str:
     rows = []
     for r in sorted(batch.reports, key=lambda x: (x.severity != "fail", x.severity != "warn", x.client)):
-        colour = {"fail": "#A9382A", "warn": "#8A5F13", "pass": "#1F5F50"}[r.severity]
+        color = {"fail": "#A9382A", "warn": "#8A5F13", "pass": "#1F5F50"}[r.severity]
         items = "".join(
             f"<li><b>{f['title']}</b><br><span style='color:#555'>{f['detail']}</span></li>"
             for f in r.findings if f["severity"] in ("fail", "warn"))
@@ -60,7 +60,7 @@ def _html(batch, comp) -> str:
             f"<b>{r.client}</b> <span style='color:#888;font-family:monospace'>{r.account_ids}</span>"
             f"<br><span style='color:#888;font-size:12px'>"
             f"{' / '.join(x for x in (r.owner_buyer, r.owner_team) if x)}</span></td>"
-            f"<td style='padding:8px 12px;border-bottom:1px solid #ddd;color:{colour}'>"
+            f"<td style='padding:8px 12px;border-bottom:1px solid #ddd;color:{color}'>"
             f"<b>{r.severity.upper()}</b></td>"
             f"<td style='padding:8px 12px;border-bottom:1px solid #ddd'>"
             f"<ul style='margin:0;padding-left:18px'>{items or '<li>No issues</li>'}</ul></td></tr>")

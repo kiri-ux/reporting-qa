@@ -25,7 +25,7 @@ from .roster import (attach_owners, client_lines, completeness, expected_any,
 log = logging.getLogger("reportqa.ingest")
 
 # Subjects and filenames name the market inconsistently: "7MOU SG",
-# "7 Mountains SG", "Selinsgrove". Normalise them all to the tracker's spelling
+# "7 Mountains SG", "Selinsgrove". Normalize them all to the tracker's spelling
 # so completeness can match reports to order lines.
 MARKET_HINTS = [
     (re.compile(r"selinsgrove|7\s*mou(?:ntains)?\s*(?:pa\s*)?sg\b", re.I),
@@ -80,7 +80,7 @@ def expand_attachments(files: list[tuple[str, bytes]]) -> list[tuple[str, bytes]
 
 
 def _rkey(client: str, accounts: str, is_lifetime: bool):
-    """How one report is recognised as the same report as another."""
+    """How one report is recognized as the same report as another."""
     from .roster import _keyify
     kind = "lifetime" if is_lifetime else "monthly"
     ids = {(a, kind) for a in _keyify(client, accounts)}

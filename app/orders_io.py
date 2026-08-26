@@ -79,7 +79,7 @@ HEADER_ALIASES = {
 }
 
 
-def normalise_header(h: str) -> str:
+def normalize_header(h: str) -> str:
     """The snake_case name for a column, whichever spelling arrived."""
     raw = (h or "").strip()
     low = raw.lower()
@@ -87,7 +87,7 @@ def normalise_header(h: str) -> str:
 
 
 def looks_like_io_export(headers: list[str]) -> bool:
-    got = {normalise_header(h) for h in headers}
+    got = {normalize_header(h) for h in headers}
     return SIGNATURE.issubset(got)
 
 
@@ -161,7 +161,12 @@ WANTED = ("orders_id", "id", "orders_status", "status", "client", "product",
           # comparison of what the order says to spend against what it spent.
           "monthly_campaign_budget", "monthly_meta_ad_spend",
           "monthly_ppc_ad_spend", "monthly_linkedin_ad_spend",
-          "monthly_pm_ad_spend", "monthly_campaign_impressions")
+          "monthly_pm_ad_spend", "monthly_campaign_impressions",
+          # The whole campaign. A lifetime report covers all of it, so a
+          # monthly figure says nothing about whether it delivered.
+          "total_campaign_impressions", "total_campaign_budget",
+          "total_meta_ad_spend", "total_ppc_ad_spend",
+          "total_linkedin_ad_spend", "total_pm_ad_spend")
 
 
 # WHICH COLUMN IS THIS PRODUCT'S MONTHLY MONEY.
@@ -173,6 +178,13 @@ SPEND_FIELD = {
     "Performance Max": "monthly_pm_ad_spend",
     "PPC": "monthly_ppc_ad_spend",
     "LinkedIn": "monthly_linkedin_ad_spend",
+}
+
+# The same four, for the whole campaign rather than the month.
+TOTAL_SPEND_FIELD = {
+    "Performance Max": "total_pm_ad_spend",
+    "PPC": "total_ppc_ad_spend",
+    "LinkedIn": "total_linkedin_ad_spend",
 }
 
 
@@ -209,7 +221,7 @@ def _open_source(src):
         # stored as ending 2026-12-31.
         idx: dict[str, list[int]] = {}
         for i, name in enumerate(header):
-            key = normalise_header(name)
+            key = normalize_header(name)
             if key in WANTED:
                 idx.setdefault(key, []).append(i)
         for row in reader:
@@ -308,13 +320,13 @@ def import_io_export(db: Session, sources, period: str | None = None,
             start = _date(r.get("start_date")) or _date(r.get("orders_start_date"))
 
             # Status before dates, so the reason a row was dropped is the
-            # interesting one. A cancelled line item has almost always ended as
+            # interesting one. A canceled line item has almost always ended as
             # well, and "ended before the period" is the less useful of the two
             # things you can say about it.
             if DEAD_LINE_STATUS.match(line_status):
-                skip("line item cancelled"); continue
+                skip("line item canceled"); continue
             if DEAD_ORDER_STATUS.match(order_status):
-                skip("order cancelled"); continue
+                skip("order canceled"); continue
             if end and end < p_start:
                 skip("ended before the period"); continue
             if start and start > p_end:
@@ -363,6 +375,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         # line item's. A lifetime report covers the order; the
                         # line item only says what was delivering this month.
                         "order_starts": None, "order_ends": None,
+                        "total_budget": None, "total_impressions": None,
                     }
                 else:                    # widest flight across that client's orders
                     cur = kept[k]
@@ -396,6 +409,16 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     if imps is not None:
                         cur = kept[k]["impressions"]
                         kept[k]["impressions"] = imps if cur is None else cur + imps
+                    whole = _num(r.get(TOTAL_SPEND_FIELD.get(
+                        product, "total_campaign_budget")))
+                    if whole is not None:
+                        cur = kept[k]["total_budget"]
+                        kept[k]["total_budget"] = whole if cur is None else cur + whole
+                    all_imps = _num(r.get("total_campaign_impressions"))
+                    if all_imps is not None:
+                        cur = kept[k]["total_impressions"]
+                        kept[k]["total_impressions"] = (
+                            all_imps if cur is None else cur + all_imps)
                 # Each order's own window as well as the merged one. The merged
                 # span answers "when does this end"; only the individual windows
                 # can answer "was it running in July", and a client who stopped
@@ -455,6 +478,8 @@ def import_io_export(db: Session, sources, period: str | None = None,
             flights=v["flights"], live=bool(v["live"]),
             budget=v["budget"], impressions=v["impressions"],
             order_starts_on=v["order_starts"], order_ends_on=v["order_ends"],
+            total_budget=v["total_budget"],
+            total_impressions=v["total_impressions"],
             buyer=buyer, buyer_email=buyer_email,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))

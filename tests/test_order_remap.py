@@ -311,14 +311,14 @@ def test_money_survives_however_it_is_written(db):
     assert _money("") is None and _money(None) is None
 
 
-def test_the_display_spelling_of_the_export_is_recognised():
+def test_the_display_spelling_of_the_export_is_recognized():
     """The nightly S3 file is snake_case; a sheet pulled by hand out of the IO
     tool uses the display names. Same columns, and a reader that knows only one
     spelling rejects a good file with a confusing message."""
-    from app.orders_io import looks_like_io_export, normalise_header
-    assert normalise_header("Order's Status") == "orders_status"
-    assert normalise_header("Client Business Unit") == "client_business_unit"
-    assert normalise_header("Monthly Campaign Budget") == "monthly_campaign_budget"
+    from app.orders_io import looks_like_io_export, normalize_header
+    assert normalize_header("Order's Status") == "orders_status"
+    assert normalize_header("Client Business Unit") == "client_business_unit"
+    assert normalize_header("Monthly Campaign Budget") == "monthly_campaign_budget"
     assert looks_like_io_export(["Client Business Unit", "Order's Status",
                                  "Product", "Order's End Date"])
     assert looks_like_io_export(["client_business_unit", "orders_status",
@@ -621,8 +621,9 @@ def test_the_orders_own_money_and_impressions_are_loaded(db):
 
 def test_pacing_is_served_over_ordered(db):
     from app.checks.served import pacing_pct, pacing_rows
-    assert pacing_pct(50, 100) == 50.0            # half short
-    assert pacing_pct(120, 100) == -20.0          # a fifth over
+    # NEGATIVE IS SHORT, so the sign agrees with the word beside it.
+    assert pacing_pct(50, 100) == -50.0           # half short
+    assert pacing_pct(120, 100) == 20.0           # a fifth over
     assert pacing_pct(None, 100) is None          # not printed on the report
     assert pacing_pct(50, None) is None           # not on the order
 
@@ -633,7 +634,7 @@ def test_pacing_is_served_over_ordered(db):
                                                 "impressions": 50000}})
     first = rows[0]
     assert first["served"] == 40000 and first["ordered"] == 50000
-    assert round(first["pace"]) == 20
+    assert round(first["pace"]) == -20
     total = rows[-1]
     # A line item whose name names no product counts in the total and against
     # no single product, and the page says so rather than guessing.

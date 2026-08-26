@@ -126,7 +126,7 @@
          for everything bought on a delivery goal, dollars for the four
          products the report prints spend for. Pacing is 100% minus what was
          served over what was ordered, so a positive number is short. #}
-      <h2 style="margin-top:22px">Pacing</h2>
+      <h2 style="margin-top:22px">Pacing{% if rep.is_lifetime %} · campaign to date{% endif %}</h2>
       <table class="pacing">
         <tbody>
           {% for p in pacing %}
@@ -143,10 +143,10 @@
               </td>
               <td class="nw{% if p.pace is not none and p.pace|abs >= 50 %} off{% endif %}">
                 {% if p.pace is none %}
-                  <span class="acct" title="{% if p.ordered %}The report does not print this one{% else %}The order does not carry a monthly figure for this product{% endif %}">no comparison</span>
+                  <span class="acct" title="{% if p.ordered %}The report does not print this one{% else %}The order does not carry a figure for this product{% endif %}">no comparison</span>
                 {% else %}
                   {{ '{:+.0f}'.format(p.pace) }}%
-                  <span class="acct">{{ 'short' if p.pace > 0 else 'over' }}</span>
+                  <span class="acct">{{ 'short' if p.pace < 0 else 'over' }}</span>
                 {% endif %}
               </td>
             </tr>
@@ -160,8 +160,9 @@
         </tbody>
       </table>
       <p class="sub" style="font-size:12px;margin:6px 0 0">
-        Served on the report over ordered for the month. Pacing is
-        100% - (served / ordered).</p>
+        Served on the report over ordered
+        {%- if rep.is_lifetime %} for the whole campaign{% else %} for the month{% endif %}.
+        Negative is short of the order, positive is over.</p>
     {% endif %}
 
     {# Opens over the report rather than replacing it. Checking a product

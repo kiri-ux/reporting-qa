@@ -52,8 +52,8 @@ def _money(v) -> float | None:
 
 
 def _rows(src, filename: str = ""):
-    """(normalised header -> value) dicts from an xlsx or csv."""
-    from .orders_io import normalise_header
+    """(normalized header -> value) dicts from an xlsx or csv."""
+    from .orders_io import normalize_header
 
     name = str(filename or (src if isinstance(src, (str, Path)) else "")).lower()
     if name.endswith((".xlsx", ".xlsm")):
@@ -74,7 +74,7 @@ def _rows(src, filename: str = ""):
 
     keys: list[str] = []
     for h in header:
-        k = normalise_header(h)
+        k = normalize_header(h)
         # The export carries two End Dates and two Start Dates on purpose.
         while k in keys:
             k += ".1"

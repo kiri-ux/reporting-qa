@@ -31,7 +31,7 @@ from pathlib import Path
 
 # The header logo sits in the top-left corner. Generous enough to survive a
 # taller or wider mark, tight enough not to take in "Digital Marketing Report",
-# which is centred, or the date block on the right.
+# which is centered, or the date block on the right.
 BOX = (0.0, 0.0, 0.22, 0.075)
 
 # Downsampled to 96x32 greyscale before hashing. The same logo rendered by two

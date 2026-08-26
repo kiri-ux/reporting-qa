@@ -48,13 +48,13 @@ def test_a_filtered_clicks_tile_is_informational_not_a_failure():
     """The Clicks tile leaves CTV, YouTube and PMax out on some templates.
 
     Renamed from ctv_click_base: the exclusion is not CTV alone, which is the
-    bug this replaced - it recognised only the CTV case and failed the rest.
+    bug this replaced - it recognized only the CTV case and failed the rest.
     """
     c = codes(FIXTURES / "watsontown.pdf")
     assert "clicks_exclude_products" in c and "line_items_clicks" not in c
 
 
-def test_a_filtered_ctr_tile_is_recognised():
+def test_a_filtered_ctr_tile_is_recognized():
     """Central Penn's stated CTR is filtered clicks over filtered impressions.
 
     The old handling took CTV impressions out of the denominator and left every
@@ -269,7 +269,7 @@ def test_io_export_eligibility():
 
     assert res["skipped"].get("RFP")
     assert res["skipped"].get("ended before the period")
-    assert res["skipped"].get("line item cancelled")
+    assert res["skipped"].get("line item canceled")
 
     rows = db.query(OrderLine).all()
     assert all("RFP" not in (r.campaign or "") for r in rows)
@@ -740,7 +740,7 @@ def test_a_mixed_s3_folder_still_imports(tmp_path, monkeypatch):
 def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path):
     """Reports must land in the shared drive's own tree, not a parallel one.
 
-    The drive is already organised as `01_Reporting Markets / <Market> / ...`
+    The drive is already organized as `01_Reporting Markets / <Market> / ...`
     and maintained by hand. A market folder that already exists must be reused
     - matched case-insensitively, since these were typed by people - and a
     cycle folder created inside it. The CYCLE FOLDER is what gets shared.
@@ -835,7 +835,7 @@ def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path)
     assert sum(1 for (p, _) in folders if p == "PARENT") == 1
     # a cycle folder was created inside it
     cycle_id = folders[("EXISTING_MARKET_ID", "2026-08 August")]
-    # and the PDFs went inside the cycle folder, lifetime clearly labelled
+    # and the PDFs went inside the cycle folder, lifetime clearly labeled
     assert ("Watsontown Trucking.pdf") in [n for (p, n) in files if p == cycle_id]
     assert ("Centre Hills - Lifetime.pdf") in [n for (p, n) in files if p == cycle_id]
     # the shared thing is the cycle folder, and the link points at it
@@ -2047,3 +2047,33 @@ def test_a_lifetime_inside_its_campaign_says_nothing():
                              "is_lifetime": True,
                              "flight": (D(2023, 5, 5), D(2026, 7, 31)),
                              "period": "2026-07"}) == []
+
+
+def test_a_person_saying_lifetime_outranks_the_filename():
+    """The upload form has a Monthly/Lifetime choice and the report row
+    remembers it. That was being ignored, so a lifetime somebody had labeled by
+    hand was checked against one month and failed for its own date range."""
+    import inspect
+    from app.checks.rules import run_all
+    sig = inspect.signature(run_all)
+    assert "is_lifetime" in sig.parameters
+    assert sig.parameters["is_lifetime"].default is None
+
+    # And every caller that knows the answer passes it.
+    from pathlib import Path as _P
+    for name in ("app/main.py", "app/recheck.py"):
+        src = _P(name).read_text()
+        for call in src.split("run_all(")[1:]:
+            head = call[:600]
+            assert "is_lifetime=" in head, f"{name}: a run_all call says nothing"
+
+
+def test_the_client_comes_off_the_cover_page_not_the_filename():
+    """A file saved by hand is called "Digital Marketing Report.pdf", and
+    reading a client out of that failed a perfectly good Beech Bend lifetime
+    for carrying somebody else's data."""
+    from app.checks.rules import _client_named
+    text = " Digital Marketing Report for Beech Bend\n Date range Jul 01, 2026 to Jul 31, 2026\n"
+    assert _client_named(text, "Digital Marketing Report.pdf") == "Beech Bend"
+    assert _client_named("", "July 2026_Beech Bend 54357.pdf") == "Beech Bend"
+    assert _client_named("", "Digital Marketing Report.pdf") == ""

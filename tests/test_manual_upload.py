@@ -838,7 +838,7 @@ def test_a_hand_pulled_report_is_named_from_what_it_is(app_db):
     assert rep.market == "7 Mountains PA Selinsgrove"
 
 
-def test_a_lifetime_is_recognised_by_the_range_it_prints():
+def test_a_lifetime_is_recognized_by_the_range_it_prints():
     """A lifetime pulled with no month in its name was read as a monthly and
     checked against one month of a two-year campaign."""
     import datetime as dt

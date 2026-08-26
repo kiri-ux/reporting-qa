@@ -80,14 +80,18 @@ def served_impressions(text: str) -> dict:
 
 
 def pacing_pct(served: float | None, ordered: float | None) -> float | None:
-    """Her arithmetic: 100% - (served / ordered).
+    """How far off the order this delivery is, as a signed percentage.
 
-    Positive is under-delivery, negative is over. None when the comparison
-    cannot be made rather than 0, which would read as perfectly on pace.
+    NEGATIVE IS SHORT. The arithmetic is the same distance from the order
+    either way, but "+3% short" reads as three percent to the good - the sign
+    has to agree with the word beside it.
+
+    None when the comparison cannot be made, rather than 0, which would read as
+    perfectly on pace.
     """
     if served is None or not ordered:
         return None
-    return 100.0 - (served / ordered * 100.0)
+    return (served / ordered * 100.0) - 100.0
 
 
 # Products that pace on money rather than impressions - and the list is short
@@ -101,7 +105,8 @@ SPEND_PRODUCTS = ("Performance Max", "PPC", "LinkedIn")
 def pacing_rows(text: str, ordered: dict) -> list[dict]:
     """One row per product the order bought, plus a total row for impressions.
 
-    `ordered` is roster.ordered_for(): {product: {budget, impressions}}.
+    `ordered` is roster.ordered_for(): {product: {budget, impressions}}. For a
+    lifetime those are the whole campaign's figures rather than one month's.
     """
     from .spend import report_spend
 

@@ -1,7 +1,7 @@
 """The check suite. Each rule returns zero or more findings.
 
 A finding is a dict: code, severity (fail|warn|info), title, detail.
-Severity drives the dashboard colour and whether anyone gets pinged.
+Severity drives the dashboard color and whether anyone gets pinged.
 """
 from __future__ import annotations
 
@@ -121,7 +121,7 @@ def _ctv_totals(ctx) -> tuple[float, float]:
 #
 # Both halves of the fraction are filtered, which is what the old handling got
 # wrong: it took CTV impressions out of the denominator and left every click in
-# the numerator, so it only ever recognised the case by accident. On a report
+# the numerator, so it only ever recognized the case by accident. On a report
 # running CTV the honest arithmetic is filtered clicks over filtered
 # impressions, and the line item grid is where that breakdown lives.
 CTR_EXCLUDED = re.compile(r"\bCTV\b|\bOTT\b|YouTube|Performance Max|\bPMax\b", re.I)
@@ -314,7 +314,7 @@ def check_line_items(ctx) -> list[dict]:
               ("Their clicks", f"{sc:,.0f}"),
               ("Difference", f"{gap:+,.0f} clicks"),
               ("Clicks on CTV and OTT line items", f"{excl:,.0f}"),
-              # Named, not just totalled. A remainder of eight clicks is only
+              # Named, not just totaled. A remainder of eight clicks is only
               # findable if you can see which lines were taken out and for how
               # much - the total on its own says "trust me".
               ("Which lines those are",
@@ -860,7 +860,7 @@ PCT = re.compile(r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*%")
 # Where one widget's rows stop. The next heading is the obvious boundary, but
 # the PAGE FOOTER comes first whenever a widget ends near the bottom of a page
 # - and missing it swept a DOOH report's Site and App rows into its device
-# table, which then read as twenty-one unrecognised devices.
+# table, which then read as twenty-one unrecognized devices.
 # THE NEXT WIDGET'S TITLE, WHICH IS INDENTED LIKE EVERY OTHER LINE.
 #
 # This anchored on "^\S" - a title starting in column ONE. pdftotext -layout
@@ -990,7 +990,7 @@ def check_devices_known(ctx) -> list[dict]:
     if not odd:
         return []
     return [_f("unknown_device", "warn",
-               f"{len(odd)} unrecognised device{'s' if len(odd) > 1 else ''} "
+               f"{len(odd)} unrecognized device{'s' if len(odd) > 1 else ''} "
                f"in the device breakout",
                "Not a device TapClicks reports: " + ", ".join(odd[:8]) +
                ("..." if len(odd) > 8 else "") +
@@ -1335,6 +1335,15 @@ def looks_like_lifetime(printed) -> bool:
     return (printed[1] - printed[0]).days > LIFETIME_DAYS
 
 
+def _client_named(text: str, filename: str) -> str:
+    """The client this report is for: the cover page first, the name second."""
+    from_text = (meta_from_text(text) or {}).get("client", "").strip()
+    if from_text:
+        return from_text
+    from_name = meta_from_filename(filename or "")
+    return from_name.get("client", "") if from_name.get("named") else ""
+
+
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
             flight: tuple | None = None, flight_lines: list | None = None,
@@ -1342,6 +1351,7 @@ def run_all(path: Path, filename: str | None = None,
             market: str = "", expected_why: list | None = None,
             expected_any: list | None = None,
             quiet_products: set | None = None,
+            is_lifetime: bool | None = None,
             logo_generic: bool = False, logo_known: bool = False,
             logo_hash: str = "", budgets: dict | None = None,
             orders_current: bool = True) -> dict:
@@ -1350,14 +1360,19 @@ def run_all(path: Path, filename: str | None = None,
     # a finding say WHERE on a forty-one page report to look.
     per_page = pdf_pages(path)
     text = "".join(per_page)
-    is_lifetime = meta_from_filename(filename or path.name)["is_lifetime"]
-    # THE REPORT ITSELF SAYS WHICH IT IS. The name only says so when somebody
-    # named it, and a file pulled by hand arrives as "Digital Marketing
-    # Report.pdf" - so a lifetime covering two years was read as a monthly,
-    # checked against one month, and passed. No monthly can print a range
-    # longer than its month; anything wider than that is a campaign to date.
-    if not is_lifetime and looks_like_lifetime(date_range(text)):
-        is_lifetime = True
+    # WHOEVER KNOWS BEST, IN ORDER.
+    #
+    # 1. The caller, when a person has said which this is - the upload form has
+    #    a Monthly/Lifetime choice and the report row remembers it. That was
+    #    being ignored, so a lifetime somebody had labeled by hand was checked
+    #    against one month and failed for its own date range.
+    # 2. The filename, when it follows the convention.
+    # 3. The range the report prints: no monthly can be wider than its month.
+    if is_lifetime is None:
+        is_lifetime = meta_from_filename(filename or path.name)["is_lifetime"]
+        if not is_lifetime and looks_like_lifetime(date_range(text)):
+            is_lifetime = True
+    is_lifetime = bool(is_lifetime)
     imps, clicks, ctr = headline(text)
     tables = extract_tables(text, strict=True)
     ctx = {
@@ -1401,7 +1416,14 @@ def run_all(path: Path, filename: str | None = None,
         "flight_lines": flight_lines or [],
         # Needed by the Social Mirror ad-size rule, which Curtis is exempt from.
         "market": market,
-        "client": meta_from_filename(filename or path.name).get("client", ""),
+        # WHO THIS REPORT IS FOR, from the report itself.
+        #
+        # This was read off the filename, and a file saved by hand is called
+        # "Digital Marketing Report.pdf" - so a perfectly good Beech Bend
+        # lifetime was failed for carrying somebody else's data, the somebody
+        # else being a client named Digital Marketing Report. The cover page
+        # says who it is for; the filename only says so when it was named.
+        "client": _client_named(text, filename or path.name),
     }
     findings: list[dict] = []
     checks: list[dict] = []

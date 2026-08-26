@@ -89,7 +89,7 @@ def test_a_flight_that_ends_inside_the_period_still_counts(db):
     assert _exp(db) == {"Social Mirror Ads"}
 
 
-def test_no_period_keeps_the_old_behaviour(db):
+def test_no_period_keeps_the_old_behavior(db):
     """Callers that cannot say which month still get every product."""
     _line(db, "Mobile Conquesting Display & Video", "2024-05-01", "2025-12-31")
     db.commit()

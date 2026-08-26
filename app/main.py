@@ -1323,6 +1323,9 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         result = run_all(path, filename=file.filename, expected_products=exp,
                          flight=flight,
                          flight_lines=flight_lines(db, client, account_ids),
+                         # The kind chosen on the form. A person saying this is
+                         # a lifetime beats anything the file is called.
+                         is_lifetime=is_lifetime,
                          period=period, market=market,
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
@@ -1427,7 +1430,10 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     flight = client_flight(db, rep.client, rep.account_ids)
     result = run_all(target, filename=rep.filename, expected_products=exp,
-                     flight=flight, period=rep.period, market=rep.market or "",
+                     flight=flight,
+                     flight_lines=flight_lines(db, rep.client, rep.account_ids),
+                     is_lifetime=bool(rep.is_lifetime),
+                     period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
@@ -1530,6 +1536,7 @@ async def replace_report(report_id: int, request: Request,
         result = run_all(path, filename=rep.filename, expected_products=exp,
                          flight=flight,
                          flight_lines=flight_lines(db, rep.client, rep.account_ids),
+                         is_lifetime=bool(rep.is_lifetime),
                          period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
@@ -1582,11 +1589,16 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     # and should not be another row in the checks list.
     pacing = []
     try:
-        if rep.stored_path and Path(rep.stored_path).exists() and not rep.is_lifetime:
+        if rep.stored_path and Path(rep.stored_path).exists():
             from .checks.parser import pdf_text
             from .checks.served import pacing_rows
             from .roster import ordered_for
-            ordered = ordered_for(db, rep.client, rep.account_ids, rep.period)
+            # A LIFETIME PACES AGAINST THE WHOLE CAMPAIGN, a monthly against
+            # the month. Same panel, different question - and comparing a
+            # nine-month report to one month's budget is how a perfectly normal
+            # lifetime reads as 800% over.
+            ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
+                                  lifetime=bool(rep.is_lifetime))
             if ordered:
                 pacing = pacing_rows(pdf_text(Path(rep.stored_path)), ordered)
     except Exception:                       # a pacing panel is never worth a 500

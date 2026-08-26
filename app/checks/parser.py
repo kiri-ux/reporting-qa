@@ -132,8 +132,8 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
 
     for i, line in enumerate(lines):
         cols = tokens(line)
-        labelled = [c for c in cols if c[0] in METRIC_LABELS]
-        if len(labelled) < need:
+        labeled = [c for c in cols if c[0] in METRIC_LABELS]
+        if len(labeled) < need:
             continue
         if any(as_number(c[0]) is not None for c in cols):
             continue
@@ -149,7 +149,7 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
             break
 
         table = Table(title=title)
-        name_col_end = labelled[0][1] if labelled else 0
+        name_col_end = labeled[0][1] if labeled else 0
         for j in range(i + 1, len(lines)):
             raw = lines[j]
             if not raw.strip() or SKIP_LINE.search(raw) or raw.lstrip().startswith("*Note"):
@@ -163,7 +163,7 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
                 if n is None:
                     continue
                 best, best_d = None, 99
-                for label, _ls, le in labelled:
+                for label, _ls, le in labeled:
                     d = abs(end - le)
                     if d < best_d:
                         best_d, best = d, label

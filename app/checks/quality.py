@@ -73,7 +73,7 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
     A row is "a line whose cells after the first are all numeric", and the text
     lines around it are the rest of its name.
 
-    WHICH row they belong to is the subtlety. TapClicks centres a row
+    WHICH row they belong to is the subtlety. TapClicks centers a row
     vertically, so a name on three lines prints its numbers on the MIDDLE one -
     the name wraps above its own figures as well as below. Treating every text
     line as the tail of the row above therefore did two things at once: it
@@ -94,7 +94,7 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
     but several grids share a section, and without a second one a line item
     table ran on into the publisher list below it and reported "Tubi - Free
     Movies & TV" as a badly named strategy. The other boundary is the next
-    widget's title - which cannot be recognised by its wording alone, because
+    widget's title - which cannot be recognized by its wording alone, because
     a wrapped name like "Services/Homeowners/Retargeting Performance" reads
     exactly like one. What separates them is that a real title has a column
     header under it and a wrapped name does not.
@@ -154,7 +154,7 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
             cur, cur_at = head + [_clean_cell(cells[0])], at
             if not lead:
                 # The opening of the first row, which every other row of this
-                # grid repeats. Two words is enough to recognise "Window World"
+                # grid repeats. Two words is enough to recognize "Window World"
                 # without demanding the whole client name match character for
                 # character - and short enough that a one-word client still
                 # yields something.
@@ -242,7 +242,7 @@ def _sample(items: list[str], n: int = 8) -> str:
     return shown + (f"; and {len(items) - n} more" if len(items) > n else "")
 
 
-# ------------------------------------------------- 1. strategy categorisation
+# ------------------------------------------------- 1. strategy categorization
 # A line item is named "<Client> - <targeting> <Product>". TapClicks reads the
 # product out of that name to file the line under a product on the breakout
 # donut. When the name carries no product word at all there is nothing to read,
@@ -335,7 +335,7 @@ def check_strategy_categorized(ctx) -> list[dict]:
         return []
     return [_f("strategy_uncategorized", "fail",
                f"{len(bad)} strategy line{'s' if len(bad) > 1 else ''} not "
-               f"categorised to a product",
+               f"categorized to a product",
                "No product word in the name, so each lands on the product "
                "breakout as its own slice. Fix in the order: "
                + _sample(sorted(bad), 30),
@@ -422,7 +422,7 @@ def _clipped_cells(text: str) -> tuple[list[tuple[str, str]], int]:
 # label, the "Ad Preview" label below it, and the ad names across the top. That
 # is enough to cut each cell out of a rendering of the page and look at it.
 #
-# A cell holding a real ad has thousands of distinct colours. An empty one has
+# A cell holding a real ad has thousands of distinct colors. An empty one has
 # the table fill and its border - two or three. There is no middle ground, so
 # the threshold does not have to be clever.
 BLANK_COLORS = 12
@@ -520,7 +520,7 @@ def check_blank_screenshots(ctx) -> list[dict]:
 
 
 def is_blank(crop) -> bool:
-    """A cell holding a real ad has thousands of colours; an empty one has the
+    """A cell holding a real ad has thousands of colors; an empty one has the
     table fill and its border."""
     colors = crop.getcolors(maxcolors=300000) or []
     return len(colors) < BLANK_COLORS
@@ -866,7 +866,7 @@ SITE_GRID = re.compile(
     r"^[ \t]*((?:[A-Z][\w+&'. -]*)?Site and App Performance)[ \t]*$", re.M)
 SITE_CTR_CEILING = 5.0
 
-# Below this many impressions the 5% line is arithmetic rather than behaviour.
+# Below this many impressions the 5% line is arithmetic rather than behavior.
 # Field Of Dreams had "Slicing Hero: Sword Master: 10 clicks on 183 impressions
 # is 5.46%" - one click either way moves that by half a point, and 183
 # impressions of a 62,679-impression campaign is not something anybody is going

@@ -61,7 +61,7 @@ def test_the_seo_manager_is_not_the_buyer(db):
 
 
 def test_the_seo_line_read_first_still_does_not_win(db):
-    """The old behaviour depended on row order, which is not a decision."""
+    """The old behavior depended on row order, which is not a decision."""
     _partner(db, "Amp Digital Innovations", buyer="Hanna Walentukonis", seo="Matt")
     _line(db, "Amp Digital Innovations", "A Co", "SEO", "Matt Ogden")
     _line(db, "Amp Digital Innovations", "A Co", "Social Mirror", "Hanna Walentukonis")

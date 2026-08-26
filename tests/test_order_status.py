@@ -91,7 +91,7 @@ def test_io_complete_counts_as_having_run(db):
 
 
 def test_the_date_rules_still_apply_to_a_line_the_header_would_have_dropped(db):
-    """Trusting the line item is not a licence to ignore its flight."""
+    """Trusting the line item is not a license to ignore its flight."""
     res = _import(db, _csv(_row("IO Pending Launch", "IO Live",
                                 start="2024-01-01", end="2025-07-08")))
     assert res["kept"] == 0

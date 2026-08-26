@@ -12,14 +12,13 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.25-62"
-BUILD_NOTES = ("A lifetime now follows the ORDER's campaign dates, not its line "
-               "items - line items are re-flighted inside an order that runs for "
-               "years, which is why a lifetime showed 2024-07-17 to 2026-12-31 on "
-               "an order sold as 2023-05-05 to 2026-07-31, and why one turned up "
-               "on the board that nobody owed. Plus two new checks: the printed "
-               "lifetime range against the order, and whether the data on the "
-               "report belongs to the client it names.")
+BUILD = "2026.08.26-63"
+BUILD_NOTES = ("Two false failures killed: the client was being read off the "
+               "filename, so a report saved as Digital Marketing Report.pdf was "
+               "failed for carrying somebody else's data, and a lifetime "
+               "somebody labeled by hand was checked against one month because "
+               "the checks never saw the label. Pacing covers lifetimes now, "
+               "measured against the whole campaign, and short reads negative.")
 
 # ---------------------------------------------------------------------------
 
