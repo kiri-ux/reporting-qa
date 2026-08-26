@@ -636,6 +636,11 @@ def check_products(ctx) -> list[dict]:
 # flights added together.
 PACING_BAND = 0.5
 
+# How far under its goal a finished campaign may land before it is worth
+# saying. Ten percent: the goal is often derived from a monthly figure, so a
+# tighter band would flag arithmetic rather than delivery.
+GOAL_BAND = 0.10
+
 
 def check_pacing(ctx) -> list[dict]:
     """A full month's spend should look like a full month's budget.
@@ -675,6 +680,55 @@ def check_pacing(ctx) -> list[dict]:
                        ("That is", f"{ratio * 100:.0f}% of budget"),
                        ("Flagged at", f"{PACING_BAND * 100:.0f}% either way")]))
     return out
+
+
+def check_lifetime_goal(ctx) -> list[dict]:
+    """A finished campaign that did not deliver what it was sold.
+
+    Only on a lifetime, because that is the report where the question can be
+    answered: the campaign is over, so what it served is final. A monthly is
+    a slice and pacing on it is the other check.
+
+    It is a WARNING, not a failure. The goal is often the monthly figure across
+    the flight rather than a total the order states outright, and a campaign
+    can legitimately finish a little under - the reporter needs to see it, not
+    to be blocked by it.
+    """
+    if not ctx.get("is_lifetime"):
+        return []
+    ordered = ctx.get("ordered") or {}
+    if not ordered:
+        return []
+    from .served import served_impressions
+
+    served = served_impressions(ctx.get("text") or "")
+    goal = sum(v["impressions"] for v in ordered.values()
+               if v.get("impressions"))
+    if not goal:
+        return []
+    got = served["total"]
+    if got >= goal * (1 - GOAL_BAND):
+        return []
+    short = goal - got
+    basis = next((v.get("basis") for v in ordered.values() if v.get("basis")), "")
+    trace = [("Served on the report", f"{got:,.0f}"),
+             ("The campaign was sold", f"{goal:,.0f}"),
+             ("Short by", f"{short:,.0f} ({short / goal * 100:.0f}%)")]
+    if basis:
+        trace.append(("Goal is", basis))
+    for product, want in sorted(ordered.items()):
+        if want.get("impressions"):
+            trace.append((product,
+                          f"{served['by_product'].get(product, 0):,.0f} of "
+                          f"{want['impressions']:,.0f}"))
+    return [_f("lifetime_short_of_goal", "warn",
+               f"Campaign finished {short / goal * 100:.0f}% under its goal",
+               f"The report shows {got:,.0f} impressions against "
+               f"{goal:,.0f} sold"
+               + (f" ({basis})" if basis else "")
+               + ". Worth knowing before this goes to the client - a campaign "
+                 "that under-delivered is usually a make-good conversation.",
+               trace=trace)]
 
 
 def check_market_logo(ctx) -> list[dict]:
@@ -1153,6 +1207,7 @@ CHECKS: list[tuple] = [
     (check_client_data,    "The data on the report belongs to the client it names"),
     (check_market_logo,    "Page one carries the partner's logo, not a generic one"),
     (check_pacing,         "A full month's spend is close to a full month's budget"),
+    (check_lifetime_goal,  "A finished campaign delivered what it was sold"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
@@ -1228,6 +1283,8 @@ def _rule_applies(rule, ctx) -> bool:
     if name == "check_client_data":
         # Needs a client to compare against and line items that name one.
         return bool(ctx.get("client")) and bool(ctx.get("text"))
+    if name == "check_lifetime_goal":
+        return bool(ctx.get("is_lifetime")) and bool(ctx.get("ordered"))
     if name == "check_pacing":
         # Needs a budget on the order AND a spend on the report. Most products
         # print no spend at all, and most orders have no budget loaded yet.
@@ -1351,7 +1408,7 @@ def run_all(path: Path, filename: str | None = None,
             market: str = "", expected_why: list | None = None,
             expected_any: list | None = None,
             quiet_products: set | None = None,
-            is_lifetime: bool | None = None,
+            is_lifetime: bool | None = None, ordered: dict | None = None,
             logo_generic: bool = False, logo_known: bool = False,
             logo_hash: str = "", budgets: dict | None = None,
             orders_current: bool = True) -> dict:
@@ -1389,6 +1446,9 @@ def run_all(path: Path, filename: str | None = None,
         # Other markets whose reports carry this same header logo.
         # What the order says each product should spend in a month.
         "budgets": budgets or {},
+        # What the order bought, per product - the whole campaign on a
+        # lifetime, this month on a monthly.
+        "ordered": ordered or {},
         # False while the loaded orders were produced by an older import than
         # the one running now. The product check abstains rather than answering
         # from data it knows is out of date.

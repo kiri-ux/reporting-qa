@@ -92,6 +92,11 @@ class Expected:
 # this cycle says nothing about the report it owes.
 MIN_DAYS_IN_MONTH = 7
 
+# A campaign no longer than this, ending in its first month, owes only its
+# lifetime: the two reports would cover the same days and print the same
+# numbers.
+SHORT_CAMPAIGN_DAYS = 30
+
 
 def days_in_cycle(cyc, starts_on, ends_on) -> int:
     """How many days of this month the line actually delivered.
@@ -212,9 +217,17 @@ def expected_for(db: Session, period: str,
     # one order finishing this month and another running to October; the
     # lifetime is about the one that finished.
     life_end: dict[tuple[str, str, str], dt.date] = {}
+    # The order behind that end, so an order is never compared with itself, and
+    # every window a client has, so an ending campaign can be tested against
+    # the ones still running.
+    life_order: dict[tuple[str, str, str], str] = {}
+    windows: dict[tuple[str, str], list[tuple]] = {}
     for l in cols:
         if excluded(l.market):
             continue
+        windows.setdefault((_key(l.market), _key(l.client)), []).append(
+            (l.account_ids or "", l.order_starts_on or l.starts_on,
+             l.order_ends_on or l.ends_on))
         live = cyc.was_live(l.starts_on, l.ends_on)
         # A lifetime is owed when the ORDER ends inside the window. The line
         # item ending is not the campaign ending - River Valley Builders'
@@ -255,6 +268,7 @@ def expected_for(db: Session, period: str,
                 ends = l.order_ends_on or l.ends_on
                 if ends and (k not in life_end or ends > life_end[k]):
                     life_end[k] = ends
+                    life_order[k] = l.account_ids or ""
                     e.life_note = (f"Order {l.account_ids or '?'} ends "
                                    f"{ends.isoformat()}")
             if l.product and l.product not in e.products:
@@ -293,6 +307,9 @@ def expected_for(db: Session, period: str,
 
     # And a lifetime that has already gone out is not owed again.
     done = _lifetimes_delivered(db, period)
+    # Clients that have had a monthly before, for the one-month-campaign rule
+    # below: "first monthly" only means anything if there has not been one.
+    seen_before = _clients_with_a_monthly(db, period)
 
     _attach_reports(db, period, rows)
     for k in list(rows):
@@ -307,6 +324,26 @@ def expected_for(db: Session, period: str,
                                 "starts": e.starts_on, "ends": e.ends_on})
             del rows[k]
             continue
+        # AN ENDED ORDER THAT OVERLAPS A RUNNING ONE IS NOT A FINISHED
+        # CAMPAIGN. Field Of Dreams' Mobile Conquesting finished on 31 July
+        # while their Meta ran to 14 October - the client is not dark, the buy
+        # simply changed shape, and a campaign-to-date report in the middle of
+        # a live campaign is not what a lifetime is for.
+        if kind == "lifetime" and e.report is None:
+            overlap = _running_overlap(windows.get((mk, ck), []),
+                                       life_order.get(k, ""),
+                                       e.starts_on, e.ends_on,
+                                       cyc.lifetime_cutoff)
+            if overlap:
+                if skipped is not None:
+                    skipped.append({"market": e.market, "client": e.client,
+                                    "why": f"order {overlap} is still running "
+                                           f"and overlaps this one",
+                                    "kind": "lifetime", "days": 0,
+                                    "starts": e.starts_on, "ends": e.ends_on})
+                del rows[k]
+                continue
+
         if kind == "lifetime" and e.report is None and ck in done:
             # ONLY IF THE LIFETIME THAT WENT OUT COVERED THIS ENDING.
             #
@@ -324,10 +361,64 @@ def expected_for(db: Session, period: str,
                                     "kind": "lifetime", "days": 0,
                                     "starts": e.starts_on, "ends": e.ends_on})
                 del rows[k]
+
+    # A CAMPAIGN SHORTER THAN A MONTH THAT IS ENDING GETS ONE REPORT, NOT TWO.
+    #
+    # Its first monthly and its lifetime would cover the same days and carry
+    # the same numbers, and the lifetime is the one the client is owed. Only
+    # when it IS the first - a client who has had monthlies before is mid
+    # relationship, and last month's report is not this month's.
+    for (mk, ck, kind), e in list(rows.items()):
+        if kind != "monthly" or e.report is not None:
+            continue
+        life = rows.get((mk, ck, "lifetime"))
+        if life is None or ck in seen_before:
+            continue
+        if not (life.starts_on and life.ends_on):
+            continue
+        days = (life.ends_on - life.starts_on).days + 1
+        if days <= SHORT_CAMPAIGN_DAYS:
+            if skipped is not None:
+                skipped.append({"market": e.market, "client": e.client,
+                                "why": f"campaign ran {days} days and its "
+                                       f"lifetime covers the same ground",
+                                "kind": "monthly", "days": days,
+                                "starts": life.starts_on, "ends": life.ends_on})
+            del rows[(mk, ck, kind)]
+
     out = list(rows.values())
     out.sort(key=lambda e: (e.group.lower(), e.market.lower(),
                             e.client.lower(), e.kind))
     return out
+
+
+def _running_overlap(windows, own_order: str, starts, ends, cutoff) -> str:
+    """The order id of a live campaign this ending one overlaps, or "".
+
+    A client whose Mobile Conquesting finished while their Meta runs to October
+    is not dark: the buy changed shape. A lifetime is for a campaign that has
+    actually finished, so an ended order that overlaps a running one waits.
+    """
+    if not ends:
+        return ""
+    for order, w_start, w_end in windows:
+        if order and own_order and order == own_order:
+            continue                       # the campaign cannot outlast itself
+        still_running = w_end is None or w_end > cutoff
+        if not still_running:
+            continue
+        if w_start is None or w_start <= ends:
+            if w_end is None or starts is None or w_end >= starts:
+                return order or "another order"
+    return ""
+
+
+def _clients_with_a_monthly(db: Session, period: str) -> set[str]:
+    """Clients that have had a monthly report before this cycle."""
+    rows = db.execute(
+        select(Report.client).where(Report.is_lifetime.is_(False),
+                                    Report.period < period).distinct()).all()
+    return {_key(c) for (c,) in rows if c}
 
 
 def _lifetimes_delivered(db: Session, period: str) -> dict[str, str]:

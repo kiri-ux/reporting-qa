@@ -138,4 +138,20 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
                      "pace": pacing_pct(served["total"] or None, want_total or None),
                      "total": True,
                      "unattributed": served["unattributed"]})
-    return rows
+
+    # IMPRESSIONS AND DOLLARS ARE TWO DIFFERENT QUESTIONS, so an order carrying
+    # both gets two lists rather than one where the reader has to notice which
+    # unit each row is in. Impressions first: most orders are bought that way.
+    money = [r for r in rows if r["unit"] == "money"]
+    imps = [r for r in rows if r["unit"] != "money"]
+    if money:
+        spent_total = sum(r["served"] for r in money if r["served"])
+        want_money = sum(r["ordered"] for r in money if r["ordered"])
+        if want_money or spent_total:
+            money.append({"product": "All spend", "unit": "money",
+                          "served": spent_total or None,
+                          "ordered": want_money or None,
+                          "pace": pacing_pct(spent_total or None,
+                                             want_money or None),
+                          "total": True})
+    return imps + money

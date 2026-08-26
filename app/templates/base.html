@@ -78,6 +78,12 @@ body{margin:0;background:var(--plane);color:var(--ink);
 .topbar .mein input{font:inherit;font-size:12px;padding:5px 10px;
  border:1px solid var(--line);border-radius:14px;background:var(--surface);
  color:var(--ink)}
+.brain{display:inline-flex;align-items:center;justify-content:center;width:30px;
+ height:30px;border-radius:9px;color:var(--atlas-50);text-decoration:none}
+.brain:hover{background:var(--velocity-10);color:var(--velocity)}
+.brain svg{width:19px;height:19px}
+.rules{margin:8px 0 0;padding-left:20px;font-size:13.5px;color:var(--ink-2)}
+.rules li{margin:5px 0}
 .linkish{background:none;border:0;padding:0 0 0 6px;font:inherit;font-size:11px;
  color:var(--velocity);cursor:pointer;text-decoration:underline}
 .topbar::after{content:'';position:absolute;left:0;right:0;bottom:-3px;height:3px;
@@ -135,6 +141,13 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .pacing tr.tot td{font-weight:700;border-bottom:0;border-top:1px solid var(--ink-2)}
 .pacing tr.sub2 td{border-bottom:0;padding-top:0;font-size:11.5px}
 .pacing .off{color:var(--crit);font-weight:700}
+.renamed{margin:14px 0 0;font-size:12.5px;color:var(--warn);
+ background:var(--warn-bg);border:1px solid var(--warn);border-radius:8px;
+ padding:8px 11px}
+.renamed code{color:inherit}
+.pacing tr.phead td{font-family:Agdasima,sans-serif;font-size:11.5px;
+ letter-spacing:.1em;text-transform:uppercase;color:var(--atlas-50);
+ border-bottom:0;padding-top:10px}
 .wrongtarget{font-size:11.5px;font-weight:700;color:var(--crit);
  background:var(--crit-bg,#FDECEC);border:1px solid var(--crit);border-radius:12px;
  padding:2px 9px;cursor:help}
@@ -531,6 +544,18 @@ body.fit .pdfwrap object{height:100%}
   <h1>Report QA</h1>
   <span class="where">{% block where %}{% endblock %}</span>
   <span class="right">
+    {# THE RULES, ON THE PAGE THEY APPLY TO. Which reports are owed, which are
+       not, and what happens after one is signed off - a set of rules that only
+       exists in somebody's head is a set of rules nobody can check. #}
+    <a href="/rules" data-sheet="/rules?frag=1" data-sheet-title="Reporting rules"
+       class="brain" title="The reporting rules" aria-label="The reporting rules">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9.5 4.5A2.5 2.5 0 007 7a2.5 2.5 0 00-1.5 4.5A2.5 2.5 0 007 16a2.5 2.5 0 002.5 2.5A1.5 1.5 0 0012 20V4a1.5 1.5 0 00-2.5.5z"/>
+        <path d="M14.5 4.5A2.5 2.5 0 0117 7a2.5 2.5 0 011.5 4.5A2.5 2.5 0 0117 16a2.5 2.5 0 01-2.5 2.5A1.5 1.5 0 0112 20"/>
+        <path d="M9 8.5h1M9 12h1.5M14 9.5h1M13.5 13h1.5"/>
+      </svg>
+    </a>
     {# A name, not a login. Nothing here is authorised by it - it is who to put
        against a sign-off, so that it does not have to be typed on every row. #}
     {% set me = whoami(request) %}
@@ -557,7 +582,6 @@ body.fit .pdfwrap object{height:100%}
 <footer>
   <span class="b">Vici</span>
   <span>Report QA · {{ build_label }}{% if build_service and build_service != 'local' %} · {{ build_service }}{% endif %}</span>
-  <span class="n">{{ build_notes }}</span>
 </footer>
 
 <button class="totop" id="totop" aria-label="Back to top" title="Back to top">

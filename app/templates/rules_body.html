@@ -1,0 +1,71 @@
+{# The rules the board applies, in the words somebody would use to explain
+   them. Rendered on its own page and inside the brain-icon panel. #}
+<p class="sub">
+  What this tool asks for, what it does not, and what happens after. Every rule
+  here is one the board actually applies - if the two ever disagree, the board
+  is wrong.
+</p>
+
+<h2 style="margin-top:18px">A monthly is owed when</h2>
+<ul class="rules">
+  <li>a client had at least one product delivering during the reporting month,</li>
+  <li>and that product ran <b>{{ min_days }} days or more</b> of it. A campaign
+    that started on the 30th waits for next month - two days of delivery is a
+    page of near-zero numbers that reads as a broken report.</li>
+  <li>One product running a full week is enough. A second product starting on
+    the 30th does not excuse the rest of the campaign.</li>
+</ul>
+
+<h2 style="margin-top:18px">A lifetime is owed when</h2>
+<ul class="rules">
+  <li>an order <b>finishes</b> inside the cycle - month end, plus a few days to
+    the 3rd business day, so a campaign that ended on the 1st ships with the
+    monthlies rather than waiting a month.</li>
+  <li>It is never held back for a short run. A campaign that ended on the 2nd
+    ran its whole flight; that only two of those days fall in this cycle says
+    nothing about the report it owes.</li>
+  <li><b>Unless</b> the order that ended overlaps another order still running.
+    The client is not dark - the buy changed shape - and a campaign-to-date
+    report in the middle of a live campaign is not what a lifetime is for. An
+    order that starts after the ended one finished does not count as an
+    overlap, so that client does get their lifetime.</li>
+  <li><b>Unless</b> a lifetime has already gone out for that campaign. If the
+    end date moves out after one was sent, the client goes back on the normal
+    schedule and owes a new lifetime when it finishes for real.</li>
+</ul>
+
+<h2 style="margin-top:18px">A campaign shorter than {{ short_days }} days</h2>
+<ul class="rules">
+  <li>gets its <b>lifetime only</b>, when it ends in the same month it started.
+    The first monthly and the lifetime would cover the same days and print the
+    same numbers.</li>
+  <li>A client who has had monthlies before is mid-relationship, so this only
+    applies to a campaign's first month.</li>
+</ul>
+
+<h2 style="margin-top:18px">What a report is checked against</h2>
+<ul class="rules">
+  <li>A <b>monthly</b> is judged against the month: the products live during it,
+    the budget for it, and a date range that reads exactly month start to month
+    end.</li>
+  <li>A <b>lifetime</b> is judged against the campaign: every product that ran
+    during its flight, the whole campaign's goal, and a date range that matches
+    the order's own start and end.</li>
+  <li>A finished campaign that delivered more than {{ goal_band }}% under its
+    goal is flagged - not as a failure, because the goal is often the monthly
+    figure across the flight rather than a total the order states.</li>
+</ul>
+
+<h2 style="margin-top:18px">Names and delivery</h2>
+<ul class="rules">
+  <li>Every report is filed as <code>July 2026_Client 53908.pdf</code>, or
+    <code>Lifetime_Client 53908.pdf</code> - built from the cycle, the client
+    the report itself prints, and the order ids. A file that arrived without
+    its order id is renamed and <b>says so on the report</b>.</li>
+  <li>A partner is packaged when every one of its reports is signed off. Where
+    it goes - Drive or Dropbox - comes from the reporting roster, and the links
+    page says if a delivery went somewhere else.</li>
+  <li>Signing off is a person saying they read this answer. It survives a
+    re-check that changes nothing they would have cared about, and is pulled
+    when a failure appears that was not there when they signed.</li>
+</ul>

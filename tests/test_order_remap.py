@@ -864,3 +864,106 @@ def test_a_share_of_goal_is_not_an_impression_total(db):
     line = db.query(OrderLine).one()
     assert line.impressions == 87000
     assert line.total_impressions is None
+
+
+def test_an_ended_order_that_overlaps_a_running_one_waits(db):
+    """The client is not dark - the buy changed shape - and a campaign-to-date
+    report in the middle of a live campaign is not what a lifetime is for."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="C", account_ids="1", line_ids="1",
+                     product="Mobile Conquesting", campaign="Mobile Conquesting Ads",
+                     live=True, starts_on=D("2025-12-17"), ends_on=D("2026-07-31"),
+                     order_starts_on=D("2025-12-17"), order_ends_on=D("2026-07-31")))
+    db.add(OrderLine(market="M", client="C", account_ids="2", line_ids="2",
+                     product="Meta", campaign="Meta Display & Video Ads",
+                     live=True, starts_on=D("2026-02-01"), ends_on=D("2026-10-14"),
+                     order_starts_on=D("2026-02-01"), order_ends_on=D("2026-10-14")))
+    db.commit()
+    skipped: list = []
+    kinds = {e.kind for e in expected_for(db, "2026-07", skipped=skipped)}
+    assert kinds == {"monthly"}
+    assert any("still running" in r["why"] for r in skipped)
+
+
+def test_a_later_order_that_does_not_overlap_still_gets_its_lifetime(db):
+    """Field Of Dreams: Mobile Conquesting ended 13 July, Display starts on the
+    28th. Two campaigns, not one - so the first one gets its lifetime."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Field Of Dreams", account_ids="51118",
+                     line_ids="120253", product="Mobile Conquesting",
+                     campaign="Mobile Conquesting Ads", live=True,
+                     starts_on=D("2025-12-17"), ends_on=D("2026-07-13"),
+                     order_starts_on=D("2025-12-17"), order_ends_on=D("2026-07-13")))
+    db.add(OrderLine(market="M", client="Field Of Dreams", account_ids="55216",
+                     line_ids="133917", product="Display", campaign="Display Ads",
+                     live=True, starts_on=D("2026-07-28"), ends_on=D("2026-10-14"),
+                     order_starts_on=D("2026-07-28"), order_ends_on=D("2026-10-14")))
+    db.commit()
+    rows = expected_for(db, "2026-07")
+    life = [e for e in rows if e.kind == "lifetime"]
+    assert len(life) == 1
+    # And it covers the campaign that ended, not the one that just started.
+    assert life[0].ends_on == D("2026-07-13")
+    assert life[0].products == ["Mobile Conquesting"]
+
+
+def test_the_lifetime_only_expects_what_that_campaign_ran(db):
+    """"Ordered but not on the report: Display" on a lifetime covering Dec to
+    July, where the Display order starts on 28 July."""
+    import datetime as dt
+    from app.roster import expected_products
+    from app.db import OrderLine
+    D = dt.date.fromisoformat
+    db.add(OrderLine(market="M", client="Field Of Dreams", account_ids="51118",
+                     line_ids="120253", product="Mobile Conquesting",
+                     campaign="Mobile Conquesting Ads", live=True,
+                     starts_on=D("2025-12-17"), ends_on=D("2026-07-13")))
+    db.add(OrderLine(market="M", client="Field Of Dreams", account_ids="55216",
+                     line_ids="133917", product="Display", campaign="Display Ads",
+                     live=True, starts_on=D("2026-07-28"), ends_on=D("2026-10-14")))
+    db.commit()
+    got = expected_products(db, "Field Of Dreams", "51118", period="2026-07",
+                            lifetime=True,
+                            window=(D("2025-12-17"), D("2026-07-13")))
+    assert got == {"Mobile Conquesting"}
+
+
+def test_one_month_campaigns_owe_only_their_lifetime(db):
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Pop Up", account_ids="9", line_ids="9",
+                     product="Meta", campaign="Meta Display & Video Ads",
+                     live=True, starts_on=D("2026-07-02"), ends_on=D("2026-07-29"),
+                     order_starts_on=D("2026-07-02"), order_ends_on=D("2026-07-29")))
+    db.commit()
+    skipped: list = []
+    kinds = [e.kind for e in expected_for(db, "2026-07", skipped=skipped)]
+    assert kinds == ["lifetime"]
+    assert any("covers the same ground" in r["why"] for r in skipped)
+
+
+def test_a_finished_campaign_under_its_goal_is_flagged():
+    from app.checks.rules import check_lifetime_goal
+    text = (" Line Item Performance\n"
+            " Acme - Keyword Social Mirror   400,000   100   0.03%\n")
+    ordered = {"Social Mirror": {"impressions": 1_000_000, "budget": None,
+                                 "basis": "6 months at the monthly figure"}}
+    out = check_lifetime_goal({"is_lifetime": True, "text": text,
+                               "ordered": ordered})
+    assert len(out) == 1 and out[0]["severity"] == "warn"
+    assert "60% under" in out[0]["title"]
+    # Inside the band, nothing to say.
+    ordered["Social Mirror"]["impressions"] = 420_000
+    assert check_lifetime_goal({"is_lifetime": True, "text": text,
+                                "ordered": ordered}) == []

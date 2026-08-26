@@ -433,6 +433,9 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
         <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
+          {% if e.report and e.report.renamed_from %}
+            <span class="wpill" title="Arrived as {{ e.report.renamed_from }} - the order id was missing or wrong, so it was renamed.">renamed</span>
+          {% endif %}
           {% if e.report %}
             {# Problems only. A confirmation in this column reads as another
                thing wrong, which is the opposite of what it means. #}

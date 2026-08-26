@@ -232,9 +232,21 @@ def attach_owners(db: Session, report: Report) -> None:
     _fill_from_roster(db, report)
 
 
+def _overlaps(line, start, end) -> bool:
+    """Did this line item deliver at any point inside [start, end]?"""
+    s = line.starts_on
+    e = line.ends_on
+    if end and s and s > end:
+        return False
+    if start and e and e < start:
+        return False
+    return True
+
+
 def expected_products(db: Session, client: str, account_ids: str,
                      period: str | None = None,
-                     lifetime: bool = False) -> set[str] | None:
+                     lifetime: bool = False,
+                     window: tuple | None = None) -> set[str] | None:
     """Products the client's qualifying orders say belong on this report.
 
     Returns None when the client is not on the order list, so the check stays
@@ -255,6 +267,12 @@ def expected_products(db: Session, client: str, account_ids: str,
     # Burt Young Sales' lifetime was failed for carrying CTV and Native
     # Display, which is exactly what a campaign-to-date report should carry.
     if lifetime:
+        # THE CAMPAIGN THIS REPORT COVERS, not everything the client has ever
+        # bought. Field Of Dreams' lifetime runs Dec 17 to Jul 13; their
+        # Display order starts on 28 July and belongs to the next campaign, so
+        # a report without it is not missing anything.
+        if window and (window[0] or window[1]):
+            hit = [l for l in hit if _overlaps(l, window[0], window[1])]
         return {l.product for l in hit if l.product}
     if period:
         # An empty result here is not the same as no order list. If every one

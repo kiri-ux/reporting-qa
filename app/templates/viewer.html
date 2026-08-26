@@ -121,6 +121,15 @@
       </details>
     {% endif %}
 
+    {% if rep.renamed_from %}
+      {# THE FILE ARRIVED WITHOUT ITS ORDER ID. Worth seeing rather than being
+         quietly corrected: it came out of a folder somebody assembled by hand,
+         and the next one will come from the same folder. #}
+      <p class="renamed">Arrived as <code>{{ rep.renamed_from }}</code> - the
+        order id was missing or wrong, so it was filed as
+        <code>{{ saved_as }}</code>.</p>
+    {% endif %}
+
     {% if pacing %}
       {# SERVED AGAINST ORDERED. Not a check - a number to look at. Impressions
          for everything bought on a delivery goal, dollars for the three
@@ -129,7 +138,12 @@
       <h2 style="margin-top:22px">Pacing{% if rep.is_lifetime %} · campaign to date{% endif %}</h2>
       <table class="pacing">
         <tbody>
+          {% set ns = namespace(unit='') %}
           {% for p in pacing %}
+            {% if p.unit != ns.unit %}
+              {% set ns.unit = p.unit %}
+              <tr class="phead"><td colspan="3">{{ 'Spend' if p.unit == 'money' else 'Impressions' }}</td></tr>
+            {% endif %}
             <tr{% if p.total %} class="tot"{% endif %}>
               <td>{{ p.product }}
                 {%- if p.basis %}<br><span class="acct" style="font-size:11px"

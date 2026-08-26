@@ -19,8 +19,8 @@ from .db import Batch, KnownLogo, Report
 from .notify import post_slack, send_digest
 from .naming import canonical_name
 from .roster import (attach_owners, client_lines, completeness, expected_any,
-                     expected_products, expected_why, quiet_products,
-                     budgets_for)
+                     expected_products, expected_why, ordered_for,
+                     quiet_products, budgets_for)
 
 log = logging.getLogger("reportqa.ingest")
 
@@ -295,6 +295,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                                period=batch.period, lifetime=life_guess)
         budgets = budgets_for(db, meta_guess["client"], meta_guess["account_ids"],
                               period=batch.period)
+        ordered = ordered_for(db, meta_guess["client"], meta_guess["account_ids"],
+                              batch.period, lifetime=life_guess)
         from .recheck import _orders_current
         orders_ok = _orders_current(db)
         # The corner of page one, and which other markets print the same
@@ -305,8 +307,19 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         logo = header_logo_hash(path)
         logo_bad = is_generic(db, logo)
         logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-        flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"])
+        # A lifetime is measured against the campaign that ended, so its
+        # flight stops at this cycle's lifetime window rather than at whatever
+        # else the client has running later in the year.
+        from .cycle import cycle_for as _cycle_for
+        cut = _cycle_for(batch.period).lifetime_cutoff if life_guess else None
+        flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"],
+                               cutoff=cut)
         flines = flight_lines(db, meta_guess["client"], meta_guess["account_ids"])
+        # Only the products this campaign actually ran. A lifetime covering
+        # Dec to July is not owed a Display line that starts on 28 July.
+        exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"],
+                                period=batch.period, lifetime=life_guess,
+                                window=flight)
         try:
             result = run_all(path, filename=name, expected_products=exp,
                              flight=flight, flight_lines=flines,
@@ -315,7 +328,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets,
+                     logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok)
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
@@ -404,7 +417,20 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                 i for l in hit for i in (l.account_ids or "").replace(",", " ").split()))
             if ids:
                 rep.account_ids = ids[:255]
-        rep.filename = canonical_name(rep)
+        # RENAMED, AND WHY IT MATTERS. A file that arrived without its order
+        # id - or with the wrong one - came out of a folder somebody put
+        # together by hand, and that is worth seeing on the report rather than
+        # being quietly corrected. The name it arrived under is kept.
+        built = canonical_name(rep)
+        arrived = (name or "").strip()
+        if built != arrived:
+            from .checks.parser import meta_from_filename as _mfn
+            was = _mfn(arrived)
+            mine = {i for i in (rep.account_ids or "").replace(",", " ").split()}
+            theirs = set((was.get("account_ids") or "").split())
+            if mine and theirs != mine:
+                rep.renamed_from = arrived[:512]
+        rep.filename = built
         db.flush()
         if not replaced:
             _index(existing, rep)

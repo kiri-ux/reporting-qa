@@ -125,7 +125,7 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     from .cycle import cycle_for
     from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
-                     expected_why, quiet_products)
+                     expected_why, ordered_for, quiet_products)
 
     path = Path(rep.stored_path or "")
     if not path.exists():
@@ -147,8 +147,16 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
         from .roster import attach_owners
         attach_owners(db, rep)
 
+    # A lifetime is measured against the campaign that ended, so its flight
+    # stops at this cycle's lifetime window rather than at whatever else the
+    # client still has running.
+    flight = client_flight(db, rep.client, rep.account_ids,
+                           cutoff=(cycle_for(rep.period).lifetime_cutoff
+                                   if rep.is_lifetime and rep.period else None))
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
-                            lifetime=bool(rep.is_lifetime))
+                            lifetime=bool(rep.is_lifetime), window=flight)
+    ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
+                          lifetime=bool(rep.is_lifetime))
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
@@ -172,12 +180,6 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     logo = rep.logo_hash or header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    # A lifetime is measured against the campaign that ended, so its flight
-    # stops at this cycle's lifetime window rather than at whatever else the
-    # client still has running.
-    flight = client_flight(db, rep.client, rep.account_ids,
-                           cutoff=(cycle_for(rep.period).lifetime_cutoff
-                                   if rep.is_lifetime and rep.period else None))
     result = run_all(path, filename=rep.filename, expected_products=exp,
                      flight=flight,
                      flight_lines=flight_lines(db, rep.client, rep.account_ids),
@@ -188,7 +190,7 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets,
+                     logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok)
 
     was_sev = rep.severity

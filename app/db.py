@@ -122,6 +122,11 @@ class Report(Base):
     pending_path: Mapped[str] = mapped_column(String(1024), default="")
     pending_name: Mapped[str] = mapped_column(String(255), default="")
     pending_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # What this file was called when it arrived, when that is not what it is
+    # filed as. Worth saying out loud: a report whose name was missing its
+    # order id came out of a folder somebody assembled by hand, and the same
+    # folder is where the next one will come from.
+    renamed_from: Mapped[str] = mapped_column(String(512), default="")
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
 
@@ -525,6 +530,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "order_ends_on", "DATE"),
     ("order_lines", "total_impressions", "DOUBLE PRECISION"),
     ("order_lines", "total_budget", "DOUBLE PRECISION"),
+    ("reports", "renamed_from", "VARCHAR(512) DEFAULT '' NOT NULL"),
 ]
 
 
