@@ -307,16 +307,19 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
 
 # ---------------------------------------------------------------- Dropbox
 def upload_dropbox_folder(group, period: str, cycle_label: str) -> tuple[str, str, int]:
-    """A zip per market, flat in one Dropbox folder.
+    """The month's PDFs in a shared Dropbox folder, view only.
 
-    Unlike Drive, 7 Mountains keep everything in a single folder named by the
-    zip itself - "7 Mountains KY August reports.zip" beside "7 Mountains Media
-    PA January 2026 Reports.zip". So this builds one zip and shares the FILE,
-    rather than making a folder tree nobody there uses.
+    NOT A ZIP. It used to build one and share the file, so the partner
+    downloaded an archive, extracted it, and found a folder inside a folder
+    before reaching a PDF. The link now opens on the reports themselves.
+
+    A shared link gives whoever has it view access; it does not make them a
+    member of the folder, so nobody following the link can edit or delete
+    anything in it.
     """
     import dropbox
     from dropbox.files import WriteMode
-    from dropbox.sharing import SharedLinkSettings, RequestedVisibility
+    from dropbox.sharing import RequestedVisibility, SharedLinkSettings
 
     app_key = settings.dropbox_app_key.strip()
     app_secret = settings.dropbox_app_secret.strip()
@@ -329,40 +332,69 @@ def upload_dropbox_folder(group, period: str, cycle_label: str) -> tuple[str, st
     dbx = dropbox.Dropbox(app_key=app_key, app_secret=app_secret,
                           oauth2_refresh_token=refresh)
 
-    tmp = settings.data_dir / "deliveries" / period
-    path, n = build_zip(group, period, tmp)
-    if n == 0:
-        raise RuntimeError("Nothing to upload - no report has a stored PDF.")
-
     base = settings.dropbox_folder.strip().rstrip("/")
     if base and not base.startswith("/"):
         base = "/" + base
     month = dt.date.fromisoformat(period + "-01").strftime("%B %Y")
-    dest = f"{base}/{_safe(group.group)} {month} Reports.zip"
+    folder = f"{base}/{_safe(group.group)} {month} Reports"
 
-    data = path.read_bytes()
-    # 150 MB is Dropbox's single-request ceiling. A market's reports are a
-    # fraction of that, so anything near it is a bug worth surfacing rather
-    # than silently chunking around.
-    if len(data) > 140 * 1024 * 1024:
-        raise RuntimeError(f"{dest} is {len(data) / 1048576:.0f} MB, which is too "
-                           f"large for one upload and far larger than a month of "
-                           f"reports should ever be.")
-    dbx.files_upload(data, dest, mode=WriteMode("overwrite"))
+    n = 0
+    for e in group.expected:
+        r = e.report
+        if not r or not r.stored_path:
+            continue
+        src = Path(r.stored_path)
+        if not src.exists():
+            log.warning("missing file for %s / %s: %s", e.market, e.client, src)
+            continue
+        data = src.read_bytes()
+        # 150 MB is Dropbox's single-request ceiling. A report is a fraction of
+        # that, so anything near it is a bug worth surfacing rather than
+        # silently chunking around.
+        if len(data) > 140 * 1024 * 1024:
+            raise RuntimeError(f"{src.name} is {len(data) / 1048576:.0f} MB, far "
+                               f"larger than a report should ever be.")
+        dbx.files_upload(data, f"{folder}/{report_filename(e)}",
+                         mode=WriteMode("overwrite"))
+        n += 1
 
+    if n == 0:
+        raise RuntimeError("Nothing to upload - no report has a stored PDF.")
+
+    link = _dropbox_link(dbx, folder, SharedLinkSettings, RequestedVisibility)
+    return link, (f"{n} report{'s' if n != 1 else ''} in {folder}, "
+                  f"shared view-only."), n
+
+
+def _dropbox_link(dbx, path: str, SharedLinkSettings, RequestedVisibility) -> str:
+    """A public, view-only link to a folder - the existing one if there is one.
+
+    Dropbox refuses to mint a second link for the same path, and that refusal
+    is not a failure: the link it already has is the one to hand over.
+    """
+    from dropbox.sharing import RequestedLinkAccessLevel
+
+    settings_kw = {"requested_visibility": RequestedVisibility.public}
     try:
-        link = dbx.sharing_create_shared_link_with_settings(
-            dest, SharedLinkSettings(
-                requested_visibility=RequestedVisibility.public)).url
-    except Exception:
-        # Already shared: Dropbox refuses to mint a second link, so read the
-        # existing one rather than treating this as a failure.
-        links = dbx.sharing_list_shared_links(path=dest, direct_only=True).links
-        if not links:
-            raise
-        link = links[0].url
-    return link, (f"{n} report{'s' if n != 1 else ''} zipped to {dest}, "
-                  f"public link created."), n
+        # Spelled out rather than left to the default. A link is view-only
+        # either way, and saying so is what keeps it that way if the default
+        # ever changes.
+        settings_kw["access"] = RequestedLinkAccessLevel.viewer
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        return dbx.sharing_create_shared_link_with_settings(
+            path, SharedLinkSettings(**settings_kw)).url
+    except Exception:                                    # noqa: BLE001
+        try:
+            return dbx.sharing_create_shared_link_with_settings(
+                path, SharedLinkSettings(
+                    requested_visibility=RequestedVisibility.public)).url
+        except Exception:                                # noqa: BLE001
+            links = dbx.sharing_list_shared_links(path=path, direct_only=True).links
+            if not links:
+                raise
+            return links[0].url
 
 
 # ---------------------------------------------------------------- orchestration

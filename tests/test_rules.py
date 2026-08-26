@@ -2123,3 +2123,16 @@ def test_a_geo_fencing_strategy_owes_its_fence_breakout():
     # And no geo-fencing strategy means the check has nothing to check.
     assert check_geofence_widget(
         {"text": " Line Item Performance\n Acme - Keyword Social Mirror  10  1  1%\n"}) == []
+
+
+def test_dropbox_delivers_a_folder_of_pdfs_not_a_zip():
+    """The partner downloaded an archive, extracted it, and found a folder
+    inside a folder before reaching a PDF. The link opens on the reports."""
+    import inspect
+    from app import delivery
+    src = inspect.getsource(delivery.upload_dropbox_folder)
+    assert "build_zip" not in src
+    assert "files_upload" in src and "report_filename(e)" in src
+    # And the link it hands over is view-only.
+    link = inspect.getsource(delivery._dropbox_link)
+    assert "RequestedLinkAccessLevel" in link and "viewer" in link

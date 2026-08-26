@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-68"
-BUILD_NOTES = ("A geo-fencing strategy now has to carry its fence breakout. "
-               "The rules panel states the rules and nothing else.")
+BUILD = "2026.08.26-69"
+BUILD_NOTES = ("Dropbox delivers a folder of PDFs, shared view-only, instead "
+               "of a zip with a folder inside it.")
 
 # ---------------------------------------------------------------------------
 
