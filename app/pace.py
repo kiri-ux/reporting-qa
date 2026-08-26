@@ -78,7 +78,32 @@ def pace(db: Session, period: str, outstanding: int,
     if out["rate"] and out["rate"] > 0:
         out["hours"] = outstanding / out["rate"]
         out["eta"] = now + dt.timedelta(hours=out["hours"])
+
+    # HAS THE AUTOMATIC PULL STOPPED?
+    #
+    # A cycle arrives in a flood - hundreds an hour while TapClicks is sending
+    # - and then it stops, and what is left is the lifetimes, which somebody
+    # pulls by hand one at a time. Projecting "about 25 hours to go" off a
+    # trickle of four an hour reads as a schedule when it is really a note that
+    # nothing is coming on its own any more.
+    # THE BUSIEST HOUR THIS CYCLE HAS HAD, not the rate over a long window - a
+    # flood two days ago averaged across seventy-two hours looks like a trickle.
+    buckets: dict = {}
+    for t in seen:
+        k = t.replace(minute=0, second=0, microsecond=0)
+        buckets[k] = buckets.get(k, 0) + 1
+    out["peak"] = float(max(buckets.values())) if buckets else 0.0
+    recent = next((w for w in out["windows"] if w["hours"] == 3), None)
+    out["stalled"] = bool(
+        recent and recent["per_hour"] < STALLED_RATE
+        and out["peak"] >= STALLED_RATE)
     return out
+
+
+# Under this many an hour and the feed is not running any more - what is left
+# is being pulled by hand. Twenty is well below the flood and well above the
+# handful an hour a person manages.
+STALLED_RATE = 20.0
 
 
 def humanise(hours: float | None) -> str:

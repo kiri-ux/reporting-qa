@@ -551,16 +551,31 @@ def _dropbox_link(dbx, path: str, SharedLinkSettings, RequestedVisibility) -> st
 
 # ---------------------------------------------------------------- orchestration
 def deliver(db: Session, period: str, group_name: str, *,
-            force: bool = False, progress=None, tag: str = "") -> Delivery:
+            force: bool = False, progress=None, tag: str = "",
+            ready_only: bool = False) -> Delivery:
     """Package one group and push it wherever that partner takes delivery."""
     groups = {g.group: g for g in by_group(db, period)}
     group = groups.get(group_name)
+    # SEND THE FINISHED ONES AND LEAVE THE REST.
+    #
+    # A partner is not all-or-nothing: two thirds of it can be signed off while
+    # somebody is still working through the last dozen, and waiting for the
+    # last one to hand over the first thirty is a week of nobody having
+    # anything. This packages what is clear and leaves the folder to grow.
+    if group is not None and ready_only:
+        from dataclasses import replace as _replace
+        keep = [e for e in group.expected if e.ready]
+        if not keep:
+            rec = Delivery(period=period, group=group_name, ok=False,
+                           message="Nothing is signed off and clear yet.")
+            db.add(rec); db.commit(); return rec
+        group = _replace(group, expected=keep)
     if group is None:
         rec = Delivery(period=period, group=group_name, ok=False,
                        message="No reports expected for that partner this cycle.")
         db.add(rec); db.commit(); return rec
 
-    if not group.ready and not force:
+    if not group.ready and not force and not ready_only:
         c = group.counts
         blocking = ", ".join(f"{v} {k.replace('_', ' ')}"
                              for k, v in c.items() if v and k != "ready")
@@ -664,8 +679,15 @@ def needs_send(e) -> bool:
         return False
     if (getattr(r, "delivered_as", "") or "") != report_filename(e):
         return True
+    # AN UNKNOWN STAMP IS NOT A CHANGED FILE.
+    #
+    # Every report that went out before this was recorded has no stamp, and
+    # reading that as "changed" told a partner with thirty-six perfectly good
+    # reports in its folder that thirty-three of them needed sending again.
+    # Crying wolf about it is worse than missing one: the name still has to
+    # match, and the stamp gets written the next time it does go up.
     stamp = getattr(r, "delivered_stamp", "") or ""
-    return not stamp or stamp != file_stamp(r.stored_path)
+    return bool(stamp) and stamp != file_stamp(r.stored_path)
 
 
 def out_of_sync(group) -> list[str]:
@@ -732,7 +754,8 @@ def delivery_key(period: str, group: str) -> str:
 
 
 def start_delivery(db: Session, period: str, group_name: str, *,
-                   force: bool = False, tag: str = "") -> dict:
+                   force: bool = False, tag: str = "",
+                   ready_only: bool = False) -> dict:
     """Kick a packaging run off and come straight back."""
     import threading
 
@@ -753,7 +776,17 @@ def start_delivery(db: Session, period: str, group_name: str, *,
     row.period = period
     row.state = "running"
     row.done = 0
-    row.total = len([e for e in g.expected if e.report and e.report.stored_path]) if g else 0
+    # WHAT IT IS ACTUALLY GOING TO SEND, not what the partner holds. A sync
+    # that had one file to move sat at "0 of 10 packaging" and looked stuck,
+    # because the count was every report in the partner rather than the ones
+    # going up.
+    if not g:
+        row.total = 0
+    elif tag:
+        row.total = len([e for e in g.expected if e.report and e.report.stored_path])
+    else:
+        rows_ = [e for e in g.expected if not ready_only or e.ready]
+        row.total = len([e for e in rows_ if needs_send(e)])
     row.note = "starting"
     row.started_at = row.updated_at = dt.datetime.utcnow()
     db.commit()
@@ -774,6 +807,7 @@ def start_delivery(db: Session, period: str, group_name: str, *,
         try:
             with background():          # a page load still comes first
                 rec = deliver(own, period, group_name, force=force, tag=tag,
+                              ready_only=ready_only,
                               progress=lambda n, note: touch(n, note))
                 touch(rec.reports or total,
                       (rec.message or "")[:255],

@@ -135,29 +135,21 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
    The browser's own title= tooltip takes about a second and a half to appear
    and is drawn by the operating system, so it is both slow and the only thing
    on the page that does not look like the page. data-tip is instant. */
-[data-tip]{position:relative}
-[data-tip]::after{content:attr(data-tip);position:absolute;left:50%;bottom:100%;
- transform:translate(-50%,-6px);z-index:60;
- min-width:120px;max-width:280px;width:max-content;
- padding:7px 10px;border-radius:8px;
- background:var(--atlas);color:#fff;font:400 12px/1.45 var(--body,inherit);
- letter-spacing:0;text-transform:none;text-align:left;white-space:normal;
- box-shadow:0 6px 20px rgba(16,32,48,.28);
- opacity:0;visibility:hidden;transition:opacity .09s ease,visibility .09s;
- pointer-events:none}
-[data-tip]::before{content:"";position:absolute;left:50%;bottom:100%;
- transform:translate(-50%,1px);border:5px solid transparent;
- border-top-color:var(--atlas);z-index:61;
- opacity:0;visibility:hidden;transition:opacity .09s ease,visibility .09s;
- pointer-events:none}
-[data-tip]:hover::after,[data-tip]:focus-visible::after,
-[data-tip]:hover::before,[data-tip]:focus-visible::before{opacity:1;visibility:visible}
-/* Near the right-hand edge of a wide table it would run off the page. */
-[data-tip][data-tip-left]::after{left:auto;right:0;transform:translate(0,-6px)}
-[data-tip][data-tip-left]::before{left:auto;right:14px;transform:translate(0,1px)}
-@media (prefers-reduced-motion:reduce){
-  [data-tip]::after,[data-tip]::before{transition:none}
-}
+/* ONE FLOATING TOOLTIP, POSITIONED IN SCRIPT.
+   Drawn on the element it belongs to, the report table clipped it: that table
+   scrolls sideways, and anything that scrolls sideways cuts off whatever
+   leaves it. This one is a single element at the end of the page, positioned
+   over everything, so nothing can clip it and it cannot run off an edge. */
+#tip{position:fixed;z-index:9999;max-width:300px;padding:8px 11px;
+ border-radius:8px;background:var(--atlas);color:#fff;
+ font:400 12px/1.45 var(--body,inherit);letter-spacing:0;text-transform:none;
+ text-align:left;white-space:pre-line;
+ box-shadow:0 8px 24px rgba(16,32,48,.32);
+ opacity:0;visibility:hidden;transition:opacity .08s ease;pointer-events:none}
+#tip.on{opacity:1;visibility:visible}
+[data-tip]{cursor:help}
+button[data-tip],a[data-tip]{cursor:pointer}
+@media (prefers-reduced-motion:reduce){#tip{transition:none}}
 /* ---- sign-off: an icon and a tooltip, not a sentence ---- */
 /* FILLED, so they read as the buttons they are. Outlined in a pale grey they
    looked like decoration on a row that already has a lot of small type. */
@@ -1251,6 +1243,62 @@ body.fit .pdfwrap object{height:100%}
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeSheet();
   });
+})();
+</script>
+<div id="tip" role="tooltip" aria-hidden="true"></div>
+<script>
+// THE PAGE'S OWN TOOLTIP.
+//
+// The browser's title= takes about a second and a half to appear and is drawn
+// by the operating system, so it is both slow and the only thing on screen
+// that does not look like the page. Drawn on the element itself it was clipped
+// by the report table, which scrolls sideways. This is one element, fixed to
+// the viewport, kept inside it.
+(function () {
+  var tip = document.getElementById('tip'), at = null, timer = null;
+
+  function place(el) {
+    var text = el.getAttribute('data-tip');
+    if (!text) return;
+    tip.textContent = text;
+    tip.classList.add('on');
+    tip.setAttribute('aria-hidden', 'false');
+    var r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
+    var pad = 8;
+    // Above by preference, below when there is no room above.
+    var top = r.top - t.height - 8;
+    if (top < pad) top = r.bottom + 8;
+    var left = r.left + r.width / 2 - t.width / 2;
+    left = Math.max(pad, Math.min(left, window.innerWidth - t.width - pad));
+    tip.style.top = Math.round(top) + 'px';
+    tip.style.left = Math.round(left) + 'px';
+  }
+
+  function show(e) {
+    var el = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!el || el === at) return;
+    at = el;
+    clearTimeout(timer);
+    // Long enough not to flash while the pointer crosses the row, short
+    // enough to feel like the page answering rather than the machine.
+    timer = setTimeout(function () { place(el); }, 90);
+  }
+
+  function hide() {
+    at = null;
+    clearTimeout(timer);
+    tip.classList.remove('on');
+    tip.setAttribute('aria-hidden', 'true');
+  }
+
+  document.addEventListener('mouseover', show, true);
+  document.addEventListener('mouseout', function (e) {
+    if (at && e.target.closest && e.target.closest('[data-tip]') === at) hide();
+  }, true);
+  document.addEventListener('focusin', show, true);
+  document.addEventListener('focusout', hide, true);
+  window.addEventListener('scroll', hide, true);
+  document.addEventListener('click', hide, true);
 })();
 </script>
 </body></html>

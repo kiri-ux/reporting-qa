@@ -26,7 +26,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .db import ServedDays
@@ -229,11 +229,19 @@ def import_serving(db: Session, rows, *, period: str | None = None,
             f"Read {read:,} rows and none of them counted.")
 
     if replace:
+        # DELETED AND *FLUSHED* BEFORE ANYTHING IS INSERTED.
+        #
+        # Without the flush both the deletes and the inserts go to the database
+        # in one batch, and it does the inserts first - so re-loading a month
+        # that is already there died on "duplicate key value violates unique
+        # constraint uq_served_days". Which is the normal thing to do: the file
+        # covers the last 180 days and gets re-uploaded whenever it is refreshed.
         periods = {k[0] for k in days} or ({period} if period else set())
-        for p in periods:
-            for row in db.scalars(
-                    select(ServedDays).where(ServedDays.period == p)).all():
-                db.delete(row)
+        if periods:
+            db.query(ServedDays).filter(
+                ServedDays.period.in_(sorted(periods))).delete(
+                    synchronize_session=False)
+            db.flush()
 
     for k, dates in days.items():
         p, mk, ck = k
@@ -296,6 +304,22 @@ def unmatched(db: Session, period: str, limit: int = 40) -> list[str]:
         if (_key(market), _key(client)) not in known:
             out.add(f"{market} - {client}" if market else client)
     return sorted(out)[:limit]
+
+
+def coverage_end(db: Session, period: str):
+    """The last day the loaded file actually has data for, in that month.
+
+    NOT THE END OF THE MONTH. A file that stops on the 31st and a file that
+    stops on the 12th look identical to a client that stopped on the 12th, and
+    the whole board was flagged "stopped 2026-07-31" the first time only July
+    was uploaded - because every client's last day was the last day there was.
+
+    So "it stopped" means "it stopped before the data did", and a client still
+    delivering on the last day the file knows about has not stopped at all.
+    """
+    end = db.scalar(select(func.max(ServedDays.last_day)).where(
+        ServedDays.period == period))
+    return end
 
 
 def last_served(db: Session, period: str) -> dict[tuple[str, str], object]:

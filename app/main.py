@@ -32,6 +32,113 @@ app = FastAPI(title="Report QA")
 from fastapi.middleware.gzip import GZipMiddleware      # noqa: E402
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+# ---------------------------------------------------------------- the door
+# ONE SHARED PASSWORD, OR NONE AT ALL.
+#
+# Set SITE_PASSWORD and every page asks for it once and remembers on that
+# browser. Blank leaves the site open, which is what it has been. This is an
+# internal tool behind a link nobody outside has; what is worth stopping is a
+# forwarded link, not a colleague, so accounts would be ceremony for nothing.
+GATE_COOKIE = "qa_pass"
+GATE_MAX_AGE = 60 * 60 * 24 * 30
+
+
+def _gate_token() -> str:
+    import hashlib
+    secret = settings.site_password.strip()
+    # The cookie carries a hash, not the password. A cookie is readable by
+    # anybody with the laptop, and the password is one somebody chose and may
+    # well have used elsewhere.
+    return hashlib.sha256(("report-qa:" + secret).encode()).hexdigest()[:32]
+
+
+@app.middleware("http")
+async def _password_gate(request: Request, call_next):
+    from fastapi.responses import HTMLResponse as _HTML
+
+    secret = settings.site_password.strip()
+    path = request.url.path
+    if not secret or any(path.startswith(p.strip())
+                         for p in settings.open_paths.split(",") if p.strip()):
+        return await call_next(request)
+    if request.cookies.get(GATE_COOKIE) == _gate_token():
+        return await call_next(request)
+
+    if request.method == "POST" and path == "/unlock":
+        form = await request.form()
+        # compare_digest, so a wrong password does not leak how much of it was
+        # right in how long the answer took.
+        import hmac
+        if hmac.compare_digest((form.get("password") or "").strip(), secret):
+            to = form.get("next") or "/"
+            if not to.startswith("/") or to.startswith("//"):
+                to = "/"
+            resp = RedirectResponse(to, status_code=303)
+            resp.set_cookie(GATE_COOKIE, _gate_token(), max_age=GATE_MAX_AGE,
+                            samesite="lax", path="/", httponly=True,
+                            secure=request.url.scheme == "https")
+            return resp
+        return _HTML(_lock_page(path, bad=True), status_code=401)
+    return _HTML(_lock_page(str(request.url.path)), status_code=401)
+
+
+@app.post("/unlock")
+async def unlock(request: Request):
+    """The same door, as a real route.
+
+    The middleware answers this while the browser is locked out; once it is
+    in, the middleware waves the request through and something has to be here
+    to catch it. Without this, submitting the form twice - or a stale tab
+    posting it - returned a 404 that read as the site being broken.
+    """
+    import hmac
+
+    from fastapi.responses import HTMLResponse as _HTML
+    secret = settings.site_password.strip()
+    form = await request.form()
+    to = form.get("next") or "/"
+    if not to.startswith("/") or to.startswith("//"):
+        to = "/"
+    if not secret or hmac.compare_digest((form.get("password") or "").strip(),
+                                         secret):
+        resp = RedirectResponse(to, status_code=303)
+        if secret:
+            resp.set_cookie(GATE_COOKIE, _gate_token(), max_age=GATE_MAX_AGE,
+                            samesite="lax", path="/", httponly=True,
+                            secure=request.url.scheme == "https")
+        return resp
+    return _HTML(_lock_page(to, bad=True), status_code=401)
+
+
+def _lock_page(nxt: str, bad: bool = False) -> str:
+    import html as _html
+    return f"""<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report QA</title>
+<style>
+ body{{margin:0;min-height:100vh;display:grid;place-items:center;
+  background:#0E2233;color:#FDFBF7;
+  font:400 15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
+ form{{width:min(360px,90vw);text-align:left}}
+ h1{{font-size:20px;margin:0 0 4px;letter-spacing:.02em}}
+ p{{margin:0 0 18px;color:#8FA5B8;font-size:13.5px}}
+ input{{width:100%;box-sizing:border-box;font:inherit;padding:11px 14px;
+  border-radius:24px;border:1px solid #2A4055;background:#0A1B29;color:#FDFBF7}}
+ input:focus{{outline:2px solid #E8B54B;outline-offset:1px}}
+ button{{margin-top:10px;width:100%;font:inherit;font-weight:600;padding:11px 14px;
+  border-radius:24px;border:0;background:#E8B54B;color:#14293C;cursor:pointer}}
+ .bad{{color:#F6B0A8;font-size:13px;margin:10px 0 0}}
+</style>
+<form method="post" action="/unlock">
+  <h1>Report QA</h1>
+  <p>Internal tool. Enter the password to continue.</p>
+  <input type="password" name="password" autofocus required
+         autocomplete="current-password" placeholder="Password">
+  <input type="hidden" name="next" value="{_html.escape(nxt, quote=True)}">
+  <button type="submit">Unlock</button>
+  {'<p class="bad">That password is not right.</p>' if bad else ''}
+</form>"""
+
 _HERE = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
@@ -636,6 +743,10 @@ ROW_CAP = 150
 # finding it again took knowing that it had. They are one grid now, with the
 # signed-off ones filtered out by default and a page of fifty.
 PAGE_SIZE = 50
+# AND TWENTY PARTNER CARDS. A hundred and fifty of them is four screens of
+# scrolling before the reports table, which is the part of the page anybody is
+# actually working in.
+CARD_PAGE = 20
 
 
 def _logo_is_generic(db: Session, rep) -> bool:
@@ -787,7 +898,8 @@ def _recheck_jobs(db: Session) -> dict:
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
                state: str = Query(""), rows_: str = Query("", alias="rows"),
                q: str = Query(""), done_: str = Query("", alias="done"),
-               page: int = Query(1), db: Session = Depends(get_db)):
+               page: int = Query(1), cards: int = Query(1),
+               db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
     from .cycle import current_period, cycle_for, recent_periods
@@ -809,6 +921,22 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     delivered = _delivered(db, period, groups)
     if group:
         groups = [g for g in groups if g.group == group]
+    # THE CARDS PAGE TOO, and the search reaches past the page.
+    #
+    # A search that only looked at the twenty cards on screen would be worse
+    # than no search at all, so a query narrows the partners first and the page
+    # applies to what is left.
+    if q.strip():
+        hit = [g for g in groups
+               if any(_matches(e, q) for e in g.expected)
+               or all(w in g.group.lower() for w in q.lower().split())]
+        if hit:
+            groups = hit
+    card_total = len(groups)
+    card_pages = max(1, (card_total + CARD_PAGE - 1) // CARD_PAGE)
+    cards = max(1, min(cards, card_pages))
+    shown_groups = groups[(cards - 1) * CARD_PAGE:cards * CARD_PAGE]
+
     rows = [e for g in groups for e in g.expected]
     if state:
         rows = [e for e in rows if e.state == state]
@@ -826,11 +954,24 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # bottom, so a report changed which table it was in the moment somebody
     # signed it, and finding it again meant knowing that. It is a filter now:
     # hidden by default, in the same grid the moment the filter is cleared.
-    show_done = done_ in {"1", "all", "yes"}
-    done_hidden = 0
-    if not show_done:
-        done_hidden = sum(1 for e in rows if e.ready)
+    # THREE BUCKETS, AND PENDING IS WHERE THE WORK IS.
+    #
+    #   pending    still open - the default, because that is the job
+    #   completed  signed off and clear
+    #   all        both, in one grid
+    #
+    # They used to be two tables in two sections, so a report changed which
+    # table it was in the moment somebody signed it and finding it again meant
+    # knowing that.
+    bucket = done_ if done_ in {"pending", "completed", "all"} else (
+        "all" if done_ in {"1", "yes"} else "pending")
+    show_done = bucket in {"completed", "all"}
+    done_hidden = sum(1 for e in rows if e.ready)
+    open_count = len(rows) - done_hidden
+    if bucket == "pending":
         rows = [e for e in rows if not e.ready]
+    elif bucket == "completed":
+        rows = [e for e in rows if e.ready]
     # ARRIVED FIRST. Two thirds of a cycle has not been sent yet, so in market
     # order the reports there is something to DO about sit below a screenful of
     # "Not received". Stable, so market and client order is kept inside each
@@ -852,9 +993,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         periods = sorted(set(periods) | {period}, reverse=True)
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
-        "periods": periods, "groups": groups,
+        "periods": periods, "groups": shown_groups, "all_groups": groups,
+        "card_page": cards, "card_pages": card_pages, "card_total": card_total,
         "rows": shown, "row_total": total,
         "show_done": show_done, "done_hidden": done_hidden,
+        "bucket": bucket, "open_count": open_count,
         "page": page, "pages": pages, "page_size": PAGE_SIZE,
         "show_all": show_all, "row_cap": ROW_CAP,
         # Where an order id goes when you click it. The board says a campaign
@@ -1163,7 +1306,7 @@ def mark_row_done(request: Request, period: str = Form(...),
 @app.post("/cycle/{period}/deliver")
 def deliver_group(request: Request, period: str, group: str = Form(...),
                   force: str = Form(""), tag: str = Form(""),
-                  back_to: str = Form(""),
+                  back_to: str = Form(""), ready_only: str = Form(""),
                   db: Session = Depends(get_db)):
     # IT RUNS IN THE BACKGROUND NOW.
     #
@@ -1177,7 +1320,8 @@ def deliver_group(request: Request, period: str, group: str = Form(...),
     # instead of it. Kept to what will read as a folder name six months from
     # now, because that is what it becomes.
     tag = re.sub(r"[^A-Za-z0-9 _-]", "", tag).strip()[:40]
-    start_delivery(db, period, group, force=bool(force), tag=tag)
+    start_delivery(db, period, group, force=bool(force), tag=tag,
+                   ready_only=bool(ready_only))
     # PACKAGING LIVES ON THE LINKS PAGE NOW, so that is where it goes back to.
     if back_to == "links":
         # STRAIGHT TO THE ROW, ALREADY RUNNING. The sync is started above, so
@@ -1350,6 +1494,11 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
                        "archive": d.archive_url or "", "reports": d.reports or 0}
                       for d in extra.get(l["group"], [])]
         l["markets"] = markets_of.get(l["group"], [])
+        # How many of this partner are still open, so "Good to go only" can say
+        # what it would leave behind - and not appear at all when it would
+        # leave nothing.
+        g = next((x for x in groups if x.group == l["group"]), None)
+        l["open"] = sum(1 for e in g.expected if not e.ready) if g else 0
     # And partners that are ready but have never been packaged - the button for
     # those was on the card too.
     packaged = {l["group"] for l in delivered["links"]}

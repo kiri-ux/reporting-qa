@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-81"
-BUILD_NOTES = ("Sync sends only what actually moved, and the card starts it "
-               "rather than sending you to press it again. No pacing on a "
-               "campaign somebody called off, and a complete order still "
-               "running into next month waits for next month's lifetime.")
+BUILD = "2026.08.26-82"
+BUILD_NOTES = ("The serving file reloads without crashing, and a partial "
+               "upload no longer says the whole board stopped. Pending / "
+               "Completed / All buckets, twenty partner cards a page, order "
+               "status on the row, and the site can take a password.")
 
 # ---------------------------------------------------------------------------
 

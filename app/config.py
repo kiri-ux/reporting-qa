@@ -76,6 +76,17 @@ class Settings(BaseSettings):
     # The board says a campaign is owed a report. The next question is always
     # what the order actually says, and that has meant copying the number out
     # and pasting it into the IO tool by hand. The id goes on the end.
+    # A PASSWORD ON THE WHOLE SITE.
+    #
+    # Blank means open, which is what it has been. Set SITE_PASSWORD and every
+    # page asks for it once and remembers, for a month, on that browser. It is
+    # one shared password rather than accounts: this is an internal tool behind
+    # a link nobody outside has, and the thing worth stopping is a link that
+    # got forwarded, not a colleague.
+    site_password: str = ""
+    # Anything Render or a health checker needs to reach without it.
+    open_paths: str = "/healthz,/inbound,/static"
+
     io_order_url: str = ("https://www.reporting.zone/client/iotool/dist/"
                          "#/items/viewOrder/")
 

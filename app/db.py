@@ -394,6 +394,10 @@ class OrderLine(Base):
     # a monthly for the month it ran in. These rows used to be dropped at
     # import, which is why 53392 and 54937 were on nobody's board.
     paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    # THE STATUS IN ITS OWN WORDS. Every flag above is this fact reduced to a
+    # yes or a no, and when a row looks wrong the first question is always what
+    # the order actually says - which meant opening the IO tool.
+    status: Mapped[str] = mapped_column(String(48), default="")
     # What this line item is meant to spend in a month, and what it actually
     # spent. Pacing is the comparison of the two, and neither number is on the
     # report - both come off the order.
@@ -670,6 +674,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_lines", "complete", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_lines", "paused", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("order_lines", "status", "VARCHAR(48) DEFAULT '' NOT NULL"),
     ("cycle_done", "reason", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
     ("reports", "logo_hash", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_sync", "trigger", "VARCHAR(32) DEFAULT '' NOT NULL"),
@@ -684,6 +689,14 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "renamed_from", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("reports", "delivered_as", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("reports", "delivered_stamp", "VARCHAR(64) DEFAULT '' NOT NULL"),
+    # ONE-SHOT BACKFILL when delivered_as first appears. Every report that had
+    # already gone out had no record of what it was filed as, so the whole
+    # board read as never delivered - "33 reports changed since this was
+    # packaged" on a partner where one had. Its name is what it was filed as;
+    # a rename since then still shows up, because the name will not match.
+    ("reports", "delivered_as", "VARCHAR(255) DEFAULT '' NOT NULL",
+     "UPDATE reports SET delivered_as = filename "
+     "WHERE delivered_as = '' AND filename <> ''"),
     ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
 ]
@@ -699,11 +712,20 @@ def _existing_columns(conn, table: str) -> set[str]:
 
 def _apply_additive_columns(conn) -> None:
     from sqlalchemy import text as sql_text
-    for table, column, ddl in ADDITIVE_COLUMNS:
+    for entry in ADDITIVE_COLUMNS:
+        # A FOURTH ITEM IS A ONE-SHOT BACKFILL, run only on the deploy that
+        # actually adds the column. A new column full of blanks is sometimes a
+        # claim the rest of the code will believe - "delivered_as is empty" was
+        # read as "never delivered" across the whole board.
+        table, column, ddl = entry[0], entry[1], entry[2]
+        backfill = entry[3] if len(entry) > 3 else ""
         cols = _existing_columns(conn, table)
         if cols and column not in cols:
             conn.execute(sql_text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
             log.info("added column %s.%s", table, column)
+            if backfill:
+                conn.execute(sql_text(backfill))
+                log.info("backfilled %s.%s", table, column)
 
 
 def init_db() -> None:

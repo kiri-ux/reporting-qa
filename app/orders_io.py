@@ -420,7 +420,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
                         "live": False, "canceled": True, "complete": True,
-                        "paused": True,
+                        "paused": True, "status": set(),
                         "budget": None, "impressions": None,
                         # The ORDER's own campaign window, kept apart from the
                         # line item's. A lifetime report covers the order; the
@@ -447,6 +447,11 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Paused only while EVERY line behind this row is. One live
                 # line and one paused one is a product still delivering.
                 kept[k]["paused"] = kept[k]["paused"] and paused
+                # THE STATUS IN ITS OWN WORDS, for every line behind this row.
+                # One row can cover several line items and they do not have to
+                # agree - "IO Live, IO Pending Launch" is the answer to why a
+                # campaign that looks finished is not.
+                kept[k]["status"].add(line_status or order_status or "")
                 # Complete only while EVERY line behind this row is. One live
                 # line means the campaign has not finished.
                 kept[k]["complete"] = kept[k]["complete"] and line_done
@@ -559,6 +564,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             flights=v["flights"], live=bool(v["live"]),
             canceled=bool(v.get("canceled")),
             paused=bool(v.get("paused")),
+            status=", ".join(sorted(x for x in v.get("status") or () if x))[:48],
             complete=bool(v.get("complete")),
             budget=v["budget"], impressions=v["impressions"],
             order_starts_on=v["order_starts"], order_ends_on=v["order_ends"],

@@ -594,9 +594,12 @@ def test_signed_off_reports_are_a_filter_not_a_second_table():
     html = (TPL / "cycle.html").read_text()
     src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
     assert 'id="tbl-done"' not in html, "the second table is back"
-    assert "hiding {{ done_hidden }} signed off" in html
-    assert "showing signed off" in html
-    assert 'show_done = done_ in {"1", "all", "yes"}' in src
+    # Three buckets, and Pending is the default because that is the job.
+    assert 'class="buckets"' in html
+    assert "'pending', 'Pending'" in html
+    assert "'completed', 'Completed'" in html
+    assert 'bucket = done_ if done_ in {"pending", "completed", "all"}' in src
+    assert 'if bucket == "pending":' in src
 
 
 def test_the_reports_table_pages_fifty_at_a_time():
@@ -687,10 +690,110 @@ def test_the_tooltips_are_the_page_s_own_not_the_operating_system_s():
     OS, so it is both slow and the only thing on the page that does not look
     like the page."""
     base = (TPL / "base.html").read_text()
-    assert "[data-tip]::after" in base
-    assert "content:attr(data-tip)" in base
+    # One floating element, positioned in script. Drawn on the element itself
+    # the report table clipped it - that table scrolls sideways, and anything
+    # that scrolls sideways cuts off whatever leaves it.
+    assert 'id="tip"' in base
+    assert "getAttribute('data-tip')" in base
+    assert "[data-tip]::after" not in base, "back to a clippable tooltip"
     html = (TPL / "cycle.html").read_text()
     # The sign-off row is the one that gets pointed at all day.
     assert 'data-tip="Done, no report' in html
     assert 'data-tip="Not needed' in html
     assert 'data-tip="Reviewed' in html
+
+
+def test_the_board_says_when_the_automatic_pull_has_stopped():
+    """A cycle arrives in a flood and then it stops, and what is left is the
+    lifetimes, pulled by hand one at a time. Projecting "about 25 hours to go"
+    off a trickle of four an hour reads as a schedule when it is really a note
+    that nothing is coming on its own any more."""
+    import datetime as dt
+    from app.pace import STALLED_RATE, pace
+
+    now = dt.datetime(2026, 8, 26, 12, 0)
+
+    class FakeDb:
+        pass
+
+    import app.pace as P
+    real = P.arrivals
+    # A flood two days ago, a trickle since.
+    flood = [now - dt.timedelta(hours=48) + dt.timedelta(minutes=i)
+             for i in range(0, 600, 2)]
+    trickle = [now - dt.timedelta(hours=h) for h in (2.5, 1.5, 0.5)]
+    try:
+        P.arrivals = lambda db, period: sorted(flood + trickle)
+        out = pace(FakeDb(), "2026-07", 105, now=now)
+        assert out["stalled"] is True
+        # And a cycle in full flood is not called stalled.
+        P.arrivals = lambda db, period: sorted(
+            [now - dt.timedelta(minutes=i) for i in range(0, 180, 1)])
+        assert pace(FakeDb(), "2026-07", 105, now=now)["stalled"] is False
+    finally:
+        P.arrivals = real
+    assert STALLED_RATE == 20.0
+
+
+def test_the_partner_cards_page_and_the_search_reaches_past_the_page():
+    """A hundred and fifty cards is four screens of scrolling before the
+    reports table, which is where the work happens. A search that only looked
+    at the twenty on screen would be worse than no search at all."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert "CARD_PAGE = 20" in src
+    assert "shown_groups = groups[(cards - 1) * CARD_PAGE:cards * CARD_PAGE]" in src
+    # The query narrows the partners FIRST, then the page applies to what is left.
+    i, j = src.index("hit = [g for g in groups"), src.index("card_total = len(groups)")
+    assert i < j, "the page is applied before the search"
+    html = (TPL / "cycle.html").read_text()
+    assert "{% macro cardpager() %}" in html
+
+
+def test_a_partner_can_be_packaged_with_only_what_is_signed_off():
+    """A partner is not all or nothing. Two thirds of it can be signed off
+    while somebody works through the last dozen, and holding the first thirty
+    back is a week of nobody having anything."""
+    import inspect
+    from app import delivery
+    src = inspect.getsource(delivery.deliver)
+    assert "ready_only" in src
+    assert "keep = [e for e in group.expected if e.ready]" in src
+    html = (TPL / "links.html").read_text()
+    assert 'name="ready_only" value="1"' in html
+
+
+def test_the_site_can_be_put_behind_one_shared_password(tmp_path, monkeypatch):
+    """Blank leaves it open, which is what it has been. This is an internal
+    tool behind a link nobody outside has, so what is worth stopping is a
+    forwarded link, not a colleague."""
+    import importlib, os
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'g.db'}")
+    monkeypatch.setenv("SITE_PASSWORD", "hunter2")
+    import app.config, app.db, app.main
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)
+    from fastapi.testclient import TestClient
+    app.db.Base.metadata.create_all(app.db.engine)
+    c = TestClient(app.main.app)
+
+    assert c.get("/cycle").status_code == 401
+    # Whatever the health checker needs stays open, or Render marks it down.
+    assert c.get("/healthz").status_code == 200
+    assert c.post("/unlock", data={"password": "wrong"}).status_code == 401
+    r = c.post("/unlock", data={"password": "hunter2", "next": "/cycle"},
+               follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/cycle"
+    assert c.get("/cycle").status_code == 200
+
+    # The cookie carries a hash, not the password - a cookie is readable by
+    # anybody with the laptop.
+    assert "hunter2" not in str(c.cookies.get("qa_pass") or "")
+
+    # And an open redirect is not a way out of it.
+    r = c.post("/unlock", data={"password": "hunter2", "next": "//evil.example"},
+               follow_redirects=False)
+    assert r.headers["location"] == "/"
+
+    monkeypatch.delenv("SITE_PASSWORD")
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)

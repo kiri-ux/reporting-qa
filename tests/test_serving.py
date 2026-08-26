@@ -241,7 +241,8 @@ def test_a_campaign_that_stopped_this_month_still_closes_out(db):
                      starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
                      order_starts_on=D("2025-01-01"), order_ends_on=D("2026-12-31")))
     db.commit()
-    import_serving(db, _rows(HEAD, *_days("Just Finished", "M", "2026-07-01", 18)))
+    import_serving(db, _rows(HEAD, *_days("Just Finished", "M", "2026-07-01", 18),
+                             *_days("Still Running", "M", "2026-07-01", 31)))
     assert "lifetime" in {e.kind for e in expected_for(db, "2026-07")}
 
 
@@ -310,7 +311,8 @@ def test_a_campaign_that_ended_mid_month_still_gets_its_lifetime(db):
                      live=True, starts_on=D("2026-01-15"), ends_on=D("2026-07-15"),
                      order_starts_on=D("2026-01-15"), order_ends_on=D("2026-07-15")))
     db.commit()
-    import_serving(db, _rows(HEAD, *_days("Real Campaign", "M", "2026-07-01", 15)))
+    import_serving(db, _rows(HEAD, *_days("Real Campaign", "M", "2026-07-01", 15),
+                             *_days("Still Running", "M", "2026-07-01", 31)))
     assert "lifetime" in {e.kind for e in expected_for(db, "2026-07")}
 
 
@@ -331,7 +333,11 @@ def test_a_cancelled_campaign_says_when_it_actually_stopped(db):
                      starts_on=D("2026-01-15"), ends_on=D("2026-07-31"),
                      order_starts_on=D("2026-01-15"), order_ends_on=D("2026-07-31")))
     db.commit()
-    import_serving(db, _rows(HEAD, *_days("Stopped Early", "M", "2026-07-01", 12)))
+    import_serving(db, _rows(HEAD, *_days("Stopped Early", "M", "2026-07-01", 12),
+                             # The file runs to the end of the month for
+                             # everybody else, which is how we know this one
+                             # stopped rather than the data running out.
+                             *_days("Still Running", "M", "2026-07-01", 31)))
     life = [e for e in expected_for(db, "2026-07") if e.kind == "lifetime"]
     assert len(life) == 1
     assert life[0].stopped_on == D("2026-07-12")
@@ -399,7 +405,8 @@ def test_a_complete_order_that_stopped_mid_month_closes_out(db):
                      starts_on=D("2025-05-01"), ends_on=D("2026-12-31"),
                      order_starts_on=D("2025-05-01"), order_ends_on=D("2026-12-31")))
     db.commit()
-    import_serving(db, _rows(HEAD, *_days("Sorge", "M", "2026-07-01", 14)))
+    import_serving(db, _rows(HEAD, *_days("Sorge", "M", "2026-07-01", 14),
+                             *_days("Still Running", "M", "2026-07-01", 31)))
     rows = expected_for(db, "2026-07")
     life = [e for e in rows if e.kind == "lifetime"]
     assert len(life) == 1
@@ -429,3 +436,108 @@ def test_a_stopped_campaign_is_not_paced_against_what_it_was_sold(db):
     ctx = {"is_lifetime": True, "text": "Impressions\n503\n", "ordered": got}
     assert check_lifetime_goal(ctx) == []
     assert check_impression_pacing(ctx) == []
+
+
+def test_reloading_a_month_that_is_already_there_does_not_die(db):
+    """THE FILE COVERS THE LAST 180 DAYS AND GETS RE-UPLOADED. Loading it a
+    second time died on "duplicate key value violates unique constraint
+    uq_served_days" - the deletes and the inserts went to the database in one
+    batch and it did the inserts first."""
+    from app.serving import import_serving, served_days
+    rows = _rows(HEAD, *_days("Acme Co", "M", "2026-06-01", 30),
+                 *_days("Acme Co", "M", "2026-07-01", 12))
+    import_serving(db, rows)
+    # Same file again, then a wider one that overlaps it. Both are normal.
+    import_serving(db, rows)
+    import_serving(db, _rows(HEAD, *_days("Acme Co", "M", "2026-05-01", 31),
+                             *_days("Acme Co", "M", "2026-06-01", 30),
+                             *_days("Acme Co", "M", "2026-07-01", 20)))
+    assert served_days(db, "2026-05") == {("m", "acmeco"): 31}
+    assert served_days(db, "2026-06") == {("m", "acmeco"): 30}
+    assert served_days(db, "2026-07") == {("m", "acmeco"): 20}
+
+
+def test_a_month_the_new_file_does_not_cover_is_left_alone(db):
+    """Uploading July on its own must not wipe the June that is already there."""
+    from app.serving import import_serving, served_days
+    import_serving(db, _rows(HEAD, *_days("Acme Co", "M", "2026-06-01", 30)))
+    import_serving(db, _rows(HEAD, *_days("Acme Co", "M", "2026-07-01", 12)))
+    assert served_days(db, "2026-06") == {("m", "acmeco"): 30}
+    assert served_days(db, "2026-07") == {("m", "acmeco"): 12}
+
+
+def test_a_file_covering_half_the_month_does_not_stop_the_whole_board(db):
+    """ONLY JULY WAS UPLOADED THE FIRST TIME and every row on the board read
+    "stopped 2026-07-31" - because every client's last day was the last day
+    there was any data. "It stopped" has to mean it stopped before the data
+    did."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    for who in ("Alpha", "Beta"):
+        db.add(OrderLine(market="M", client=who, account_ids="1", line_ids="1",
+                         product="CTV", campaign="Connected TV Ads",
+                         live=False, complete=True,
+                         starts_on=D("2026-01-01"), ends_on=D("2026-10-31"),
+                         order_starts_on=D("2026-01-01"),
+                         order_ends_on=D("2026-10-31")))
+    db.commit()
+    # The file stops on the 12th for everybody - it is a partial upload.
+    import_serving(db, _rows(HEAD, *_days("Alpha", "M", "2026-07-01", 12),
+                             *_days("Beta", "M", "2026-07-01", 12)))
+    rows = expected_for(db, "2026-07")
+    assert not any(e.stopped_on for e in rows), "flagged the end of the data"
+    # And nothing was closed out on the strength of it either.
+    assert {e.kind for e in rows} == {"monthly"}
+
+
+def test_a_line_not_launched_yet_keeps_the_campaign_open(db):
+    """ORDERS 54169 AND 48327. Both have a line at IO Pending Launch dated to
+    start in September, which this cycle's date filter drops - so every line
+    the board could see was complete, and it closed out an order that has not
+    launched half of what was sold."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Unkel Joes", account_ids="48327",
+                     line_ids="122838", product="Social Mirror CTV",
+                     campaign="Social Mirror CTV Ads", live=False, complete=True,
+                     status="IO Complete",
+                     starts_on=D("2025-09-22"), ends_on=D("2026-07-31"),
+                     order_starts_on=D("2025-09-22"), order_ends_on=D("2026-12-31")))
+    # Sold, not launched, starts in September - outside this cycle entirely.
+    db.add(OrderLine(market="M", client="Unkel Joes", account_ids="48327",
+                     line_ids="132514", product="Social Mirror",
+                     campaign="Social Mirror Ads", live=False,
+                     status="IO Pending Launch",
+                     starts_on=D("2026-09-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-09-22"), order_ends_on=D("2026-12-31")))
+    db.commit()
+    import_serving(db, _rows(HEAD, *_days("Unkel Joes", "M", "2026-07-01", 20),
+                             *_days("Still Running", "M", "2026-07-01", 31)))
+    kinds = {e.kind for e in expected_for(db, "2026-07")}
+    assert "lifetime" not in kinds, "closed out an order with a line still to launch"
+
+
+def test_the_status_is_kept_in_its_own_words(db):
+    """Every flag on an order line is this fact reduced to a yes or a no, and
+    when a row looks wrong the first question is what the order actually says."""
+    from sqlalchemy import select
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    head = ("orders_id,id,orders_status,status,client,product,"
+            "client_business_unit,orders_start_date,orders_end_date,"
+            "start_date,end_date,campaign_manager\n")
+    rows = ("48327,122838,IO Live,IO Complete,Unkel Joes,Social Mirror Ads,"
+            "M,2025-09-22,2026-12-31,2025-09-22,2026-07-31,Someone\n"
+            "48327,132514,IO Live,IO Pending Launch,Unkel Joes,Social Mirror Ads,"
+            "M,2025-09-22,2026-12-31,2026-01-01,2026-12-31,Someone\n")
+    import_io_export(db, (head + rows).encode(), period="2026-07")
+    row = db.scalars(select(OrderLine)).first()
+    assert "IO Complete" in row.status and "IO Pending Launch" in row.status

@@ -86,6 +86,11 @@ class Expected:
     # lifetime pulled to that date covers weeks of nothing. This is the date to
     # pull to instead.
     stopped_on: dt.date | None = None
+    # THE ORDER'S STATUS IN ITS OWN WORDS, across every line behind this row.
+    # Every flag on this dataclass is that fact reduced to a yes or a no, and
+    # when a row looks wrong the first question is what the order actually
+    # says - which meant opening the IO tool in another tab.
+    statuses: list = field(default_factory=list)
 
     @property
     def state(self) -> str:
@@ -212,7 +217,7 @@ def expected_for(db: Session, period: str,
         OrderLine.line_ids, OrderLine.buyer, OrderLine.product,
         OrderLine.starts_on, OrderLine.ends_on,
         OrderLine.order_starts_on, OrderLine.order_ends_on,
-        OrderLine.canceled, OrderLine.complete).where(
+        OrderLine.canceled, OrderLine.complete, OrderLine.status).where(
             # The ORDER's end counts as well as the line item's: a lifetime is
             # owed on an order that finishes this cycle even when the line item
             # behind it stopped in May.
@@ -290,9 +295,13 @@ def expected_for(db: Session, period: str,
     # March, and is not this cycle's work. With no serving file loaded there is
     # nothing to test against and the flag stands on its own, as before.
     served_now = served_days(db, period)
-    # And the last day each one delivered, which is what dates a close-out.
-    from .serving import last_served
+    # And the last day each one delivered, which is what dates a close-out -
+    # measured against the last day the FILE has, not the last day of the
+    # month. A file covering only part of the month makes every client on the
+    # board look like it stopped on the day the data ran out.
+    from .serving import coverage_end, last_served
     stopped_day = last_served(db, period)
+    data_ends = coverage_end(db, period)
 
     # IS THIS CLIENT FINISHED, OR IS ONE LINE ITEM OF THEIRS FINISHED?
     #
@@ -306,16 +315,26 @@ def expected_for(db: Session, period: str,
     # line of their order. So the flag only earns a lifetime when nothing they
     # have is still running - which is the same thing the end date says, only
     # sooner and more reliably.
+    # EVERY LINE THE CLIENT HAS, NOT THE ONES THIS CYCLE CARES ABOUT.
+    #
+    # `cols` above is filtered to lines that touch this month, and orders 54169
+    # and 48327 are why that is the wrong set to answer "is this campaign
+    # over". Both have a line at IO Pending Launch dated to start in September,
+    # which the date filter drops - so every line the board could see was
+    # complete, and it closed out an order that has not launched half of what
+    # was sold. A campaign is finished when NOTHING on it is left, including
+    # the parts that have not started yet.
     all_stopped: dict[tuple[str, str], bool] = {}
     # And whether ANY line was stopped, which is a different question: it is
     # the one that says "this campaign did not run to the date on the order".
     any_stopped: dict[tuple[str, str], bool] = {}
-    for l in cols:
-        if excluded(l.market) or is_seo(l.product):
+    for market, client, product, canceled, complete in db.execute(select(
+            OrderLine.market, OrderLine.client, OrderLine.product,
+            OrderLine.canceled, OrderLine.complete)).all():
+        if excluded(market) or is_seo(product):
             continue
-        k = (_key(l.market), _key(l.client))
-        stopped = bool(getattr(l, "canceled", False)
-                       or getattr(l, "complete", False))
+        k = (_key(market), _key(client))
+        stopped = bool(canceled or complete)
         all_stopped[k] = all_stopped.get(k, True) and stopped
         any_stopped[k] = any_stopped.get(k, False) or stopped
 
@@ -366,7 +385,8 @@ def expected_for(db: Session, period: str,
         # on it: before month end means it stopped, at month end means it is
         # still going. With no serving file the flag stands on its own.
         last_day = stopped_day.get(ck_key)
-        stopped_in_month = (last_day is None) or (last_day < cyc.ends_on)
+        stopped_in_month = (last_day is None or data_ends is None
+                            or last_day < data_ends)
         finished = (gone or bool(getattr(l, "complete", False))) and \
             all_stopped.get(ck_key, False) and stopped_in_month
         # A CAMPAIGN THAT NEVER DELIVERED HAS NOTHING TO REPORT.
@@ -437,6 +457,10 @@ def expected_for(db: Session, period: str,
                                        f"{ends.isoformat()}")
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
+            for st in (getattr(l, "status", "") or "").split(","):
+                st = st.strip()
+                if st and st not in e.statuses:
+                    e.statuses.append(st)
             # A client's lifetime covers several products, so its line ids are
             # the union of them - not whichever line happened to be first.
             for lid in (l.line_ids or "").split(","):
@@ -503,10 +527,12 @@ def expected_for(db: Session, period: str,
         if not any_stopped.get((mk, ck)):
             continue
         day = stopped.get((mk, ck))
-        # Only when it is EARLIER than what the order says. A campaign that ran
-        # to its end date needs no correcting, and saying so anyway would put a
-        # note on half the board.
-        if day and e.ends_on and day < e.ends_on:
+        # Only when it is EARLIER than what the order says AND earlier than the
+        # data itself runs. A file covering only part of the month otherwise
+        # says every campaign on the board stopped on the day the data ran out
+        # - which is what "stopped 2026-07-31" was, on every row at once.
+        if (day and e.ends_on and day < e.ends_on
+                and (data_ends is None or day < data_ends)):
             e.stopped_on = day
 
     # HOW MANY DAYS IT ACTUALLY SERVED, IF ANYBODY KNOWS.
