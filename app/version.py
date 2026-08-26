@@ -12,12 +12,13 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-66"
-BUILD_NOTES = ("Four rules: an ended order that overlaps a running one waits "
-               "for its lifetime, a campaign shorter than a month owes only "
-               "its lifetime, a lifetime expects the products THAT campaign "
-               "ran, and a finished campaign under its goal is flagged. The "
-               "brain icon in the top bar has all of them in words.")
+BUILD = "2026.08.26-67"
+BUILD_NOTES = ("CTV and Social Mirror CTV share one Top CTV Publishers widget, "
+               "a CTV + Video buy paces as one row against its one goal, and a "
+               "lifetime is not failed for a product that finished before the "
+               "reporting month. Delivery target is editable on the Partners "
+               "page and shows on every card - a market the roster does not "
+               "name was defaulting to Drive.")
 
 # ---------------------------------------------------------------------------
 

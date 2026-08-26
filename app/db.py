@@ -370,6 +370,9 @@ class OrderLine(Base):
     # against these; a monthly against the two above.
     total_impressions: Mapped[float | None] = mapped_column(Float, nullable=True)
     total_budget: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The products sold on the same line item as this one. "CTV + Video Ads" is
+    # one buy with one goal, so pacing treats the pair as one row.
+    sold_with: Mapped[str] = mapped_column(String(255), default="")
     needs_lifetime: Mapped[bool] = mapped_column(Boolean, default=True)
     buyer: Mapped[str] = mapped_column(String(255), default="")
     team_member: Mapped[str] = mapped_column(String(255), default="")
@@ -530,6 +533,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "order_ends_on", "DATE"),
     ("order_lines", "total_impressions", "DOUBLE PRECISION"),
     ("order_lines", "total_budget", "DOUBLE PRECISION"),
+    ("order_lines", "sold_with", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("reports", "renamed_from", "VARCHAR(512) DEFAULT '' NOT NULL"),
 ]
 

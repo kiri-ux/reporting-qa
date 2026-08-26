@@ -24,7 +24,8 @@
   <div class="tw"><table id="tbl-partners">
     <thead><tr><th>Partner</th><th data-col="Buyer">Buyer</th><th data-col="SEO">SEO</th>
     <th data-col="Manager">Manager</th><th data-col="Reporter">Reporter</th>
-    <th data-col="Trainer">Trainer</th><th>Reports go to</th><th>Notes</th></tr></thead>
+    <th data-col="Trainer">Trainer</th><th data-col="Delivery">Delivery</th>
+    <th>Reports go to</th><th>Notes</th></tr></thead>
     <tbody>{% for p in partners %}
       <tr>
         <td><b>{{ p.partner }}</b></td>
@@ -34,7 +35,20 @@
           <span class="acct">{{ p.seo_email }}</span>{% endif %}</td>
         <td>{{ p.manager }}</td>
         <td>{{ p.reporting_team }}</td>
-        <td>{{ p.trainer }}</td>
+        {# WHERE THIS PARTNER'S CLIENTS GET THEIR LINK. It comes off the
+           roster, and a partner the roster does not name at all - a market
+           added since the last export - silently defaulted to Drive. Set it
+           here rather than editing a spreadsheet and re-uploading it. #}
+        <td class="nw">
+          <form method="post" action="/partners/{{ p.id }}/target" class="tset">
+            <select name="target" onchange="this.form.submit()">
+              {% for opt in ('drive', 'dropbox', 'local') %}
+                <option value="{{ opt }}"
+                  {% if (p.delivery_target or 'drive') == opt %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
         <td>{% for e in p.recipients %}<span class="acct">{{ e }}</span><br>{% endfor %}</td>
         <td style="font-size:12.5px;color:var(--ink-2);max-width:34ch">
           {{ p.reporting_notes }}{% if p.buyer_notes %}

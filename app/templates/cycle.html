@@ -254,7 +254,11 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
             <h3 style="margin:0">{{ g.group }}</h3>
             <p class="sub" style="margin:2px 0 0;font-size:12.5px">
               {{ g.expected|length }} report{{ 's' if g.expected|length != 1 }}
-              {%- if g.target == 'dropbox' %} · dropbox{% endif %}</p>
+              {# Where this partner's link comes from, always - not only when it
+                 is the exception. A market the roster does not name defaults to
+                 Drive, and that default is invisible until a client has the
+                 wrong link. #}
+              · <span title="Set on the Partners page">{{ g.target or 'drive' }}</span></p>
             <div class="who">
               {% if g.buyer %}<span class="wtag b" title="Buyer: {{ g.buyer }}">
                 <b>B</b>{{ g.buyer }}</span>{% endif %}

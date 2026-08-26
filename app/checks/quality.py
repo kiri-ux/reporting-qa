@@ -843,7 +843,15 @@ def check_social_placement_totals(ctx) -> list[dict]:
         if not got:
             continue
         for label, i, total in (("impressions", 0, imps), ("clicks", 1, clicks)):
-            if got[i] > total + 0.5:
+            # A COUNT OR TWO OVER IS ROUNDING, NOT DOUBLE COUNTING.
+            #
+            # "The grid adds up to 4,154 clicks but the total says 4,153" is a
+            # finding nobody can act on: the two numbers come from different
+            # queries and the tile rounds. A real double count is a whole
+            # placement - hundreds - so the slack is the larger of two units
+            # or a tenth of a percent.
+            slack = max(2.0, total * 0.001)
+            if got[i] > total + slack:
                 out.append(_f("placement_over_total", "fail",
                               f"Placement rows exceed the {title.split()[0]} total",
                               f"The placement grid adds up to {got[i]:,.0f} "

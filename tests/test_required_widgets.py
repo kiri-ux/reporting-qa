@@ -46,12 +46,18 @@ def test_removing_a_widget_fails_the_report(sample, title):
     assert all(f["severity"] == "fail" for f in out)
 
 
-def test_one_of_two_ctv_widgets_is_still_short(sample):
-    """CTV and Social Mirror CTV each owe their own publishers widget."""
+def test_ctv_and_social_mirror_ctv_share_one_publishers_widget(sample):
+    """Two products, one widget: the report prints a single Top CTV Publishers
+    list across both. Asking for one each failed a report that carried
+    everything it owed."""
     text = sample.replace("Top CTV Publishers", "Something Else", 1)
     out = check_required_widgets({"text": text, "products": set()})
-    assert len(out) == 1
-    assert out[0]["title"] == "Only 1 of 2 Top CTV Publishers widgets"
+    assert [f["title"] for f in out] == []
+
+    # None at all is still a failure.
+    text = sample.replace("Top CTV Publishers", "Something Else")
+    out = check_required_widgets({"text": text, "products": set()})
+    assert [f["title"] for f in out] == ["No Top CTV Publishers widget"]
 
 
 def test_amazon_widget_does_not_satisfy_the_generic_one():

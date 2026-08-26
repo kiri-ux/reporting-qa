@@ -2077,3 +2077,31 @@ def test_the_client_comes_off_the_cover_page_not_the_filename():
     assert _client_named(text, "Digital Marketing Report.pdf") == "Beech Bend"
     assert _client_named("", "July 2026_Beech Bend 54357.pdf") == "Beech Bend"
     assert _client_named("", "Digital Marketing Report.pdf") == ""
+
+
+def test_a_lifetime_is_not_failed_for_a_product_that_finished_early():
+    """A campaign-to-date report shows everything that ever ran on it, and the
+    order list only carries what is still loaded - lines that finished before
+    the reporting month are dropped at import. WVU Parkersburg's Social Mirror
+    CTV ended in December and was on the report for the right reason."""
+    from app.checks.rules import check_products
+    ctx = {"expected_products": {"CTV", "Meta"},
+           "products": {"CTV", "Meta", "Social Mirror CTV"},
+           "quiet_products": set(), "expected_why": [], "expected_any": [],
+           "orders_current": True}
+    assert [f["code"] for f in check_products(dict(ctx, is_lifetime=False))] \
+        == ["product_rogue"]
+    assert check_products(dict(ctx, is_lifetime=True)) == []
+
+
+def test_a_click_or_two_over_the_tile_is_rounding():
+    """"The grid adds up to 4,154 clicks but the total says 4,153" is a finding
+    nobody can act on. A real double count is a whole placement."""
+    from app.checks.quality import check_social_placement_totals
+    text = ("Social Placement Performance\n"
+            " Audience Network                 100,000   4,154   4.15%\n"
+            "Audience Network Performance\n"
+            " Impressions   Clicks   CTR\n"
+            " 100,000       4,153    4.15%\n")
+    out = check_social_placement_totals({"text": text})
+    assert [f for f in out if f["code"] == "placement_over_total"] == []

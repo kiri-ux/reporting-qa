@@ -101,6 +101,11 @@ def pacing_pct(served: float | None, ordered: float | None) -> float | None:
 # on impressions like everything else.
 SPEND_PRODUCTS = ("Performance Max", "PPC", "LinkedIn")
 
+# Bought by the month, not by delivery: there is no impression count to pace
+# and no spend on the report to compare, so a row for them is a row of dashes.
+NOT_PACED = ("Live Chat", "SEO", "Website Video", "Reputation Management",
+             "Visitor ID", "Geo-Framing")
+
 
 def pacing_rows(text: str, ordered: dict) -> list[dict]:
     """One row per product the order bought, plus a total row for impressions.
@@ -115,6 +120,9 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
     rows: list[dict] = []
 
     for product in sorted(ordered):
+        if any(p == product or p in [x.strip() for x in product.split(",")]
+               for p in NOT_PACED):
+            continue
         want = ordered[product]
         if product in SPEND_PRODUCTS:
             got = spent.get(product)
@@ -123,7 +131,9 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
                          "basis": want.get("basis") or "",
                          "pace": pacing_pct(got, want.get("budget"))})
             continue
-        got = served["by_product"].get(product)
+        # A grouped buy - "CTV, Video" - takes the delivery of both halves.
+        parts = [x.strip() for x in product.split(",")]
+        got = sum(served["by_product"].get(p, 0.0) for p in parts) or None
         rows.append({"product": product, "unit": "impressions",
                      "served": got, "ordered": want.get("impressions"),
                      "basis": want.get("basis") or "",

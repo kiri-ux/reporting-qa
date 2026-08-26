@@ -611,6 +611,13 @@ def check_products(ctx) -> list[dict]:
     from .products import formats_covered
     rogue = sorted(found - expected - formats_covered(expected)
                    - set(ctx.get("quiet_products") or ()))
+    # NOT ON A LIFETIME. A campaign-to-date report shows everything that ever
+    # ran on it, and the order list only carries what is still loaded - lines
+    # that finished before the reporting month are dropped at import. WVU
+    # Parkersburg's Social Mirror CTV ended in December and was on the report
+    # for exactly the right reason.
+    if ctx.get("is_lifetime"):
+        rogue = []
     if rogue and expected:
         out.append(_f("product_rogue", "fail",
                       "On the report with no live order: " + ", ".join(rogue),
@@ -1162,7 +1169,12 @@ def check_required_widgets(ctx) -> list[dict]:
                 continue
             wanted.setdefault(t, []).append(why)
     for title, whys in wanted.items():
-        owed(title, len(whys), " and ".join(whys))
+        # ONE TOP CTV PUBLISHERS WIDGET COVERS BOTH. CTV and Social Mirror CTV
+        # are two products and one widget - the report prints a single Top CTV
+        # Publishers list across them - so asking for one each failed a report
+        # that had everything it owed.
+        n = 1 if title == W_CTV_PUBS else len(whys)
+        owed(title, n, " and ".join(whys))
 
     # YouTube. A YouTube TV only campaign owes the TV channel widget and
     # nothing else, which is why this is not in the table above: the report's

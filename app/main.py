@@ -964,7 +964,8 @@ def review_many(request: Request, ids: list[int] = Form([]), state: str = Form("
 
 @app.post("/report/{report_id}/review")
 def review_report(report_id: int, request: Request, state: str = Form(...),
-                  who: str = Form(""), db: Session = Depends(get_db)):
+                  who: str = Form(""), back: str = Form(""),
+                  db: Session = Depends(get_db)):
     rep = db.get(Report, report_id)
     if not rep:
         raise HTTPException(404)
@@ -979,8 +980,14 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     rep.reviewed_at = dt.datetime.utcnow() if state != "new" else None
     rep.signoff_cleared_at = None        # a fresh decision, whatever went before
     db.commit()
-    back = request.headers.get("referer") or "/cycle"
-    resp = RedirectResponse(back, status_code=303)
+    # BACK TO THE BOARD, NOT BACK TO THIS REPORT.
+    #
+    # Signing one off is the last thing you do with it, so landing on the same
+    # page again means scrolling the board back to where you were, every time.
+    # The board this report was opened from is carried on the form.
+    target = back if back.startswith("/") and not back.startswith("//") else ""
+    resp = RedirectResponse(target or request.headers.get("referer") or "/cycle",
+                            status_code=303)
     # First sign-off of the day remembers you, so there is no separate step to
     # find before the thing you came to do.
     if who.strip():
@@ -1672,8 +1679,16 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
         queued = int(request.query_params.get("logo_queued") or 0)
     except ValueError:
         queued = 0
+    came_from = request.headers.get("referer") or ""
+    if "/report/" in came_from or not came_from.startswith("http"):
+        came_from = ""
+    from urllib.parse import urlparse as _urlparse
+    if came_from:
+        u = _urlparse(came_from)
+        came_from = u.path + (f"?{u.query}" if u.query else "")
     return templates.TemplateResponse(request, "viewer.html",
                                       {"nav": "cycle", "rep": rep,
+                                       "back": came_from,
                                        "skip_why": SKIP_WHY,
                                        "saved_as": canonical_filename(rep),
                                        # The page-one logo, so it can be
@@ -1741,6 +1756,28 @@ def partners_view(request: Request, db: Session = Depends(get_db)):
     from .partners import all_partners
     return templates.TemplateResponse(request, "partners.html", {
         "partners": all_partners(db), "nav": "partners"})
+
+
+@app.post("/partners/{partner_id}/target")
+def partner_target(partner_id: int, target: str = Form(...),
+                   db: Session = Depends(get_db)):
+    """Where this partner's clients get their link.
+
+    It comes off the roster, and a market added since the last export is not in
+    it at all - which meant a silent default to Drive, and a Dropbox partner's
+    client handed a Drive link with nothing on screen that looked wrong.
+    """
+    from .db import Partner
+    from .partners import forget_partners
+    if target not in {"drive", "dropbox", "local"}:
+        raise HTTPException(400, "unknown delivery target")
+    p = db.get(Partner, partner_id)
+    if p is None:
+        raise HTTPException(404)
+    p.delivery_target = target
+    db.commit()
+    forget_partners()
+    return RedirectResponse("/partners", status_code=303)
 
 
 @app.post("/partners/import")

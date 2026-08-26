@@ -353,8 +353,12 @@ def ordered_for(db: Session, client: str, account_ids: str,
             continue
         if not lifetime and not getattr(l, "live", True):
             continue
-        row = out.setdefault(l.product, {"budget": None, "impressions": None,
-                                         "basis": ""})
+        # ONE ROW PER BUY, NOT PER PRODUCT. "CTV + Video Ads" is a single line
+        # item with a single goal; pacing each half against the whole goal said
+        # CTV was 46% short while Video had nothing to compare against at all.
+        name = getattr(l, "sold_with", "") or l.product
+        row = out.setdefault(name, {"budget": None, "impressions": None,
+                                    "basis": ""})
         if not lifetime:
             for key in ("budget", "impressions"):
                 v = getattr(l, key, None)

@@ -55,7 +55,14 @@
                 <span class="pill p-{{ 'fail' if f.severity == 'fail' else 'warn' }}">{{ f.severity }}</span>
                 {# Where to look. "1 site clicking above 5%" is true and
                    unhelpful until you know which of forty-one pages. #}
-                {% if f.where %}<span class="wpill" title="Where to find it">{{ f.where }}</span>{% endif %}
+                {# TWO PILLS, NOT ONE STRING. The page number and the widget
+                   are different facts - one tells you where to look, the other
+                   what to look at - and a report with no page reference should
+                   still say which widget it means. #}
+                {% for bit in (f.where or '').split(' · ') %}
+                  {% if bit %}<span class="wpill{% if bit[0] == 'p' and bit[1:].isdigit() %} pg{% endif %}"
+                    title="{{ 'Page' if bit[0] == 'p' and bit[1:].isdigit() else 'Widget' }}">{{ bit }}</span>{% endif %}
+                {% endfor %}
                 <b>{{ f.title or f.code }}</b>
                 {% if f.detail and f.detail != f.title %}
                   <span class="fdetail">{{ f.detail }}</span>{% endif %}
@@ -193,6 +200,9 @@
 
     <h2 style="margin-top:22px">Sign-off</h2>
     <form method="post" action="/report/{{ rep.id }}/review" class="signoff">
+      {# Where this report was opened from, so signing it off puts you back on
+         the board where you were rather than on this page again. #}
+      <input type="hidden" name="back" value="{{ back or '' }}">
       {# The name sits on its own line so the three verdicts stay on one row.
          Wrapping split them two-and-one, which read as though Waive belonged
          to something else. #}

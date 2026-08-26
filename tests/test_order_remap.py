@@ -967,3 +967,43 @@ def test_a_finished_campaign_under_its_goal_is_flagged():
     ordered["Social Mirror"]["impressions"] = 420_000
     assert check_lifetime_goal({"is_lifetime": True, "text": text,
                                 "ordered": ordered}) == []
+
+
+def test_a_ctv_plus_video_buy_paces_as_one_row(db):
+    """"CTV + Video Ads" is one line item with one goal. Pacing each half
+    against the whole goal said CTV was 46% short while Video had nothing to
+    compare against at all."""
+    import datetime as dt
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    from app.roster import ordered_for
+    from app.checks.served import pacing_rows
+
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    row = ("BU,IO Live,WVU,45411,CTV + Video Ads,104706,IO Live,"
+           "2025-07-30,2025-07-30,2026-07-31,2026-07-31,87500\n")
+    import_io_export(db, (head + row).encode(), period="2026-07")
+    assert {l.sold_with for l in db.query(OrderLine).all()} == {"CTV, Video"}
+
+    want = ordered_for(db, "WVU", "45411", "2026-07")
+    assert list(want) == ["CTV, Video"]
+
+    text = (" Line Item Performance\n"
+            " WVU - Behavioral CTV        572,099   100  0.02%\n"
+            " WVU - Pre-roll Video        676,234   200  0.03%\n")
+    rows = pacing_rows(text, want)
+    assert rows[0]["product"] == "CTV, Video"
+    assert rows[0]["served"] == 572_099 + 676_234
+
+
+def test_products_bought_by_the_month_are_not_paced(db):
+    """Live Chat and SEO have no impressions to pace and no spend on the
+    report, so a row for them is a row of dashes."""
+    from app.checks.served import pacing_rows
+    rows = pacing_rows(" Line Item Performance\n Acme - Keyword Social Mirror  10  1  1%\n",
+                       {"Live Chat": {"impressions": None, "budget": None},
+                        "SEO": {"impressions": None, "budget": None},
+                        "Social Mirror": {"impressions": 100, "budget": None}})
+    assert [r["product"] for r in rows if not r.get("total")] == ["Social Mirror"]

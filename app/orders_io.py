@@ -376,6 +376,10 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         # line item only says what was delivering this month.
                         "order_starts": None, "order_ends": None,
                         "total_budget": None, "total_impressions": None,
+                        # Which products came off the SAME line item. "CTV +
+                        # Video Ads" is one buy with one goal, and pacing each
+                        # half against the whole goal says both are miles out.
+                        "sold_with": set(products),
                     }
                 else:                    # widest flight across that client's orders
                     cur = kept[k]
@@ -386,6 +390,8 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Live if ANY line item behind this row is. A client running one
                 # product across a live order and a paused one is running it.
                 kept[k]["live"] = kept[k]["live"] or line_live
+                if len(products) > 1:
+                    kept[k]["sold_with"].update(products)
 
                 # The widest campaign window across the orders behind this row.
                 cur = kept[k]
@@ -400,8 +406,14 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # adding it to both halves would say the client is spending
                 # twice what the order says.
                 if product == products[0]:
-                    money = _num(r.get(SPEND_FIELD.get(product,
-                                                       "monthly_campaign_budget")))
+                    # A product with its own money column falls back to the
+                    # campaign budget when that column is empty: Performance
+                    # Max showed "no comparison" against a report that plainly
+                    # printed its spend, because monthly_pm_ad_spend was blank
+                    # on an order that carries a monthly campaign budget.
+                    money = _num(r.get(SPEND_FIELD.get(product, "")))
+                    if money is None:
+                        money = _num(r.get("monthly_campaign_budget"))
                     if money is not None:
                         cur = kept[k]["budget"]
                         kept[k]["budget"] = money if cur is None else cur + money
@@ -409,8 +421,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     if imps is not None:
                         cur = kept[k]["impressions"]
                         kept[k]["impressions"] = imps if cur is None else cur + imps
-                    whole = _num(r.get(TOTAL_SPEND_FIELD.get(
-                        product, "total_campaign_budget")))
+                    whole = _num(r.get(TOTAL_SPEND_FIELD.get(product, "")))
+                    if whole is None:
+                        whole = _num(r.get("total_campaign_budget"))
                     if whole is not None:
                         cur = kept[k]["total_budget"]
                         kept[k]["total_budget"] = whole if cur is None else cur + whole
@@ -488,6 +501,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             order_starts_on=v["order_starts"], order_ends_on=v["order_ends"],
             total_budget=v["total_budget"],
             total_impressions=v["total_impressions"],
+            sold_with=", ".join(sorted(v["sold_with"]))[:255],
             buyer=buyer, buyer_email=buyer_email,
             needs_lifetime=bool(v["ends_on"] and p_start <= v["ends_on"] <= p_end),
         ))
