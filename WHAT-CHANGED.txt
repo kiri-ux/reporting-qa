@@ -1,82 +1,90 @@
-build 2026.08.26-88
+build 2026.08.26-89
 Changed files only.
 
-app/db.py
+app/checks/parser.py
+app/checks/quality.py
+app/checks/rules.py
 app/main.py
-app/orders_io.py
-app/templates/report_orders_body.html
+app/templates/viewer.html
 app/version.py
-tests/test_board_extras.py
 tests/test_manual_upload.py
-tests/test_order_remap.py
+tests/test_quality.py
+tests/test_rules.py
 
-610 tests pass.
+617 tests pass.
 
-
-ONE ROW PER ORDER AND LINE ITEM
-==================================
-Long Jewelers - VB Blvd was one row reading
-
-  ORDER 48135, 53342 | LINE ITEMS 127806, 127821
-  FLIGHTS 2026-04-01 -> 2026-12-31   2026-05-01 -> 2026-12-31
-
-which is three lists side by side with nothing tying them together. Two of
-those dates belong to an order that is not on the other line.
-
-Everywhere else in the app an order line is one answer per client and product,
-merged across every order that sells it, because that is the question the
-checks ask. This panel is the one place a person is asking the other question,
-so it now keeps the line items themselves as well as the answer and prints one
-row each - its own order, its own line item, its own dates, its own status, its
-own "did it run this month".
-
-The rows are still merged everywhere else. Nothing about the board changed.
+The checks changed, so every report re-checks itself on deploy. The bad
+findings clear themselves - nothing to press.
 
 
-NO MORE SIDEWAYS SCROLLING
-=============================
-Eleven columns down to seven, by folding the ones that were only ever read
-together:
+THE GA PAGES WERE BEING READ AS A CTR TABLE
+==============================================
+Both of those are one bug.
 
-  Would be         -> a red line under the product, and only when it disagrees
-  Impressions      -> stacked in ONE "this month" column
-  Budget           -> same column
-  Ad spend         -> under it, on the first row of the product
-  Total impressions-> stacked in ONE "campaign total" column
-  Total budget     -> same column
-  Live/canceled    -> one pill, with the order's own status underneath
+A table ran until it hit the next line carrying three metric labels. A grid
+ran until it hit a section banner or something that looked like the next
+widget's title. Neither of those is on a Google Analytics page: the GA4 titles
+are centered, and an indented line reads as the tail of a wrapped row name
+rather than a title, and not one report in the fixtures prints a section
+banner at all.
 
-The product name prints once per group rather than eight times, with a rule
-between groups.
+So the GA pages were not skipped. They were read as MORE ROWS of a table
+several pages earlier, with their numbers matched to that table's columns by
+where they sit on the line:
 
+  Eastern p19, GA4 by Geo    Sessions -> impressions, Views -> clicks,
+                             Engagement rate -> CTR. Five "Row CTR does not
+                             match its own numbers", every one of them
+                             "204/204 = 100.000%" against a printed 1.47%.
 
-48135 IS OFF THE JULY REPORT
-===============================
-This one was not a display problem.
+  Dominion p13, GA4 summary  733 read as clicks, 391 as impressions. FAILED
+                             for "1 site clicking above 5%" - 187.47% - on a
+                             page with no CTR column anywhere on it.
 
-Order 48135 is IO Complete and ended 28 February. Its Social Mirror line item
-127806 is still dated 1 April to 31 December. The import took the line item's
-end date whenever it had one, so 48135 read as running until December and went
-on Long Jewelers' JULY order list as a live buy - five months after somebody
-closed the order.
+A widget lives on a page. The report header block prints at the top of every
+page and nowhere else, so that is the boundary now, in both the table parser
+and the grid reader. A widget that carries on over the page repeats its own
+title and starts again there, which is what it already did.
 
-A line item cannot deliver past the order that pays for it. When the order is
-CLOSED - complete or cancelled - its end date now wins. Only then: a live order
-with a stale header date is the opposite case, the line item is the newer fact
-there, so this is not a plain earliest-of-the-two.
-
-That fix is in the import, not the panel, so it also takes 48135 off the board.
-
-One more, related: the orders are read for the month being worked on, so a July
-report gets looked at against an August import, and a buy that does not start
-until August was on its order list looking like evidence. Those move below the
-fold now - "N more line items that did not run in 2026-07", one click to open.
-They are the same client and often the same product, so they are worth being
-able to see; they are just not what the report is judged against.
+This was quietly costing accuracy elsewhere too. "minefun.io" was stored as
+"minefun.io Chats: Number of people that started", "6471 County Hwy-625" as
+"6471 County Hwy-625 Device", and four fixtures had a site named
+"radio-en-vivo.mx Powered by TCPDF (www.tcpdf.org)". All gone.
 
 
-ON DEPLOY
-============
-The import changed, so the orders re-read themselves automatically. Until that
-lands - a minute or two - the panel shows the old merged rows with a small red
-"merged span" note on the dates saying so. It clears itself.
+3 PREVIEWS THAT DID NOT RENDER, ON A TABLE WITH 2
+====================================================
+It counted every "Thumbnail not available" in the whole document and then
+pinned the total to wherever the first one happened to be. Eastern's Social
+Mirror table has two; the third was in a different widget on a different page.
+
+Counted against the table it names, it read as plainly wrong - and a number
+you cannot check against the page in front of you is worse than no number.
+
+One finding per widget now, each counting only its own. Accepting one no
+longer hides another.
+
+
+WHERE PACING WENT
+====================
+It has been dead since build 82, on every report, not just these.
+
+  from .roster import client_flight, ordered_for
+
+client_flight is in ingest.py. roster has never had it. So every report raised
+ImportError on that line, and the panel is wrapped in a bare "except Exception"
+- a pacing panel is never worth a 500 - which turned that into an empty panel.
+Nothing said so, because a panel that fails looks exactly like a panel with
+nothing to say.
+
+Fixed, and the swallow is no longer silent: the exception is logged, and the
+page now says why the panel is empty instead of vanishing. Four things stop it
+and each needs a different thing done about it:
+
+  no order line matches this client
+  none of this client's N order lines ran in 2026-07
+  every line item on this client's orders is paused or cancelled
+  the orders carry no monthly budget and no impression goal
+
+and, if it ever breaks again, "the pacing panel could not be built
+(ImportError)" rather than silence.

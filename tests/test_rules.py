@@ -2815,3 +2815,72 @@ def test_the_sibling_is_the_other_kind_for_the_same_client_and_month(tmp_path):
     assert sibling_for(db, "Nobody", "2026-07", "M", is_lifetime=False) == {}
     assert sibling_for(db, "Acme", "2026-07", "M", is_lifetime=True) == {}
     db.close(); engine.dispose()
+
+
+# ------------------------------------------- a table ends where its page does
+# Column positions matter: this is what makes the bug happen. The GA4 table's
+# Sessions, Views and Engagement rate land under Impressions, Clicks and CTR
+# to within a few characters, so the numbers get read into columns that are
+# three pages away and belong to something else entirely.
+_GA_PAGE = """\
+Site and App Performance
+
+ Name                            Impressions       Clicks          CTR
+
+nypost.com                             3,503            5         0.14%
+
+msn.com                                3,229           32         0.99%
+
+                                     Digital Marketing Report for Eastern Floor Covering
+                                     Date range Jul 01, 2026 to Jul 31, 2026
+                                     Created On Aug 25, 2026
+
+                            Google Analytics 4 Performance by Geo
+
+ City             Region                Sessions       Views  Engaged  rate
+
+   (not set)     (not set)               204          204    3    1.47%
+
+   Singapore     (not set)               163          163    2    1.23%
+"""
+
+
+def test_a_table_ends_where_its_page_does():
+    """A table ran on until the next header line with three metric labels in
+    it, so a page with no such header - the Google Analytics ones - was
+    swallowed whole. Eastern Floor Covering's GA4 Geo rows came out as rows of
+    Site and App Performance three pages earlier, with Sessions read as
+    impressions, Views as clicks and Engagement rate as CTR."""
+    tabs = extract_tables(_GA_PAGE, strict=True)
+    assert len(tabs) == 1
+    assert tabs[0].title == "Site and App Performance"
+    assert [n for n, _v in tabs[0].rows] == ["nypost.com", "msn.com"]
+
+
+def test_a_ga_page_produces_no_ctr_findings():
+    """"204/204 = 100.000%" against a printed 1.47% was five warnings on a page
+    that has no CTR column at all."""
+    from app.checks.rules import check_row_math
+    ctx = {"tables": extract_tables(_GA_PAGE, strict=True), "text": _GA_PAGE,
+           "page_of": lambda _o: 1}
+    assert check_row_math(ctx) == []
+
+
+# ------------------------------------------- previews, counted where they are
+def test_missing_previews_are_counted_per_widget():
+    """The count was of the whole document and the finding was pinned to
+    wherever the first one was. Eastern's Social Mirror table has two, and the
+    finding sitting on it said three - the third was on another page."""
+    from app.checks.rules import check_thumbnails
+    text = ("Social Mirror Creative Performance\n"
+            "Thumbnail not available   Ad one\n"
+            "Thumbnail not available   Ad two\n"
+            "Video Creative Performance\n"
+            "Thumbnail not available   Ad three\n")
+    found = check_thumbnails({"text": text, "page_of": lambda _o: 1})
+    assert len(found) == 2
+    by = {f["where"]: f["title"] for f in found}
+    assert any("Social Mirror" in w and "2 creative previews" in t
+               for w, t in by.items())
+    assert any("Video" in w and "1 creative preview did not render" == t
+               for w, t in by.items())

@@ -121,6 +121,13 @@ class Table:
 
 SKIP_LINE = re.compile(r"(Digital Marketing Report|Date range|Created On|Powered by TCPDF)")
 
+# THE HEADER BLOCK EVERY PAGE STARTS WITH, which is the only thing in the text
+# that says a page ended - pdftotext's form feeds are stripped before any of
+# this runs. It is what stops a table from eating the rest of the report; see
+# extract_tables.
+PAGE_HEAD = re.compile(r"(Digital Marketing Report|Date range \w{3} \d{2}, \d{4}"
+                       r"|Created On \w{3} \d{2}, \d{4}|Powered by TCPDF)")
+
 
 def extract_tables(text: str, strict: bool = True) -> list[Table]:
     """A table starts at a header line carrying at least three metric labels.
@@ -152,6 +159,22 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
         name_col_end = labeled[0][1] if labeled else 0
         for j in range(i + 1, len(lines)):
             raw = lines[j]
+            # A TABLE ENDS WHERE ITS PAGE DOES.
+            #
+            # This used to SKIP the page header and keep collecting rows, so a
+            # table ran on until the next header line with three metric labels
+            # in it - and a page with no such header, like the Google Analytics
+            # ones, was simply swallowed. Eastern Floor Covering's GA4 Geo
+            # table came out as rows of "Site and App Performance" three pages
+            # earlier: Sessions read as Impressions, Views as Clicks and
+            # Engagement rate as CTR, and the report was warned five times over
+            # for a CTR column that does not exist on that page. Dominion's GA4
+            # summary strip did the same thing and failed the report.
+            #
+            # Widgets do not span pages in this report; a continuation repeats
+            # its own header and starts a new table here.
+            if PAGE_HEAD.search(raw):
+                break
             if not raw.strip() or SKIP_LINE.search(raw) or raw.lstrip().startswith("*Note"):
                 continue
             cells = tokens(raw)

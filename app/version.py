@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-88"
-BUILD_NOTES = ("The order panel splits into one row per order and line item, "
-               "and a closed order's end date now beats its line items.")
+BUILD = "2026.08.26-89"
+BUILD_NOTES = ("Tables and grids stop at the page they are on, so the Google "
+               "Analytics pages stop being read as CTR. Pacing was dead and "
+               "is back.")
 
 # ---------------------------------------------------------------------------
 

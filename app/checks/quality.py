@@ -29,6 +29,14 @@ PAGE_BANNER = re.compile(
 CHROME = ("Digital Marketing Report", "Date range ", "Created On ",
           "Grid contains more rows")
 
+# The part of that boilerplate that means A NEW PAGE STARTED. It is the only
+# thing in the text that says so - pdftotext's form feeds are stripped long
+# before any of this runs, and most templates print no page banner. Not the
+# whole of CHROME: "Grid contains more rows" is a note inside a grid, on the
+# grid's own page, and ending the grid there would throw away its own rows.
+PAGE_BREAK = re.compile(r"(Digital Marketing Report|Date range \w{3} \d{2}, \d{4}"
+                        r"|Created On \w{3} \d{2}, \d{4}|Powered by TCPDF)")
+
 NUMERIC = re.compile(r"^\$?-?[\d,]+(?:\.\d+)?%?$")
 
 # TapClicks prints a small icon before the first row of a grid, and it comes
@@ -159,6 +167,23 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
             if stop_at_new_section and m.group(1).strip() != here:
                 break
             continue
+        # A GRID ENDS WHERE ITS PAGE DOES.
+        #
+        # The section banner ("OVERVIEW - PAGE 1") was the only page boundary
+        # this knew about, and most templates do not print one at all - not
+        # one report in the fixtures has a single banner on it. So on those
+        # the grid ran on until something looked like the next widget's title,
+        # and a page whose title does not look like one - the Google Analytics
+        # pages - was read as more rows of a grid several pages back. Dominion
+        # Floor Covering was FAILED for a site clicking at 187%, off the GA4
+        # summary strip: 733 read as clicks and 391 as impressions, on a page
+        # with no CTR column anywhere on it.
+        #
+        # The report header block prints on every page and nowhere else, so it
+        # is the boundary the banner was meant to be. A grid carrying on over
+        # the page repeats its own title and starts again there.
+        if stop_at_new_section and PAGE_BREAK.search(line):
+            break
         if _is_chrome(line):
             continue
         cells = [c for c in re.split(r"\s{2,}", t) if c]

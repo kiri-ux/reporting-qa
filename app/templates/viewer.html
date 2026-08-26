@@ -181,6 +181,13 @@
         Served on the report over ordered
         {%- if rep.is_lifetime %} for the whole campaign{% else %} for the month{% endif %}.
         Negative is short of the order, positive is over.</p>
+    {% elif pacing_why %}
+      {# THE PANEL USED TO JUST VANISH, which looks exactly like the panel being
+         broken. Four different things stop it and each needs a different thing
+         done about it, so it says which one rather than nothing. #}
+      <h2 style="margin-top:22px">Pacing</h2>
+      <p class="sub" style="font-size:12.5px;margin:0">
+        Nothing to pace against: {{ pacing_why }}.</p>
     {% endif %}
 
     {# Opens over the report rather than replacing it. Checking a product

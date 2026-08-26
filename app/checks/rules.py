@@ -518,15 +518,26 @@ def check_rate_ceiling(ctx) -> list[dict]:
 
 # ---------------------------------------------------------------- previews
 def check_thumbnails(ctx) -> list[dict]:
+    """ONE FINDING PER WIDGET, NOT ONE PER REPORT.
+
+    This counted every "Thumbnail not available" in the document and then
+    pinned the total to wherever the first one happened to be. Eastern Floor
+    Covering's Social Mirror Creative Performance table has two, and the
+    finding sitting on that table said three - the third was in another widget
+    on another page. Read against the page it names it was simply wrong, and a
+    number you cannot check against what is in front of you is worse than no
+    number at all.
+    """
     text = ctx["text"]
-    n = text.count("Thumbnail not available")
-    if not n:
-        return []
-    at = text.find("Thumbnail not available")
+    counts: dict[str, int] = {}
+    for m in re.finditer("Thumbnail not available", text):
+        where = _where(ctx, m.start(), widget_at(text, m.start()))
+        counts[where] = counts.get(where, 0) + 1
     return [_f("missing_thumbnail", "warn",
                f"{n} creative preview{'s' if n > 1 else ''} did not render",
-               'The report prints "Thumbnail not available" in place of the preview image.',
-               where=_where(ctx, at, widget_at(text, at)))]
+               'The report prints "Thumbnail not available" in place of the '
+               'preview image.', where=where)
+            for where, n in counts.items()]
 
 
 # ---------------------------------------------------------------- empty widgets

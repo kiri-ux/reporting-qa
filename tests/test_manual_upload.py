@@ -1123,3 +1123,29 @@ def test_another_campaign_of_the_same_client_stays_out_of_the_name(monkeypatch):
         client, account_ids, period, is_lifetime = "Congressman Mike Kelly", "53130", "2026-07", False
 
     assert N.ids_for_report(None, Rep()) == "53130"
+
+
+def test_the_pacing_panel_is_actually_built(client):
+    """It imported client_flight from roster, which does not have it, so every
+    report raised ImportError and the bare except turned that into an empty
+    panel. Pacing did not go quiet on some reports - it was dead on all of
+    them, and nothing said so because failing looked exactly like having
+    nothing to say."""
+    c, (db, dbm, imod) = client
+    rep_id = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0].id
+    html = c.get(f"/report/{rep_id}/view").text
+    assert "could not be built" not in html
+    assert "Pacing" in html and "Social Mirror" in html
+
+
+def test_a_report_with_nothing_to_pace_says_why(client):
+    """The panel simply vanished when there was nothing to compare against,
+    which looks exactly like the panel being broken - "where did pacing go" is
+    not a question a page should leave you holding."""
+    c, (db, dbm, imod) = client
+    db.query(dbm.OrderLine).delete()
+    db.commit()
+    rep_id = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0].id
+    html = c.get(f"/report/{rep_id}/view").text
+    assert "Nothing to pace against" in html
+    assert "no order line matches this client" in html

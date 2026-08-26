@@ -2235,13 +2235,30 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     # did. Read here rather than stored with the findings because it is a
     # number to look at, not a verdict - it says nothing at all on most reports
     # and should not be another row in the checks list.
-    pacing = []
+    #
+    # AND WHEN IT SAYS NOTHING, IT SAYS WHY. The panel simply vanished when
+    # there was nothing to compare against, which is indistinguishable from
+    # the panel being broken - "where did pacing go" is not a question a page
+    # should leave you holding. There are four ways to have nothing to pace and
+    # they need four different things done about them.
+    pacing, pacing_why = [], ""
     try:
-        if rep.stored_path and Path(rep.stored_path).exists():
+        if not rep.stored_path or not Path(rep.stored_path).exists():
+            pacing_why = "the PDF is not on disk"
+        else:
             from .checks.parser import pdf_text
             from .checks.served import pacing_rows
             from .cycle import cycle_for as _cyc
-            from .roster import client_flight, ordered_for
+            # client_flight LIVES IN ingest, NOT IN roster.
+            #
+            # It was imported from roster, which does not have it, so every
+            # single report raised ImportError here and the bare except below
+            # turned that into an empty panel. Pacing did not go quiet on some
+            # reports - it had been dead on all of them since build 82, and
+            # nothing said so because the failure looked exactly like having
+            # nothing to say. That is what the reason line underneath is for.
+            from .ingest import client_flight
+            from .roster import _ran_during, client_lines, ordered_for
             # A LIFETIME PACES AGAINST THE WHOLE CAMPAIGN, a monthly against
             # the month. Same panel, different question - and comparing a
             # nine-month report to one month's budget is how a perfectly normal
@@ -2261,8 +2278,34 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                   window=life_flight)
             if ordered:
                 pacing = pacing_rows(pdf_text(Path(rep.stored_path)), ordered)
-    except Exception:                       # a pacing panel is never worth a 500
+                if not pacing:
+                    pacing_why = ("nothing this client bought is paced on a "
+                                  "number - " + ", ".join(sorted(ordered)) +
+                                  " " + ("is" if len(ordered) == 1 else "are") +
+                                  " sold flat, not against impressions or spend")
+            else:
+                lines = client_lines(db, rep.client, rep.account_ids) or []
+                ran = [l for l in lines
+                       if not rep.period or _ran_during(l, rep.period)]
+                if not lines:
+                    pacing_why = ("no order line matches this client - the "
+                                  "orders may not be loaded, or the report's "
+                                  "order ids do not match any of them")
+                elif not ran:
+                    pacing_why = (f"none of this client's {len(lines)} order "
+                                  f"lines ran in {rep.period}")
+                elif not any(getattr(l, "live", True) for l in ran):
+                    pacing_why = ("every line item on this client's orders is "
+                                  "paused or cancelled")
+                else:
+                    pacing_why = ("the orders carry no monthly budget and no "
+                                  "impression goal for this client")
+    except Exception as exc:                # a pacing panel is never worth a 500
+        import logging
+        logging.getLogger("report-qa").exception(
+            "pacing panel failed for report %s", rep.id)
         pacing = []
+        pacing_why = f"the pacing panel could not be built ({type(exc).__name__})"
     try:
         queued = int(request.query_params.get("logo_queued") or 0)
     except ValueError:
@@ -2303,6 +2346,7 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                        "logo_peers": peers,
                                        "logo_queued": queued,
                                        "pacing": pacing,
+                                       "pacing_why": pacing_why,
                                        # Said HERE as well as on the board. A
                                        # product finding is disputed on this
                                        # page, so the one fact that settles it

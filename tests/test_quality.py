@@ -1069,3 +1069,44 @@ def test_the_same_row_listed_by_two_widgets_is_still_counted_once():
             "     Reliance Bank - Keyword PPC       8,690    1,874  21.57%"
             "    1,824.25       0.97\n")
     assert q.line_item_totals(text) == [("Reliance Bank - Keyword PPC", 8690.0, 1874.0)]
+
+
+# ------------------------------------------- a grid ends where its page does
+_SITES_THEN_GA = """\
+Site and App Performance
+
+ Name                            Impressions       Clicks          CTR
+
+nypost.com                             3,503            5         0.14%
+
+msn.com                                3,229           32         0.99%
+
+                            Digital Marketing Report for Dominion Floor Covering
+                            Date range Jul 01, 2026 to Jul 31, 2026
+                            Created On Aug 25, 2026
+
+                          Google Analytics 4 Performance
+
+      2,313 845            391          46.27%        733       672       766
+      VIEWS SESSIONS   ENGAGED SESSIONS  ENGAGEMENT RATE  ACTIVE USERS
+"""
+
+
+# The GA4 title is CENTERED, which is why the next-widget guard did not stop
+# the grid: an indented line is taken for the tail of a wrapped row name, not
+# for a title. The page header block above it is the only reliable boundary.
+def test_a_grid_ends_where_its_page_does():
+    """The section banner was the only page boundary this knew about, and most
+    templates print none - so the grid ran on and read a Google Analytics page
+    as more of its own rows."""
+    from app.checks.quality import site_rows
+    got = [r[1] for r in site_rows(_SITES_THEN_GA)]
+    assert got == ["nypost.com", "msn.com"]
+
+
+def test_a_ga_summary_strip_is_not_a_site_clicking_too_much():
+    """Dominion Floor Covering was FAILED for "2,313 845: 733 clicks on 391
+    impressions is 187.47%" - three numbers off a GA4 summary strip, on a page
+    with no CTR column anywhere on it."""
+    from app.checks.quality import check_site_ctr
+    assert check_site_ctr({"text": _SITES_THEN_GA, "page_of": lambda _o: 1}) == []
