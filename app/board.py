@@ -10,7 +10,7 @@ import datetime as dt
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .cycle import Cycle, cycle_for
@@ -76,6 +76,30 @@ class Expected:
         return f"{_key(self.market)}|{_key(self.client)}|{self.kind}"
 
 
+# A CAMPAIGN THAT BARELY RAN IS NOT OWED A MONTHLY.
+#
+# The Grove Event Venue started on 30 July, so its July report covers two days
+# of delivery - a page of near-zero numbers that reads as a broken report and
+# takes a reporter's time to pull, look at and explain. Anything under a week
+# waits for next month, when there is a month to report on.
+#
+# LIFETIMES ARE EXEMPT. A campaign that ended in the first days of the month
+# ran for its whole flight; the fact that only two of those days fall inside
+# this cycle says nothing about the report it owes.
+MIN_DAYS_IN_MONTH = 7
+
+
+def days_in_cycle(cyc, starts_on, ends_on) -> int:
+    """How many days of this month the line actually delivered.
+
+    A missing date is open-ended, which is what the rest of this module assumes
+    too: a blank end means still running.
+    """
+    first = max(starts_on, cyc.starts_on) if starts_on else cyc.starts_on
+    last = min(ends_on, cyc.ends_on) if ends_on else cyc.ends_on
+    return max(0, (last - first).days + 1)
+
+
 STATES = ["missing", "in", "warnings", "errors", "needs_fix", "ready"]
 STATE_LABEL = {"missing": "Not received", "in": "In, unreviewed",
                "warnings": "Warnings", "errors": "Errors",
@@ -98,7 +122,8 @@ def _match_partner(idx: dict[str, Partner], market: str) -> Partner | None:
     return best
 
 
-def expected_for(db: Session, period: str) -> list[Expected]:
+def expected_for(db: Session, period: str,
+                 skipped: list | None = None) -> list[Expected]:
     """Every report this cycle owes, joined to whatever has arrived.
 
     A client owes a monthly if any of its order lines was live during the data
@@ -175,6 +200,10 @@ def expected_for(db: Session, period: str) -> list[Expected]:
     # Whether the buyer currently on each Expected came off an SEO line, and is
     # therefore still waiting for a real one.
     seo_buyer: dict[tuple[str, str, str], bool] = {}
+    # The longest any one of a client's products delivered this month. A client
+    # is owed a monthly if ANY of them ran a real week - one product starting on
+    # the 30th does not excuse the rest of the campaign.
+    ran_days: dict[tuple[str, str, str], int] = {}
     for l in cols:
         if excluded(l.market):
             continue
@@ -211,6 +240,9 @@ def expected_for(db: Session, period: str) -> list[Expected]:
                 if seo_buyer.get(k, True):     # nothing real on it yet
                     e.buyer = l.buyer or e.buyer
                 seo_buyer[k] = False
+            if kind == "monthly":
+                ran_days[k] = max(ran_days.get(k, 0),
+                                  days_in_cycle(cyc, l.starts_on, l.ends_on))
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
             # A client's lifetime covers several products, so its line ids are
@@ -230,11 +262,81 @@ def expected_for(db: Session, period: str) -> list[Expected]:
         if kind == "lifetime" and (mk, ck) in span:
             e.starts_on, e.ends_on = span[(mk, ck)]
 
+    # Under a week in the month, and nothing has arrived for it: not owed.
+    # A report that HAS turned up is never hidden - somebody pulled it, and
+    # taking it off the board would lose the work rather than save it.
+    short = {k: n for k, n in ran_days.items()
+             if n < MIN_DAYS_IN_MONTH and k in rows}
+
+    # And a lifetime that has already gone out is not owed again.
+    done = _lifetimes_delivered(db, period)
+
     _attach_reports(db, period, rows)
+    for k in list(rows):
+        mk, ck, kind = k
+        e = rows[k]
+        if kind == "monthly" and k in short and e.report is None:
+            if skipped is not None:
+                skipped.append({"market": e.market, "client": e.client,
+                                "why": "ran %d day%s this month" % (
+                                    short[k], "" if short[k] == 1 else "s"),
+                                "kind": "monthly", "days": short[k],
+                                "starts": e.starts_on, "ends": e.ends_on})
+            del rows[k]
+            continue
+        if kind == "lifetime" and e.report is None and ck in done:
+            # ONLY IF THE LIFETIME THAT WENT OUT COVERED THIS ENDING.
+            #
+            # A campaign whose end date is extended after its lifetime was sent
+            # goes back on the normal schedule: monthlies again, and a new
+            # lifetime when it finishes for real. So the delivered cycle has to
+            # be at or after the month the campaign now ends in - if the end
+            # moved out past it, the report that went out was about a different
+            # finish and this one is still owed.
+            when = done[ck]
+            if e.ends_on and when >= e.ends_on.strftime("%Y-%m"):
+                if skipped is not None:
+                    skipped.append({"market": e.market, "client": e.client,
+                                    "why": f"lifetime already delivered in {when}",
+                                    "kind": "lifetime", "days": 0,
+                                    "starts": e.starts_on, "ends": e.ends_on})
+                del rows[k]
     out = list(rows.values())
     out.sort(key=lambda e: (e.group.lower(), e.market.lower(),
                             e.client.lower(), e.kind))
     return out
+
+
+def _lifetimes_delivered(db: Session, period: str) -> dict[str, str]:
+    """Clients that already have a lifetime report, and the newest cycle it
+    was delivered in.
+
+    A lifetime is owed once, when the campaign ends. If one has already gone
+    out, asking for it again every month is a row nobody can clear - and the
+    only way to clear it today is to pull a duplicate report.
+    """
+    rows = db.execute(
+        select(Report.client, func.max(Report.period))
+        .where(Report.is_lifetime.is_(True), Report.period <= period)
+        .group_by(Report.client)).all()
+    out: dict[str, str] = {}
+    for client, when in rows:
+        k = _key(client)
+        if k and (k not in out or when > out[k]):
+            out[k] = when or ""
+    return out
+
+
+def lifetimes_delivered(db: Session, limit: int = 400) -> list[dict]:
+    """Every lifetime report on the board, newest first - the record of which
+    campaigns have had theirs, so nobody pulls a second one."""
+    rows = db.scalars(
+        select(Report).where(Report.is_lifetime.is_(True))
+        .order_by(Report.period.desc(), Report.market.asc(),
+                  Report.client.asc()).limit(limit)).all()
+    return [{"id": r.id, "client": r.client, "market": r.market,
+             "period": r.period, "orders": r.account_ids,
+             "state": r.review_state} for r in rows]
 
 
 def _attach_reports(db: Session, period: str,

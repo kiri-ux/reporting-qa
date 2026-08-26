@@ -12,13 +12,14 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-63"
-BUILD_NOTES = ("Two false failures killed: the client was being read off the "
-               "filename, so a report saved as Digital Marketing Report.pdf was "
-               "failed for carrying somebody else's data, and a lifetime "
-               "somebody labeled by hand was checked against one month because "
-               "the checks never saw the label. Pacing covers lifetimes now, "
-               "measured against the whole campaign, and short reads negative.")
+BUILD = "2026.08.26-64"
+BUILD_NOTES = ("A campaign that ran fewer than seven days in the month is no "
+               "longer owed a monthly - The Grove started on 30 July, so its "
+               "July report was two days of near-zero numbers. Lifetimes are "
+               "exempt, and one that has already gone out is not asked for "
+               "twice unless the end date has moved since. The board says what "
+               "it is not asking for and why, and there is a record of every "
+               "lifetime delivered.")
 
 # ---------------------------------------------------------------------------
 

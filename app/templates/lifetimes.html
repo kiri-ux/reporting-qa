@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Lifetimes delivered · Report QA{% endblock %}
+{% block where %}<a href="/cycle">Cycle</a> / Lifetimes{% endblock %}
+{% block body %}
+
+<div>
+  <h1>Lifetimes delivered</h1>
+  <p class="sub">
+    A lifetime is owed once, when the campaign ends. This is the record of the
+    ones that have gone out, and it is what keeps a client from being asked for
+    a second copy - unless the campaign's end date moves out after the fact,
+    which puts it back on the normal monthly and lifetime schedule.
+  </p>
+</div>
+
+<section>
+  {% if rows %}
+    <div class="tools">
+      <input type="search" data-filter="tbl-life" data-count="cnt-life"
+             placeholder="Search everything...">
+      <span class="count" id="cnt-life"></span>
+    </div>
+    <div class="colfilters" data-filters-for="tbl-life"><span class="frow">Lifetimes</span></div>
+    <div class="tw"><table id="tbl-life">
+      <thead><tr><th data-col="Partner">Partner</th><th>Client</th>
+        <th>Order</th><th data-col="Cycle">Cycle</th>
+        <th data-col="Sign-off">Sign-off</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r.market or 'no market' }}</td>
+            <td><b>{{ r.client }}</b></td>
+            <td class="acct">{{ r.orders }}</td>
+            <td class="mono nw">{{ r.period }}</td>
+            <td>{{ r.state|replace('_', ' ') }}</td>
+            <td><a href="/report/{{ r.id }}/view">Open</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="empty">No lifetime report has been received yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

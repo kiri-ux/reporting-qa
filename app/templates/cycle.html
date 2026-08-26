@@ -74,6 +74,32 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
     </div>
   </div>
 
+  {# WHAT THIS CYCLE DOES NOT OWE, AND WHY.
+     A row that quietly stops being expected is indistinguishable from one the
+     tool forgot about, and "did we drop that on purpose?" is not a question
+     anybody should have to answer from the code. #}
+  {% if not_owed %}
+    <details class="notowed">
+      <summary>{{ not_owed|length }} client{{ 's' if not_owed|length != 1 }}
+        not owed a report this cycle</summary>
+      <table class="pacing" style="margin-top:8px">
+        <tbody>
+          {% for r in not_owed %}
+            <tr><td>{{ r.market }}</td><td style="text-align:left">{{ r.client }}</td>
+              <td class="mono nw" style="text-align:left">{{ r.starts or '?' }}
+                &rarr; {{ r.ends or 'open' }}</td>
+              <td style="text-align:right">{{ r.why }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="sub" style="font-size:12px">A campaign that ran fewer than
+        {{ min_days }} days in the month waits for next month - two days of
+        delivery is a page of near-zero numbers. A lifetime is never held back
+        for that, and one that has already gone out is not asked for twice
+        unless the campaign's end date has since moved.</p>
+    </details>
+  {% endif %}
+
 {# The links themselves live on their own page. A list of finished partners
    growing above a board of 146 cards pushes the work down the screen, and the
    moment you actually want a link is when you are sending it, not when you are

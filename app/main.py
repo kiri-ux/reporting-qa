@@ -729,7 +729,8 @@ def _recheck_jobs(db: Session) -> dict:
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
                state: str = Query(""), rows_: str = Query("", alias="rows"),
                db: Session = Depends(get_db)):
-    from .board import STATE_LABEL, by_group, expected_for, summary
+    from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
+                        summary)
     from .cycle import current_period, cycle_for, recent_periods
     from .delivery import latest_deliveries
     from .pace import pace
@@ -738,7 +739,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     period = period or settings.default_period or current_period()
     prune_old_pdfs(db)          # cheap, and keeps the disk from filling silently
     cyc = cycle_for(period)
-    exp = expected_for(db, period)
+    # Rows this cycle does NOT owe, and why. A report that quietly stops being
+    # expected is indistinguishable from one the tool forgot about, so the
+    # reasons go on the page rather than only into the code.
+    not_owed: list = []
+    exp = expected_for(db, period, skipped=not_owed)
     groups = by_group(db, period, exp)
     # Counted before the filter. A partner filter narrows what is listed below;
     # it must not make the cycle look like it has one partner in it.
@@ -788,6 +793,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # are about to send - was found by scrolling.
         "delivered": delivered,
         "views": _saved_views(db),
+        "not_owed": sorted(not_owed, key=lambda r: (r["market"] or "",
+                                                    r["client"] or "")),
+        "min_days": MIN_DAYS_IN_MONTH,
         "orders_stale": _orders_stale(db),
         "orders_syncing": _orders_syncing(db),
         # How many reports on this board still carry an older answer, and per
@@ -994,6 +1002,20 @@ def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
             f"/cycle/links?period={period}&new={quote(group)}", status_code=303)
     # A failure belongs on the card, next to the Try again button.
     return RedirectResponse(f"/cycle?period={period}", status_code=303)
+
+
+@app.get("/lifetimes", response_class=HTMLResponse)
+def lifetimes_view(request: Request, db: Session = Depends(get_db)):
+    """Every lifetime report that has gone out.
+
+    A lifetime is owed once, when the campaign ends, so the question the board
+    cannot answer on its own is "has this one already had theirs?". This is the
+    record - and it is what stops a client being asked for a second copy.
+    """
+    from .board import lifetimes_delivered
+    rows = lifetimes_delivered(db)
+    return templates.TemplateResponse(request, "lifetimes.html", {
+        "nav": "lifetimes", "rows": rows})
 
 
 @app.get("/cycle/links")

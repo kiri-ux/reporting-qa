@@ -720,3 +720,106 @@ def test_the_lifetime_range_is_the_orders_range(db):
     assert len(life) == 1
     assert life[0].starts_on == D("2023-05-05")
     assert life[0].ends_on == D("2026-07-31")
+
+
+# ------------------------------------------- what a cycle does NOT owe
+def _grove(db, **kw):
+    import datetime as dt
+    from app.db import OrderLine
+    base = dict(market="7 Mountains KY", client="The Grove Event Venue",
+                account_ids="54913", line_ids="132979",
+                product="Social Mirror CTV", campaign="Social Mirror CTV Ads",
+                live=True)
+    base.update(kw)
+    db.add(OrderLine(**base))
+    db.commit()
+
+
+def test_a_campaign_that_barely_ran_is_not_owed_a_monthly(db):
+    """The Grove started on 30 July, so its July report would cover two days of
+    delivery - a page of near-zero numbers that reads as a broken report."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch
+    D = dt.date.fromisoformat
+
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    _grove(db, starts_on=D("2026-07-30"), ends_on=D("2026-10-31"),
+          order_starts_on=D("2026-07-30"), order_ends_on=D("2026-10-31"))
+    skipped: list = []
+    rows = expected_for(db, "2026-07", skipped=skipped)
+    assert rows == []
+    assert skipped and "2 days" in skipped[0]["why"]
+
+    # A week is enough.
+    from app.db import OrderLine
+    db.query(OrderLine).delete(); db.commit()
+    _grove(db, starts_on=D("2026-07-25"), ends_on=D("2026-10-31"),
+          order_starts_on=D("2026-07-25"), order_ends_on=D("2026-10-31"))
+    assert [e.kind for e in expected_for(db, "2026-07")] == ["monthly"]
+
+
+def test_a_short_run_still_owes_its_lifetime(db):
+    """A campaign that ended in the first days of the month ran for its whole
+    flight. That only two of those days fall in this cycle says nothing about
+    the report it owes."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch
+    D = dt.date.fromisoformat
+
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    _grove(db, starts_on=D("2025-01-01"), ends_on=D("2026-07-02"),
+          order_starts_on=D("2025-01-01"), order_ends_on=D("2026-07-02"))
+    kinds = {e.kind for e in expected_for(db, "2026-07")}
+    assert "lifetime" in kinds
+
+
+def test_a_lifetime_already_delivered_is_not_asked_for_again(db):
+    """A client running in two markets is asked for the same lifetime twice -
+    the report attaches to one row and the other sits on "Not received" for
+    good, and the only way to clear it is to pull a duplicate."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, Report
+    D = dt.date.fromisoformat
+
+    b = Batch(email_subject="x", received_at=dt.datetime(2026, 7, 6))
+    db.add(b); db.flush()
+    db.add(Report(batch_id=b.id, filename="Lifetime_The Grove Event Venue 54913.pdf",
+                  client="The Grove Event Venue", account_ids="54913",
+                  market="7 Mountains KY", period="2026-07", is_lifetime=True,
+                  review_state="reviewed"))
+    for market in ("7 Mountains KY", "7 Mountains PA"):
+        _grove(db, market=market, starts_on=D("2025-01-01"), ends_on=D("2026-07-02"),
+               order_starts_on=D("2025-01-01"), order_ends_on=D("2026-07-02"))
+    db.commit()
+
+    skipped: list = []
+    life = [e for e in expected_for(db, "2026-07", skipped=skipped)
+            if e.kind == "lifetime"]
+    assert len(life) == 1 and life[0].report is not None
+    assert any("already delivered" in r["why"] for r in skipped)
+
+
+def test_an_extended_campaign_goes_back_on_the_schedule(db):
+    """Not often, but it happens: the end date moves out after the lifetime has
+    gone. The report that went out was about a different finish, so the client
+    is back on monthlies and owes a new lifetime when it ends for real."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, Report
+    D = dt.date.fromisoformat
+
+    b = Batch(email_subject="x", received_at=dt.datetime(2026, 6, 6))
+    db.add(b); db.flush()
+    db.add(Report(batch_id=b.id, filename="Lifetime_The Grove Event Venue 54913.pdf",
+                  client="The Grove Event Venue", account_ids="54913",
+                  market="7 Mountains KY", period="2026-05", is_lifetime=True,
+                  review_state="reviewed"))
+    # Extended: it now ends in July, so July owes both.
+    _grove(db, starts_on=D("2025-01-01"), ends_on=D("2026-07-31"),
+          order_starts_on=D("2025-01-01"), order_ends_on=D("2026-07-31"))
+    db.commit()
+    kinds = {e.kind for e in expected_for(db, "2026-07")}
+    assert kinds == {"monthly", "lifetime"}

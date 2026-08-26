@@ -122,6 +122,11 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .links.wide li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;
  background:var(--surface)}
 .links.wide .lname{min-width:260px}
+/* ---- what this cycle does not owe ---- */
+.notowed{margin-top:12px;font-size:13px}
+.notowed summary{cursor:pointer;color:var(--muted)}
+.notowed table td{padding:4px 10px 4px 0}
+
 /* ---- pacing: served over ordered ---- */
 .pacing{width:100%;border-collapse:collapse;font-size:12.5px}
 .pacing td{padding:5px 0;border-bottom:1px solid var(--line);vertical-align:top}
@@ -477,6 +482,14 @@ body.fit .pdfwrap object{height:100%}
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M10 13.5a4.5 4.5 0 006.4.4l3-3a4.5 4.5 0 00-6.3-6.4l-1.7 1.7"/>
       <path d="M14 10.5a4.5 4.5 0 00-6.4-.4l-3 3a4.5 4.5 0 006.3 6.4l1.7-1.7"/>
+    </svg></a>
+  {# The record of which campaigns have had their lifetime. #}
+  <a href="/lifetimes" class="{% if nav == 'lifetimes' %}on{% endif %}"
+     title="Lifetimes delivered" aria-label="Lifetimes delivered"
+     data-label="Lifetimes delivered">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 21s-7-4.6-7-10a4 4 0 017-2.6A4 4 0 0119 11c0 5.4-7 10-7 10z"/>
     </svg></a>
   <a href="/batches" class="{% if nav == 'batches' %}on{% endif %}" title="Batches"
      aria-label="Batches" data-label="Batch history">
