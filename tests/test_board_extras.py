@@ -1004,10 +1004,22 @@ def test_the_order_status_sits_with_the_order_it_is_about():
     assert _io_kind("") == "other"
 
     html = (TPL / "cycle.html").read_text()
-    assert 'class="iodot io-{{ st|iokind }}"' in html
-    assert 'data-tip="{{ st }} - what the order says"' in html
-    # It rides with the order id, not with the review pill.
-    assert html.index('class="oid" title="Order id"') < html.index('class="iodots"')
+    # EACH ORDER IS ITS OWN PILL. A row of dots beside a grey block of ids
+    # said two orders and two statuses and nothing about which was which.
+    assert 'class="oidp io-{{ st|iokind }}"' in html
+    assert "e.order_status.get(oid, '')" in html
     assert 'class="acct iostatus"' not in html
+    assert "iodot" not in html
     for kind in ("live", "paused", "cancelled", "complete"):
-        assert f".iodot.io-{kind}{{background:" in html
+        assert f".oidp.io-{kind}{{background:" in html
+
+
+def test_one_order_with_two_statuses_takes_the_living_one():
+    """An order with a live line item and a cancelled one is a live order, and
+    marking it dead is the kind of wrong that gets a report pulled to the
+    wrong end date."""
+    from app.board import _status_rank
+    assert _status_rank("IO Live") < _status_rank("Cancelled")
+    assert _status_rank("IO Live") < _status_rank("IO Complete")
+    assert _status_rank("IO Paused") < _status_rank("IO Complete")
+    assert _status_rank("") > _status_rank("Cancelled")

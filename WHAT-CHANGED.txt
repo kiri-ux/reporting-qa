@@ -1,83 +1,50 @@
-build 2026.08.26-93
+build 2026.08.26-94
 Changed files only.
 
-app/checks/quality.py
-app/checks/rules.py
-app/main.py
+app/board.py
 app/roster.py
 app/templates/cycle.html
+app/templates/viewer.html
 app/version.py
 tests/test_board_extras.py
-tests/test_order_remap.py
-tests/test_quality.py
-tests/test_rules.py
+tests/test_pace.py
 
-635 tests pass. The checks and the import changed, so reports re-check
-themselves and the orders re-read themselves on deploy.
-
-
-CANCELLED LINE ITEMS ARE OUT OF THE PACING GOAL
-==================================================
-Houston Concierge Medicine's Social Mirror is three line items on order 54985
-added together: two cancelled at 120,000 each and one live at 100,000. Paced
-against all 340,000 the report read 84% short of a goal that two thirds of had
-been called off.
-
-53,025 / 100,000 now. Which is 47% short - a real number about a real buy, and
-the finding fires on it, because one cancelled line beside a live one is not a
-campaign that was called off. Marking the whole product "stopped" had been
-silencing the finding on the half still delivering.
-
-This needs the per-line-item detail that arrived in build 88. A row loaded
-before that falls back to the merged figures, which is the answer it always
-gave.
+638 tests pass. The import changed, so the orders re-read themselves on deploy
+- until that lands the pills are grey, because nothing has told them which
+order says what yet.
 
 
-THE ORDER STATUS, BESIDE THE ORDER IT IS ABOUT
-=================================================
-It sat under the review pill two columns over, where it read as part of the
-verdict rather than as the fact behind it - and as words, on a row with none
-to spare.
+EACH ORDER IS ITS OWN PILL
+=============================
+Kerr-Bilt Trailers read "50360 53901" in one grey block with a blue dot and a
+green dot beside it: two orders, two statuses, and nothing tying either to
+either.
 
-It is a dot beside the order id now. Green live, orange paused, red cancelled,
-blue complete, grey anything else, and the words themselves on hover. A row
-carrying several statuses gets several dots.
+Each order id is its own pill now, coloured by what THAT order says. Green
+live, orange paused, red cancelled, blue complete, and the words on hover.
 
+Which needed a fact the board did not have. The status list was every status
+across the whole row, so it could not say which order carried which. It is
+read off the line items themselves now - the per-line detail from build 88 -
+as one status per order id.
 
-"NO SITE AND APP PERFORMANCE WIDGET" ON A CTV REPORT
-=======================================================
-KB House of Guns runs BARCK+ on one CTV line item and was FAILED for not
-carrying Site and App Performance. CTV does not get one: its inventory is the
-publisher list, and Top CTV Publishers was on the report.
-
-The rule already had this exemption for DOOH - a billboard has no site and no
-app - and it is the same shape of fact. BARCK+ no longer owes the site-and-app
-widget when everything on the report is DOOH, CTV, Social Mirror CTV or Video
-AND the report carries the inventory widget those DO owe. That second half is
-the point: this is "the breakout it carries is the right one for what ran",
-not "CTV reports owe nothing".
+An order with a live line item and a cancelled one is a LIVE order, so the
+status that means "still delivering" wins. A red pill on an order still
+running is the kind of wrong that gets a report pulled to the wrong end date.
 
 
-A COLUMN OF ZEROES IS NOT A RESULT
-=====================================
-New check. KB House of Guns' Top CTV Publishers ran 0.00% down every row -
-Samsung TV Plus, Philo, Vizio, DIRECTV, Pluto. Nobody watched none of every ad
-on all of them in the same month; that is the metric arriving unmapped, and it
-goes to the client reading as a campaign that did nothing at all.
+PACING WAS MISSING THE PERFORMANCE MAX SPEND
+===============================================
+Kerr-Bilt's Performance Max carries $20,000 for the whole campaign and nothing
+per month, so the spend row read "-/- no comparison" while the impressions
+rows above it were being paced against real monthly goals. Two units on one
+panel, and the one the client is actually billed on was the blank.
 
-Fails when EVERY row of a completion-rate column is zero. One publisher at zero
-is ordinary and says nothing.
+The lifetime panel already does this in reverse - a monthly goal multiplied
+out across the flight, labelled as derived. Same thing the other way up now:
+the campaign total divided by the months it covers, and the row says "the
+campaign total over 8 months" rather than presenting it as something the order
+stated.
 
-
-BROKEN IMAGES
-================
-The missing-preview check now covers any grid with a picture column, not just
-the creative ones - Publisher Image, Station Image, Logo. A publisher logo
-coming through as the browser's broken-image glyph is the same failure as a
-creative preview that did not render, and the pixel test that finds one finds
-the other: a cell holding a real picture has thousands of colors, a broken or
-empty one has the table fill and a few marks.
-
-The finding names what it counted - "2 publisher images did not render", "5
-creative previews did not render". No new findings on any of the seven fixture
-reports.
+A real monthly figure is never replaced by a derived one. This only fills a
+blank.

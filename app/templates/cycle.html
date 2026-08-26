@@ -480,19 +480,18 @@
           {# AND IT LINKS TO THE ORDER. The board says a campaign is owed a
              report; the next question is always what the order says, and that
              meant copying the number out and pasting it into the IO tool. #}
-          {% if e.account_ids %}<br><span class="oid" title="Order id">
+          {# EACH ORDER IS ITS OWN PILL, COLOURED BY WHAT THAT ORDER SAYS.
+             Green live, orange paused, red cancelled, blue complete, and the
+             words on hover. It was one grey block of ids with a row of dots
+             beside it, which said two orders and two statuses and nothing at
+             all about which was which. #}
+          {% if e.account_ids %}<br><span class="oids">
             {%- for oid in e.account_ids.replace(',', ' ').split() %}
-              <a href="{{ io_order_url }}{{ oid }}" target="_blank" rel="noopener"
-                 title="Open order {{ oid }} in the IO tool">{{ oid }}</a>{% if not loop.last %} {% endif %}
-            {%- endfor %}
-            {#- WHAT THE ORDER ITSELF SAYS, beside the order it says it about.
-                It used to sit under the review pill two columns over, where it
-                read as part of the verdict rather than as the fact behind it -
-                and as words, on a row that has none to spare. #}
-            {%- if e.statuses %} <span class="iodots">
-              {%- for st in e.statuses %}<span class="iodot io-{{ st|iokind }}"
-                data-tip="{{ st }} - what the order says"></span>{% endfor -%}
-            </span>{% endif %}</span>{% endif %}</td>
+              {%- set st = e.order_status.get(oid, '') %}
+              <a class="oidp io-{{ st|iokind }}" href="{{ io_order_url }}{{ oid }}"
+                 target="_blank" rel="noopener"
+                 data-tip="Order {{ oid }}{% if st %} - {{ st }}{% else %} - the order does not say{% endif %}. Opens in the IO tool.">{{ oid }}</a>
+            {%- endfor %}</span>{% endif %}</td>
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
           <span class="chip" data-name="{{ p.name }}" tabindex="0"
                 style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
@@ -884,17 +883,19 @@
 .oid{display:inline-block;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;
  background:var(--atlas-10);color:#3D5468;padding:1px 8px;border-radius:20px;
  margin-top:3px;user-select:all}
-/* WHAT THE ORDER SAYS, as a colour beside the order it says it about.
-   Green live, orange paused, red cancelled, blue complete - and the words
-   themselves on hover, because a colour is a reminder and not a label. */
-.iodots{display:inline-flex;gap:3px;vertical-align:middle;margin-left:5px}
-.iodot{width:9px;height:9px;border-radius:50%;display:inline-block;cursor:help;
- box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
-.iodot.io-live{background:var(--ok)}
-.iodot.io-paused{background:var(--warn)}
-.iodot.io-cancelled{background:var(--crit)}
-.iodot.io-complete{background:var(--velocity)}
-.iodot.io-other{background:var(--ink-50)}
+/* WHAT THE ORDER SAYS, ON THE ORDER IT SAYS IT ABOUT. Green live, orange
+   paused, red cancelled, blue complete - and the words themselves on hover,
+   because a colour is a reminder and not a label. */
+.oids{display:inline-flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.oidp{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;
+ padding:1px 7px;border-radius:20px;text-decoration:none;white-space:nowrap;
+ user-select:all;background:var(--atlas-10);color:#3D5468;
+ box-shadow:inset 0 0 0 1px transparent}
+.oidp:hover{text-decoration:none;box-shadow:inset 0 0 0 1px currentColor}
+.oidp.io-live{background:var(--ok-bg);color:var(--ok)}
+.oidp.io-paused{background:var(--warn-bg);color:var(--warn)}
+.oidp.io-cancelled{background:var(--crit-bg);color:var(--crit)}
+.oidp.io-complete{background:var(--velocity-10);color:var(--velocity)}
 .oid a{color:inherit;text-decoration:none;border-bottom:1px dotted #8FA5B8}
 .oid a:hover{color:var(--velocity);border-bottom-color:currentColor}
 .oid.lid{background:transparent;color:var(--muted);

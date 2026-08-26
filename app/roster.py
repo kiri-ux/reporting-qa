@@ -468,22 +468,46 @@ def ordered_for(db: Session, client: str, account_ids: str,
             # they were kept falls back to the merged figures, which is the
             # answer this always gave.
             live = _live_lines(l, period)
+            got = {"budget": None, "impressions": None}
             if live is not None:
                 for key in ("budget", "impressions"):
-                    v = live.get(key)
-                    if v is not None:
-                        row[key] = v if row[key] is None else row[key] + v
+                    got[key] = live.get(key)
                 # And the row is only "stopped" if nothing is left running.
                 # One cancelled line beside a live one is not a campaign that
                 # was called off, and marking it so silenced the finding on
                 # the half that is still delivering.
                 if live["any"]:
                     row["stopped"] = False
-                continue
+            else:
+                for key in ("budget", "impressions"):
+                    v = getattr(l, key, None)
+                    got[key] = None if v is None else float(v)
+            # A CAMPAIGN TOTAL WITH NO MONTHLY FIGURE BESIDE IT.
+            #
+            # Kerr-Bilt Trailers' Performance Max carries $20,000 for the whole
+            # campaign and nothing per month, so the spend row read "-/- no
+            # comparison" while the impressions rows above it were being paced
+            # against real monthly goals. Two units on one panel, and the one
+            # the client is actually billed on was the blank.
+            #
+            # The lifetime panel already does this in reverse - a monthly goal
+            # multiplied out across the flight - and says so. Same here: the
+            # total divided by the months it covers, labelled as derived rather
+            # than presented as something the order stated.
+            months = _months_of(l)
+            for src, key in (("total_budget", "budget"),
+                             ("total_impressions", "impressions")):
+                if got[key] is not None:
+                    continue
+                whole = getattr(l, src, None)
+                if whole is None or not months:
+                    continue
+                got[key] = float(whole) / months
+                row["basis"] = (f"the campaign total over {months} "
+                                f"month{'s' if months != 1 else ''}")
             for key in ("budget", "impressions"):
-                v = getattr(l, key, None)
-                if v is not None:
-                    row[key] = float(v) if row[key] is None else row[key] + float(v)
+                if got[key] is not None:
+                    row[key] = got[key] if row[key] is None else row[key] + got[key]
             continue
 
         # A LIFETIME IS THE WHOLE CAMPAIGN, and most orders do not carry a

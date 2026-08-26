@@ -149,7 +149,7 @@
             <tr{% if p.total %} class="tot"{% endif %}>
               <td>{{ p.product }}
                 {%- if p.basis %}<br><span class="acct" style="font-size:11px"
-                  title="The order carries a monthly figure, not a campaign total, so this is that figure across the months the campaign ran.">{{ p.basis }}</span>{% endif %}</td>
+                  title="The order does not carry this figure in the unit the panel is asking about, so it was worked out from the one it does carry and the length of the flight. Derived, not stated.">{{ p.basis }}</span>{% endif %}</td>
               <td class="mono nw">
                 {% if p.unit == 'money' %}
                   {% if p.served is not none %}${{ '{:,.0f}'.format(p.served) }}{% else %}—{% endif %}/{%

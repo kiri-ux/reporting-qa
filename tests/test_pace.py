@@ -111,3 +111,56 @@ def test_a_rough_projection_is_not_written_like_a_measurement():
     # and the same span in working hours, because nothing arrives overnight
     assert working_days(16) == "2 working days at that rate"
     assert working_days(3) == ""
+
+
+def test_a_campaign_total_with_no_monthly_figure_is_spread_over_its_months():
+    """Kerr-Bilt Trailers' Performance Max carries $20,000 for the whole
+    campaign and nothing per month, so the spend row read "-/- no comparison"
+    while the impressions rows above it were paced against real monthly goals.
+    Two units on one panel, and the one the client is billed on was the blank.
+
+    The lifetime panel already multiplies a monthly goal out across the flight
+    and says so. This is the same thing the other way up.
+    """
+    import datetime as dt
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.roster import ordered_for
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderLine(market="Lockwood Denison", client="Kerr-Bilt Trailers",
+                     account_ids="53901", line_ids="129648",
+                     product="Performance Max", campaign="Performance Max Ads",
+                     starts_on=dt.date(2026, 5, 15), ends_on=dt.date(2026, 12, 31),
+                     flights=[["2026-05-15", "2026-12-31"]],
+                     live=True, budget=None, total_budget=20000.0))
+    db.commit()
+
+    got = ordered_for(db, "Kerr-Bilt Trailers", "53901", "2026-07")
+    row = got["Performance Max"]
+    assert row["budget"] == 2500.0            # 20,000 over the 8 months it runs
+    assert "campaign total over 8 months" in row["basis"]
+    db.close(); eng.dispose()
+
+
+def test_a_real_monthly_figure_is_never_overwritten_by_a_derived_one():
+    import datetime as dt
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.roster import ordered_for
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderLine(market="M", client="Acme", account_ids="1", product="PPC",
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 12, 31),
+                     flights=[["2026-01-01", "2026-12-31"]],
+                     live=True, budget=900.0, total_budget=20000.0))
+    db.commit()
+    got = ordered_for(db, "Acme", "1", "2026-07")
+    assert got["PPC"]["budget"] == 900.0 and not got["PPC"]["basis"]
+    db.close(); eng.dispose()

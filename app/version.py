@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-93"
-BUILD_NOTES = ("Cancelled line items are out of the pacing goal, the order "
-               "status is a colour beside its order, and a column of zero "
-               "completion rates is a finding.")
+BUILD = "2026.08.26-94"
+BUILD_NOTES = ("Each order is its own coloured pill, and a campaign total "
+               "with no monthly figure beside it is spread over its months "
+               "rather than left blank.")
 
 # ---------------------------------------------------------------------------
 

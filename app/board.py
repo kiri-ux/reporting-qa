@@ -42,6 +42,22 @@ def _key(s: str) -> str:
     return hit
 
 
+# Which status wins when one order carries several. Live first: an order with
+# a live line item and a cancelled one is a live order, and marking it dead is
+# the kind of wrong that gets a report pulled to the wrong end date.
+_STATUS_ORDER = ("live", "paused", "pending", "complete", "cancel")
+
+
+def _status_rank(status: str) -> int:
+    s = (status or "").strip().lower()
+    if not s:
+        return 99
+    for i, word in enumerate(_STATUS_ORDER):
+        if word in s:
+            return i
+    return len(_STATUS_ORDER)
+
+
 @dataclass
 class Expected:
     """One report that should exist this cycle."""
@@ -91,6 +107,12 @@ class Expected:
     # when a row looks wrong the first question is what the order actually
     # says - which meant opening the IO tool in another tab.
     statuses: list = field(default_factory=list)
+    # AND WHICH ORDER SAID IT. The list above is every status across the row,
+    # which on a client running two orders cannot say which one is which -
+    # Kerr-Bilt Trailers showed 50360 and 53901 above one live mark and one
+    # complete mark, with nothing tying either to either. Read off the line
+    # items themselves: {order id: status}.
+    order_status: dict = field(default_factory=dict)
 
     @property
     def state(self) -> str:
@@ -461,6 +483,18 @@ def expected_for(db: Session, period: str,
                 st = st.strip()
                 if st and st not in e.statuses:
                     e.statuses.append(st)
+            # ONE STATUS PER ORDER, off the line items. An order with a live
+            # line and a cancelled one is a live order, so the one that means
+            # "still delivering" wins - a red pill on an order still running
+            # is the kind of wrong that gets a report pulled to the wrong date.
+            for d in (getattr(l, "detail", None) or []):
+                if not isinstance(d, dict):
+                    continue
+                oid, st = str(d.get("order") or ""), (d.get("status") or "").strip()
+                if not oid or not st:
+                    continue
+                if _status_rank(st) < _status_rank(e.order_status.get(oid, "")):
+                    e.order_status[oid] = st
             # A client's lifetime covers several products, so its line ids are
             # the union of them - not whichever line happened to be first.
             for lid in (l.line_ids or "").split(","):
