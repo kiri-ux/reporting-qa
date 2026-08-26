@@ -274,6 +274,59 @@
   </div>
 </section>
 
+{# THE SERVING FILE ANSWERS WHAT THE ORDER EXPORT CANNOT.
+   Order data gives a flight and a status. A line sold January to December and
+   paused on the 2nd reads exactly like one paused on the 30th, so "did this
+   run in July" has been an inference off two dates. Delivery days settle it. #}
+<section>
+  <h2>Serving file</h2>
+  <div class="panel">
+    {% if served %}
+      <p class="sub" style="margin-top:0">
+        <b>{{ served.clients }}</b> clients loaded for <b>{{ served.period }}</b>,
+        {{ served.ran }} of them served {{ min_days }}+ days.</p>
+      {% if served.unmatched %}
+        {# A client the file does not name is read as having served nothing,
+           which is the point - and is also exactly what a client the two tools
+           spell differently looks like. A handful is campaigns that went dark.
+           Two hundred is a matching problem, and it should not take anybody
+           going looking to notice. #}
+        <p class="sub" style="margin-top:0">
+          <b>{{ served.unmatched|length }}{% if served.unmatched|length >= 40 %}+{% endif %}</b>
+          clients on the order list are not in this file, so they read as
+          having served nothing. A few is normal. A lot means the two tools
+          spell clients differently:
+          <span class="acct">{{ served.unmatched[:8]|join('; ') }}{% if served.unmatched|length > 8 %} ...{% endif %}</span></p>
+      {% endif %}
+    {% endif %}
+    {% if serve_log %}
+      <p class="sub" style="margin-top:0;font-size:13px">
+        {% if not serve_log.ok %}<span style="color:var(--crit)">{% endif %}
+        <b>{{ serve_log.source }}</b>,
+        {{ serve_log.synced_at|et('%b %-d at %-I:%M %p') }}<br>
+        {{ serve_log.message }}
+        {% if not serve_log.ok %}</span>{% endif %}</p>
+    {% endif %}
+    <form action="/orders/serving" method="post" enctype="multipart/form-data"
+          style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <input type="file" name="file" accept=".csv,.xlsx,.xlsm" required>
+      <input type="text" name="period" placeholder="Period, e.g. 2026-07" size="16">
+      <button class="btn" type="submit">Load serving days</button>
+    </form>
+    <p class="sub" style="font-size:13px;margin-top:12px">
+      One row per client, per business unit, per day. It needs a client column,
+      a business unit column and a date column - the names are read off your
+      header rather than fixed, and the log below says which ones it used, so a
+      file that loads wrong says so instead of quietly counting the wrong
+      column.<br>
+      A day counts when something actually delivered on it, so a row of zeros is
+      not a day. Leave the period blank to take whatever months are in the file.<br>
+      A client that served {{ min_days }} days or more is owed a report. Fewer
+      than that and the board says it did not run, instead of guessing from the
+      flight dates. A month with no file loaded reads dates as before.</p>
+  </div>
+</section>
+
 <section>
   <div class="secbar">
     <h2 style="border:0;margin:0;padding:0">Loaded</h2>

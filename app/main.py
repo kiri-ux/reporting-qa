@@ -530,9 +530,30 @@ def orders_view(request: Request, view: str = Query("clients"),
     # trainer and no fallback owner, which is worth seeing rather than reading
     # as an empty cell.
     no_roster = sorted({c["partner"] for c in clients if not c["in_roster"] and c["partner"]})
+    # What the serving file says about the cycle being worked, if one is loaded.
+    from .board import MIN_DAYS_IN_MONTH
+    from .cycle import current_period
+    from .serving import served_days
+    _p = settings.default_period or current_period()
+    _days = served_days(db, _p)
+    if _days:
+        from .serving import unmatched as _unmatched
+        served = {"period": _p, "clients": len(_days),
+                  "ran": sum(1 for n in _days.values() if n >= MIN_DAYS_IN_MONTH),
+                  "unmatched": _unmatched(db, _p)}
+    else:
+        served = None
+    # THE SERVING UPLOAD'S OWN RESULT, in the serving panel. It shares the sync
+    # log with the order export, and a serving file that would not parse was
+    # reporting itself up in the S3 box as "last sync failed" - about a sync
+    # nobody ran.
+    serve_log = db.scalars(
+        select(OrderSync).where(OrderSync.source.like("serving upload:%"))
+        .order_by(OrderSync.id.desc()).limit(1)).first()
     return templates.TemplateResponse(request, "orders.html", {
         "lines": lines, "sync": sync_rec, "guidance": guidance, "running": running,
         "s3": settings.s3_configured,
+        "served": served, "min_days": MIN_DAYS_IN_MONTH, "serve_log": serve_log,
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster,
         "env_report": settings.env_report(),
@@ -633,7 +654,10 @@ def _orders_stale(db: Session) -> bool:
     """
     from .db import OrderSync
     from .version import product_map_version
-    row = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+    from .orders_s3 import NOT_A_SYNC
+    row = db.scalars(select(OrderSync)
+                     .where(OrderSync.state != "running",
+                            ~OrderSync.source.like(NOT_A_SYNC))
                      .order_by(desc(OrderSync.id)).limit(1)).first()
     return bool(row and row.ok and (row.map_version or "") != product_map_version())
 
@@ -2187,8 +2211,10 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
             "total_impressions": getattr(l, "total_impressions", None),
             "ran": _ran_during(l, rep.period) if rep.period else None,
         })
-    from .orders_s3 import running_sync
-    sync = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+    from .orders_s3 import NOT_A_SYNC, running_sync
+    sync = db.scalars(select(OrderSync)
+                      .where(OrderSync.state != "running",
+                             ~OrderSync.source.like(NOT_A_SYNC))
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     ctx = {
         "nav": "cycle", "rep": rep, "rows": rows, "sync": sync,
@@ -2283,6 +2309,42 @@ async def orders_import(file: UploadFile = File(...), period: str = Form(""),
                          message=msg + ".", guidance=res.get("guidance") or {}))
         db.commit()
     return RedirectResponse(f"/orders?imported={n}", status_code=303)
+
+
+@app.post("/orders/serving")
+async def serving_import(request: Request, file: UploadFile = File(...),
+                         period: str = Form(""),
+                         db: Session = Depends(get_db)):
+    """Load the serving file - what actually delivered, by client, by day.
+
+    THE ONE FACT THE ORDER EXPORT CANNOT GIVE. It carries a flight and a
+    status, so a line paused on the 2nd reads exactly like one paused on the
+    30th, and the board has been guessing off two dates ever since.
+    """
+    from .roster import _rows_from_csv, _rows_from_xlsx
+    from .serving import import_serving
+
+    name = file.filename or "serving.csv"
+    raw = await file.read()
+    try:
+        rows = (_rows_from_xlsx(raw, None) if name.lower().endswith((".xlsx", ".xlsm"))
+                else _rows_from_csv(raw))
+        res = import_serving(db, rows, period=period or None)
+    except Exception as exc:  # noqa: BLE001 - the message IS the answer here
+        db.rollback()
+        db.add(OrderSync(source=f"serving upload: {name}", rows=0, ok=False,
+                         message=f"Could not read the serving file: {exc}"))
+        db.commit()
+        return RedirectResponse("/orders?serving=failed", status_code=303)
+    msg = (f"Serving file: {res['clients']:,} clients across "
+           f"{', '.join(res['periods']) or 'no month'}, "
+           f"{res['rows_read']:,} rows read. A day counts when there is "
+           f"delivery on it ({res['counted_on']}). Columns used: "
+           + ", ".join(f"{f} = {h}" for f, h in res["columns"].items()))
+    db.add(OrderSync(source=f"serving upload: {name}", rows=res["clients"],
+                     ok=True, message=msg + "."))
+    db.commit()
+    return RedirectResponse(f"/orders?serving={res['clients']}", status_code=303)
 
 
 def _run_sync(claim_id: int) -> None:

@@ -45,8 +45,17 @@ def _client():
     return boto3.client("s3", **kw)
 
 
+# The serving file shares this log and is not a sync of the order export. A
+# serving file that would not parse was reporting itself as "last sync failed",
+# about a sync nobody ran - and worse, its blank ETag became the one the next
+# real sync compared against.
+NOT_A_SYNC = "serving upload:%"
+
+
 def last_sync(db: Session) -> OrderSync | None:
-    return db.scalars(select(OrderSync).order_by(desc(OrderSync.id)).limit(1)).first()
+    return db.scalars(select(OrderSync)
+                      .where(~OrderSync.source.like(NOT_A_SYNC))
+                      .order_by(desc(OrderSync.id)).limit(1)).first()
 
 
 # A sync that has been "running" longer than this is assumed dead - a deploy
@@ -199,7 +208,9 @@ def sync(db: Session, *, force: bool = False, claim_id: int | None = None,
          trigger: str = "") -> OrderSync:
     """Refresh the order list from S3. Returns the sync record either way."""
     source = f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
-    prev = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+    prev = db.scalars(select(OrderSync)
+                      .where(OrderSync.state != "running",
+                             ~OrderSync.source.like(NOT_A_SYNC))
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     try:
         return _sync(db, source, prev, force=force, trigger=trigger)

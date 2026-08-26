@@ -1,0 +1,236 @@
+"""What actually served, by client, by day.
+
+EVERY RULE ABOUT "DID THIS RUN" HAS BEEN AN INFERENCE UNTIL NOW.
+
+The order export gives a flight and a status, and neither answers the question.
+A line item sold 1 January to 31 December that was paused on the 2nd looks
+identical to one paused on the 30th. "IO Complete" is where every campaign that
+ever finished comes to rest, so it says nothing about when. Cancelled says the
+buy stopped and not which month. So the board has been reading dates and
+guessing, and the guesses have been wrong in both directions - reports asked
+for on campaigns that did not run, and campaigns that ran with no row at all.
+
+Delivery data settles it. If a client served on 19 days in July, they are owed
+a July report. If they served on none, they are not, and the board can say so
+in those words instead of inventing a reason.
+
+ONE ROW PER CLIENT PER BUSINESS UNIT PER DAY is the grain. Which columns carry
+those three is read off the header rather than fixed, because this file is
+going to arrive from a different tool than the order export and nobody should
+have to rename a column to make it load. What it matched is reported back, so
+a file that loads wrong says so on the sync page instead of quietly counting
+the wrong column.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import re
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .db import ServedDays
+
+
+def _norm(h: str) -> str:
+    """Header text down to letters and digits: "Client's Name" -> clientsname."""
+    return re.sub(r"[^a-z0-9]", "", (h or "").lower())
+
+
+# WHAT EACH COLUMN MIGHT BE CALLED. Ordered - the first alias that matches wins,
+# so the specific spellings sit ahead of the loose ones.
+COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "client": ("client", "clientname", "advertiser", "advertisername",
+               "account", "accountname", "customer", "campaignclient"),
+    "market": ("clientbusinessunit", "businessunit", "bu", "market",
+               "partner", "station", "office", "clientbu"),
+    "day": ("date", "day", "servedate", "servingdate", "deliverydate",
+            "reportdate", "activitydate", "dt"),
+    # Optional. A row that exists but served nothing is not a day of delivery,
+    # and some exports write a row per calendar day regardless.
+    "impressions": ("impressions", "imps", "impressionsdelivered", "delivered",
+                    "servedimpressions", "totalimpressions"),
+    "spend": ("spend", "cost", "adspend", "amountspent", "clientadcost"),
+    "clicks": ("clicks", "totalclicks"),
+    # Optional. With it the answer can be per product; without it, per client.
+    "product": ("product", "productname", "linetype", "channel"),
+    "order_id": ("ordersid", "orderid", "order", "iod", "ioid"),
+}
+
+# A file is a serving file when it names a client, a business unit and a date.
+# The order export has a date column too, which is why the business unit alone
+# is not enough to tell them apart - but it has no plain "date" column and this
+# has no "orders_status", so the pair separates them.
+REQUIRED = ("client", "market", "day")
+
+
+def map_columns(headers: list[str]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    seen = [_norm(h) for h in headers]
+    for field, names in COLUMN_ALIASES.items():
+        for alias in names:
+            if alias in seen:
+                out[field] = seen.index(alias)
+                break
+    return out
+
+
+def looks_like_serving(headers: list[str]) -> bool:
+    """Client, business unit and a date, and nothing that makes it the order
+    export - which carries its own statuses and would otherwise qualify."""
+    cols = map_columns(headers)
+    if not all(f in cols for f in REQUIRED):
+        return False
+    seen = {_norm(h) for h in headers}
+    return not ({"ordersstatus", "ordersenddate"} & seen)
+
+
+ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+def _date(v):
+    if not v:
+        return None
+    s = v.strip() if isinstance(v, str) else str(v).strip()
+    if not s:
+        return None
+    m = ISO.match(s)
+    if m:
+        try:
+            return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    try:
+        from dateutil import parser as dp
+        return dp.parse(s).date()
+    except Exception:
+        return None
+
+
+def _num(v) -> float:
+    s = str(v or "").replace(",", "").replace("$", "").strip()
+    if not s:
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _key(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def import_serving(db: Session, rows, *, period: str | None = None,
+                   replace: bool = True) -> dict:
+    """Count the days each client delivered on, per period.
+
+    A DAY COUNTS WHEN SOMETHING WAS DELIVERED ON IT, not when a row exists for
+    it. Several of these exports write a row for every calendar day of the
+    flight and put zeros in it, and counting those back is the same guess the
+    dates were already making.
+    """
+    rows = list(rows)
+    if not rows:
+        raise ValueError("The serving file is empty.")
+    head = 0
+    for i, r in enumerate(rows[:10]):
+        if all(f in map_columns(r) for f in REQUIRED):
+            head = i
+            break
+    cols = map_columns(rows[head])
+    missing = [f for f in REQUIRED if f not in cols]
+    if missing:
+        raise ValueError(
+            "The serving file needs a client, a business unit and a date "
+            "column. Could not find: " + ", ".join(missing) + ". Header reads: "
+            + ", ".join(str(h) for h in rows[head][:12]))
+
+    # Whether the file carries a figure at all. With none, every row present
+    # counts as a day - which is the best the file can support and is said out
+    # loud rather than assumed.
+    money = [f for f in ("impressions", "spend", "clicks") if f in cols]
+
+    days: dict[tuple[str, str, str], set] = {}
+    names: dict[tuple[str, str, str], tuple[str, str]] = {}
+    read = 0
+    for r in rows[head + 1:]:
+        if not any(str(c).strip() for c in r):
+            continue
+
+        def g(field):
+            i = cols.get(field)
+            return str(r[i]).strip() if i is not None and i < len(r) else ""
+
+        client, market = g("client"), g("market")
+        when = _date(g("day"))
+        if not client or not when:
+            continue
+        read += 1
+        if money and not any(_num(g(f)) > 0 for f in money):
+            continue                       # a row with nothing in it is not a day
+        p = when.strftime("%Y-%m")
+        if period and p != period:
+            continue
+        k = (p, _key(market), _key(client))
+        days.setdefault(k, set()).add(when)
+        names.setdefault(k, (market, client))
+
+    if replace:
+        periods = {k[0] for k in days} or ({period} if period else set())
+        for p in periods:
+            for row in db.scalars(
+                    select(ServedDays).where(ServedDays.period == p)).all():
+                db.delete(row)
+
+    for k, dates in days.items():
+        p, mk, ck = k
+        market, client = names[k]
+        db.add(ServedDays(period=p, market_key=mk, client_key=ck,
+                          market=market[:255], client=client[:255],
+                          days=len(dates), first_day=min(dates),
+                          last_day=max(dates)))
+    db.commit()
+    return {"rows_read": read, "clients": len(days),
+            "periods": sorted({k[0] for k in days}),
+            "counted_on": ", ".join(money) or "a row per day, no figures in the file",
+            "columns": {f: str(rows[head][i]) for f, i in sorted(cols.items())}}
+
+
+def served_days(db: Session, period: str) -> dict[tuple[str, str], int]:
+    """{(market key, client key): days delivered}, empty when nothing is loaded.
+
+    EMPTY IS NOT ZERO. A period with no serving file loaded has to fall back to
+    reading dates - answering "nobody ran in July" from a file that was never
+    uploaded would take the whole board down.
+    """
+    return {(r.market_key, r.client_key): r.days for r in db.scalars(
+        select(ServedDays).where(ServedDays.period == period)).all()}
+
+
+def unmatched(db: Session, period: str, limit: int = 40) -> list[str]:
+    """Order-list clients the serving file does not mention.
+
+    A CLIENT THE FILE DOES NOT NAME IS TREATED AS HAVING SERVED NOTHING, which
+    is the point of loading it - but it is also exactly what a client the two
+    tools spell differently looks like. So the number is put on the page. A
+    handful is campaigns that went dark; two hundred is a matching problem, and
+    the difference should not need anybody to go looking for it.
+    """
+    from .db import OrderLine
+
+    known = {(r.market_key, r.client_key) for r in db.scalars(
+        select(ServedDays).where(ServedDays.period == period)).all()}
+    if not known:
+        return []
+    out = set()
+    for market, client in db.execute(
+            select(OrderLine.market, OrderLine.client).distinct()).all():
+        if (_key(market), _key(client)) not in known:
+            out.add(f"{market} - {client}" if market else client)
+    return sorted(out)[:limit]
+
+
+def has_serving(db: Session, period: str) -> bool:
+    return db.scalar(select(ServedDays.id).where(
+        ServedDays.period == period).limit(1)) is not None

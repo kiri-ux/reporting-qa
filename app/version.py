@@ -12,12 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-73"
-BUILD_NOTES = ("The hundred extra 7 Mountains lifetimes: build 72 read "
-               "cancelled-or-complete off ONE line item and closed out the "
-               "whole client. It now takes every line. Paused orders are on "
-               "the board, with a 'Not needed' button for the ones that did "
-               "not run.")
+BUILD = "2026.08.26-74"
+BUILD_NOTES = ("The serving file. Upload what actually delivered, by client, "
+               "by day, and the board stops guessing whether a campaign ran "
+               "from its flight dates. 7+ days served means a report is owed; "
+               "fewer means it did not run.")
 
 # ---------------------------------------------------------------------------
 

@@ -378,11 +378,41 @@ def expected_for(db: Session, period: str,
         if start and end and start <= end:
             e.starts_on = start
 
+    # HOW MANY DAYS IT ACTUALLY SERVED, IF ANYBODY KNOWS.
+    #
+    # Everything above this line reads dates: a line sold January to December
+    # and paused on the 2nd is indistinguishable from one paused on the 30th,
+    # and "IO Complete" is where every campaign that ever ended comes to rest.
+    # The serving file is the only thing that answers the actual question, so
+    # where it has an answer it replaces the inference rather than joining it.
+    #
+    # A MONTH WITH NO FILE LOADED IS NOT A MONTH WHERE NOBODY RAN. Absent means
+    # fall back to the dates - concluding otherwise would empty the board on
+    # the strength of a file that was never uploaded.
+    from .serving import served_days
+    served = served_days(db, period)
+
     # Under a week in the month, and nothing has arrived for it: not owed.
     # A report that HAS turned up is never hidden - somebody pulled it, and
     # taking it off the board would lose the work rather than save it.
-    short = {k: n for k, n in ran_days.items()
-             if n < MIN_DAYS_IN_MONTH and k in rows}
+    # A CLIENT THE LOADED FILE DOES NOT MENTION SERVED NOTHING. Otherwise the
+    # file can only ever add rows, and taking off the ones that did not run is
+    # the entire reason for loading it. The risk is a client the two tools
+    # spell differently reading as dark - so that case gets its own reason and
+    # its own count on the orders page, rather than looking like an answer.
+    unmatched: set[tuple[str, str]] = set()
+    short: dict[tuple[str, str, str], int] = {}
+    for k, n in ran_days.items():
+        if k not in rows:
+            continue
+        if not served:
+            days = n
+        else:
+            days = served.get((k[0], k[1]), 0)
+            if (k[0], k[1]) not in served:
+                unmatched.add((k[0], k[1]))
+        if days < MIN_DAYS_IN_MONTH:
+            short[k] = days
 
     # And a lifetime that has already gone out is not owed again.
     done = _lifetimes_delivered(db, period)
@@ -396,10 +426,28 @@ def expected_for(db: Session, period: str,
         e = rows[k]
         if kind == "monthly" and k in short and e.report is None:
             if skipped is not None:
+                n = short[k]
+                # SAY WHERE THE NUMBER CAME FROM. "Ran 3 days" off the flight
+                # dates is a guess and reads like a fact; off the serving file
+                # it IS a fact, and the difference is the whole point of
+                # loading the file.
+                if (mk, ck) in served:
+                    why = ("did not serve at all this month, per the serving file"
+                           if n == 0 else
+                           f"served {n} day{'' if n == 1 else 's'} this month, "
+                           f"per the serving file")
+                elif served:
+                    # NOT THE SAME CLAIM. The file was loaded and this client
+                    # is not in it - which is either a campaign that went dark
+                    # or two tools spelling a name differently, and saying
+                    # which one out loud is how the second gets noticed.
+                    why = ("not in the serving file at all - either it did not "
+                           "run, or the serving file spells this client "
+                           "differently to the order export")
+                else:
+                    why = "ran %d day%s this month" % (n, "" if n == 1 else "s")
                 skipped.append({"market": e.market, "client": e.client,
-                                "why": "ran %d day%s this month" % (
-                                    short[k], "" if short[k] == 1 else "s"),
-                                "kind": "monthly", "days": short[k],
+                                "why": why, "kind": "monthly", "days": n,
                                 "starts": e.starts_on, "ends": e.ends_on})
             del rows[k]
             continue

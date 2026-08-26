@@ -1,58 +1,66 @@
-build 2026.08.26-73
+build 2026.08.26-74
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
+app/serving.py                  (new)
 app/board.py
 app/db.py
 app/main.py
 app/orders_io.py
+app/orders_s3.py
 app/templates/cycle.html
+app/templates/orders.html
+tests/test_serving.py           (new)
 tests/test_order_remap.py
 
-543 tests pass.
+556 tests pass.
 
 
-1. THE HUNDRED EXTRA 7 MOUNTAINS LIFETIMES - MY BUG
-----------------------------------------------------
-Build 72 read "cancelled or complete" off a SINGLE line item and put a lifetime
-on the board for the whole client.
+THE SERVING FILE
+=================
+Orders page, under the import box: "Serving file". Upload, done.
 
-That is wrong twice over. A cancelled line item inside a live order is an
-ordinary thing - one product got dropped, the rest of the campaign is running.
-And every campaign that has ever finished sits at "IO Complete" forever, so any
-client with one old finished line and a stale end date suddenly owed a
-close-out report.
+Every rule about "did this run in July" has been an inference off two dates. A
+line sold January to December and paused on the 2nd reads exactly like one
+paused on the 30th. "IO Complete" is where every campaign that ever finished
+comes to rest. Cancelled says a buy stopped and not which month. So the board
+has been reading flight dates and guessing, and the guesses have been wrong in
+both directions - reports asked for on campaigns that never ran, and campaigns
+that ran with no row at all.
 
-Closing a campaign out is a statement about the CLIENT, not about one line of
-their order. The flag now only earns a lifetime when nothing that client has is
-still running. 45911 still gets its lifetime, because all four of its lines are
-complete. The hundred others go away.
+Delivery days settle it. 7+ days served, a report is owed. Fewer, the board
+says it did not run, in those words.
 
-Nothing to press - the board is computed live, so the count is right as soon as
-this deploys.
+WHAT IT NEEDS
+  A client column, a business unit column, a date column. One row per client
+  per business unit per day.
 
+  The names are read off YOUR header, not fixed - client / advertiser /
+  account, business unit / market / BU, date / day / serve date all work. The
+  page prints back which columns it used, so a file that loads wrong says so
+  instead of quietly counting the wrong column. If it cannot find one of the
+  three it names which and prints your header.
 
-2. PAUSED ORDERS ARE ON THE BOARD
-----------------------------------
-53392 and 54937 were on nobody's board because a paused header is not a live
-one and the import threw the whole order away. A campaign paused on the 20th
-delivered for nineteen days, and those days are owed a report.
+  If there is an impressions, spend or clicks column, a day only counts when
+  something delivered on it - a row of zeros is not a day. With no figures in
+  the file at all, every row present counts, and the page says that is what it
+  did.
 
-Paused orders are now kept and land on the board on the strength of their
-dates. A paused product is still not EXPECTED on the report and still not a
-surprise when it turns up - that rule is unchanged.
+WHAT IT CHANGES
+  Loaded for a month, it replaces the date guess for that month entirely.
+  Not loaded, nothing changes - the board reads dates exactly as before. A
+  month with no file is not a month where nobody ran.
 
-This adds rows. It has to: the export gives a flight, not the day somebody hit
-pause, so the board cannot tell paused-on-the-2nd from paused-on-the-30th.
+  A client in the order list that the file does not name reads as having served
+  nothing. That is the point, and it is also what a client the two tools spell
+  differently looks like - so the orders page counts them. A few is campaigns
+  that went dark. Two hundred is a name matching problem, and you will see the
+  number without going looking for it.
 
+  The skip reason on the board says where the number came from: "served 2 days
+  this month, per the serving file" is a fact, "ran 2 days this month" off the
+  flight is a guess, and they should not read the same.
 
-3. "NOT NEEDED", NEXT TO "DONE, NO REPORT"
--------------------------------------------
-Which is what answers the above. Two buttons on a row with no PDF:
-
-  Done, no report   somebody did the work, there is just no PDF (SEO)
-  Not needed        no report was owed - it did not run this month
-
-Both clear the row for THIS cycle only; next month it is back on the board. The
-board shows which one you picked, so "no report needed" never reads as work
-somebody did.
+S3 NEXT. This is the upload so you can run it now. Dropping it in the bucket
+alongside the order export is the same reader with a header test in front of
+it, and it goes in the next build.

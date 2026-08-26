@@ -444,6 +444,40 @@ class CycleDone(Base):
     marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
+class ServedDays(Base):
+    """How many days a client actually delivered on, in one month.
+
+    The one fact the order export cannot give. It carries a flight and a
+    status: a line sold January to December and paused on the 2nd reads exactly
+    like one paused on the 30th, and every campaign that ever finished sits at
+    "IO Complete" forever. So "did this run in July" has been an inference off
+    two dates, and the inference has been wrong in both directions.
+
+    Counted from a serving file, one row per client per business unit per day.
+    A month with no file loaded has no rows here at all, and the board falls
+    back to reading dates - "nobody ran in July" is not a thing to conclude
+    from a file nobody uploaded.
+    """
+    __tablename__ = "served_days"
+    __table_args__ = (UniqueConstraint("period", "market_key", "client_key",
+                                       name="uq_served_days"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(16), index=True)
+    # Normalized, because the serving tool and the order tool do not spell a
+    # client the same way and never have.
+    market_key: Mapped[str] = mapped_column(String(255), index=True)
+    client_key: Mapped[str] = mapped_column(String(255), index=True)
+    # And as written, so the page can show what was in the file.
+    market: Mapped[str] = mapped_column(String(255), default="")
+    client: Mapped[str] = mapped_column(String(255), default="")
+    days: Mapped[int] = mapped_column(Integer, default=0)
+    first_day: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    last_day: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    loaded_at: Mapped[dt.datetime] = mapped_column(DateTime,
+                                                   default=dt.datetime.utcnow)
+
+
 class SavedView(Base):
     """A named set of filters on the cycle board.
 
