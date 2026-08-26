@@ -915,6 +915,77 @@ def test_a_later_order_that_does_not_overlap_still_gets_its_lifetime(db):
     assert life[0].products == ["Mobile Conquesting"]
 
 
+def test_a_live_chat_order_does_not_hold_up_a_lifetime(db):
+    """RIVER VALLEY BUILDERS. Their Mobile Conquesting ended in July and the
+    lifetime never appeared, because two other orders were still open - both
+    Live Chat, which gets no report of its own. Nobody is waiting on those."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="River Valley Builders",
+                     account_ids="31050", line_ids="1",
+                     product="Mobile Conquesting", campaign="Mobile Conquesting Ads",
+                     live=True, starts_on=D("2025-12-01"), ends_on=D("2026-07-31"),
+                     order_starts_on=D("2025-12-01"), order_ends_on=D("2026-07-31")))
+    for order, line in (("31171", "2"), ("43182", "3")):
+        db.add(OrderLine(market="M", client="River Valley Builders",
+                         account_ids=order, line_ids=line, product="Live Chat",
+                         campaign="Live Chat", live=True,
+                         starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
+                         order_starts_on=D("2025-01-01"),
+                         order_ends_on=D("2026-12-31")))
+    db.commit()
+    assert "lifetime" in {e.kind for e in expected_for(db, "2026-07")}
+
+
+def test_a_real_running_order_still_holds_up_a_lifetime(db):
+    """The same client with one live Meta order instead. That one is a campaign
+    somebody is reading, so the lifetime waits for it."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="River Valley Builders",
+                     account_ids="31050", line_ids="1",
+                     product="Mobile Conquesting", campaign="Mobile Conquesting Ads",
+                     live=True, starts_on=D("2025-12-01"), ends_on=D("2026-07-31"),
+                     order_starts_on=D("2025-12-01"), order_ends_on=D("2026-07-31")))
+    db.add(OrderLine(market="M", client="River Valley Builders",
+                     account_ids="31171", line_ids="2", product="Live Chat",
+                     campaign="Live Chat", live=True,
+                     starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-01-01"), order_ends_on=D("2026-12-31")))
+    db.add(OrderLine(market="M", client="River Valley Builders",
+                     account_ids="52000", line_ids="3", product="Meta",
+                     campaign="Meta Display & Video Ads", live=True,
+                     starts_on=D("2026-02-01"), ends_on=D("2026-10-14"),
+                     order_starts_on=D("2026-02-01"), order_ends_on=D("2026-10-14")))
+    db.commit()
+    assert "lifetime" not in {e.kind for e in expected_for(db, "2026-07")}
+
+
+def test_every_line_marked_io_complete_owes_a_lifetime(db):
+    """ORDER 45911, SORGE FUNERAL HOME. Every line reads IO Complete and the end
+    dates run into December, so nothing had "ended" and no lifetime was asked
+    for. Complete is the seller saying it is finished - that is the same
+    statement the end date makes, only earlier."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Sorge Funeral Home", account_ids="45911",
+                     line_ids="1", product="Display", campaign="Display Ads",
+                     live=False, complete=True,
+                     starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-01-01"), order_ends_on=D("2026-12-31")))
+    db.commit()
+    assert "lifetime" in {e.kind for e in expected_for(db, "2026-07")}
+
+
 def test_the_lifetime_only_expects_what_that_campaign_ran(db):
     """"Ordered but not on the report: Display" on a lifetime covering Dec to
     July, where the Display order starts on 28 July."""

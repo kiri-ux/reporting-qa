@@ -375,7 +375,7 @@ def test_seo_is_never_owed_a_lifetime():
     """It is bought by the month and reported on by the month. There is no
     campaign that finishes and no delivery-to-date to sum up."""
     src = (Path(__file__).resolve().parents[1] / "app" / "board.py").read_text()
-    assert "life = (not is_seo(l.product)) and cyc.needs_lifetime(" in src
+    assert "life = (not is_seo(l.product)) and (" in src
 
 
 def test_the_order_panel_shows_what_the_month_was_bought_to_do():

@@ -1,63 +1,84 @@
-build 2026.08.25-57
+build 2026.08.26-72
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/main.py
-app/ingest.py
-app/recheck.py
-app/checks/rules.py
-app/templates/report_orders.html   (new)
-app/templates/viewer.html
+app/board.py
+app/db.py
+app/orders_io.py
+app/roster.py
+app/checks/quality.py
+tests/test_board_extras.py
 tests/test_order_remap.py
+tests/test_order_status.py
+tests/test_quality.py
+
+542 tests pass.
 
 
-Blair Regional YMCA, fourth time
-----------------------------------
-I have been fixing this by guessing from screenshots and telling you to press
-things. That is not working, so this build does two things instead.
+1. CANCELLED GETS A LIFETIME. IT DOES NOT GET A MONTHLY.
+--------------------------------------------------------
+Build 83 took cancelled lines off the board completely, which was too far. You
+said it plainly: a cancelled order still ran, and if it never got a lifetime it
+still needs one to close out the campaign. What it does not need is another
+month's report for the month somebody stopped it.
 
-1. THE CHECK REFUSES TO ANSWER FROM STALE ORDER DATA.
+So the board now keeps cancelled lines, and a cancelled line is:
 
-   The export is parsed once and only the answer is kept. While the loaded rows
-   were produced by an older import than the code running now, the product
-   check has nothing current to compare against - so it now abstains and shows
-   as skipped, with the reason. It was answering from four-builds-old data and
-   producing the same wrong finding over and over, and no amount of explaining
-   beats not saying it.
+  not live      -> no monthly
+  finished      -> owed a lifetime, unless one has already gone out
 
-   So on this deploy that finding disappears until the orders have actually
-   been re-read. If it comes back after a successful re-read, it is real and I
-   will treat it as real.
-
-2. EVERY REPORT NOW HAS "ORDER LINES AS STORED".
-
-   A link under the checks on the report page. It shows the actual rows the
-   report is being judged against - not the summary a finding prints:
-
-     Product | Would be | Raw name on the order | Order | Line items |
-     Live | Ran in 2026-07 | Flights | Budget
-
-   Two columns settle it on sight:
-
-     - WOULD BE is what today's code would map that raw product name to. Where
-       it differs from Product - shown in red - the row was written by an older
-       import, and that IS the answer. A row storing "Social Mirror" whose raw
-       name is "Social Mirror CTV Ads" is provably from before build 42.
-
-     - FLIGHTS shows each order's own window. "none recorded" in red means the
-       row predates build 42, so the period test is falling back to the merged
-       span and a gap between two flights is invisible - which is exactly the
-       Blair Regional YMCA shape.
-
-   Open that page for this report and send me a screenshot of it. Whatever is
-   wrong will be visible in one of those two columns, and I will fix the actual
-   thing rather than the thing I inferred.
-
-One more possibility worth naming, in case the data turns out to be current:
-the second finding says the REPORT carries Social Mirror CTV sections. If no
-Social Mirror CTV is running in July and the report is printing it anyway, that
-finding is right and the report is the thing that is wrong - a pull that
-included a product it should not have.
+The expected-products list for a lifetime also has cancelled products back in
+it. A cancelled buy is still on the lifetime, because cancelling does not mean
+it never ran.
 
 
-Tests: 411 passing.
+2. ALL LINES "IO COMPLETE" MEANS THE CAMPAIGN IS OVER
+-----------------------------------------------------
+Order 45911, Sorge Funeral Home. Every line reads IO Complete and the end dates
+run to December, so nothing had "ended" by the calendar and no lifetime was
+asked for.
+
+IO Complete is the seller saying it is finished - the same statement the end
+date makes, only earlier and more reliably. The importer now records it per
+line item, folds it across the lines behind each row, and the board treats a
+row where every line is complete exactly like one that has ended.
+
+
+3. LIVE CHAT DOES NOT HOLD UP A LIFETIME
+-----------------------------------------
+River Valley Builders. Their Mobile Conquesting ended in July, and the lifetime
+never appeared because two other orders were still open - 31171 and 43182, both
+Live Chat only.
+
+Live Chat gets no report of its own, so an order carrying only Live Chat is not
+a campaign anybody is waiting on. It no longer blocks the lifetime of the
+campaign that actually finished. An order carrying Live Chat AND something else
+still blocks, and so does any real running order - that rule is unchanged and
+tested both ways.
+
+
+4. COMPLETION RATES ARE ASKED PER PRODUCT
+------------------------------------------
+Congressman Mike Kelly, July. Page one carries a CTV Completion Rate tile. Page
+four carries an Online Audio table with Impressions, Clicks and CTR and no
+completion rate at all - and the report passed.
+
+The check was asking whether the word "Completion" appeared anywhere on the
+report. It did, once, about CTV, and that answered for everything.
+
+On reports with no section banners it now asks per product: does this product's
+name and the word "completion" share a line. TapClicks names these widgets
+after the product - "CTV Completion Rate", "Online Audio Completion
+Performance" - so that is the shape it looks for. Renaming the widget properly
+clears the finding.
+
+
+ALREADY WORKING, FOR THE RECORD
+--------------------------------
+53392 (Lemon and Barrett's Polaris) and 54937 (Holland Speedway) are both IO
+Paused. A paused line is correctly not owed a monthly - that is the existing
+rule, not a miss.
+
+54666 Windber Medical Center is still unexplained. Once this deploys, paste it
+into "Check a list" on the cycle page and the audit will print the board's own
+reason for leaving it off.

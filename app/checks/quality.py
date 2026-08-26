@@ -1173,23 +1173,42 @@ def check_completion_present(ctx) -> list[dict]:
 def _completion_without_sections(ctx, text: str) -> list[dict]:
     """The same question on a report that prints no section banners.
 
-    Several of these templates exist and they carry no "VIDEO ADS - PAGE 1"
-    headers, so there is no section to look inside. All that is left is which
-    products the report shows and whether the word appears anywhere, which
-    cannot say WHICH product is short - only that something is.
+    Several of these templates exist and carry no "VIDEO ADS - PAGE 1" headers,
+    so there is no section to look inside.
+
+    ASKED PER PRODUCT, NOT PER REPORT. This used to ask only whether the word
+    "Completion" appeared anywhere - so Congressman Mike Kelly's CTV Completion
+    Rate tile on page one answered for the Online Audio table on page four,
+    which has Impressions, Clicks and CTR and no completion rate at all.
+
+    TapClicks names these widgets after the product - "CTV Completion Rate",
+    "Online Audio Completion Performance", "Video Completion Rate" - so the
+    test is whether the product's name and the word share a line.
     """
     watched = sorted(set(ctx.get("products") or ()) & set(WATCHED_PRODUCTS))
-    if not watched or "Completion" in text:
+    if not watched:
         return []
+    lines = text.split("\n")
+    missing, trace = [], []
+    for product in watched:
+        low = product.lower()
+        got = any(low in ln.lower() and "completion" in ln.lower() for ln in lines)
+        trace.append((product, "completion figures found"
+                      if got else "no completion rate anywhere it is named"))
+        if not got:
+            missing.append(product)
+    if not missing:
+        return []
+    at = -1
+    for i, ln in enumerate(lines):
+        if missing[0].lower() in ln.lower():
+            at = sum(len(x) + 1 for x in lines[:i])
+            break
     return [_f("completion_missing", "fail",
-               f"{len(watched)} product{'s' if len(watched) > 1 else ''} with no "
+               f"{len(missing)} product{'s' if len(missing) > 1 else ''} with no "
                f"completion rate",
-               "No completion figures anywhere on the report. It runs: "
-               + ", ".join(watched) + ".",
-               [("Video and audio products on the report", ", ".join(watched)),
-                ("The word \"Completion\" anywhere on the report", "no"),
-                ("Section banners to look inside", "none - this template "
-                 "prints no page-header sections")])]
+               "No completion figures for: " + ", ".join(missing) + ".",
+               trace, where=_where(ctx, at, widget_at(text, at)))]
 
 
 # --------------------------------------- 11. store visits against their table

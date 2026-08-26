@@ -103,10 +103,14 @@ def test_a_cancelled_line_is_not_owed_and_not_a_surprise(db):
     assert row.product in quiet
 
 
-def test_a_cancelled_line_does_not_put_a_report_on_the_board(db):
+def test_a_cancelled_line_owes_a_lifetime_but_not_a_monthly(db):
+    """Cancelling does not mean it never ran - it ran and was stopped, so the
+    campaign still needs closing out. What it does not need is another month's
+    report on the month it was cancelled in."""
     from app.board import expected_for
     _import(db, _csv(_row("IO Live", "Cancelled")))
-    assert expected_for(db, "2026-07") == []
+    kinds = sorted(e.kind for e in expected_for(db, "2026-07"))
+    assert kinds == ["lifetime"]
 
 
 def test_an_rfp_is_never_reported_from_either_level(db):

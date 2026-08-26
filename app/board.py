@@ -181,7 +181,8 @@ def expected_for(db: Session, period: str,
         OrderLine.market, OrderLine.client, OrderLine.account_ids,
         OrderLine.line_ids, OrderLine.buyer, OrderLine.product,
         OrderLine.starts_on, OrderLine.ends_on,
-        OrderLine.order_starts_on, OrderLine.order_ends_on).where(
+        OrderLine.order_starts_on, OrderLine.order_ends_on,
+        OrderLine.canceled, OrderLine.complete).where(
             # The ORDER's end counts as well as the line item's: a lifetime is
             # owed on an order that finishes this cycle even when the line item
             # behind it stopped in May.
@@ -189,12 +190,7 @@ def expected_for(db: Session, period: str,
                 OrderLine.ends_on >= cyc.starts_on,
                 OrderLine.order_ends_on >= cyc.starts_on),
             or_(OrderLine.starts_on.is_(None),
-                OrderLine.starts_on <= cyc.ends_on),
-            # A CANCELED BUY IS NOT OWED A REPORT. These rows used to be
-            # dropped at import, which is why a report carrying the product
-            # read as carrying one nobody ordered. They are kept now, so the
-            # board is what has to leave them out.
-            _not_canceled())).all()
+                OrderLine.starts_on <= cyc.ends_on))).all()
 
     # The client's whole flight, aggregated by the database rather than by
     # walking every line again in Python. This is the only reason the finished
@@ -255,8 +251,14 @@ def expected_for(db: Session, period: str,
             continue
         windows.setdefault((_key(l.market), _key(l.client)), []).append(
             (l.account_ids or "", l.order_starts_on or l.starts_on,
-             l.order_ends_on or l.ends_on))
-        live = cyc.was_live(l.starts_on, l.ends_on)
+             l.order_ends_on or l.ends_on, l.product or ""))
+        # A CANCELLED BUY OWES A LIFETIME, NOT A MONTHLY.
+        #
+        # Cancelling does not mean it never ran - it ran and was stopped - so
+        # the campaign still needs closing out. What it does not need is
+        # another month's report on a month it was cancelled in.
+        gone = bool(getattr(l, "canceled", False))
+        live = (not gone) and cyc.was_live(l.starts_on, l.ends_on)
         # A lifetime is owed when the ORDER ends inside the window. The line
         # item ending is not the campaign ending - River Valley Builders'
         # Performance Max was re-flighted to run to the end of the year, and
@@ -266,8 +268,15 @@ def expected_for(db: Session, period: str,
         # on by the month; there is no campaign that finishes and no
         # delivery-to-date to sum up. An SEO-only client was getting a lifetime
         # row nobody was ever going to pull.
-        life = (not is_seo(l.product)) and cyc.needs_lifetime(
-            l.order_ends_on or l.ends_on)
+        # A cancelled or completed campaign closes out NOW. Either way its end
+        # date on the export is still whatever it was sold to run to, so
+        # waiting for that date means waiting for a lifetime nobody is ever
+        # going to be asked for - order 45911's four line items are all "IO
+        # Complete" and two of them are dated to the end of 2026. The
+        # already-delivered check below is what stops it repeating.
+        finished = gone or bool(getattr(l, "complete", False))
+        life = (not is_seo(l.product)) and (
+            finished or cyc.needs_lifetime(l.order_ends_on or l.ends_on))
         if not live and not life:
             continue
         if l.market in pcache:
@@ -445,18 +454,41 @@ def _stamp_done(db: Session, period: str, rows: list[Expected]) -> None:
             e.done_note = m.note or ""
 
 
+# Products that never get a report of their own. A client running one of these
+# and nothing else is not being reported on, so an order carrying only these is
+# not a live campaign anybody is waiting on - and it must not hold up the
+# lifetime of the campaign that IS finishing.
+NO_OWN_REPORT = ("live chat",)
+
+
+def _no_own_report(product: str) -> bool:
+    return (product or "").strip().lower() in NO_OWN_REPORT
+
+
 def _running_overlap(windows, own_order: str, starts, ends, cutoff) -> str:
     """The order id of a live campaign this ending one overlaps, or "".
 
     A client whose Mobile Conquesting finished while their Meta runs to October
     is not dark: the buy changed shape. A lifetime is for a campaign that has
     actually finished, so an ended order that overlaps a running one waits.
+
+    LIVE CHAT ALONE IS NOT A CAMPAIGN THAT IS STILL RUNNING. It gets no report
+    of its own, so an order carrying only Live Chat is nothing anybody is
+    waiting on - and River Valley Builders' lifetime was held up by two of
+    them.
     """
     if not ends:
         return ""
-    for order, w_start, w_end in windows:
+    # Which products each order carries, so "Live Chat only" can be told from
+    # "Live Chat and Display".
+    by_order: dict[str, set] = {}
+    for order, _s, _e, product in windows:
+        by_order.setdefault(order or "", set()).add(product)
+    for order, w_start, w_end, _product in windows:
         if order and own_order and order == own_order:
             continue                       # the campaign cannot outlast itself
+        if all(_no_own_report(p) for p in by_order.get(order or "", set())):
+            continue
         still_running = w_end is None or w_end > cutoff
         if not still_running:
             continue

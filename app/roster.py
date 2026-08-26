@@ -273,9 +273,10 @@ def expected_products(db: Session, client: str, account_ids: str,
         # a report without it is not missing anything.
         if window and (window[0] or window[1]):
             hit = [l for l in hit if _overlaps(l, window[0], window[1])]
-        # A canceled buy is not owed on a lifetime either.
-        return {l.product for l in hit
-                if l.product and not getattr(l, "canceled", False)}
+        # A CANCELLED BUY IS STILL ON THE LIFETIME. Cancelling does not mean it
+        # never ran - it ran and was stopped - and the lifetime is the report
+        # that closes the campaign out, so what it delivered belongs on it.
+        return {l.product for l in hit if l.product}
     if period:
         # An empty result here is not the same as no order list. If every one
         # of a client's products stopped before the period, the honest answer

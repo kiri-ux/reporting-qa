@@ -354,6 +354,11 @@ class OrderLine(Base):
     # is real. These rows used to be dropped at import, so a report carrying a
     # canceled product read as carrying a product nobody ordered.
     canceled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # EVERY LINE BEHIND THIS ROW IS "IO Complete". The campaign is over,
+    # whatever end date the export still carries - order 45911's four line
+    # items are all complete and two of them are dated to the end of 2026, so
+    # waiting for the date means waiting for a lifetime nobody will ask for.
+    complete: Mapped[bool] = mapped_column(Boolean, default=False)
     # What this line item is meant to spend in a month, and what it actually
     # spent. Pacing is the comparison of the two, and neither number is on the
     # report - both come off the order.
@@ -590,6 +595,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "flights", "JSON"),
     ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("order_lines", "canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("order_lines", "complete", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("reports", "logo_hash", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_sync", "trigger", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_lines", "budget", "DOUBLE PRECISION"),

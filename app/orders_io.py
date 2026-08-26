@@ -363,6 +363,14 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # the July report was failed for a missing Meta section. A paused
             # buy is not delivering, so it is not owed on the report - and if
             # its product does turn up, that is not a surprise either.
+            # EVERY LINE COMPLETE MEANS THE CAMPAIGN IS OVER. "IO Complete"
+            # is a deliberate act like cancelling, and it is the only thing on
+            # the export that says a campaign finished early - order 45911's
+            # four line items are all complete while two of them are dated to
+            # the end of 2026.
+            line_done = (line_status.lower() == "io complete"
+                         or (not line_status
+                             and order_status.lower() == "io complete"))
             line_live = (not canceled) and (
                 line_status.lower() in LIVE_STATUS
                 or (not line_status and order_status.lower() in LIVE_STATUS))
@@ -375,7 +383,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "campaign": product_raw, "starts_on": start, "ends_on": end,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
-                        "live": False, "canceled": True,
+                        "live": False, "canceled": True, "complete": True,
                         "budget": None, "impressions": None,
                         # The ORDER's own campaign window, kept apart from the
                         # line item's. A lifetime report covers the order; the
@@ -399,6 +407,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Canceled only while EVERY line behind this row is. One live
                 # line and one canceled one is a product the client is running.
                 kept[k]["canceled"] = kept[k]["canceled"] and canceled
+                # Complete only while EVERY line behind this row is. One live
+                # line means the campaign has not finished.
+                kept[k]["complete"] = kept[k]["complete"] and line_done
                 if len(products) > 1:
                     kept[k]["sold_with"].update(products)
 
@@ -507,6 +518,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
             flights=v["flights"], live=bool(v["live"]),
             canceled=bool(v.get("canceled")),
+            complete=bool(v.get("complete")),
             budget=v["budget"], impressions=v["impressions"],
             order_starts_on=v["order_starts"], order_ends_on=v["order_ends"],
             total_budget=v["total_budget"],

@@ -482,6 +482,32 @@ def test_the_fallback_says_nothing_without_a_watched_product():
          "products": {"Display", "Mobile Conquesting"}}) == []
 
 
+def test_one_products_completion_tile_does_not_answer_for_another():
+    """CONGRESSMAN MIKE KELLY, JULY. Page one carries a "CTV Completion Rate"
+    tile. Page four carries an Online Audio table with Impressions, Clicks and
+    CTR and no completion rate at all, and the report passed - because the check
+    asked whether the word appeared ANYWHERE, and it did, once, about CTV."""
+    text = ("Digital Marketing Report\n"
+            "CTV Completion Rate\n99.02%\n"
+            "Online Audio Performance by Line Item\n"
+            "Line Item   Impressions   Clicks   CTR\n"
+            "WQLN Audio    119,133   64   0.05%\n")
+    out = q.check_completion_present({"text": text,
+                                      "products": {"CTV", "Online Audio"}})
+    assert len(out) == 1
+    assert "Online Audio" in out[0]["detail"] and "CTV" not in out[0]["detail"]
+
+
+def test_naming_the_audio_widget_properly_clears_it():
+    """The same report once the widget is the one it should have been."""
+    text = ("Digital Marketing Report\n"
+            "CTV Completion Rate\n99.02%\n"
+            "Online Audio Completion Performance\n"
+            "Line Item   Impressions   Completion Rate\n")
+    assert q.check_completion_present(
+        {"text": text, "products": {"CTV", "Online Audio"}}) == []
+
+
 def test_both_real_fixtures_with_video_report_their_completion():
     """central_penn runs CTV, watsontown runs CTV and Video. Both print it."""
     from app.checks.parser import pdf_text
