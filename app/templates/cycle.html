@@ -348,7 +348,8 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
             {# No #reports anchor. It jumped straight past the partner card you
                had just clicked - and the card is what tells you what you are
                looking at, so the table arrived with its heading off screen. #}
-            <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
+            <a class="btn seereports"
+               href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
           {% endif %}
           {% set pack = packing.get(g.group) %}
           {% if pack %}
@@ -375,12 +376,6 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <a href="{{ d.archive_url }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
             <span class="acct">{{ d.reports }} file{{ 's' if d.reports != 1 }}</span>
-            {# PACKAGE AGAIN LIVES ON THE LINKS PAGE. This card is where a
-               partner's reports get judged; handing links over is a different
-               job on a different page, and re-packaging belongs beside the
-               link it replaces. #}
-            <a class="mini" href="/cycle/links?period={{ period }}"
-               title="Package again, or make a second link, on the links page">Package again</a>
           {% elif d and d.ok %}
             <a class="btn gold" href="/delivery/{{ d.id }}/file">Download zip</a>
             <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>
@@ -395,20 +390,16 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
         </div>
 
         {% if d and not d.ok %}
-          <p class="dfail">{{ d.message }}</p>
+          {# THE FAILURE BELONGS WHERE THE PACKAGING HAPPENED. Syncing is done
+             on the links page now, so an error from it turning up on this card
+             reads as a problem with the partner's reports - which is what this
+             card is otherwise entirely about. #}
+          <p class="dfail small">Last sync failed.
+            <a href="/cycle/links?period={{ period }}">Try again on the links page</a>.</p>
           {% if d.local_path %}
             <div class="gfoot">
               <a class="btn" href="/delivery/{{ d.id }}/file">Download the zip anyway</a>
-              <form method="post" action="/cycle/{{ period }}/deliver" style="display:inline">
-                <input type="hidden" name="group" value="{{ g.group }}">
-                <button class="btn gold" type="submit">Retry upload</button>
-              </form>
             </div>
-          {% elif g.ready %}
-            <form method="post" action="/cycle/{{ period }}/deliver">
-              <input type="hidden" name="group" value="{{ g.group }}">
-              <button class="btn gold" type="submit">Try again</button>
-            </form>
           {% endif %}
         {% endif %}
       </div>
@@ -418,7 +409,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
   </div>
 </section>
 
-{% if rows or done %}
+{% if rows or done_hidden %}
 {# `me` is passed in rather than read from the context: a macro does not
    reliably see template variables, and a silently-undefined name here
    means the box comes back on every one of a thousand rows. #}
@@ -435,7 +426,14 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
         <td><b>{{ e.client }}</b>
           {# The order id is what gets quoted when raising this with anyone,
              so it sits with the client rather than only inside the PDF. #}
-          {% if e.account_ids %}<br><span class="oid" title="Order id">{{ e.account_ids }}</span>{% endif %}</td>
+          {# AND IT LINKS TO THE ORDER. The board says a campaign is owed a
+             report; the next question is always what the order says, and that
+             meant copying the number out and pasting it into the IO tool. #}
+          {% if e.account_ids %}<br><span class="oid" title="Order id">
+            {%- for oid in e.account_ids.replace(',', ' ').split() %}
+              <a href="{{ io_order_url }}{{ oid }}" target="_blank" rel="noopener"
+                 title="Open order {{ oid }} in the IO tool">{{ oid }}</a>{% if not loop.last %} {% endif %}
+            {%- endfor %}</span>{% endif %}</td>
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
           <span class="chip" data-name="{{ p.name }}" tabindex="0"
                 style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
@@ -587,24 +585,36 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
         </td>
       </tr>
     {% endfor %}{% endmacro %}
-{% macro capnote(shown, total) %}
-  {% if total > shown %}
-    <p class="sub" style="font-size:12.5px;margin:8px 0 0">
-      Showing the first <b>{{ shown }}</b> of {{ total }}. Typing in the box
-      filters these {{ shown }}; <b>press Enter</b> to search all {{ total }}.
-      Or <a href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}&rows=all#reports">load all {{ total }}</a>.
-    </p>
+{# One page of fifty, and the address of any other page. The table used to be
+   capped at 150 of 763 with a "load all" that put four seconds of browser time
+   on the page. #}
+{% macro pagelink(n) %}/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if show_done %}&done=1{% endif %}&page={{ n }}#reports{% endmacro %}
+{% macro pager() %}
+  {% if pages > 1 %}
+    <div class="pager">
+      {% if page > 1 %}<a class="mini" href="{{ pagelink(page - 1) }}">&larr; Back</a>
+      {% else %}<span class="mini off">&larr; Back</span>{% endif %}
+      {% for n in range(1, pages + 1) %}
+        {% if n == 1 or n == pages or (n >= page - 2 and n <= page + 2) %}
+          {% if n == page %}<span class="mini here">{{ n }}</span>
+          {% else %}<a class="mini" href="{{ pagelink(n) }}">{{ n }}</a>{% endif %}
+        {% elif n == page - 3 or n == page + 3 %}<span class="gap">...</span>
+        {% endif %}
+      {% endfor %}
+      {% if page < pages %}<a class="mini" href="{{ pagelink(page + 1) }}">Next &rarr;</a>
+      {% else %}<span class="mini off">Next &rarr;</span>{% endif %}
+      <span class="acct">{{ row_total }} report{{ 's' if row_total != 1 }}</span>
+    </div>
   {% endif %}
 {% endmacro %}
 
 <section id="reports">
   <div class="secbar">
-    <h2 style="border:0;margin:0;padding:0">
-      {% if rows %}Still open{% else %}Reports{% endif %}
+    <h2 style="border:0;margin:0;padding:0">Reports
       {%- if filter_group %} · {{ filter_group }}{% endif %}
       {%- if filter_state %} · {{ state_label[filter_state] }}{% endif %}</h2>
   </div>
-  {% if rows %}
+  {% if rows or done_hidden %}
   {# TYPING FILTERS THE PAGE, ENTER SEARCHES THE CYCLE.
      The box used to do only the first, on a table capped at 150 of 763 - so it
      said "28 of 150 rows" and looked like it had searched everything. #}
@@ -618,8 +628,18 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
            placeholder="Search everything... (Enter to search all {{ row_total }})">
     <span class="count" id="cnt-cycle"></span>
     {% if q %}
-      <a class="chip" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}"
+      <a class="chip" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if show_done %}&done=1{% endif %}"
          title="Drop this search">{{ q }} &times;</a>
+    {% endif %}
+    {# SIGNED OFF IS A FILTER, NOT A DIFFERENT TABLE. It used to be its own
+       collapsed section at the bottom, so a report moved house the moment
+       somebody signed it and finding it again meant knowing that. #}
+    {% if done_hidden and not show_done %}
+      <a class="chip" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}&done=1#reports"
+         title="Show them in this grid as well">hiding {{ done_hidden }} signed off &times;</a>
+    {% elif show_done %}
+      <a class="chip on" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}#reports"
+         title="Hide the reports that are signed off and clear">showing signed off &times;</a>
     {% endif %}
   </form>
   <div class="colfilters" data-filters-for="tbl-cycle"><span class="frow">Reports</span></div>
@@ -644,36 +664,14 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
     <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
     <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>
-  {{ capnote(rows|length, row_total) }}
-  {% else %}
-    <p class="allclear">Nothing open{% if filter_group %} for {{ filter_group }}{% endif %}.</p>
+  {{ pager() }}
+  {% if not rows %}
+    <p class="allclear">Nothing open{% if filter_group %} for {{ filter_group }}{% endif %}.
+      {% if done_hidden %}{{ done_hidden }} signed off and clear - the chip above
+        puts them in this grid.{% endif %}</p>
+  {% endif %}
   {% endif %}
 </section>
-
-{% if done %}
-{# Signed off and nothing failing. Done work is still worth being able to find,
-   but it is not what the page is for, so it sits at the bottom and shut. #}
-<section id="done">
-  <div class="secbar">
-    <h2 style="border:0;margin:0;padding:0">Good to go</h2>
-  </div>
-  <details class="donebox">
-    <summary>{{ done_total }} report{{ 's' if done_total != 1 }} signed off and
-      clear{% if filter_group %} for {{ filter_group }}{% endif %}</summary>
-    <div class="tools">
-      <input type="search" data-filter="tbl-done" data-count="cnt-done"
-             placeholder="Search the signed-off reports...">
-      <span class="count" id="cnt-done"></span>
-    </div>
-    <div class="tw"><table id="tbl-done">
-      <thead><tr><th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
-    <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
-    <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
-      <tbody>{{ reportrows(done, whoami(request)) }}</tbody></table></div>
-    {{ capnote(done|length, done_total) }}
-  </details>
-</section>
-{% endif %}
 {% endif %}
 
 <style>
@@ -764,6 +762,8 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
 .oid{display:inline-block;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;
  background:var(--atlas-10);color:#3D5468;padding:1px 8px;border-radius:20px;
  margin-top:3px;user-select:all}
+.oid a{color:inherit;text-decoration:none;border-bottom:1px dotted #8FA5B8}
+.oid a:hover{color:var(--velocity);border-bottom-color:currentColor}
 .oid.lid{background:transparent;color:var(--muted);
  box-shadow:inset 0 0 0 1px var(--line);margin-left:0;display:inline-block;margin-top:5px}
 .notetag{display:inline-block;font-family:Agdasima,sans-serif;font-size:12px;
@@ -774,6 +774,15 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
  padding-top:4px;font-size:13px}
 .dfail{margin:0;font-size:13px;color:var(--crit);background:var(--crit-bg);
  padding:9px 12px;border-radius:8px}
+.dfail.small{font-size:12px;background:none;padding:4px 0}
+.dfail.small a{color:inherit}
+/* "See reports" is the thing you press on this card ten times an hour. */
+.seereports{padding:6px 14px;font-size:13px}
+.pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px}
+.pager .mini.here{background:var(--atlas);color:#fff;border-color:var(--atlas)}
+.pager .mini.off{opacity:.4;cursor:default}
+.pager .gap{color:var(--muted);font-size:12px;padding:0 2px}
+.chip.on{background:var(--atlas-10);color:var(--atlas)}
 .p-ready{background:var(--ok-bg);color:var(--ok)}
 .p-warnings{background:var(--warn-bg);color:var(--warn)}
 .p-in{background:var(--velocity-10);color:var(--velocity)}

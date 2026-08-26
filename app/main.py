@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from . import brand, version
 from .config import settings
-from .db import (Batch, Inbound, KnownLogo, OrderLine, OrderSync, Partner,
-                 Report, SessionLocal, init_db)
+from .db import (Batch, Delivery, Inbound, KnownLogo, OrderLine, OrderSync,
+                 Partner, Report, SessionLocal, init_db)
 from .ingest import (finish_batch, parse_postmark, process_batch,
                     prune_old_pdfs, sweep_stale)
 from .orders_s3 import last_sync, sync as sync_orders
@@ -629,6 +629,13 @@ def partners_csv(db: Session = Depends(get_db)):
 # reports put 24,851 DOM nodes on the page and took the browser four seconds,
 # against a third of a second on the server.
 ROW_CAP = 150
+# ONE TABLE, FIFTY AT A TIME.
+#
+# The open reports and the signed-off ones were two tables in two sections,
+# which meant the same report moved house the moment somebody signed it - and
+# finding it again took knowing that it had. They are one grid now, with the
+# signed-off ones filtered out by default and a page of fifty.
+PAGE_SIZE = 50
 
 
 def _logo_is_generic(db: Session, rep) -> bool:
@@ -694,6 +701,9 @@ def _delivered(db: Session, period: str, groups) -> dict:
             "download": f"/delivery/{d.id}/file" if not d.share_url else "",
             "target": d.target or "", "reports": d.reports or 0,
             "archive": (d.archive_url or "") if d.archive_url != d.share_url else "",
+            # WHEN, not just whether. "Package again" gave no way to tell a
+            # link made before this morning's corrections from one made after.
+            "at": d.created_at,
         })
     links.sort(key=lambda x: x["group"].lower())
     ready = sum(1 for g in groups if g.ready and g.group not in dels)
@@ -776,7 +786,8 @@ def _recheck_jobs(db: Session) -> dict:
 @app.get("/cycle", response_class=HTMLResponse)
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
                state: str = Query(""), rows_: str = Query("", alias="rows"),
-               q: str = Query(""), db: Session = Depends(get_db)):
+               q: str = Query(""), done_: str = Query("", alias="done"),
+               page: int = Query(1), db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
     from .cycle import current_period, cycle_for, recent_periods
@@ -809,24 +820,31 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # other 613 are.
     if q.strip():
         rows = [e for e in rows if _matches(e, q)]
-    # Signed off and nothing failing: done, and in the way. It goes to its own
-    # section at the bottom so the top of the page is only what is still open.
-    done = [e for e in rows if e.ready]
-    rows = [e for e in rows if not e.ready]
+    # ONE GRID, WITH THE FINISHED WORK FILTERED OUT RATHER THAN MOVED AWAY.
+    #
+    # Signed-off reports used to live in their own collapsed section at the
+    # bottom, so a report changed which table it was in the moment somebody
+    # signed it, and finding it again meant knowing that. It is a filter now:
+    # hidden by default, in the same grid the moment the filter is cleared.
+    show_done = done_ in {"1", "all", "yes"}
+    done_hidden = 0
+    if not show_done:
+        done_hidden = sum(1 for e in rows if e.ready)
+        rows = [e for e in rows if not e.ready]
     # ARRIVED FIRST. Two thirds of a cycle has not been sent yet, so in market
     # order the reports there is something to DO about sit below a screenful of
-    # "Not received" - and the row cap can cut them off the page entirely.
-    # Stable, so market and client order is kept inside each half.
-    rows.sort(key=lambda e: 0 if e.report else 1)
+    # "Not received". Stable, so market and client order is kept inside each
+    # half - and a signed-off report sorts last of all when they are shown.
+    rows.sort(key=lambda e: (1 if e.ready else 0, 0 if e.report else 1))
+
     # The reports table was 24,851 of the page's 30,342 DOM nodes and four
     # seconds of browser time. The server was never the slow part.
-    cap = None if show_all else ROW_CAP
-    shown, done_shown = rows[:cap] if cap else rows, done[:cap] if cap else done
+    total = len(rows)
+    pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(1, min(page, pages))
+    shown = rows if show_all else rows[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
     from .product_codes import pill
-    # Both tables need their pills, and the signed-off one is rendered from the
-    # same macro - built from `rows` alone it came out with no products at all.
-    chips = {e.ident: [pill(p) for p in e.products]
-             for e in list(shown) + list(done_shown)}
+    chips = {e.ident: [pill(p) for p in e.products] for e in shown}
     # A pinned period outside the last thirteen months would not be in the
     # dropdown, and the board would show a cycle you could not switch back to.
     periods = recent_periods()
@@ -835,9 +853,13 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
         "periods": periods, "groups": groups,
-        "rows": shown, "row_total": len(rows),
-        "done": done_shown, "done_total": len(done),
+        "rows": shown, "row_total": total,
+        "show_done": show_done, "done_hidden": done_hidden,
+        "page": page, "pages": pages, "page_size": PAGE_SIZE,
         "show_all": show_all, "row_cap": ROW_CAP,
+        # Where an order id goes when you click it. The board says a campaign
+        # is owed a report; the next question is always what that order says.
+        "io_order_url": settings.io_order_url,
         "summary": summary(exp), "state_label": STATE_LABEL,
         # "763 not received" does not answer the question anybody has, which is
         # whether that is a morning's work or the rest of the week.
@@ -1283,7 +1305,7 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
     # PACKAGING MOVED HERE FROM THE CARD. The card is where you judge reports;
     # this is where you hand links over, and re-packaging belongs beside the
     # link it replaces rather than three screens away from it.
-    from .delivery import delivery_key, tagged_deliveries
+    from .delivery import tagged_deliveries
     from .db import DeliveryJob
     ready_now = {g.group for g in groups if g.ready}
     running = {}
@@ -1322,8 +1344,25 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
     # And partners that are ready but have never been packaged - the button for
     # those was on the card too.
     packaged = {l["group"] for l in delivered["links"]}
-    waiting = sorted(g.group for g in groups
-                     if g.ready and g.group not in packaged)
+    # AND WHAT STATE EACH ONE IS IN, so a partner sitting in this list is
+    # diagnosable from the list rather than by going back to the board.
+    fails = {d.group: d for d in db.scalars(
+        select(Delivery).where(Delivery.period == period, Delivery.ok.is_(False))
+        .order_by(Delivery.id)).all()}
+    waiting = []
+    for g in groups:
+        if not g.ready or g.group in packaged:
+            continue
+        bad = fails.get(g.group)
+        waiting.append({
+            "group": g.group,
+            "reports": len(g.expected),
+            "target": g.target or settings.delivery_target,
+            "running": running.get(g.group),
+            "why": (bad.message or "") if bad else "",
+            "when": bad.created_at if bad else None,
+        })
+    waiting.sort(key=lambda w: w["group"].lower())
     return templates.TemplateResponse(request, "links.html", {
         "nav": "links", "cycle": cycle_for(period), "period": period,
         "periods": periods, "delivered": delivered, "new": new,

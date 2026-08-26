@@ -449,7 +449,9 @@ def test_the_cycle_search_covers_the_whole_cycle_not_just_the_page():
     assert "rows = [e for e in rows if _matches(e, q)]" in src
     html = (TPL / "cycle.html").read_text()
     assert 'name="q" value="{{ q }}"' in html
-    assert "press Enter" in html
+    # The hint moved into the box itself when the table went from a 150-row cap
+    # to real pagination. The promise is the same: Enter searches the cycle.
+    assert "Enter to search all" in html
 
 
 def test_a_search_matches_every_word_anywhere_on_the_row():
@@ -583,3 +585,45 @@ def test_a_note_after_the_lifetime_marker_is_not_part_of_the_client_name():
                      "LIFETIME -End Date 2026-12-31")
     assert got[0]["client"] == "Sorge Funeral Home & Crematory"
     assert got[0]["kind"] == "lifetime"
+
+
+def test_signed_off_reports_are_a_filter_not_a_second_table():
+    """A report used to change which table it was in the moment somebody signed
+    it, so finding it again meant knowing that it had moved. One grid, with the
+    finished work filtered out by default."""
+    html = (TPL / "cycle.html").read_text()
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert 'id="tbl-done"' not in html, "the second table is back"
+    assert "hiding {{ done_hidden }} signed off" in html
+    assert "showing signed off" in html
+    assert 'show_done = done_ in {"1", "all", "yes"}' in src
+
+
+def test_the_reports_table_pages_fifty_at_a_time():
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert "PAGE_SIZE = 50" in src
+    assert "rows[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]" in src
+    html = (TPL / "cycle.html").read_text()
+    assert "{% macro pager() %}" in html
+
+
+def test_an_order_id_on_the_board_links_to_the_order():
+    """The board says a campaign is owed a report. The next question is always
+    what the order says, and that meant copying the number out by hand."""
+    from app.config import settings
+    assert settings.io_order_url.endswith("viewOrder/")
+    html = (TPL / "cycle.html").read_text()
+    assert "{{ io_order_url }}{{ oid }}" in html
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert '"io_order_url": settings.io_order_url' in src
+
+
+def test_a_broken_pipe_mid_upload_is_retried():
+    """It killed a whole partner's run, and the same button pressed a third
+    time worked - nothing was wrong with the report, the connection went away."""
+    import inspect
+    from app import delivery
+    src = inspect.getsource(delivery.upload_drive_folder)
+    assert "num_retries=4" in src
+    assert "RETRY_UPLOAD" in src
+    assert BrokenPipeError in delivery.RETRY_UPLOAD

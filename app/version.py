@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-78"
-BUILD_NOTES = ("A monthly that reports more than its own lifetime is now an "
-               "error - they go out together and one of the two was pulled "
-               "with the wrong range. Board rows name every order behind them. "
-               "Dropbox and Drive have icons, and sign-off is two icons.")
+BUILD = "2026.08.26-79"
+BUILD_NOTES = ("One reports grid, signed-off filtered out by default, fifty a "
+               "page, order ids linking to the IO tool. Package again is now "
+               "Sync reports with a timestamp, and a broken pipe mid-upload "
+               "retries itself instead of failing the partner.")
 
 # ---------------------------------------------------------------------------
 

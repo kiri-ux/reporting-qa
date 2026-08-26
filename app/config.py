@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     # Where a finished partner's zip goes when the roster does not say.
     delivery_target: str = "local"           # local | drive | dropbox
 
+    # WHERE AN ORDER ID GOES WHEN YOU CLICK IT.
+    #
+    # The board says a campaign is owed a report. The next question is always
+    # what the order actually says, and that has meant copying the number out
+    # and pasting it into the IO tool by hand. The id goes on the end.
+    io_order_url: str = ("https://www.reporting.zone/client/iotool/dist/"
+                         "#/items/viewOrder/")
+
     # Google. Two ways in, and the OAuth one is first because most Workspace
     # orgs now enforce iam.disableServiceAccountKeyCreation, which makes a
     # service account key impossible to create at all.

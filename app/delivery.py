@@ -16,6 +16,7 @@ anyone touches a cloud console.
 from __future__ import annotations
 
 import datetime as dt
+import time
 import logging
 import re
 import zipfile
@@ -25,6 +26,12 @@ from sqlalchemy.orm import Session
 
 from .board import Expected, GroupRow, by_group
 from .folder_match import best as pick_folder
+
+# WHAT IS WORTH TRYING AGAIN. All of these are the connection giving out
+# mid-upload rather than anything being wrong with the file - the same button
+# pressed again works, which is the definition of something the tool should
+# have done itself.
+RETRY_UPLOAD = (BrokenPipeError, ConnectionError, TimeoutError, OSError)
 from .config import settings
 from .db import Delivery
 
@@ -339,16 +346,39 @@ def upload_drive_folder(group, period: str, cycle_label: str,
             except Exception:                            # noqa: BLE001
                 log.warning("drive: could not remove the old %s", was)
         old_id = dest_files[dest].get(name)
-        media = MediaFileUpload(r.stored_path, mimetype="application/pdf",
-                                resumable=True)
-        if old_id:
-            svc.files().update(fileId=old_id, media_body=media,
-                               supportsAllDrives=True).execute()
+
+        # A BROKEN PIPE IS THE NETWORK, NOT THE FILE.
+        #
+        # "BrokenPipeError: [Errno 32] Broken pipe" halfway through a partner
+        # killed the whole run, and the same button pressed a third time
+        # worked - because nothing was wrong with the report, the connection
+        # just went away mid-upload. Google's client retries inside execute()
+        # when asked; the media object cannot be reused after a failure, so
+        # the retry builds a fresh one.
+        last = None
+        for attempt in range(4):
+            try:
+                media = MediaFileUpload(r.stored_path, mimetype="application/pdf",
+                                        resumable=True)
+                if old_id:
+                    svc.files().update(fileId=old_id, media_body=media,
+                                       supportsAllDrives=True).execute(num_retries=4)
+                else:
+                    new = svc.files().create(
+                        body={"name": name, "parents": [dest]},
+                        media_body=media, fields="id",
+                        supportsAllDrives=True).execute(num_retries=4)
+                    dest_files[dest][name] = new["id"]
+                break
+            except RETRY_UPLOAD as exc:                  # noqa: PERF203
+                last = exc
+                log.warning("drive: %s failed (%s), attempt %d",
+                            name, type(exc).__name__, attempt + 1)
+                time.sleep(1.5 * (attempt + 1))
         else:
-            new = svc.files().create(body={"name": name, "parents": [dest]},
-                                     media_body=media, fields="id",
-                                     supportsAllDrives=True).execute()
-            dest_files[dest][name] = new["id"]
+            raise RuntimeError(
+                f"{name} would not upload after 4 attempts: "
+                f"{type(last).__name__}: {last}")
         if not tag:
             # Only the partner's own folder is tracked. A tagged copy is a side
             # folder somebody asked for; recording it here would make the next

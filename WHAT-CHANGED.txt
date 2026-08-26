@@ -1,65 +1,84 @@
-build 2026.08.26-78
+build 2026.08.26-79
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/board.py
-app/checks/rules.py
-app/ingest.py
+app/config.py
+app/delivery.py
 app/main.py
-app/recheck.py
 app/templates/base.html
 app/templates/cycle.html
 app/templates/links.html
+app/templates/viewer.html
+tests/test_board_extras.py
 tests/test_rules.py
 
-572 tests pass.
+576 tests pass.
 
 
-1. THE MONTH CANNOT REPORT MORE THAN ITS OWN LIFETIME
-------------------------------------------------------
-New check. When a client is getting both reports in the same cycle, the month
-is compared against the campaign that contains it. More impressions or clicks
-in the month than in the whole campaign means one of the two was pulled with
-the wrong date range - and since they go out together, in one folder, to one
-person, they will see it before we do.
+1. ONE REPORTS GRID
+--------------------
+Signed-off reports had their own collapsed section at the bottom, so a report
+changed which table it was in the moment somebody signed it, and finding it
+again meant knowing that.
 
-  Fires only on the pair. A client getting one report is never compared
-  against anything, and a figure that could not be read off a report is not
-  compared either - "not read" is not zero.
+It is a filter now. Signed off and clear are hidden by default, with a chip
+saying how many - click it and they appear in the same grid, sorted last.
+Click it again and they go.
 
-  Half a percent of slack. TapClicks prints these rounded and the two reports
-  are pulled minutes apart, so a sliver of daylight is the tool, not a mistake.
-
-  It shows on both reports and names the other one, so whichever you open first
-  tells you the same thing and says what to open next.
-
-Every re-check picks this up automatically - the checks fingerprint changed, so
-reports already on the board get re-read without anybody pressing anything.
+Fifty a page, with a pager. The old table was capped at 150 of 763 with a
+"load all" that put four seconds of browser time on the page.
 
 
-2. RIVER VALLEY BUILDERS SHOWING ONLY 31050
---------------------------------------------
-The row's line ids were the union across every order behind it and the order
-ids were whatever the first line happened to carry. So the report was correctly
-filed as 31050 31171 43182 and the row it sits on said 31050.
+2. ORDER IDS LINK TO THE ORDER
+-------------------------------
+Every order id on the board is now a link to
+reporting.zone/client/iotool/dist/#/items/viewOrder/<id>, opening in a new tab.
+Rows carrying several ids link each one separately.
 
-Both are unions now. For a lifetime, the ids are every order overlapping the
-campaign the lifetime covers - the same set the report's own name is built
-from, which is what makes them recognisable as the same thing.
-
-
-3. DROPBOX AND DRIVE ICONS
----------------------------
-On the links page and on the partner card. The word "Dropbox" set in grey next
-to the word "Drive" set in grey is not something you can read at a glance down
-a list of a hundred and fifty partners; the logo is.
+The base address is a setting (IO_ORDER_URL) so it can be changed without a
+deploy if that tool ever moves.
 
 
-4. SIGN-OFF IS TWO ICONS AND THE NOTE MOVED RIGHT
----------------------------------------------------
-  check      Done, no report
-  slash      Not needed
-  Note       out at the right
+3. "PACKAGE AGAIN" IS "SYNC REPORTS", WITH A TIMESTAMP
+--------------------------------------------------------
+"Package again" sounded like it made a new link. It does not - the same folder
+gets the current files under the link the partner already has, which is the
+whole point. It says "Sync reports", and beside it "last synced Aug 26,
+1:55 PM", because otherwise there is no way to tell a link made before this
+morning's corrections from one made after.
 
-What each one does is on hover, where it gets read once instead of taking up
-the row forever. Undo is an icon too, on a row that has been marked.
+It is off the partner cards entirely now. That card is where reports get
+judged.
+
+
+4. THE BROKEN PIPE
+-------------------
+"Filing to Drive failed: BrokenPipeError: [Errno 32] Broken pipe" and it worked
+on the third press. Nothing was wrong with the report - the connection went
+away mid-upload, which is precisely the thing the tool should handle rather
+than hand back.
+
+Each file now retries up to four times, with Google's own retry inside that,
+and a fresh upload object each attempt because the old one cannot be reused
+after a failure. A file that truly will not go up says which file and how many
+attempts it took to be sure.
+
+And the failure no longer lands on the partner card. You packaged from the
+links page, so it belongs there - the card just says the last sync failed and
+points at the links page.
+
+
+5. WHAT STATE EACH UNPACKAGED PARTNER IS IN
+---------------------------------------------
+"Ready, not packaged" now shows the report count, where it delivers, and - if
+there was a failed attempt - when it failed and why on hover. A partner sitting
+in that list because a sync broke looked exactly like one nobody had got to
+yet, and that difference was the whole question.
+
+
+6. THE RENAMED-FILE NOTE
+-------------------------
+Moved down beside "Replace the file", where the other facts about the file are,
+and drawn as a plain grey line rather than a bordered warning panel. It is
+housekeeping - what the file was called when it arrived and what it is filed as
+now - and it was reading as something waiting on you.

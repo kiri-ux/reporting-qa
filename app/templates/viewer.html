@@ -132,15 +132,6 @@
       </details>
     {% endif %}
 
-    {% if rep.renamed_from %}
-      {# THE FILE ARRIVED WITHOUT ITS ORDER ID. Worth seeing rather than being
-         quietly corrected: it came out of a folder somebody assembled by hand,
-         and the next one will come from the same folder. #}
-      <p class="renamed">Arrived as <code>{{ rep.renamed_from }}</code> - the
-        order id was missing or wrong, so it was filed as
-        <code>{{ saved_as }}</code>.</p>
-    {% endif %}
-
     {% if pacing %}
       {# SERVED AGAINST ORDERED. Not a check - a number to look at. Impressions
          for everything bought on a delivery goal, dollars for the three
@@ -297,6 +288,16 @@
       {# What it will be called once it is here, so nobody has to wonder
          whether "(1)" or "download.pdf" matters. It does not. #}
       <p class="sub asname">Renamed to <code>{{ saved_as }}</code></p>
+      {% if rep.renamed_from %}
+        {# THE FILE ARRIVED WITHOUT ITS ORDER ID. Worth seeing rather than being
+           quietly corrected - it came out of a folder somebody assembled by
+           hand, and the next one will come from the same folder. But it is
+           housekeeping, not a finding, so it lives down here with the other
+           facts about the file rather than up beside what needs fixing. #}
+        <p class="renamed">Arrived as <code>{{ rep.renamed_from }}</code> -
+          the order id was missing or wrong, so it was filed under the name
+          above.</p>
+      {% endif %}
       <button class="mini" type="submit" title="Re-runs every check. Accepted findings and the sign-off reset, since they described the old file. Your note is kept.">Upload the corrected PDF</button>
     </form>
 

@@ -784,7 +784,7 @@ def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path)
             self._result = {"id": fileId}
             return self
 
-        def execute(self):
+        def execute(self, **kw):
             if hasattr(self, "_result"):
                 r, self._result = self._result, None
                 del self._result
@@ -808,7 +808,7 @@ def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path)
             shared.append(fileId)
             return self
 
-        def execute(self):
+        def execute(self, **kw):
             return {}
 
     class FakeSvc:
@@ -1706,7 +1706,7 @@ def test_re_delivering_a_month_keeps_the_same_link(monkeypatch, tmp_path):
         def update(self, fileId=None, **kw):
             self._r = {"id": fileId}; return self
 
-        def execute(self):
+        def execute(self, **kw):
             if hasattr(self, "_r"):
                 r = self._r; del self._r; return r
             q, parent = self._q, self._q.split("'")[1]
@@ -1796,7 +1796,7 @@ def test_a_renamed_report_does_not_leave_a_second_copy(monkeypatch, tmp_path):
                     names.discard(fileId)
             self._r = {"id": fileId}; return self
 
-        def execute(self):
+        def execute(self, **kw):
             if hasattr(self, "_r"):
                 r = self._r; del self._r; return r
             q, parent = self._q, self._q.split("'")[1]
@@ -1869,7 +1869,7 @@ def test_drive_reuses_a_folder_named_differently(monkeypatch, tmp_path):
                 files.setdefault(p, set()).add(body["name"])
             self._r = {"id": i}; return self
         def update(self, fileId=None, **kw): self._r = {"id": fileId}; return self
-        def execute(self):
+        def execute(self, **kw):
             if hasattr(self, "_r"):
                 r = self._r; del self._r; return r
             q, parent = self._q, self._q.split("'")[1]
@@ -2612,7 +2612,7 @@ def test_a_pinned_drive_folder_beats_matching_by_name(monkeypatch, tmp_path):
         def update(self, fileId=None, **kw):
             self._r = {"id": fileId}; return self
 
-        def execute(self):
+        def execute(self, **kw):
             if hasattr(self, "_r"):
                 r = self._r; del self._r; return r
             q, parent = self._q, self._q.split("'")[1]
@@ -2683,7 +2683,7 @@ def test_a_tagged_delivery_is_a_second_folder_not_a_replacement(monkeypatch, tmp
         def update(self, fileId=None, **kw):
             self._r = {"id": fileId}; return self
 
-        def execute(self):
+        def execute(self, **kw):
             if hasattr(self, "_r"):
                 r = self._r; del self._r; return r
             q, parent = self._q, self._q.split("'")[1]

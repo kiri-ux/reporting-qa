@@ -91,9 +91,19 @@
                   <input type="hidden" name="group" value="{{ l.group }}">
                   <input type="hidden" name="force" value="1">
                   <input type="hidden" name="back_to" value="links">
+                  {# "PACKAGE AGAIN" MADE IT SOUND LIKE A NEW LINK. Nothing new
+                     is made - the same folder gets the current files, under the
+                     link the partner already has. #}
                   <button class="mini" type="submit"
-                          title="Send the current reports again. Same folder, same link - the files are replaced under it.">Package again</button>
+                          title="Send the current reports into the same folder. Same link - the files are replaced under it.">Sync reports</button>
                 </form>
+                {% if l.at %}
+                  {# WHEN, not just whether. Without it there is no way to tell
+                     a link made before this morning's corrections from one made
+                     after them. #}
+                  <span class="acct">last synced
+                    {{ l.at|et('%b %-d, %-I:%M %p') }}</span>
+                {% endif %}
                 {# A SECOND LINK, ON PURPOSE. Same month, its own folder, its
                    own link to hand to somebody - and the partner's own link
                    above is left exactly as they already have it. #}
@@ -160,19 +170,32 @@
     <h2 style="margin-top:22px">Ready, not packaged ({{ waiting|length }})</h2>
     <div class="links wide">
       <ul>
-        {% for g in waiting %}
-          <li><span class="lname">{{ g }}</span>
-            {% if running.get(g) %}
+        {% for w in waiting %}
+          <li><span class="lname">{{ w.group }}</span>
+            {% if w.running %}
               <meta http-equiv="refresh" content="8">
               <span class="mini busy"><span class="spin"></span><b
-                >{{ running[g].done }} of {{ running[g].total or '?' }}</b> packaging</span>
+                >{{ w.running.done }} of {{ w.running.total or '?' }}</b> packaging</span>
+              {% if w.running.note %}<span class="acct">{{ w.running.note }}</span>{% endif %}
             {% else %}
               <form method="post" action="/cycle/{{ period }}/deliver"
                     style="display:inline">
-                <input type="hidden" name="group" value="{{ g }}">
+                <input type="hidden" name="group" value="{{ w.group }}">
                 <input type="hidden" name="back_to" value="links">
                 <button class="btn gold" type="submit">Package &amp; share</button>
               </form>
+            {% endif %}
+            {% if w.target and w.target != 'local' %}
+              <svg class="tgt" aria-hidden="true"
+                   ><use href="#ic-{{ 'dropbox' if w.target == 'dropbox' else 'drive' }}"/></svg>
+            {% endif %}
+            <span class="acct">{{ w.reports }} report{{ 's' if w.reports != 1 }}</span>
+            {# WHY IT IS STILL SITTING HERE. A partner in this list with a
+               failed attempt behind it looks exactly like one nobody has got
+               to yet, and the difference is the whole question. #}
+            {% if w.why %}
+              <span class="wrongtarget" title="{{ w.why }}">last attempt failed
+                {{ w.when|et('%b %-d, %-I:%M %p') }}</span>
             {% endif %}
           </li>
         {% endfor %}
@@ -182,8 +205,7 @@
   {% if delivered.failed %}
     <p class="sub" style="margin-top:12px">
       {{ delivered.failed }} partner{{ 's' if delivered.failed != 1 }} failed to
-      package. The reason is on the card -
-      <a href="/cycle?period={{ period }}">back to the cycle</a>.</p>
+      package. They are in the list above with the reason on hover.</p>
   {% endif %}
 </section>
 
