@@ -12,10 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-70"
-BUILD_NOTES = ("Dropbox delivers a folder of PDFs, shared view-only, instead "
-               "of a zip with a folder inside it. The Partners page counts "
-               "where reports go and sets a whole group in one move.")
+BUILD = "2026.08.26-71"
+BUILD_NOTES = ("Uploading a lifetime by hand returned a 500 - the route works "
+               "out the cycle window and never imported the function that does "
+               "it. Fixed, with a test that fails if another route does the "
+               "same.")
 
 # ---------------------------------------------------------------------------
 

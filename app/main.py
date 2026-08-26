@@ -1316,6 +1316,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     "Not received" while the PDF was on somebody's desktop.
     """
     from .checks import run_all
+    from .cycle import cycle_for
     from .ingest import client_flight, flight_lines, open_batch
     from .roster import (attach_owners, expected_any, expected_products,
                      expected_why, ordered_for, quiet_products,

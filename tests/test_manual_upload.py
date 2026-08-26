@@ -918,3 +918,36 @@ def test_setting_a_whole_group_of_partners_at_once(client):
     assert rows["7 Mountains PA Stroudsburg"] == "dropbox"
     assert rows["7 Mountains KY"] == "dropbox"
     assert rows["Somebody Else"] == "drive"
+
+
+def test_uploading_a_lifetime_by_hand(client):
+    """A lifetime scopes its flight to the cycle's lifetime window, and the
+    function that works that out was not imported in this route - so every
+    hand-uploaded lifetime came back as a 500."""
+    c, (db, dbm, imod) = client
+    blob = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    for kind in ("lifetime", "monthly"):
+        r = c.post("/cycle/upload",
+                   data={"period": "2026-07", "market": "7 Mountains KY",
+                         "client": "Awaken Bakery", "account_ids": "52746",
+                         "kind": kind},
+                   files={"file": (f"{kind}.pdf", blob, "application/pdf")},
+                   follow_redirects=False)
+        assert r.status_code == 303, f"{kind}: {r.status_code}"
+
+
+def test_every_route_that_scopes_a_flight_imports_what_it_needs():
+    """Three routes work out a lifetime's window and each imports its own
+    helpers. One of them did not, and only a lifetime upload reached that line."""
+    import ast
+    from pathlib import Path as _P
+    src = _P("app/main.py").read_text()
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        body = ast.get_source_segment(src, node) or ""
+        if "cycle_for(" not in body:
+            continue
+        assert "import" in body and "cycle_for" in body.split("cycle_for(")[0], \
+            f"{node.name} calls cycle_for without importing it"
