@@ -337,15 +337,19 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
     that breakdown exists in the text.
     """
     out = []
-    # ONE LINE ITEM, COUNTED ONCE. A line item name is unique on a report, so
-    # the same name reaching this twice means two widgets listed it - Line Item
-    # Performance and PPC Cost per Line Item both carry Reliance Bank's single
-    # PPC line - and adding both doubles a campaign that is perfectly correct.
-    seen: set[str] = set()
+    # ONE ROW, COUNTED ONCE - AND THE NUMBERS ARE PART OF WHAT MAKES IT ONE ROW.
+    #
+    # Reliance Bank's single PPC line appears in Line Item Performance and again
+    # in PPC Cost per Line Item, same name and same figures both times, and
+    # adding both doubled a campaign that was perfectly correct.
+    #
+    # But a name on its own is NOT unique. WVU Parkersburg runs two line items
+    # both displayed as "WVU Parkersburg - AI Online Audio" - 119,133 and
+    # 105,020 - and keying on the name alone threw the second one away. The
+    # report was then failed for being 105,020 impressions short of its own top
+    # line, which is exactly what had been dropped.
+    seen: set[tuple] = set()
     for name, at in line_item_names(text):
-        key = re.sub(r"[^a-z0-9]", "", (name or "").lower())
-        if key and key in seen:
-            continue
         eol = text.find("\n", at)
         line = text[at:eol if eol > 0 else len(text)]
         cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
@@ -357,15 +361,20 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
                 except ValueError:
                     pass
         if len(vals) >= 2:
-            seen.add(key)
-            out.append((name, vals[0], vals[1]))
+            row = (name, vals[0], vals[1])
         elif len(vals) == 1:
-            seen.add(key)
             # DOOH counts in "DOOH Ads Served" and has no clicks column, so its
             # rows carry one number. Skipping them left the line item sum
             # 36,666 short of a top line that plainly included them - exactly
             # the DOOH figure, on a report that was then failed for it.
-            out.append((name, vals[0], 0.0))
+            row = (name, vals[0], 0.0)
+        else:
+            continue
+        key = (re.sub(r"[^a-z0-9]", "", (name or "").lower()), row[1], row[2])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
     return out
 
 

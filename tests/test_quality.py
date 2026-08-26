@@ -1010,3 +1010,36 @@ def test_the_section_boundary_reads_a_banner_written_either_way():
     the whole section-boundary mechanism was blind on the second style."""
     assert q.PAGE_HEADER.match("TIKTOK CONVERSIONS - PAGE 1")
     assert q.PAGE_HEADER.match("   | OVERVIEW - PAGE 1 |")
+
+
+def test_two_line_items_with_the_same_name_are_both_counted():
+    """WVU Parkersburg runs two line items both displayed as "WVU Parkersburg -
+    AI Online Audio" - 119,133 and 105,020. Deduping on the name alone threw
+    the second away, and the report was then failed for being 105,020
+    impressions short of its own top line, which is exactly what had been
+    dropped."""
+    text = ("  WVU - PAGE 2\n"
+            "  Line Item Performance\n"
+            "   Line Item Name                        Impressions  Clicks    CTR\n"
+            "   WVU Parkersburg - AI Online Audio         119,133     264  0.22%\n"
+            "   WVU Parkersburg - AI Online Audio         105,020      52  0.05%\n")
+    rows = q.line_item_totals(text)
+    assert len(rows) == 2
+    assert sum(r[1] for r in rows) == 224153.0
+
+
+def test_the_same_row_listed_by_two_widgets_is_still_counted_once():
+    """Name AND figures. Reliance Bank's single PPC line appears in Line Item
+    Performance and again in PPC Cost per Line Item, identical both times."""
+    text = ("  RELIANCE BANK - PAGE 3\n"
+            "  Line Item Performance\n"
+            "     Line Item Name              Impressions   Clicks     CTR\n"
+            "     Reliance Bank - Keyword PPC       8,690    1,874  21.57%\n"
+            "\n"
+            "  RELIANCE BANK - PAGE 4\n"
+            "  PPC Cost per Line Item\n"
+            "     Ad Group                    Impressions   Clicks     CTR"
+            "        Cost   Avg. CPC\n"
+            "     Reliance Bank - Keyword PPC       8,690    1,874  21.57%"
+            "    1,824.25       0.97\n")
+    assert q.line_item_totals(text) == [("Reliance Bank - Keyword PPC", 8690.0, 1874.0)]
