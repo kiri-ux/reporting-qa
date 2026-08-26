@@ -136,6 +136,12 @@ class Report(Base):
     # only safe way to remove the stale one: it names a file this tool put
     # there itself, for this report, so nothing else in the folder is at risk.
     delivered_as: Mapped[str] = mapped_column(String(255), default="")
+    # AND WHICH FILE THAT WAS - size and modified time of the PDF at the moment
+    # it went up. A sync that re-uploads every report every time takes minutes
+    # on a big partner to change nothing; this is what lets it send only what
+    # has actually moved. Two different PDFs agreeing on both to the second is
+    # not a thing that happens here.
+    delivered_stamp: Mapped[str] = mapped_column(String(64), default="")
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
 
@@ -677,6 +683,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "sold_with", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("reports", "renamed_from", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("reports", "delivered_as", "VARCHAR(255) DEFAULT '' NOT NULL"),
+    ("reports", "delivered_stamp", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
 ]

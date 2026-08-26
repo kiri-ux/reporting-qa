@@ -355,3 +355,77 @@ def test_a_campaign_that_ran_to_its_end_date_is_not_annotated(db):
     import_serving(db, _rows(HEAD, *_days("Ran To The End", "M", "2026-07-01", 15)))
     life = [e for e in expected_for(db, "2026-07") if e.kind == "lifetime"]
     assert len(life) == 1 and life[0].stopped_on is None
+
+
+def test_a_complete_order_still_running_into_next_month_waits(db):
+    """ORDER 49421. Reads "IO Complete", ends 6 August - a day past this
+    cycle's lifetime cutoff - and delivered every day of July. It is still
+    running into August, so its lifetime belongs to August's cycle.
+
+    45911 also reads complete, is dated to the end of December, and last
+    delivered mid-July. That one really has finished, and waiting for December
+    means waiting forever. The difference is the last day with delivery on it."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Still Going", account_ids="49421",
+                     line_ids="1", product="Meta",
+                     campaign="Meta Display & Video Ads",
+                     live=False, complete=True,
+                     starts_on=D("2026-02-01"), ends_on=D("2026-08-06"),
+                     order_starts_on=D("2026-02-01"), order_ends_on=D("2026-08-06")))
+    db.commit()
+    # It ran every day of July, so it had not stopped by the end of the month.
+    import_serving(db, _rows(HEAD, *_days("Still Going", "M", "2026-07-01", 31)))
+    kinds = {e.kind for e in expected_for(db, "2026-07")}
+    assert "lifetime" not in kinds, "closed out a campaign still running"
+    assert kinds == {"monthly"}
+
+
+def test_a_complete_order_that_stopped_mid_month_closes_out(db):
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Sorge", account_ids="45911",
+                     line_ids="1", product="Meta",
+                     campaign="Meta Display & Video Ads",
+                     live=False, complete=True,
+                     starts_on=D("2025-05-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-05-01"), order_ends_on=D("2026-12-31")))
+    db.commit()
+    import_serving(db, _rows(HEAD, *_days("Sorge", "M", "2026-07-01", 14)))
+    rows = expected_for(db, "2026-07")
+    life = [e for e in rows if e.kind == "lifetime"]
+    assert len(life) == 1
+    # And the row says which of the two rules asked for it.
+    assert "cancelled or complete" in life[0].life_note
+    assert "2026-07-14" in life[0].life_note
+
+
+def test_a_stopped_campaign_is_not_paced_against_what_it_was_sold(db):
+    """Sorge's cancelled Meta line read "100% short, 503 served against 400,000
+    ordered (20 months at the monthly figure on the order)" - a comparison
+    against twenty months it was never going to run."""
+    import datetime as dt
+    from app.db import Batch, OrderLine
+    from app.roster import ordered_for
+    from app.checks.rules import check_lifetime_goal, check_impression_pacing
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Sorge", account_ids="45911",
+                     line_ids="1", product="Meta",
+                     campaign="Meta Display & Video Ads",
+                     live=False, canceled=True, impressions=20000,
+                     starts_on=D("2025-05-01"), ends_on=D("2026-12-31")))
+    db.commit()
+    got = ordered_for(db, "Sorge", "45911", "2026-07", lifetime=True)
+    assert got and all(v["stopped"] for v in got.values())
+    ctx = {"is_lifetime": True, "text": "Impressions\n503\n", "ordered": got}
+    assert check_lifetime_goal(ctx) == []
+    assert check_impression_pacing(ctx) == []

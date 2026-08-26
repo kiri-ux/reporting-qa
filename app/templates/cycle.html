@@ -360,6 +360,10 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               >{{ pack.done }} of {{ pack.total or '?' }}</b> packaged</span>
             {% if pack.note %}<span class="acct">{{ pack.note }}</span>{% endif %}
           {% elif d and d.ok and d.share_url %}
+            {# THE LINK GETS ITS OWN ROW. Beside "See reports" it made a line
+               of two gold-and-navy buttons of different heights, and the one
+               you press twenty times a day is the other one. #}
+            <span class="linkrow">
             <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
               <svg class="tgt" aria-hidden="true"><use href="#ic-{{ 'dropbox' if d.target == 'dropbox' else 'drive' }}"/></svg>
               Client link</a>
@@ -382,9 +386,19 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
                Tuesday's work and nothing would say so. #}
             {% set behind = stale_pack.get(g.group) or [] %}
             {% if behind %}
-              <a class="pendtag" href="/cycle/links?period={{ period }}"
-                 data-tip="{{ behind|length }} report{{ 's' if behind|length != 1 }} changed since this was packaged: {{ behind[:4]|join(', ') }}{% if behind|length > 4 %} and {{ behind|length - 4 }} more{% endif %}. Sync it on the links page.">needs a sync</a>
+              {# IT STARTS THE SYNC. Sending you to the links page to find the
+                 row and press a second button is asking you to do the work
+                 twice - the answer to "this needs a sync" is a sync. #}
+              <form method="post" action="/cycle/{{ period }}/deliver"
+                    style="display:inline">
+                <input type="hidden" name="group" value="{{ g.group }}">
+                <input type="hidden" name="force" value="1">
+                <input type="hidden" name="back_to" value="links">
+                <button class="pendtag" type="submit"
+                        data-tip="{{ behind|length }} report{{ 's' if behind|length != 1 }} changed since this was packaged: {{ behind[:4]|join(', ') }}{% if behind|length > 4 %} and {{ behind|length - 4 }} more{% endif %}. This starts the sync and takes you to it.">sync reports</button>
+              </form>
             {% endif %}
+            </span>
           {% elif d and d.ok %}
             <a class="btn gold" href="/delivery/{{ d.id }}/file">Download zip</a>
             <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>
@@ -805,7 +819,11 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
 .dfail.small{font-size:12px;background:none;padding:4px 0}
 .dfail.small a{color:inherit}
 /* "See reports" is the thing you press on this card ten times an hour. */
-.seereports{padding:6px 14px;font-size:13px}
+/* Both are buttons on the same line and they were different heights. */
+.seereports,.gcard .btn.gold{padding:7px 15px;font-size:13px;line-height:1.25}
+.linkrow{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+ margin-top:2px}
+.gcard .pendtag{border:0;cursor:pointer;font:inherit}
 .pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px}
 .pager .mini.here{background:var(--atlas);color:#fff;border-color:var(--atlas)}
 .pager .mini.off{opacity:.4;cursor:default}

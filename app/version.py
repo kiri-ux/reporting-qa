@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-80"
-BUILD_NOTES = ("An RFP is caught by the order TYPE now, and a campaign that "
-               "never delivered is not owed a lifetime - which is 51217 and "
-               "50760. Cancelled campaigns say when they actually stopped. "
-               "Sign-off is filled icons with the page's own tooltips.")
+BUILD = "2026.08.26-81"
+BUILD_NOTES = ("Sync sends only what actually moved, and the card starts it "
+               "rather than sending you to press it again. No pacing on a "
+               "campaign somebody called off, and a complete order still "
+               "running into next month waits for next month's lifetime.")
 
 # ---------------------------------------------------------------------------
 

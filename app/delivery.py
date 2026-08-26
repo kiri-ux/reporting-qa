@@ -258,6 +258,7 @@ def upload_drive_folder(group, period: str, cycle_label: str,
                            "id of the folder that holds one folder per market.")
 
     n = 0
+    skipped = 0
     market_folders: dict[str, str] = {}
     cycle_folders: dict[str, str] = {}
     # ONE LISTING EACH, NOT ONE PER FILE.
@@ -316,6 +317,17 @@ def upload_drive_folder(group, period: str, cycle_label: str,
             label = f"{cycle_label} - {tag}" if tag else cycle_label
             cycle_folders[e.market] = _drive_folder(
                 svc, label, market_folders[e.market])
+
+        # ONLY WHAT HAS CHANGED GOES UP.
+        #
+        # Re-uploading every report every time takes several minutes on a big
+        # partner to change nothing, and nine megabytes a file is the whole of
+        # that time. A report still filed under the name it has, from the file
+        # it was filed from, is already in the folder. The folder above is
+        # still resolved for it, so the link comes back either way.
+        if not tag and not needs_send(e):
+            skipped += 1
+            continue
         name = report_filename(e)
         dest = cycle_folders[e.market]
 
@@ -398,8 +410,17 @@ def upload_drive_folder(group, period: str, cycle_label: str,
                                  body={"role": "reader", "type": "anyone"}).execute()
         links.append(f"https://drive.google.com/drive/folders/{fid}")
     where = " / ".join(list(cycle_folders)[:2])
+    if n == 0 and skipped:
+        # NOT A FAILURE, and not nothing either: the folder is right and the
+        # link is the same one. This is the normal answer to pressing sync when
+        # nothing has moved since the last one.
+        return (links[0], f"Already up to date - all {skipped} report"
+                          f"{'s' if skipped != 1 else ''} are filed as they "
+                          f"stand. Nothing needed sending.", skipped)
     return (links[0], f"{n} report{'s' if n != 1 else ''} filed under "
-                      f"{where} / {cycle_label}, folder shared by link.", n)
+                      f"{where} / {cycle_label}"
+                      + (f", {skipped} already up to date" if skipped else "")
+                      + ", folder shared by link.", n)
 
 
 # ---------------------------------------------------------------- Dropbox
@@ -441,9 +462,16 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         folder += f" - {_safe(tag)}"
 
     n = 0
+    skipped = 0
     for e in group.expected:
         r = e.report
         if not r or not r.stored_path:
+            continue
+        # ONLY WHAT HAS CHANGED. See the same rule in the Drive path: a report
+        # still filed under the name it has, from the file it was filed from,
+        # is already in this folder.
+        if not tag and not needs_send(e):
+            skipped += 1
             continue
         src = Path(r.stored_path)
         if not src.exists():
@@ -472,16 +500,22 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
                          mode=WriteMode("overwrite"))
         if not tag:
             r.delivered_as = name[:255]
+            r.delivered_stamp = file_stamp(r.stored_path)
         n += 1
         if progress:
             progress(n, f"sending {e.client} to Dropbox")
 
-    if n == 0:
+    if n == 0 and not skipped:
         raise RuntimeError("Nothing to upload - no report has a stored PDF.")
 
     link = _dropbox_link(dbx, folder, SharedLinkSettings, RequestedVisibility)
-    return link, (f"{n} report{'s' if n != 1 else ''} in {folder}, "
-                  f"shared view-only."), n
+    if n == 0:
+        return link, (f"Already up to date - all {skipped} report"
+                      f"{'s' if skipped != 1 else ''} are filed as they stand. "
+                      f"Nothing needed sending."), skipped
+    return link, (f"{n} report{'s' if n != 1 else ''} in {folder}"
+                  + (f", {skipped} already up to date" if skipped else "")
+                  + ", shared view-only."), n
 
 
 def _dropbox_link(dbx, path: str, SharedLinkSettings, RequestedVisibility) -> str:
@@ -604,6 +638,36 @@ def deliver(db: Session, period: str, group_name: str, *,
     return rec
 
 
+def file_stamp(path: str) -> str:
+    """What identifies this exact PDF: its size and its modified time.
+
+    Not a hash. These run to nine megabytes each and a partner has thirty of
+    them, so hashing the lot on every page load to answer "has this changed"
+    would cost more than the upload it saves.
+    """
+    try:
+        st = Path(path).stat()
+        return f"{st.st_size}:{int(st.st_mtime)}"
+    except OSError:
+        return ""
+
+
+def needs_send(e) -> bool:
+    """Is this report different from what is sitting in the partner's folder?
+
+    Two ways it can be: filed under a name it no longer has, or filed as a file
+    that has since been replaced. Anything else has already gone up and does
+    not need to go again.
+    """
+    r = getattr(e, "report", None)
+    if not r or not getattr(r, "stored_path", ""):
+        return False
+    if (getattr(r, "delivered_as", "") or "") != report_filename(e):
+        return True
+    stamp = getattr(r, "delivered_stamp", "") or ""
+    return not stamp or stamp != file_stamp(r.stored_path)
+
+
 def out_of_sync(group) -> list[str]:
     """Reports in this partner that are not what is sitting in its folder.
 
@@ -616,15 +680,8 @@ def out_of_sync(group) -> list[str]:
     rather than a guess: a name that does not match, or was never filed at all,
     is a report the partner does not have.
     """
-    out = []
-    for e in group.expected:
-        r = getattr(e, "report", None)
-        if not r or not getattr(r, "stored_path", ""):
-            continue
-        want = report_filename(e)
-        if (getattr(r, "delivered_as", "") or "") != want:
-            out.append(e.client or want)
-    return out
+    return [e.client or report_filename(e)
+            for e in group.expected if needs_send(e)]
 
 
 def latest_deliveries(db: Session, period: str) -> dict[str, Delivery]:

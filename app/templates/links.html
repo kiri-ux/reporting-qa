@@ -38,7 +38,7 @@
         {% for l in delivered.links %}
           {# The one just packaged is marked until it has been used. See the
              script at the foot of this page for when the mark comes off. #}
-          <li{% if new and l.group == new %} class="fresh" data-fresh{% endif %}>
+          <li id="g-{{ anchor(l.group) }}"{% if new and l.group == new %} class="fresh" data-fresh{% endif %}>
             <span class="lname">{{ l.group }}
               {% if new and l.group == new %}<em>just packaged</em>{% endif %}</span>
             {% if l.url %}
@@ -171,7 +171,8 @@
     <div class="links wide">
       <ul>
         {% for w in waiting %}
-          <li><span class="lname">{{ w.group }}</span>
+          <li id="g-{{ anchor(w.group) }}"{% if new and w.group == new %} class="fresh" data-fresh{% endif %}>
+            <span class="lname">{{ w.group }}</span>
             {% if w.running %}
               <meta http-equiv="refresh" content="8">
               <span class="mini busy"><span class="spin"></span><b
@@ -219,6 +220,14 @@
   // a refresh then loads a page with nothing marked.
   var fresh = document.querySelector('[data-fresh]');
   if (!fresh) return;
+  // IT SCROLLS TO IT. Landing on a page of a hundred and fifty rows with the
+  // one you just started somewhere down it is not an improvement on the card.
+  if (fresh.scrollIntoView) {
+    fresh.scrollIntoView({block: 'center', behavior: 'smooth'});
+  }
+  // While it is still running the mark is what says which row to watch, so it
+  // stays until the sync finishes.
+  if (fresh.querySelector('.busy')) return;
   var clear = function () { fresh.classList.remove('fresh'); };
   fresh.querySelectorAll('[data-used]').forEach(function (el) {
     el.addEventListener('click', clear);

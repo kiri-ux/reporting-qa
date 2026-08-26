@@ -1180,7 +1180,11 @@ def deliver_group(request: Request, period: str, group: str = Form(...),
     start_delivery(db, period, group, force=bool(force), tag=tag)
     # PACKAGING LIVES ON THE LINKS PAGE NOW, so that is where it goes back to.
     if back_to == "links":
-        return RedirectResponse(f"/cycle/links?period={period}", status_code=303)
+        # STRAIGHT TO THE ROW, ALREADY RUNNING. The sync is started above, so
+        # what is wanted here is to watch it, not to find the button again.
+        return RedirectResponse(
+            f"/cycle/links?period={period}&new={quote(group)}#g-{_anchor(group)}",
+            status_code=303)
     back = f"/cycle?period={period}"
     if group:
         back += f"&group={quote(group)}"
@@ -1370,10 +1374,16 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
     waiting.sort(key=lambda w: w["group"].lower())
     return templates.TemplateResponse(request, "links.html", {
         "nav": "links", "cycle": cycle_for(period), "period": period,
+        "anchor": _anchor,
         "periods": periods, "delivered": delivered, "new": new,
         "waiting": waiting, "running": running,
         "configured": settings.delivery_configured,
     })
+
+
+def _anchor(name: str) -> str:
+    """A partner's name as something that can be an id and a URL fragment."""
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
 
 
 DRIVE_FOLDER_ID = re.compile(r"(?:folders/|[?&]id=)([A-Za-z0-9_-]{10,})")
@@ -1693,7 +1703,8 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
 
     flight = client_flight(db, client, account_ids,
                            cutoff=(cycle_for(period).lifetime_cutoff
-                                   if is_lifetime and period else None))
+                                   if is_lifetime and period else None),
+                           period=period)
     exp = expected_products(db, client, account_ids, period=period,
                             lifetime=is_lifetime, window=flight)
     ordered = ordered_for(db, client, account_ids, period,
@@ -1833,7 +1844,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     # client still has running.
     flight = client_flight(db, rep.client, rep.account_ids,
                            cutoff=(cycle_for(rep.period).lifetime_cutoff
-                                   if rep.is_lifetime and rep.period else None))
+                                   if rep.is_lifetime and rep.period else None),
+                           period=rep.period)
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
@@ -1949,7 +1961,8 @@ async def replace_report(report_id: int, request: Request,
     # client still has running.
     flight = client_flight(db, rep.client, rep.account_ids,
                            cutoff=(cycle_for(rep.period).lifetime_cutoff
-                                   if rep.is_lifetime and rep.period else None))
+                                   if rep.is_lifetime and rep.period else None),
+                           period=rep.period)
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
@@ -2041,7 +2054,8 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
             life_flight = client_flight(
                 db, rep.client, rep.account_ids,
                 cutoff=(_cyc(rep.period).lifetime_cutoff
-                        if rep.is_lifetime and rep.period else None))
+                        if rep.is_lifetime and rep.period else None),
+                period=rep.period)
             ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
                                   lifetime=bool(rep.is_lifetime),
                                   window=life_flight)

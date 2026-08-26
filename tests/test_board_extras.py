@@ -629,28 +629,57 @@ def test_a_broken_pipe_mid_upload_is_retried():
     assert BrokenPipeError in delivery.RETRY_UPLOAD
 
 
-def test_a_packaged_partner_says_when_its_folder_is_behind():
+def test_a_packaged_partner_says_when_its_folder_is_behind(tmp_path):
     """Reports get corrected all cycle and the folder only changes when
     somebody presses sync, so a partner can be handing out a perfectly good
     link to last Tuesday's work with nothing saying so."""
     from app.board import Expected, GroupRow
     from app.db import Report
-    from app.delivery import out_of_sync
+    from app.delivery import file_stamp, out_of_sync
 
-    filed = Report(filename="July 2026_Acme 123.pdf", stored_path="/x.pdf",
-                   delivered_as="July 2026_Acme 123.pdf", client="Acme")
-    moved = Report(filename="July 2026_Beta 999.pdf", stored_path="/y.pdf",
-                   delivered_as="July 2026_Beta 111.pdf", client="Beta")
-    never = Report(filename="July 2026_Gamma 7.pdf", stored_path="/z.pdf",
+    pdfs = {}
+    for who in ("acme", "beta", "gamma", "delta"):
+        f = tmp_path / f"{who}.pdf"
+        f.write_bytes(b"%PDF-1.4\n")
+        pdfs[who] = str(f)
+
+    # Filed under the name it still has, from the file it was filed from.
+    filed = Report(filename="July 2026_Acme 123.pdf", stored_path=pdfs["acme"],
+                   delivered_as="July 2026_Acme 123.pdf",
+                   delivered_stamp=file_stamp(pdfs["acme"]), client="Acme")
+    # Renamed since it was filed.
+    moved = Report(filename="July 2026_Beta 999.pdf", stored_path=pdfs["beta"],
+                   delivered_as="July 2026_Beta 111.pdf",
+                   delivered_stamp=file_stamp(pdfs["beta"]), client="Beta")
+    # Never filed at all.
+    never = Report(filename="July 2026_Gamma 7.pdf", stored_path=pdfs["gamma"],
                    delivered_as="", client="Gamma")
+    # Same name, different file - somebody replaced the PDF after it went up.
+    swapped = Report(filename="July 2026_Delta 5.pdf", stored_path=pdfs["delta"],
+                     delivered_as="July 2026_Delta 5.pdf",
+                     delivered_stamp="1:1", client="Delta")
     g = GroupRow("P", "drive", [
         Expected(market="M", group="P", client="Acme", kind="monthly", report=filed),
         Expected(market="M", group="P", client="Beta", kind="monthly", report=moved),
         Expected(market="M", group="P", client="Gamma", kind="monthly", report=never),
+        Expected(market="M", group="P", client="Delta", kind="monthly", report=swapped),
         # No PDF behind it: nothing was ever owed to the folder for this one.
-        Expected(market="M", group="P", client="Delta", kind="monthly"),
+        Expected(market="M", group="P", client="Echo", kind="monthly"),
     ])
-    assert out_of_sync(g) == ["Beta", "Gamma"]
+    assert out_of_sync(g) == ["Beta", "Gamma", "Delta"]
+
+
+def test_a_sync_only_sends_what_actually_moved():
+    """Re-uploading every report every time takes several minutes on a big
+    partner to change nothing, and nine megabytes a file is all of that time."""
+    import inspect
+    from app import delivery
+    for fn in (delivery.upload_drive_folder, delivery.upload_dropbox_folder):
+        src = inspect.getsource(fn)
+        assert "needs_send(e)" in src, fn.__name__
+        assert "skipped += 1" in src, fn.__name__
+        # And it still hands back the link when nothing needed sending.
+        assert "Already up to date" in src, fn.__name__
 
 
 def test_the_tooltips_are_the_page_s_own_not_the_operating_system_s():

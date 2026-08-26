@@ -385,7 +385,20 @@ def ordered_for(db: Session, client: str, account_ids: str,
         # CTV was 46% short while Video had nothing to compare against at all.
         name = getattr(l, "sold_with", "") or l.product
         row = out.setdefault(name, {"budget": None, "impressions": None,
-                                    "basis": "", "started": None, "days": None})
+                                    "basis": "", "started": None, "days": None,
+                                    # A CANCELLED BUY IS NOT SHORT OF ITS GOAL.
+                                    # Cancelling changes the deal - what it was
+                                    # sold to deliver stopped being what it was
+                                    # asked to deliver on the day somebody
+                                    # stopped it. Sorge's cancelled Meta line
+                                    # read "100% short, 503 served against
+                                    # 400,000 ordered (20 months at the monthly
+                                    # figure on the order)", which is a
+                                    # comparison against a campaign that was
+                                    # called off.
+                                    "stopped": False})
+        if getattr(l, "canceled", False) or getattr(l, "complete", False):
+            row["stopped"] = True
         # The line item ids behind this row. Two order rows carrying the same
         # ids are two halves of one buy, and its figures belong to it once.
         stamp = (name, getattr(l, "line_ids", "") or "", l.account_ids or "")

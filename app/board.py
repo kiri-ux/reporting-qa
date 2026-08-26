@@ -290,6 +290,9 @@ def expected_for(db: Session, period: str,
     # March, and is not this cycle's work. With no serving file loaded there is
     # nothing to test against and the flag stands on its own, as before.
     served_now = served_days(db, period)
+    # And the last day each one delivered, which is what dates a close-out.
+    from .serving import last_served
+    stopped_day = last_served(db, period)
 
     # IS THIS CLIENT FINISHED, OR IS ONE LINE ITEM OF THEIRS FINISHED?
     #
@@ -349,8 +352,23 @@ def expected_for(db: Session, period: str,
         # put a hundred lifetimes on 7 Mountains that nobody owed.
         #
         # AND ONLY WHEN IT STOPPED THIS MONTH, where the serving file can say.
+        ck_key = (_key(l.market), _key(l.client))
+        # DID IT STOP INSIDE THIS MONTH, or is it still going into the next one?
+        #
+        # Order 49421 reads "IO Complete" and ends on 6 August - a day past
+        # this cycle's lifetime cutoff - and it delivered every day of July, so
+        # it is still running into August and its lifetime belongs to August's
+        # cycle. Order 45911 also reads complete, is dated to the end of
+        # December, and last delivered in the middle of July: that one really
+        # has finished, and waiting for December means waiting forever.
+        #
+        # The difference is not on the order. It is the last day with delivery
+        # on it: before month end means it stopped, at month end means it is
+        # still going. With no serving file the flag stands on its own.
+        last_day = stopped_day.get(ck_key)
+        stopped_in_month = (last_day is None) or (last_day < cyc.ends_on)
         finished = (gone or bool(getattr(l, "complete", False))) and \
-            all_stopped.get((_key(l.market), _key(l.client)), False)
+            all_stopped.get(ck_key, False) and stopped_in_month
         # A CAMPAIGN THAT NEVER DELIVERED HAS NOTHING TO REPORT.
         #
         # Orders 51217 and 50760 were both sold, cancelled, and never served a
@@ -403,8 +421,20 @@ def expected_for(db: Session, period: str,
                 if ends and (k not in life_end or ends > life_end[k]):
                     life_end[k] = ends
                     life_order[k] = l.account_ids or ""
-                    e.life_note = (f"Order {l.account_ids or '?'} ends "
-                                   f"{ends.isoformat()}")
+                    # WHICH RULE PUT IT HERE. "Order 54169 ends 2026-08-31"
+                    # on a row for a campaign that is plainly still live reads
+                    # as the tool being wrong, and there is no way to tell from
+                    # the row which of the two paths asked for it.
+                    if finished and not cyc.needs_lifetime(ends):
+                        why = ("every line on this campaign is cancelled or "
+                               "complete")
+                        if last_day:
+                            why += f", and it last delivered {last_day}"
+                        e.life_note = (f"Order {l.account_ids or '?'} is dated "
+                                       f"to {ends.isoformat()}, but {why}")
+                    else:
+                        e.life_note = (f"Order {l.account_ids or '?'} ends "
+                                       f"{ends.isoformat()}")
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
             # A client's lifetime covers several products, so its line ids are

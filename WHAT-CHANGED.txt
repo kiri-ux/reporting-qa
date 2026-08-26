@@ -1,89 +1,104 @@
-build 2026.08.26-80
+build 2026.08.26-81
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
 app/board.py
+app/checks/rules.py
+app/db.py
 app/delivery.py
+app/ingest.py
 app/main.py
-app/orders_io.py
-app/serving.py
-app/templates/base.html
+app/recheck.py
+app/roster.py
 app/templates/cycle.html
+app/templates/links.html
 tests/test_board_extras.py
-tests/test_order_status.py
 tests/test_serving.py
 
-584 tests pass.
+588 tests pass.
 
 
-1. 51217 - AN RFP THE IMPORT COULD NOT SEE
---------------------------------------------
-RFP was only ever read off the two STATUS columns. 51217 sits at Order Type
-"Request for Proposal" with Order Status "Cancelled", so nothing said RFP
-anywhere the import was looking, and a proposal that was never sold went on the
-board owed a lifetime.
+WHAT SYNC ACTUALLY DOES - YOUR QUESTION, ANSWERED AND THEN FIXED
+==================================================================
+It used to upload every report in the partner, every time. Same folder, same
+link, files replaced by name. Correct, and several minutes of nine-megabyte
+uploads to change nothing.
 
-The TYPE column is where that fact actually lives. It is read now, and any
-order whose type is a request for proposal is dropped the same way an RFP
-status always was.
+Now it sends only what has actually moved. A report is sent when either:
 
-The orders re-read themselves on this deploy - the import fingerprint changed.
+  the name it should be filed under is not the name it was filed under
+  the PDF itself is not the file it was filed from
 
+The second is new: each report records the size and modified time of the PDF at
+the moment it went up, so replacing a file makes it eligible again while a
+re-check that changed nothing does not.
 
-2. 50760 - SOLD, CANCELLED, NEVER SERVED
-------------------------------------------
-This one is a real insertion order, so the type does not catch it. Its own
-notes say "Cancelled after pending launch for 2 months. No impressions served."
-
-It was on the board because its end date falls inside this cycle, and a date is
-all the order export has to offer. There is no report to pull for a campaign
-with no delivery behind it, so a lifetime now needs the serving file to show
-the client delivering in the data month.
-
-This also replaces the narrower rule from build 75, which only applied the test
-to campaigns closed out by the cancelled/complete flag. It applies to every
-lifetime now. With no serving file loaded for a month, the dates stand on their
-own exactly as before.
+  Will it replace a file that was updated?   Yes - same name, overwritten.
+  Will it remove the old one after a rename? Yes. Each report knows what it
+  was last filed as, and only that exact name is removed. On Drive it goes to
+  the trash rather than being destroyed. Nothing else in the folder is touched.
+  Sync with nothing to send?                 Says "already up to date" and
+  hands back the same link. Not an error.
 
 
-3. WHEN A CANCELLED CAMPAIGN ACTUALLY STOPPED
------------------------------------------------
-The end date on a cancelled order is what it was SOLD to run to. Nothing on the
-export says when somebody hit cancel, so a lifetime pulled to that date covers
-weeks of nothing.
-
-A cancelled or completed campaign whose last delivery came before its end date
-now carries "stopped 2026-07-12" on the board, with the full explanation on
-hover. Pull the report to that date instead. A campaign that ran to its end
-date is not annotated - saying so would put a note on half the board.
+1. THE CARD STARTS THE SYNC
+----------------------------
+"needs a sync" is a button now. It starts the sync, takes you to the links
+page, scrolls to that partner and highlights the row - which stays marked while
+it runs. Sending you there to find the row and press a second button was asking
+you to do the work twice.
 
 
-4. "NEEDS A SYNC" ON THE PARTNER CARD
----------------------------------------
-Reports get corrected all cycle and the folder only changes when somebody
-presses sync, so a partner could be handing out a perfectly good link to last
-Tuesday's work with nothing saying so.
-
-Each report records what it was last filed as, which makes this exact rather
-than a guess: a name that does not match what it would be filed as now, or one
-never filed at all, is a report the partner does not have. The card links
-straight to the links page.
-
-
-5. SIGN-OFF IS FILLED ICONS
------------------------------
-Reviewed, Needs fix and Waive are icons too now, filled rather than outlined -
-on a row already carrying a partner, a client, five product chips, a date range
-and a findings list, a pale outline reads as decoration.
-
-The note box was being squeezed out of existence by the row's no-wrap layout.
-It is back, and it widens when you click into it.
-
-
-6. TOOLTIPS THAT ARRIVE WHEN YOU POINT AT THEM
+2. NO PACING ON A CAMPAIGN SOMEBODY CALLED OFF
 ------------------------------------------------
-The browser's own title= tooltip takes about a second and a half to appear and
-is drawn by the operating system, so it is both slow and the only thing on the
-page that does not look like the page. They are the page's own now: instant,
-dark, and readable, with the ones near the right edge flipped so they do not
-run off it.
+Sorge Funeral Home read "Meta is 100% short - 503 served against 400,000
+ordered (20 months at the monthly figure on the order)" and "Campaign finished
+100% under its goal". Twenty months it was never going to run.
+
+Cancelling changes the deal. What a campaign was SOLD to deliver stopped being
+what it was asked to deliver on the day somebody stopped it. Cancelled and
+completed buys are no longer paced, on the monthly or the lifetime.
+
+
+3. THE FALSE DATE ERROR ON THE SAME REPORT
+--------------------------------------------
+"Expected May 01, 2025 to Dec 31, 2026" on a campaign that finished in July.
+Nothing ended inside the cycle window, so the check fell back to the latest end
+date on the order - which is what it was sold to run to, eighteen months out.
+
+When every line on a campaign is cancelled or complete, the expected end is now
+where it actually stopped delivering, and the serving file supplies the day.
+
+
+4. 49421 - COMPLETE, BUT STILL RUNNING INTO AUGUST
+----------------------------------------------------
+It ends 6 August, a day past this cycle's lifetime cutoff, and it delivered
+every day of July. So it is still running, and its lifetime belongs to August.
+
+45911 also reads complete, is dated to the end of December, and last delivered
+mid-July - that one really has finished, and waiting for December means waiting
+forever.
+
+Nothing on the order separates those two. The last day with delivery on it
+does: before month end means it stopped, at month end means it is still going.
+
+
+5. 54169 - AND HOW TO SEE WHY ANY LIFETIME IS THERE
+-----------------------------------------------------
+The rules above may well have taken it off. If it is still there, the row now
+says which of the two paths asked for it - hover the lifetime pill:
+
+  "Order 54169 ends 2026-08-31"                       the date rule
+  "Order 54169 is dated to 2026-12-31, but every line
+   on this campaign is cancelled or complete, and it
+   last delivered 2026-07-14"                         the finished rule
+
+If it says the second and the order is live, that is a wrong cancelled/complete
+flag on a line and I want the order id. If it says the first, the end date on
+the order is inside this cycle.
+
+
+6. THE CARD LAYOUT
+-------------------
+Client link and See reports are the same height, and the client link, Copy, In
+Drive and the file count sit on their own row underneath.

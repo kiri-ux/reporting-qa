@@ -146,7 +146,8 @@ def open_batch(db: Session, market: str, period: str) -> Batch | None:
 
 
 def client_flight(db: Session, client: str, accounts: str,
-                  cutoff: dt.date | None = None) -> tuple | None:
+                  cutoff: dt.date | None = None,
+                  period: str | None = None) -> tuple | None:
     """(first start, last end) across every one of this client's order lines.
 
     Two overlapping orders are one continuous campaign to the client, so the
@@ -167,8 +168,39 @@ def client_flight(db: Session, client: str, accounts: str,
         starts = [l["starts"] for l in out if l["starts"]]
     if not starts:
         return None
-    return (min(starts), last if last else (max(
-        [l["ends"] for l in out if l["ends"]], default=None)))
+    if last:
+        return (min(starts), last)
+
+    # NOTHING ENDS INSIDE THE WINDOW, AND THE CAMPAIGN IS OVER ANYWAY.
+    #
+    # Sorge Funeral Home's lines are all "IO Complete" and dated to 31 December
+    # 2026, so the fallback below asked a lifetime pulled in July to cover a
+    # range ending eighteen months from now, and failed it for not doing so.
+    # A cancelled or completed campaign ended when it stopped delivering - the
+    # serving file knows the day, and failing that the cycle does.
+    if cutoff and out and all(l["stopped"] for l in out):
+        stop = _last_served_day(db, client, period) if period else None
+        return (min(starts), stop or cutoff)
+
+    return (min(starts), max([l["ends"] for l in out if l["ends"]], default=None))
+
+
+def _last_served_day(db: Session, client: str, period: str):
+    """The last day this client delivered in that month, or None.
+
+    Matched on the client name alone: the market a report belongs to and the
+    business unit on the serving file are not always spelled the same, and the
+    client is the part both tools agree on.
+    """
+    from .board import _key as _bkey
+    from .serving import last_served
+
+    want = _bkey(client)
+    best = None
+    for (_mk, ck), day in last_served(db, period).items():
+        if ck == want and day and (best is None or day > best):
+            best = day
+    return best
 
 
 def flight_lines(db: Session, client: str, accounts: str) -> list[dict]:
@@ -190,7 +222,9 @@ def flight_lines(db: Session, client: str, accounts: str) -> list[dict]:
                     "starts": getattr(l, "order_starts_on", None) or l.starts_on,
                     "ends": getattr(l, "order_ends_on", None) or l.ends_on,
                     "line_starts": l.starts_on, "line_ends": l.ends_on,
-                    "live": bool(getattr(l, "live", True))})
+                    "live": bool(getattr(l, "live", True)),
+                    "stopped": bool(getattr(l, "canceled", False)
+                                    or getattr(l, "complete", False))})
     out.sort(key=lambda r: (r["ends"] or dt.date.min), reverse=True)
     return out
 
@@ -312,7 +346,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         from .cycle import cycle_for as _cycle_for
         cut = _cycle_for(batch.period).lifetime_cutoff if life_guess else None
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"],
-                               cutoff=cut)
+                               cutoff=cut, period=batch.period)
         flines = flight_lines(db, meta_guess["client"], meta_guess["account_ids"])
         # AFTER the flight is known: a lifetime is paced against the campaign
         # it reports on, not against every order the client has.

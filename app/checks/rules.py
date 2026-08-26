@@ -884,6 +884,14 @@ def check_lifetime_goal(ctx) -> list[dict]:
     if not ctx.get("is_lifetime"):
         return []
     ordered = ctx.get("ordered") or {}
+    # A CANCELLED CAMPAIGN IS NOT SHORT OF ITS GOAL.
+    #
+    # Cancelling changes the deal: what a campaign was SOLD to deliver stopped
+    # being what it was asked to deliver on the day somebody stopped it. Sorge
+    # Funeral Home's cancelled buy read "finished 100% under its goal, 3,873
+    # served against 2,400,000 sold (20 months at the monthly figure on the
+    # order)" - twenty months it was never going to run.
+    ordered = {k: v for k, v in ordered.items() if not v.get("stopped")}
     if not ordered:
         return []
     from .served import served_impressions
@@ -953,6 +961,8 @@ def check_impression_pacing(ctx) -> list[dict]:
     it is either the wrong order attached or a campaign nobody is watching.
     """
     ordered = ctx.get("ordered") or {}
+    # See check_lifetime_goal: a buy somebody called off is not behind on it.
+    ordered = {k: v for k, v in ordered.items() if not v.get("stopped")}
     if not ordered:
         return []
     from .served import MIN_DAYS_TO_PACE, pacing_rows

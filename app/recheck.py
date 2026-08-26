@@ -192,7 +192,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     # client still has running.
     flight = client_flight(db, rep.client, rep.account_ids,
                            cutoff=(cycle_for(rep.period).lifetime_cutoff
-                                   if rep.is_lifetime and rep.period else None))
+                                   if rep.is_lifetime and rep.period else None),
+                           period=rep.period)
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
