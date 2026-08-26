@@ -1754,8 +1754,20 @@ def cycle_recheck_status(period: str = Query(""), db: Session = Depends(get_db))
 @app.get("/partners", response_class=HTMLResponse)
 def partners_view(request: Request, db: Session = Depends(get_db)):
     from .partners import all_partners
+    rows = all_partners(db)
+    # Where each partner delivers, counted. A market added since the last
+    # roster export is not named in it at all and silently defaults to Drive.
+    tally: dict[str, int] = {}
+    for p in rows:
+        t = (p.delivery_target or "drive")
+        tally[t] = tally.get(t, 0) + 1
+    try:
+        just_set = int(request.query_params.get("set") or 0)
+    except ValueError:
+        just_set = 0
     return templates.TemplateResponse(request, "partners.html", {
-        "partners": all_partners(db), "nav": "partners"})
+        "partners": rows, "nav": "partners",
+        "tally": sorted(tally.items()), "just_set": just_set})
 
 
 @app.post("/partners/{partner_id}/target")
@@ -1778,6 +1790,33 @@ def partner_target(partner_id: int, target: str = Form(...),
     db.commit()
     forget_partners()
     return RedirectResponse("/partners", status_code=303)
+
+
+@app.post("/partners/target-bulk")
+def partner_target_bulk(contains: str = Form(...), target: str = Form(...),
+                        db: Session = Depends(get_db)):
+    """Set the delivery target for every partner whose name matches.
+
+    Setting a group of markets one dropdown at a time is how one of them gets
+    missed, and the one that gets missed is the one whose client is handed the
+    wrong link.
+    """
+    from .db import Partner
+    from .partners import forget_partners
+    if target not in {"drive", "dropbox", "local"}:
+        raise HTTPException(400, "unknown delivery target")
+    needle = (contains or "").strip().lower()
+    if not needle:
+        raise HTTPException(400, "nothing to match on")
+    n = 0
+    for p in db.scalars(select(Partner)).all():
+        if needle in (p.partner or "").lower() or needle in (p.group or "").lower():
+            if (p.delivery_target or "") != target:
+                p.delivery_target = target
+                n += 1
+    db.commit()
+    forget_partners()
+    return RedirectResponse(f"/partners?set={n}", status_code=303)
 
 
 @app.post("/partners/import")

@@ -896,3 +896,25 @@ def test_a_report_with_no_market_gets_one_on_the_next_check(app_db):
     db.add(rep); db.commit()
     recheck(db, rep)
     assert rep.market == "7 Mountains PA Selinsgrove"
+
+
+def test_setting_a_whole_group_of_partners_at_once(client):
+    """Setting a group of markets one dropdown at a time is how one of them
+    gets missed, and the one that gets missed is the one whose client is handed
+    the wrong link."""
+    c, (db, dbm, imod) = client
+    db.query(dbm.Partner).delete()
+    for name in ("7 Mountains PA", "7 Mountains PA Stroudsburg",
+                 "7 Mountains KY", "Somebody Else"):
+        db.add(dbm.Partner(partner=name, group=name, delivery_target="drive"))
+    db.commit()
+
+    r = c.post("/partners/target-bulk",
+               data={"contains": "7 mountains", "target": "dropbox"},
+               follow_redirects=False)
+    assert r.status_code == 303 and "set=3" in r.headers["location"]
+    db.expire_all()
+    rows = {p.partner: p.delivery_target for p in db.query(dbm.Partner).all()}
+    assert rows["7 Mountains PA Stroudsburg"] == "dropbox"
+    assert rows["7 Mountains KY"] == "dropbox"
+    assert rows["Somebody Else"] == "drive"
