@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-83"
-BUILD_NOTES = ("Every page was blank. A media query written `){#tip{` with "
-               "no space starts a template comment, and it ate the rest of the "
-               "stylesheet and every tag after it. One space, plus a test that "
-               "renders every page and checks the document closes.")
+BUILD = "2026.08.26-84"
+BUILD_NOTES = ("Good to go only now reaches the partners that need it - one "
+               "two reports into twenty was on neither list. And a report "
+               "nobody has signed off no longer reads as out of sync, since "
+               "it was never going to be in the folder.")
 
 # ---------------------------------------------------------------------------
 

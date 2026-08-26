@@ -1,45 +1,43 @@
-build 2026.08.26-83
-HOTFIX for build 82. Two files.
+build 2026.08.26-84
+Changed files only.
 
 app/version.py
-app/templates/base.html
+app/delivery.py
+app/main.py
+app/templates/links.html
 tests/test_board_extras.py
 
-
-ONE MISSING SPACE
-==================
-This is mine and it is as dumb as it looks.
-
-I added this line to the stylesheet in build 82:
-
-    @media (prefers-reduced-motion:reduce){#tip{transition:none}}
-
-An open brace followed straight by a hash - `{` then `#` - is how a template
-comment starts. So the engine read everything from there as a comment until it
-found a closer, which it never did: it swallowed the rest of the stylesheet,
-the tag that closes it, and every tag after that. The browser got a document
-whose stylesheet never ended, so it rendered the whole page as CSS text and
-showed one line of footer.
-
-The fix is a space:
-
-    @media (prefers-reduced-motion:reduce){ #tip{transition:none} }
-
-CSS does not care. The template engine does.
+601 tests pass.
 
 
-AND WHY 599 TESTS DID NOT CATCH IT
-====================================
-Because every one of them checks a status code or looks for a substring, and a
-page that returns 200 with a broken stylesheet does both perfectly well. The
-substring was even THERE - it was just inside a comment.
+"GOOD TO GO ONLY" - IT EXISTED, AND IT WAS IN THE WRONG PLACE
+===============================================================
+Build 82 added it, but only on partners that had ALREADY been packaged. The
+other list on that page was "ready, not packaged", which meant every report
+finished.
 
-So there are two new tests:
+So a partner two reports into twenty was on neither list. Which is exactly the
+partner you want to send the finished two for.
 
-  Every page is rendered with real data and the document is checked for
-  balance - style, head, body, html, main, table, form, select, textarea - and
-  that it ends with the closing html tag. Anything that swallows a chunk of
-  the page now fails a test rather than shipping.
+That list is now "Not packaged yet" and holds any partner with something signed
+off and nothing sent, whether it is finished or not:
 
-  And the same bug at the source: no template may contain an unterminated
-  brace-hash, or that CSS shape at all.
+  all done      [Package & share]
+  2 of 20 done  [Send the 2 good to go]
+
+Nothing is deleted and nothing is lost. The reports still being worked on stay
+out of the folder until they are signed off, and go up on the next sync
+alongside what is already there. The partner's link never moves either way.
+
+Already-packaged partners keep the same button beside Sync reports.
+
+
+AND THE FLAG THAT WOULD HAVE NAGGED YOU ABOUT IT
+==================================================
+Sending only the finished ones is deliberate, so the ones left behind must not
+count as "changed since this was packaged" - that would turn the needs-a-sync
+flag on and leave it on for the rest of the cycle, which is the fastest way to
+teach somebody to ignore it.
+
+A report is behind when it was filed and has since moved, or when it is signed
+off and has never been filed. Not when it is still being worked on.

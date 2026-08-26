@@ -656,7 +656,8 @@ def test_a_packaged_partner_says_when_its_folder_is_behind(tmp_path):
                    delivered_stamp=file_stamp(pdfs["beta"]), client="Beta")
     # Never filed at all.
     never = Report(filename="July 2026_Gamma 7.pdf", stored_path=pdfs["gamma"],
-                   delivered_as="", client="Gamma")
+                   delivered_as="", client="Gamma",
+                   severity="pass", findings=[], review_state="reviewed")
     # Same name, different file - somebody replaced the PDF after it went up.
     swapped = Report(filename="July 2026_Delta 5.pdf", stored_path=pdfs["delta"],
                      delivered_as="July 2026_Delta 5.pdf",
@@ -877,3 +878,49 @@ def test_no_template_has_an_accidental_comment_opener():
         # The CSS shape that caused it: an open brace immediately before an id.
         assert not re.search(r"\)\{#[A-Za-z]", src), (
             f"{f.name}: `){{#` in CSS - put a space after the brace")
+
+
+def _grp(*specs):
+    """(client, ready, delivered_as) -> a GroupRow of reports."""
+    from app.board import Expected, GroupRow
+    from app.db import Report
+    rows = []
+    for client, ready, filed in specs:
+        rep = Report(filename=f"July 2026_{client}.pdf", stored_path="/x.pdf",
+                     client=client, delivered_as=filed,
+                     severity="pass", findings=[],
+                     review_state="reviewed" if ready else "new")
+        rows.append(Expected(market="M", group="P", client=client,
+                             kind="monthly", report=rep))
+    return GroupRow("P", "drive", rows)
+
+
+def test_a_partner_part_way_through_can_send_what_is_finished():
+    """Some July reports are still being fixed and some partners only need one
+    or two. The finished ones should be able to go without waiting for - or
+    deleting - the rest."""
+    import inspect
+    from app import delivery, main
+    src = inspect.getsource(main.cycle_links)
+    # It used to be "ready AND not packaged", so a partner two reports into
+    # twenty was on neither list.
+    assert "if g.group in packaged:" in src
+    assert "ready_n = sum(1 for e in g.expected if e.ready)" in src
+    html = (TPL / "links.html").read_text()
+    assert "Send the {{ w.ready }} good to go" in html
+    # And the delivery itself only takes the signed-off ones.
+    assert "keep = [e for e in group.expected if e.ready]" in \
+        inspect.getsource(delivery.deliver)
+
+
+def test_an_unfinished_report_is_not_out_of_sync():
+    """Sending only the finished ones is deliberate. Counting the rest as
+    "changed since this was packaged" turns the flag on and leaves it on for
+    the whole cycle, which is the fastest way to teach somebody to ignore it."""
+    from app.delivery import out_of_sync
+    # signed off, never filed  -> the folder is missing it
+    # still open, never filed  -> it was never going to be in there
+    # filed, since renamed     -> the folder has the wrong one
+    g = _grp(("Done", True, ""), ("Open", False, ""),
+             ("Renamed", True, "July 2026_Renamed 111.pdf"))
+    assert out_of_sync(g) == ["Done", "Renamed"]

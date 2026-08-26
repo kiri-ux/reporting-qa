@@ -180,7 +180,10 @@
       <a href="/cycle?period={{ period }}">Back to the cycle</a>.</p>
   {% endif %}
   {% if waiting %}
-    <h2 style="margin-top:22px">Ready, not packaged ({{ waiting|length }})</h2>
+    <h2 style="margin-top:22px">Not packaged yet ({{ waiting|length }})</h2>
+    <p class="sub">Partners with something signed off and nothing sent. A
+      partner that is only part way through is here too - the finished ones can
+      go now and the rest join them on the next sync.</p>
     <div class="links wide">
       <ul>
         {% for w in waiting %}
@@ -191,6 +194,18 @@
               <span class="mini busy"><span class="spin"></span><b
                 >{{ w.running.done }} of {{ w.running.total or '?' }}</b> packaging</span>
               {% if w.running.note %}<span class="acct">{{ w.running.note }}</span>{% endif %}
+            {% elif w.open %}
+              {# PART WAY THROUGH. The finished ones go now; the rest stay out
+                 of the folder until they are signed off, and are not deleted
+                 or lost - they join on the next sync. #}
+              <form method="post" action="/cycle/{{ period }}/deliver"
+                    style="display:inline">
+                <input type="hidden" name="group" value="{{ w.group }}">
+                <input type="hidden" name="ready_only" value="1">
+                <input type="hidden" name="back_to" value="links">
+                <button class="btn gold" type="submit"
+                        data-tip="Sends the {{ w.ready }} that are signed off and clear. The {{ w.open }} still open stay out of the folder until they are done - nothing is lost, they go up on the next sync.">Send the {{ w.ready }} good to go</button>
+              </form>
             {% else %}
               <form method="post" action="/cycle/{{ period }}/deliver"
                     style="display:inline">
@@ -203,7 +218,7 @@
               <svg class="tgt" aria-hidden="true"
                    ><use href="#ic-{{ 'dropbox' if w.target == 'dropbox' else 'drive' }}"/></svg>
             {% endif %}
-            <span class="acct">{{ w.reports }} report{{ 's' if w.reports != 1 }}</span>
+            <span class="acct">{{ w.ready }} of {{ w.reports }} signed off</span>
             {# WHY IT IS STILL SITTING HERE. A partner in this list with a
                failed attempt behind it looks exactly like one nobody has got
                to yet, and the difference is the whole question. #}

@@ -1507,14 +1507,25 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
     fails = {d.group: d for d in db.scalars(
         select(Delivery).where(Delivery.period == period, Delivery.ok.is_(False))
         .order_by(Delivery.id)).all()}
+    # A PARTNER WITH TWO OF TWENTY DONE APPEARED NOWHERE.
+    #
+    # This list was "ready and not packaged", so a partner still being worked
+    # through was on neither list - not here, because it is not finished, and
+    # not above, because nothing has gone out. Which is exactly the partner
+    # somebody wants to send the finished two for.
     waiting = []
     for g in groups:
-        if not g.ready or g.group in packaged:
+        if g.group in packaged:
+            continue
+        ready_n = sum(1 for e in g.expected if e.ready)
+        if not ready_n:
             continue
         bad = fails.get(g.group)
         waiting.append({
             "group": g.group,
             "reports": len(g.expected),
+            "ready": ready_n,
+            "open": len(g.expected) - ready_n,
             "target": g.target or settings.delivery_target,
             "running": running.get(g.group),
             "why": (bad.message or "") if bad else "",

@@ -702,8 +702,24 @@ def out_of_sync(group) -> list[str]:
     rather than a guess: a name that does not match, or was never filed at all,
     is a report the partner does not have.
     """
-    return [e.client or report_filename(e)
-            for e in group.expected if needs_send(e)]
+    # A REPORT NOBODY HAS SIGNED OFF WAS NEVER GOING TO BE IN THE FOLDER.
+    #
+    # Sending only the finished ones is deliberate - the rest stay out until
+    # they are done. Counting those as "changed since this was packaged" turned
+    # the flag on and left it on for the whole cycle, which is the fastest way
+    # to teach somebody to ignore it.
+    #
+    # So a report is behind when it was filed and has since moved, or when it
+    # is signed off and has never been filed. Not when it is still being
+    # worked on.
+    out = []
+    for e in group.expected:
+        if not needs_send(e):
+            continue
+        was_filed = bool(getattr(e.report, "delivered_as", "") or "")
+        if was_filed or e.ready:
+            out.append(e.client or report_filename(e))
+    return out
 
 
 def latest_deliveries(db: Session, period: str) -> dict[str, Delivery]:
