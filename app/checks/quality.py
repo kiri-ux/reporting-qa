@@ -12,8 +12,18 @@ import re
 
 # A page header, e.g. "TIKTOK CONVERSIONS - PAGE 1". Used to say WHERE a fault
 # is, since pdftotext drops the form feeds that would have given page numbers.
-PAGE_HEADER = re.compile(r"^\s*([A-Z][A-Z0-9 &+/'.-]{2,60}?)\s+-\s+(?:PAGE\s+\d+|SUMMARY GRIDS)",
-                         re.M)
+# The pipes are optional: some templates print the banner bare, others wrap it
+# as "| OVERVIEW - PAGE 1 |". Without them the whole section-boundary mechanism
+# was blind on every report using the second style.
+PAGE_HEADER = re.compile(
+    r"^[ \t]*\|?[ \t]*([A-Z][A-Z0-9 &+/'.-]{2,60}?)\s+-\s+(?:PAGE\s+\d+|SUMMARY GRIDS)",
+    re.M)
+
+# The same thing, found anywhere on the line rather than at the start of it -
+# the banner is centered, so on a wide page it sits in the middle of a line
+# shared with the logo and the date range.
+PAGE_BANNER = re.compile(
+    r"\|[ \t]*([A-Z][A-Z0-9 &+/'.-]{2,60}?)\s+-\s+(?:PAGE\s+\d+|SUMMARY GRIDS)[ \t]*\|")
 
 # Boilerplate that appears on every page and is never a data row.
 CHROME = ("Digital Marketing Report", "Date range ", "Created On ",
@@ -694,6 +704,32 @@ def check_social_mirror_sizes(ctx) -> list[dict]:
 
 
 # ------------------------------------------------- 7. widgets that errored
+# ------------------------------------------------- page banners left switched on
+# "| OVERVIEW - PAGE 1 |" across the top of page one, above the client's name.
+# It is the template's own section marker, useful while a report is being built
+# and meaningless to whoever it is sent to.
+
+
+def check_page_banners(ctx) -> list[dict]:
+    """The template's section banners have to be off before this goes out."""
+    text = ctx.get("text") or ""
+    seen, first = [], -1
+    for m in PAGE_BANNER.finditer(text):
+        label = m.group(0).strip()
+        if label not in seen:
+            seen.append(label)
+        if first < 0:
+            first = m.start()
+    if not seen:
+        return []
+    return [_f("page_banner", "fail",
+               f"{len(seen)} page banner{'s' if len(seen) > 1 else ''} still "
+               f"printing",
+               "The template's own section markers, on the page the client "
+               "reads: " + _sample(seen, 6) + ".",
+               where=_where(ctx, first))]
+
+
 # TapClicks prints its own error into the widget's space and carries on. The
 # page still has a heading and a border, so it does not read as broken until
 # somebody looks - which on a 300-page report is nobody.

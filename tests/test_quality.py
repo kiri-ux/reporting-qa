@@ -987,3 +987,26 @@ def test_one_line_item_listed_by_two_widgets_is_counted_once():
             "     Reliance Bank - Keyword PPC       8,690    1,874  21.57%"
             "    1,824.25       0.97\n")
     assert q.line_item_totals(text) == [("Reliance Bank - Keyword PPC", 8690.0, 1874.0)]
+
+
+def test_a_page_banner_left_switched_on_is_flagged():
+    """"| OVERVIEW - PAGE 1 |" across the top of page one, above the client's
+    name. The template's own section marker, meaningless to whoever the report
+    is sent to."""
+    text = ("        | OVERVIEW - PAGE 1 |            Digital Marketing Report\n"
+            "                     Digital Marketing Report\n"
+            "        | SOCIAL MIRROR - PAGE 2 |\n")
+    out = q.check_page_banners({"text": text})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert "OVERVIEW - PAGE 1" in out[0]["detail"]
+
+
+def test_a_report_with_no_banners_says_nothing():
+    assert q.check_page_banners({"text": "Digital Marketing Report\nImpressions\n"}) == []
+
+
+def test_the_section_boundary_reads_a_banner_written_either_way():
+    """Some templates print it bare, others wrap it in pipes. Without the pipes
+    the whole section-boundary mechanism was blind on the second style."""
+    assert q.PAGE_HEADER.match("TIKTOK CONVERSIONS - PAGE 1")
+    assert q.PAGE_HEADER.match("   | OVERVIEW - PAGE 1 |")

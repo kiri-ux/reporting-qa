@@ -21,7 +21,7 @@ from .quality import (check_blank_screenshots, check_conversion_names,
                       check_store_visits, STORE_TABLE,
                       check_social_placement_totals, COMPLETION_OWED,
                       section_bodies,
-                      check_widget_errors, SITE_GRID,
+                      check_widget_errors, check_page_banners, SITE_GRID,
                       line_item_names, creative_rows, PLACEMENT_GRID,
                       _where,
                       CONVERSION_HEADER, SOCIAL_MIRROR_GRID)
@@ -750,8 +750,12 @@ def check_pacing(ctx) -> list[dict]:
     budgets = ctx.get("budgets") or {}
     if not budgets:
         return []
+    from .served import MIN_DAYS_TO_PACE
     from .spend import report_spend
 
+    # The same "when did it launch" the impression rows carry. A budget is a
+    # month's budget, so a line three days old is under it by definition.
+    when = {p: v for p, v in (ctx.get("ordered") or {}).items()}
     spent = report_spend(ctx.get("text") or "")
     out = []
     for product, budget in sorted(budgets.items()):
@@ -763,6 +767,10 @@ def check_pacing(ctx) -> list[dict]:
         ratio = got / budget
         if abs(ratio - 1.0) < PACING_BAND:
             continue
+        row = when.get(product) or {}
+        days = row.get("days")
+        if days is not None and days <= MIN_DAYS_TO_PACE:
+            continue
         way = "under" if ratio < 1 else "over"
         out.append(_f("pacing", "warn",
                       f"{product} spend is {abs(1 - ratio) * 100:.0f}% {way} budget",
@@ -770,8 +778,9 @@ def check_pacing(ctx) -> list[dict]:
                       f"${budget:,.2f}.",
                       [("Spend on the report", f"${got:,.2f}"),
                        ("Monthly budget on the order", f"${budget:,.2f}"),
-                       ("That is", f"{ratio * 100:.0f}% of budget"),
-                       ("Flagged at", f"{PACING_BAND * 100:.0f}% either way")]))
+                       ("That is", f"{ratio * 100:.0f}% of budget")]
+                      + _when_rows(row)
+                      + [("Flagged at", f"{PACING_BAND * 100:.0f}% either way")]))
     return out
 
 
@@ -826,6 +835,22 @@ def check_lifetime_goal(ctx) -> list[dict]:
 PACE_BAND = 50.0
 
 
+def _when_rows(row) -> list[tuple[str, str]]:
+    """When this line went live and how much of the month it had.
+
+    "99% short" on a line that launched on the 28th is arithmetic, not news.
+    The count decides whether there is a finding at all; the date is what the
+    reader needs to judge the ones that survive.
+    """
+    out = []
+    if row.get("started"):
+        out.append(("Line launched", row["started"].strftime("%b %d, %Y")))
+    days = row.get("days")
+    if days is not None:
+        out.append(("Ran this month", f"{days} day{'s' if days != 1 else ''}"))
+    return out
+
+
 def check_impression_pacing(ctx) -> list[dict]:
     """Impressions more than 50% off the order, either way.
 
@@ -840,7 +865,7 @@ def check_impression_pacing(ctx) -> list[dict]:
     ordered = ctx.get("ordered") or {}
     if not ordered:
         return []
-    from .served import pacing_rows
+    from .served import MIN_DAYS_TO_PACE, pacing_rows
 
     out = []
     for row in pacing_rows(ctx.get("text") or "", ordered):
@@ -849,6 +874,10 @@ def check_impression_pacing(ctx) -> list[dict]:
             continue
         if row["unit"] == "money":
             continue                        # check_pacing already has the money
+        # A WEEK OR LESS OF THE MONTH IS NOT OFF PACE, IT IS NEW.
+        days = row.get("days")
+        if days is not None and days <= MIN_DAYS_TO_PACE:
+            continue
 
         def fmt(v):
             return f"{v:,.0f}"
@@ -856,6 +885,7 @@ def check_impression_pacing(ctx) -> list[dict]:
         trace = [("Served on the report", fmt(row["served"])),
                  ("Ordered", fmt(row["ordered"])),
                  ("Difference", f"{pace:+.0f}%")]
+        trace += _when_rows(row)
         if row.get("basis"):
             trace.append(("Order figure is", row["basis"]))
         out.append(_f("pacing_off", "warn",
@@ -1483,6 +1513,7 @@ CHECKS: list[tuple] = [
     (check_creative_names,  "Every creative row says which creative it is"),
     (check_social_mirror_sizes, "No Social Mirror creative is named with an ad size"),
     (check_widget_errors,   "No widget printed an error instead of its data"),
+    (check_page_banners,    "The template's page banners are switched off"),
     (check_social_placement_totals,
      "Social placements add up to no more than their platform totals"),
     (check_site_ctr,        "No site is clicking at a rate a person would not"),
@@ -1517,6 +1548,7 @@ SKIP_WHY = {
     "check_conversion_names": "no conversion breakout on the report",
     "check_creative_names": "no creative grid on the report",
     "check_widget_errors": "",
+    "check_page_banners": "",
     "check_social_mirror_sizes": "no Social Mirror creative grid on the report",
     "check_social_placement_totals": "no social placement grid on the report",
     "check_site_ctr": "no site and app breakout on the report",

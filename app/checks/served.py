@@ -106,6 +106,11 @@ SPEND_PRODUCTS = ("Performance Max", "PPC", "LinkedIn")
 NOT_PACED = ("Live Chat", "SEO", "Website Video", "Reputation Management",
              "Visitor ID", "Geo-Framing")
 
+# A line with a week or less of the month behind it is not off pace, it is new.
+# Pacing a three-day-old campaign against a month's goal says 99% short, every
+# month, about every launch.
+MIN_DAYS_TO_PACE = 7
+
 
 def pacing_rows(text: str, ordered: dict) -> list[dict]:
     """One row per product the order bought, plus a total row for impressions.
@@ -124,12 +129,15 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
                for p in NOT_PACED):
             continue
         want = ordered[product]
+        # When the line went live, and how much of the month it had. A line
+        # that started on the 28th cannot deliver a month's goal.
+        when = {"started": want.get("started"), "days": want.get("days")}
         if product in SPEND_PRODUCTS:
             got = spent.get(product)
             rows.append({"product": product, "unit": "money",
                          "served": got, "ordered": want.get("budget"),
                          "basis": want.get("basis") or "",
-                         "pace": pacing_pct(got, want.get("budget"))})
+                         "pace": pacing_pct(got, want.get("budget")), **when})
             continue
         # A grouped buy - "CTV, Video" - takes the delivery of both halves.
         parts = [x.strip() for x in product.split(",")]
@@ -137,7 +145,7 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
         rows.append({"product": product, "unit": "impressions",
                      "served": got, "ordered": want.get("impressions"),
                      "basis": want.get("basis") or "",
-                     "pace": pacing_pct(got, want.get("impressions"))})
+                     "pace": pacing_pct(got, want.get("impressions")), **when})
 
     # NOTHING WAS BOUGHT ON IMPRESSIONS, SO THERE IS NOTHING TO PACE ON THEM.
     #

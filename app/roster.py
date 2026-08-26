@@ -358,8 +358,19 @@ def ordered_for(db: Session, client: str, account_ids: str,
         # CTV was 46% short while Video had nothing to compare against at all.
         name = getattr(l, "sold_with", "") or l.product
         row = out.setdefault(name, {"budget": None, "impressions": None,
-                                    "basis": ""})
+                                    "basis": "", "started": None, "days": None})
         if not lifetime:
+            # WHEN IT LAUNCHED, AND HOW MUCH OF THE MONTH IT HAD.
+            #
+            # A line that went live on the 28th cannot deliver a month's goal,
+            # and pacing it against one says 99% short about a campaign three
+            # days old. The date goes on the finding; the day count decides
+            # whether there is a finding at all.
+            began, ran = _month_window(l, period)
+            if began and (row["started"] is None or began < row["started"]):
+                row["started"] = began
+            if ran is not None:
+                row["days"] = ran if row["days"] is None else max(row["days"], ran)
             for key in ("budget", "impressions"):
                 v = getattr(l, key, None)
                 if v is not None:
@@ -385,6 +396,36 @@ def ordered_for(db: Session, client: str, account_ids: str,
                                 f"at the monthly figure on the order")
             row[key] = float(v) if row[key] is None else row[key] + float(v)
     return out
+
+
+def _month_window(line, period: str | None):
+    """(the day it started delivering this month, days it ran in the month).
+
+    (None, None) with no period to measure against. The start is the LINE's
+    own, clipped to the month - what a reader wants to know is "when did this
+    go live", and for a line that began in March and is still running that is
+    the first of the month.
+    """
+    if not period:
+        return None, None
+    y, m = (int(x) for x in period.split("-"))
+    first = dt.date(y, m, 1)
+    last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+
+    best_start, best_days = None, None
+    windows = [w for w in (getattr(line, "flights", None) or [])
+               if isinstance(w, (list, tuple)) and len(w) == 2] \
+        or [(line.starts_on, line.ends_on)]
+    for w_start, w_end in windows:
+        s_, e_ = _as_date(w_start), _as_date(w_end)
+        lo = max(s_, first) if s_ else first
+        hi = min(e_, last) if e_ else last
+        if hi < lo:
+            continue
+        days = (hi - lo).days + 1
+        if best_days is None or days > best_days:
+            best_days, best_start = days, lo
+    return best_start, best_days
 
 
 def _months_of(line) -> int:

@@ -2343,3 +2343,45 @@ def test_the_creative_name_finding_says_which_page():
     out = check_creative_names({"text": text, "page_of": lambda _o: 6})
     assert len(out) == 1
     assert out[0]["where"] == "p6 · PPC Creative Performance"
+
+
+def test_a_line_that_ran_a_week_or_less_of_the_month_is_not_paced():
+    """"99% short" on a line that launched on the 28th is arithmetic, not
+    news."""
+    import datetime as dt
+    from app.checks.rules import check_impression_pacing
+    text = ("Line Item Performance\n"
+            " Line Item Name              Impressions  Clicks   CTR\n"
+            " Acme - AI Social Mirror             898       4  0.45%\n")
+    ordered = {"Social Mirror": {"impressions": 100000.0, "budget": None,
+                                 "started": dt.date(2026, 7, 28), "days": 4}}
+    assert check_impression_pacing({"text": text, "ordered": ordered}) == []
+
+
+def test_a_full_month_off_pace_says_when_the_line_launched():
+    import datetime as dt
+    from app.checks.rules import check_impression_pacing
+    text = ("Line Item Performance\n"
+            " Line Item Name              Impressions  Clicks   CTR\n"
+            " Acme - AI Social Mirror             898       4  0.45%\n")
+    ordered = {"Social Mirror": {"impressions": 100000.0, "budget": None,
+                                 "started": dt.date(2026, 7, 1), "days": 31}}
+    out = check_impression_pacing({"text": text, "ordered": ordered})
+    assert len(out) == 1
+    labels = {t["label"]: t["value"] for t in out[0]["trace"]}
+    assert labels["Line launched"] == "Jul 01, 2026"
+    assert labels["Ran this month"] == "31 days"
+
+
+def test_the_month_window_clips_a_flight_to_the_reporting_month():
+    import datetime as dt
+
+    from app.roster import _month_window
+
+    class L:
+        starts_on, ends_on, flights = dt.date(2026, 7, 28), dt.date(2026, 12, 31), None
+    assert _month_window(L(), "2026-07") == (dt.date(2026, 7, 28), 4)
+
+    class M:
+        starts_on, ends_on, flights = dt.date(2026, 3, 1), dt.date(2026, 12, 31), None
+    assert _month_window(M(), "2026-07") == (dt.date(2026, 7, 1), 31)
