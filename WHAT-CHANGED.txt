@@ -1,68 +1,54 @@
-build 2026.08.26-95
+build 2026.08.26-96
 Changed files only.
 
-app/checks/parser.py
 app/checks/quality.py
+app/checks/rules.py
+app/main.py
+app/templates/orders.html
 app/version.py
-tests/test_quality.py
+tests/test_board_extras.py
 tests/test_rules.py
 
-643 tests pass. The checks changed, so reports re-check themselves on deploy.
+648 tests pass. The checks changed, so reports re-check themselves on deploy.
 
 
-"ON THE REPORT WITH NO LIVE ORDER: MOBILE CONQUESTING"
-========================================================
-Big J Mobile Homes has a line item called
+NO PREVIEW LINK ON A CREATIVE
+================================
+New check. The Social Mirror AI grid prints "Click to View" with the ad's URL
+behind it, one per variant, and a row with that column empty is a variant
+nobody reading the report can see - which is the column somebody opens when
+they want to know what an underperforming variant actually looks like.
 
-  Big J Mobile Homes - Manufactured Homes/Mobile Home Dealer/Retargeting
-  Performance Max
-
-which wraps over two lines in the PDF. The second line - "Home Dealer/
-Retargeting Performance Max" - carries the word Performance, and the table
-parser treated ANY line carrying a widget word as the next widget's title. So
-it was thrown away, and what was left of the name ended in "Mobile".
-
-Which is the Mobile Conquesting tail. The report was failed for carrying a
-product with no live order, on the strength of half a name.
-
-The widget word now has to END the line, which is what makes a title a title.
-"Mobile Conquesting Creative Performance" still ends a table; "... Retargeting
-Performance Max" is a name, and it is now kept.
+"3 of 11 creatives have no preview link", on the widget it happened in.
 
 
-"2 CREATIVE PREVIEWS DID NOT RENDER" WHEN ONE HAD
-====================================================
-Two things, both in the pixel test that shipped in build 93.
+A ROW AT 0% WATCHED
+======================
+New check, and the other half of the one that shipped in build 93. That one
+fails when EVERY row of a completion column is zero, which is a broken widget.
+This one warns when SOME are: one creative at 0.00% among nine that watched
+fine is not a metric fault, but it is not something to send a client without
+having looked at it either.
 
-A FLAT PICTURE IS STILL A PICTURE. Northeast Texas Community College's
-creatives come through as a solid navy band clipped to a few points tall - two
-or three colours in the whole cell - and "an empty cell has almost no colours"
-called them empty. A cell with few colours is now asked the other question:
-how much of it is NOT the background. A few per cent is a table border; a
-quarter of it in navy is something printed there.
-
-THE WHOLE CELL, NOT A BAND AROUND THE NUMBER. The row's figures are centred
-vertically and its picture is not - a short logo sits at the TOP of a tall row
-- so a symmetric slice around the number could miss it. Halfway to the row
-above, halfway to the row below: that is the cell, whatever shape it is.
+Only on the widgets where a completion rate is the point of the buy - video,
+CTV, audio. A percentage column on a display grid is something else.
 
 
-"1 PRODUCT WITH NO COMPLETION RATE", ON PAGE 2
-================================================
-Two things wrong and the page number was the tell: a completion rate is never
-printed on Line Item Performance, so nobody would look for one there.
+WHITEFIELD MEDIA, AND THE 23 MARCH 2020 PULL
+===============================================
+Nothing on the export says when somebody hit cancel. So a campaign called off
+in 2021 can still be dated to 2027, and the pull list's test - "does this order
+end after the cutoff" - kept it forever. Whitefield Media has no live order at
+all and was asking for a pull reaching back six years on the strength of one.
 
-Trinity Valley Community College prints "Social Mirror CTV Creative
-Performance" as a widget title and "Video Completion Rate" as a column header
-underneath it. The check wanted the product name and the word "Completion" on
-ONE LINE, and they are never on one line - so the report was failed for a rate
-printed two lines below the name it was being looked for beside. 98.69% and
-98.76%, right there on page 8.
+A row nobody is running any more is now judged on the LINE ITEM's own end,
+which is the last date anything was actually bought to deliver. A live row is
+still judged on the order's end, because an open-ended one genuinely has no
+end yet. A cancelled campaign that stopped last month still gets its full
+range, because its lifetime covers the whole thing.
 
-A widget is titled after its product and its figures are inside it, so the
-question is now whether the product's OWN WIDGET carries a completion rate.
-The tile shape - "CTV Completion Rate" alone on a line - still counts.
-
-And when it really is missing, the finding points at the product's widget,
-where it should have been, rather than at the first line mentioning the product
-at all.
+AND THE WHOLE LIST CAN BE AUDITED. "Whitefield Media, 23 March 2020" is a claim
+about an order somebody has to be able to find, so there is a second download
+on the orders page: every partner's date with the line items behind it, each
+one marked counted or not and why. That answers "are there any others" without
+either of us guessing.

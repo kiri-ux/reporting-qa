@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-95"
-BUILD_NOTES = ("Three false flags: a wrapped name read as a heading, a flat "
-               "logo read as an empty cell, and a completion rate looked for "
-               "on the wrong line.")
+BUILD = "2026.08.26-97"
+BUILD_NOTES = ("The sync takes only the orders-db exports. Two columns the "
+               "new file no longer carries are worth knowing about - see "
+               "WHAT-CHANGED.")
 
 # ---------------------------------------------------------------------------
 

@@ -172,3 +172,36 @@ def test_a_real_insertion_order_is_still_kept(db):
            "Connected TV Ads,7 Mountains KY,2026-01-15,2026-07-15,"
            "2026-01-15,2026-07-15,Someone\n")
     assert _import(db, (head + row).encode())["kept"] == 1
+
+
+# ------------------------------------------- only the order-database exports
+def test_the_sync_takes_only_the_order_database_files():
+    """The bucket holds more than the orders now, and "every CSV under the
+    prefix" would merge whatever else lands there into the order list.
+
+    Punctuation is ignored on purpose: the files arrive as
+    "ordersdb7moupa_20260826_1508_0.csv" while the naming convention is written
+    down as "orders-db-", and a filter that reads those as two different things
+    is a silent empty sync waiting to happen.
+    """
+    from app.orders_s3 import _name_matches
+    assert _name_matches("io/ordersdb7moupa_20260826_1508_0.csv")
+    assert _name_matches("io/orders-db-anne_20260826.csv")
+    assert _name_matches("io/ORDERS_DB_foo.CSV")
+    assert not _name_matches("io/roster.csv")
+    assert not _name_matches("io/serving-2026-07.csv")
+
+
+def test_a_repeated_column_is_read_first_non_empty():
+    """The new export repeats months_running thirty-four times, social_platforms
+    five, total_campaign_impressions four. Across both sample files - 527 rows -
+    no repeated field ever carries two different values on one row, so taking
+    the first non-empty is the whole answer."""
+    from app.orders_io import _open_source
+    csv = ("client,orders_id,id,product,total_campaign_impressions,"
+           "total_campaign_impressions,start_date,start_date,end_date,end_date\n"
+           "Acme,1,10,Display Ads,,250000,,2026-01-01,2026-12-31,\n")
+    row = next(iter(_open_source(csv.encode())))
+    assert row["total_campaign_impressions"] == "250000"
+    assert row["start_date"] == "2026-01-01"
+    assert row["end_date"] == "2026-12-31"

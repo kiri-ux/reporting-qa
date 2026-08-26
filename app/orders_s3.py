@@ -114,6 +114,26 @@ class NothingToImport(RuntimeError):
     pass
 
 
+def _name_matches(key: str) -> bool:
+    """Is this one of the order-database exports?
+
+    The bucket holds more than the orders now, and the old rule - "every CSV
+    under the prefix" - would merge whatever else lands there into the order
+    list. These files are named for what they are, so that is what is matched.
+
+    Punctuation is ignored on purpose: the files arrive as
+    "ordersdb7moupa_20260826_1508_0.csv" while the naming convention is written
+    down as "orders-db-", and a filter that reads those as two different things
+    is a silent empty sync waiting to happen.
+    """
+    want = (settings.orders_file_prefix or "").strip()
+    if not want:
+        return True                       # unset means take everything, as before
+    name = key.rsplit("/", 1)[-1].lower()
+    flat = "".join(ch for ch in name if ch.isalnum())
+    return flat.startswith("".join(ch for ch in want.lower() if ch.isalnum()))
+
+
 def _resolve_keys(client) -> list[str]:
     """A key ending in / is treated as a prefix, so several exports can be
     dropped in one folder and merged. Raises with what it did find when the
@@ -134,7 +154,8 @@ def _resolve_keys(client) -> list[str]:
                     if key.endswith("/"):          # console folder marker
                         continue
                     seen.append(f"{key} ({size:,} bytes)")
-                    if key.lower().endswith(DATA_EXTS) and size > 0:
+                    if (key.lower().endswith(DATA_EXTS) and size > 0
+                            and _name_matches(key)):
                         out.append(key)
                 if not page.get("IsTruncated"):
                     break
@@ -149,9 +170,11 @@ def _resolve_keys(client) -> list[str]:
                 f"Nothing found under s3://{settings.orders_s3_bucket}/{prefix}. "
                 f"Check the folder name, and that the IAM user has s3:ListBucket "
                 f"on the bucket itself, not just s3:GetObject on its contents.")
+        named = f", named {settings.orders_file_prefix}*" if settings.orders_file_prefix else ""
         raise NothingToImport(
             f"Found {len(seen)} object(s) under s3://{settings.orders_s3_bucket}/{prefix} "
-            f"but none are usable data files ({', '.join(DATA_EXTS)}, non-empty): "
+            f"but none are usable data files ({', '.join(DATA_EXTS)}, non-empty"
+            f"{named}): "
             + "; ".join(seen[:8]) + (" ..." if len(seen) > 8 else ""))
     return sorted(set(out))
 

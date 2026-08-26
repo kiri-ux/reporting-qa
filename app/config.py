@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     # Anything Render or a health checker needs to reach without it.
     open_paths: str = "/healthz,/inbound,/static"
 
+    # ONLY THE ORDER-DATABASE EXPORTS. The bucket holds more than the orders
+    # now, and "every CSV under the prefix" would merge whatever else lands
+    # there into the order list. Punctuation is ignored when matching, so
+    # "orders-db-" and "ordersdb" are the same rule - which matters, because
+    # the files arrive as "ordersdb7moupa_..." and the convention is written
+    # down with hyphens. Blank takes everything, as it used to.
+    orders_file_prefix: str = "ordersdb"
+
     io_order_url: str = ("https://www.reporting.zone/client/iotool/dist/"
                          "#/items/viewOrder/")
 
