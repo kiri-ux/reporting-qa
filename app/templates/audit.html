@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Check the board against a list · Report QA{% endblock %}
+{% block where %}Check a list{% endblock %}
+{% block body %}
+<div>
+  <h1>Check the board against a list</h1>
+  <p class="sub">The board is built from the order export. The reporting
+  tracker is built from what people know. This says where the two disagree.
+  Paste the campaign column - or the whole sheet, it reads the column with the
+  order ids in it.</p>
+</div>
+
+<section>
+  <div class="panel">
+    <form method="post" action="/cycle/audit">
+      <input type="hidden" name="period" value="{{ period }}">
+      <div class="tools" style="margin-bottom:10px">
+        <label>Partner
+          <input type="text" name="group" value="{{ group }}" size="24"
+                 placeholder="7 Mountains"
+                 style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
+                        border:1px solid var(--line);background:var(--surface);color:var(--ink)">
+        </label>
+        <span class="acct">Leave blank to check the whole cycle.</span>
+      </div>
+      <textarea name="rows" rows="10" style="width:100%;font:inherit;font-size:13px;
+                padding:10px;border-radius:10px;border:1px solid var(--line);
+                background:var(--surface);color:var(--ink)"
+                placeholder="7MOU SG - Benton Rodeo #53915&#10;7MOU SG - Benton Rodeo #53915 LIFETIME&#10;7MOU SG - Bloom Heating #46333">{{ rows_text }}</textarea>
+      <button class="btn gold" type="submit" style="margin-top:10px">Compare</button>
+    </form>
+  </div>
+</section>
+
+{% if result %}
+<section>
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">
+      {{ result.listed|length }} on the list · {{ result.board|length }} on the board</h2>
+  </div>
+  <p class="sub">{{ result.matched|length }} match.
+    {% if group %}Board rows narrowed to partners matching <b>{{ group }}</b>.{% endif %}</p>
+
+  <h2 style="margin-top:22px">On the list, not on the board ({{ result.missing|length }})</h2>
+  {% if result.missing %}
+    <p class="sub">Either the order is not in the export, or its dates put it
+    outside this cycle. Open the client's order lines to see which.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>As written</th></tr></thead>
+      <tbody>{% for r in result.missing %}
+        <tr><td><b>{{ r.client }}</b></td>
+          <td><span class="pill p-{{ 'info' if r.kind == 'lifetime' else 'month' }}">{{ r.kind }}</span></td>
+          <td class="mono nw">{{ r.ids|join(' ') }}</td>
+          <td class="acct">{{ r.raw }}</td></tr>
+      {% endfor %}</tbody></table></div>
+  {% else %}<p class="empty">Nothing. Every row on the list is on the board.</p>{% endif %}
+
+  <h2 style="margin-top:22px">On the board, not on the list ({{ result.extra|length }})</h2>
+  {% if result.extra %}
+    <p class="sub">The order export says these are owed a report this cycle.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Partner</th><th>Client</th><th>Kind</th><th>Order</th>
+        <th>Status</th></tr></thead>
+      <tbody>{% for e in result.extra %}
+        <tr><td>{{ e.market }}</td>
+          <td><b>{{ e.client }}</b></td>
+          <td><span class="pill p-{{ 'info' if e.kind == 'lifetime' else 'month' }}">{{ e.kind }}</span></td>
+          <td class="mono nw">{{ e.account_ids }}</td>
+          <td><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td></tr>
+      {% endfor %}</tbody></table></div>
+  {% else %}<p class="empty">Nothing. Every row on the board is on the list.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

@@ -1102,6 +1102,27 @@ def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
     return RedirectResponse(back, status_code=303)
 
 
+@app.get("/cycle/audit", response_class=HTMLResponse)
+@app.post("/cycle/audit", response_class=HTMLResponse)
+def cycle_audit(request: Request, period: str = Form(""), group: str = Form(""),
+                rows: str = Form(""), db: Session = Depends(get_db)):
+    """Where the board and somebody's hand-kept list disagree.
+
+    The board is built from the order export; the reporting tracker is built
+    from what people know. Checking one against the other meant reading 42 rows
+    of a spreadsheet against 42 rows of a web page.
+    """
+    from .audit import audit
+    from .board import STATE_LABEL
+    from .cycle import current_period
+
+    period = period or settings.default_period or current_period()
+    result = audit(db, period, rows, group) if rows.strip() else None
+    return templates.TemplateResponse(request, "audit.html", {
+        "nav": "audit", "period": period, "group": group,
+        "rows_text": rows, "result": result, "state_label": STATE_LABEL})
+
+
 @app.get("/rules", response_class=HTMLResponse)
 def rules_view(request: Request):
     """The rules the board applies, in words.

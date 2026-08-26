@@ -385,3 +385,56 @@ def test_the_order_panel_shows_what_the_month_was_bought_to_do():
     for field in ("r.impressions", "r.budget", "r.spend",
                   "r.total_impressions", "r.total_budget"):
         assert field in html
+
+
+# --------------------------------------- checking the board against a list
+def test_a_pasted_row_gives_up_its_client_kind_and_orders():
+    from app.audit import parse_list
+    assert parse_list("7MOU SG - Benton Rodeo #53915 LIFETIME") == [
+        {"raw": "7MOU SG - Benton Rodeo #53915 LIFETIME",
+         "client": "Benton Rodeo", "ids": ["53915"], "kind": "lifetime"}]
+
+
+def test_several_order_ids_on_one_campaign_are_all_read():
+    from app.audit import parse_list
+    got = parse_list("7MOU SG - Roto Rooter #29818/#42452/#42808")
+    assert got[0]["ids"] == ["29818", "42452", "42808"]
+
+
+def test_a_comma_inside_the_client_name_does_not_split_it_in_half():
+    """"Altiery Gingerich Insurance Agency, LLC #53106 SEO" comes out of a CSV
+    as two cells, and the half carrying the id is "LLC #53106 SEO"."""
+    from app.audit import parse_list
+    got = parse_list("7MOU SC - Altiery Gingerich Insurance Agency, LLC #53106 SEO")
+    assert got[0]["client"] == "Altiery Gingerich Insurance Agency, LLC"
+    assert got[0]["ids"] == ["53106"]
+
+
+def test_a_tab_pasted_sheet_reads_the_column_with_the_ids_in_it():
+    from app.audit import parse_list
+    line = "7 Mountains PA Selinsgrove\tLive Campaigns\t7MOU SG - Salem RV #52793\t8/31/2026"
+    got = parse_list(line)
+    assert got == [{"raw": "7MOU SG - Salem RV #52793", "client": "Salem RV",
+                    "ids": ["52793"], "kind": "monthly"}]
+
+
+def test_the_audit_matches_on_order_id_and_reports_both_directions():
+    from app.audit import audit
+    from app.board import Expected
+
+    rows = [Expected(market="7 Mountains PA Selinsgrove", group="7 Mountains",
+                     client="Salem RV", kind="monthly", account_ids="52793"),
+            Expected(market="7 Mountains PA Selinsgrove", group="7 Mountains",
+                     client="SVEC", kind="monthly", account_ids="52277")]
+
+    import app.board as B
+    real = B.expected_for
+    B.expected_for = lambda *a, **k: rows
+    try:
+        got = audit(None, "2026-07",
+                    "7MOU SG - Salem RV #52793\n7MOU SG - Benton Rodeo #53915")
+    finally:
+        B.expected_for = real
+    assert [m["client"] for m in got["matched"]] == ["Salem RV"]
+    assert [m["client"] for m in got["missing"]] == ["Benton Rodeo"]
+    assert [e.client for e in got["extra"]] == ["SVEC"]
