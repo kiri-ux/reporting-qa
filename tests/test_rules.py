@@ -2264,3 +2264,82 @@ def test_a_hand_saved_file_names_nobody_so_nothing_is_claimed():
     assert _filed_client("Digital Marketing Report.pdf") == ""
     assert _filed_client("Lifetime_St. Francis AMT Program 55160.pdf") \
         == "St. Francis AMT Program"
+
+
+def test_geo_fencing_is_only_owed_by_mobile_conquesting():
+    """Geo-fencing is a targeting method and most of the catalog can be bought
+    that way. "Bloomsburg Theatre Ensemble - Geo-Fencing Social Mirror" is a
+    Social Mirror line, and it was failing for a widget Social Mirror never
+    carries."""
+    from app.checks.rules import check_geofence_widget
+    sm = ("Line Item Performance\n"
+          " Line Item Name                                      Impressions  Clicks   CTR\n"
+          " Bloomsburg Theatre Ensemble - Geo-Fencing Social Mirror   2,637      0  0.00%\n"
+          " Bloomsburg Theatre Ensemble - AI Social Mirror           19,601    903  4.61%\n")
+    assert check_geofence_widget({"text": sm}) == []
+
+
+def test_geo_fenced_mobile_conquesting_still_owes_its_fence_list():
+    from app.checks.rules import check_geofence_widget
+    mc = ("Line Item Performance\n"
+          " Line Item Name                              Impressions  Clicks   CTR\n"
+          " Watsontown Trucking - 8.1 Geo-Fencing Mobile     12,000     100  0.83%\n")
+    out = check_geofence_widget({"text": mc})
+    assert len(out) == 1 and out[0]["code"] == "geofence_widget_missing"
+
+
+def test_a_geo_fencing_check_that_does_not_apply_reads_as_skipped():
+    from app.checks.rules import _rule_applies, check_geofence_widget
+    sm = ("Line Item Performance\n"
+          " Line Item Name                                      Impressions  Clicks   CTR\n"
+          " Bloomsburg Theatre Ensemble - Geo-Fencing Social Mirror   2,637      0  0.00%\n")
+    assert not _rule_applies(check_geofence_widget, {"text": sm})
+
+
+def test_a_ctv_tile_on_a_report_with_no_ctv_is_flagged():
+    """The tile is on the template, so it prints whether or not the client
+    bought CTV - a completion rate for nothing, on page one."""
+    from app.checks.rules import check_rogue_ctv
+    text = ("   BLOOM HEATING - PAGE 1\n"
+            "   Your Product Breakout by Impressions   CTV Completion Rate"
+            "   CTV Cost Per Completed View\n"
+            "Line Item Performance\n"
+            " Line Item Name                Impressions  Clicks   CTR\n"
+            " Bloom Heating - Keyword PPC        2,540     172  6.77%\n")
+    out = check_rogue_ctv({"text": text})
+    assert len(out) == 1 and out[0]["code"] == "ctv_widget_no_ctv"
+
+
+def test_a_ctv_tile_beside_a_ctv_line_item_is_fine():
+    from app.checks.rules import check_rogue_ctv
+    text = ("   WVU - PAGE 1\n"
+            "   Your Product Breakout by Impressions   CTV Completion Rate\n"
+            "Line Item Performance\n"
+            " Line Item Name              Impressions  Clicks   CTR\n"
+            " WVU Parkersburg - AI OTT       212,525       2  0.00%\n")
+    assert check_rogue_ctv({"text": text}) == []
+
+
+def test_a_ctv_tile_on_an_order_that_bought_ctv_is_fine():
+    """The grid can be a top-N list that leaves the CTV line off it."""
+    from app.checks.rules import check_rogue_ctv
+    text = ("   ACME - PAGE 1\n"
+            "   Your Product Breakout by Impressions   CTV Completion Rate\n"
+            "Line Item Performance\n"
+            " Line Item Name        Impressions  Clicks   CTR\n"
+            " Acme - Keyword PPC        2,540     172  6.77%\n")
+    assert check_rogue_ctv({"text": text, "expected_products": {"CTV"}}) == []
+
+
+def test_the_creative_name_finding_says_which_page():
+    """"on PPC Creative Performance" meant scrolling a forty-page report
+    looking for the title."""
+    from app.checks.quality import check_creative_names
+    text = ("BLOOM HEATING - PAGE 1\n"
+            "PPC Creative Performance\n"
+            " Ad Preview                  Impressions   Clicks    CTR     Cost    CPC\n"
+            " AC Installation Experts           2,540      172  6.77%   954.10   5.55\n"
+            "                                   2,304       39  1.69%   730.33  18.73\n")
+    out = check_creative_names({"text": text, "page_of": lambda _o: 6})
+    assert len(out) == 1
+    assert out[0]["where"] == "p6 · PPC Creative Performance"

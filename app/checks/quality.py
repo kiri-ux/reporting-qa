@@ -634,24 +634,30 @@ def check_conversion_names(ctx) -> list[dict]:
 CREATIVE_GRID = re.compile(r"^[ \t]*(\S[^\n]*Creative Performance[^\n]*)$", re.M)
 
 
-def creative_rows(text: str) -> list[tuple[str, str]]:
+def creative_rows(text: str) -> list[tuple[str, str, int]]:
+    """(grid title, creative name, offset). The offset is what turns "on PPC
+    Creative Performance" into a page number on the finding."""
     out = []
     for m in CREATIVE_GRID.finditer(text):
         title = m.group(1).strip()
-        for name, _at in grid_rows(text, m.end()):
-            out.append((title, name))
+        for name, at in grid_rows(text, m.end()):
+            out.append((title, name, at))
     return out
 
 
 def check_creative_names(ctx) -> list[dict]:
     """Every creative row has to say which creative it is."""
     text = ctx.get("text") or ""
-    blank = [t for t, n in creative_rows(text) if unnamed(n)]
-    if not blank:
+    rows = [(t, at) for t, n, at in creative_rows(text) if unnamed(n)]
+    if not rows:
         return []
     return [_f("creative_name_blank", "fail",
-               f"{len(blank)} creative{'s' if len(blank) > 1 else ''} with no name",
-               "Impressions and clicks but no file name, on " + _sample(blank))]
+               f"{len(rows)} creative{'s' if len(rows) > 1 else ''} with no name",
+               "Impressions and clicks but no file name, on "
+               + _sample([t for t, _at in rows]),
+               # The grid was named but not the page, so finding it meant
+               # scrolling a forty-page report looking for the title.
+               where=_where(ctx, rows[0][1], rows[0][0]))]
 
 
 # --------------------------------------- 6. Social Mirror creatives with sizes
@@ -674,7 +680,7 @@ def check_social_mirror_sizes(ctx) -> list[dict]:
         return []
     text = ctx.get("text") or ""
     bad = []
-    for title, name in creative_rows(text):
+    for title, name, _at in creative_rows(text):
         if not SOCIAL_MIRROR_GRID.search(title):
             continue
         if AD_SIZE.search(name) and name not in bad:

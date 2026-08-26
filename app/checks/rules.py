@@ -564,9 +564,55 @@ def check_geofence_names(ctx) -> list[dict]:
 GEOFENCE_LINE = re.compile(r"\bgeo[- ]?fenc", re.I)
 GEOFENCE_WIDGET = "Geo-Fencing Performance"
 
+# ONLY MOBILE CONQUESTING OWES THE FENCE LIST.
+#
+# Geo-fencing is a targeting method, and most of the catalog can be bought that
+# way - "Bloomsburg Theatre Ensemble - Geo-Fencing Social Mirror" is a Social
+# Mirror line. The Geo-Fencing Performance widget belongs to Mobile
+# Conquesting, its Event variant and its Political variant, and to nothing
+# else, so every geo-fenced Social Mirror line on the board was failing for a
+# widget it was never going to carry.
+GEOFENCE_PRODUCT = re.compile(r"\bmobile\b|\bconquest", re.I)
+
+
+# ---------------------------------------------------------------- rogue CTV
+# A widget that only makes sense if CTV is running.
+# NOT ANCHORED TO ITS OWN LINE. Page one prints three tile headings side by
+# side - "Your Product Breakout by Impressions   CTV Completion Rate   CTV Cost
+# Per Completed View" - so a whole-line match never fired on the layout this
+# tile actually appears in.
+CTV_WIDGET = re.compile(r"\bCTV (?:Completion Rate|Cost Per Completed View)\b")
+# What a CTV line item is called. OTT is the old name for the same thing.
+CTV_LINE = re.compile(r"\bctv\b|\bott\b", re.I)
+
+
+def check_rogue_ctv(ctx) -> list[dict]:
+    """A CTV tile on a report with no CTV on it.
+
+    The tile is on the template, so it prints whether or not the client bought
+    CTV - and it prints a completion rate, which on a client running no CTV is
+    a percentage of nothing sitting on page one under the client's name.
+    """
+    from .quality import line_item_totals
+
+    text = ctx.get("text") or ""
+    m = CTV_WIDGET.search(text)
+    if not m:
+        return []
+    if any(CTV_LINE.search(n) for n, _i, _c in line_item_totals(text)):
+        return []
+    want = ctx.get("expected_products")
+    if want and any(CTV_LINE.search(p) for p in want):
+        return []          # the order says CTV even if the grid does not
+    return [_f("ctv_widget_no_ctv", "fail",
+               "CTV tile on a report with no CTV",
+               "No CTV or OTT line item is running and no CTV product is on the "
+               "order. Take the tile off the template.",
+               where=_where(ctx, m.start(), m.group(0).strip()))]
+
 
 def check_geofence_widget(ctx) -> list[dict]:
-    """A geo-fencing strategy owes the geo-fencing breakout.
+    """A geo-fencing MOBILE CONQUESTING strategy owes the geo-fencing breakout.
 
     The line items name the strategy - "Watsontown Trucking - 8.1 Geo-Fencing
     Mobile" - and the widget is the list of fences behind it. Without it the
@@ -577,7 +623,8 @@ def check_geofence_widget(ctx) -> list[dict]:
     text = ctx.get("text") or ""
     if not text:
         return []
-    fenced = [n for n, _i, _c in line_item_totals(text) if GEOFENCE_LINE.search(n)]
+    fenced = [n for n, _i, _c in line_item_totals(text)
+              if GEOFENCE_LINE.search(n) and GEOFENCE_PRODUCT.search(n)]
     if not fenced:
         return []
     if GEOFENCE_WIDGET in text:
@@ -586,7 +633,9 @@ def check_geofence_widget(ctx) -> list[dict]:
                "No Geo-Fencing Performance widget",
                f"{len(fenced)} geo-fencing strategy line"
                f"{'s are' if len(fenced) > 1 else ' is'} running - "
-               + _sample(sorted(fenced), 6) +
+               # Trimmed. A wrapped tile description can end up glued to a
+               # line item name, and the whole paragraph was printed here.
+               + _sample([_short_name(n, 60) for n in sorted(fenced)], 6) +
                " - and the report does not carry the Geo-Fencing Performance "
                "breakout that lists the fences.",
                where=_where(ctx, text.find(fenced[0]), "Line Item Performance"))]
@@ -1411,7 +1460,9 @@ CHECKS: list[tuple] = [
     (check_thumbnails,     "Every creative preview rendered"),
     (check_blank_pages,    "No widget page came out blank"),
     (check_geofence_names, "Every geo-fencing row has a business name"),
-    (check_geofence_widget, "A geo-fencing strategy carries its fence breakout"),
+    (check_geofence_widget,
+     "Geo-fenced Mobile Conquesting carries its fence breakout"),
+    (check_rogue_ctv,      "No CTV widget on a report with no CTV"),
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
     (check_client_data,    "The data on the report belongs to the client it names"),
@@ -1458,7 +1509,8 @@ SKIP_WHY = {
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
     "check_geofence_names": "no geo-fencing table on the report",
-    "check_geofence_widget": "no geo-fencing strategy on the report",
+    "check_geofence_widget": "no geo-fenced Mobile Conquesting on the report",
+    "check_rogue_ctv": "no CTV tile on the report",
     "check_strategy_categorized": "no line item grid on the report",
     "check_truncated_text": "no line item grid on the report",
     "check_blank_screenshots": "no ad screenshot widget on the report",
@@ -1550,7 +1602,7 @@ def _rule_applies(rule, ctx) -> bool:
     if name == "check_creative_names":
         return bool(creative_rows(ctx.get("text") or ""))
     if name == "check_social_mirror_sizes":
-        return any(SOCIAL_MIRROR_GRID.search(t) for t, _n in
+        return any(SOCIAL_MIRROR_GRID.search(t) for t, _n, _at in
                    creative_rows(ctx.get("text") or ""))
     if name == "check_store_visits":
         return bool(STORE_TABLE.search(ctx.get("text") or ""))
@@ -1564,9 +1616,11 @@ def _rule_applies(rule, ctx) -> bool:
         return bool(SITE_GRID.search(ctx.get("text") or ""))
     if name == "check_social_placement_totals":
         return bool(PLACEMENT_GRID.search(ctx.get("text") or ""))
+    if name == "check_rogue_ctv":
+        return bool(CTV_WIDGET.search(ctx.get("text") or ""))
     if name == "check_geofence_widget":
         from .quality import line_item_totals
-        return any(GEOFENCE_LINE.search(n)
+        return any(GEOFENCE_LINE.search(n) and GEOFENCE_PRODUCT.search(n)
                    for n, _i, _c in line_item_totals(ctx.get("text") or ""))
     if name == "check_geofence_names":
         # No geo-fencing on the report means nothing was verified. Reporting a
