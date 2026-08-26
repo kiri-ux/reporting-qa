@@ -12,11 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-86"
-BUILD_NOTES = ("Searching partners reaches the whole cycle, not the twenty on "
-               "the page, and the filter dropdowns list every partner with a "
-               "find box in them. The links page has a search, a card can send "
-               "its finished reports, and packaging progress updates itself.")
+BUILD = "2026.08.26-87"
+BUILD_NOTES = ("The not-owed list moved down under the reports, where it is "
+               "about the same thing.")
 
 # ---------------------------------------------------------------------------
 

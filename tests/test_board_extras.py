@@ -971,3 +971,12 @@ def test_card_options_are_the_whole_cycles_values():
     assert opts["buyer"] == "Bella|Stacy"
     assert opts["trainer"] == "Katie"          # deduplicated
     assert "Not received" in opts["status"]
+
+
+def test_the_not_owed_list_sits_with_the_reports():
+    """It is a statement about which reports this cycle wants and which it does
+    not, so it belongs under the reports rather than wedged between the tiles
+    and the partner cards."""
+    html = (TPL / "cycle.html").read_text()
+    assert html.index('<section id="reports">') < html.index('class="notowed"')
+    assert html.index('class="glist" id="glist"') < html.index('class="notowed"')
