@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-94"
-BUILD_NOTES = ("Each order is its own coloured pill, and a campaign total "
-               "with no monthly figure beside it is spread over its months "
-               "rather than left blank.")
+BUILD = "2026.08.26-95"
+BUILD_NOTES = ("Three false flags: a wrapped name read as a heading, a flat "
+               "logo read as an empty cell, and a completion rate looked for "
+               "on the wrong line.")
 
 # ---------------------------------------------------------------------------
 

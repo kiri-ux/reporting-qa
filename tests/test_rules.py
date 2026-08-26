@@ -2956,3 +2956,33 @@ def test_one_publisher_at_zero_is_ordinary():
 def test_no_completion_column_is_no_finding():
     from app.checks.rules import check_zero_completion
     assert check_zero_completion({"text": "Line Item Performance\n"}) == []
+
+
+def test_a_wrapped_name_carrying_a_widget_word_is_not_a_heading():
+    """Big J Mobile Homes has a line item called "... Manufactured Homes/Mobile
+    Home Dealer/Retargeting Performance Max". Its second line carries the word
+    Performance, so it was read as the next widget's title and thrown away -
+    and what was left ended in "Mobile", which is the Mobile Conquesting tail.
+    The report was FAILED for carrying a product with no live order, on the
+    strength of half a name."""
+    from app.checks.products import detect
+    text = ("Line Item Performance\n"
+            " Line Item Name                                  Impressions   Clicks     CTR\n"
+            " Big J Mobile Homes - Manufactured Homes/Mobile        5,790      470   8.12%\n"
+            " Home Dealer/Retargeting Performance Max\n")
+    tables = extract_tables(text, strict=True)
+    assert [n for n, _v in tables[0].rows] == [
+        "Big J Mobile Homes - Manufactured Homes/Mobile Home Dealer/Retargeting "
+        "Performance Max"]
+    assert "Mobile Conquesting" not in detect(text, tables)
+    assert "Performance Max" in detect(text, tables)
+
+
+def test_a_real_widget_title_still_ends_the_table():
+    """The wording has to END the line to be a heading. It still does."""
+    text = ("Line Item Performance\n"
+            " Line Item Name                                  Impressions   Clicks     CTR\n"
+            " Acme - Keyword PPC                                    5,790      470   8.12%\n"
+            "Top CTV Publishers\n")
+    rows = extract_tables(text, strict=True)[0].rows
+    assert [n for n, _v in rows] == ["Acme - Keyword PPC"]

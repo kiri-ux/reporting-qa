@@ -129,6 +129,23 @@ PAGE_HEAD = re.compile(r"(Digital Marketing Report|Date range \w{3} \d{2}, \d{4}
                        r"|Created On \w{3} \d{2}, \d{4}|Powered by TCPDF)")
 
 
+# THE NEXT WIDGET'S TITLE, WHICH ENDS A TABLE. Anchored at the end of the line
+# on purpose: this used to look for the wording ANYWHERE on the line, so a
+# wrapped line-item name carrying it in the middle was read as a heading and
+# thrown away.
+#
+# Big J Mobile Homes has a line item called "Big J Mobile Homes - Manufactured
+# Homes/Mobile Home Dealer/Retargeting Performance Max". Its second line -
+# "Home Dealer/Retargeting Performance Max" - contains the word Performance, so
+# it was dropped, and what was left ended in "Mobile". Which is the Mobile
+# Conquesting tail. The report was FAILED for carrying a product with no live
+# order, on the strength of half a name.
+NEXT_TITLE = re.compile(
+    r"^\s*(?:Top\s+\S.*"
+    r"|\S.*(?:Performance|Breakout|Publishers|Screenshots|Conversions|"
+    r"by Day|by Strategy|by Ad Size))\s*$")
+
+
 def extract_tables(text: str, strict: bool = True) -> list[Table]:
     """A table starts at a header line carrying at least three metric labels.
     strict=True keeps only rows that resolve Impressions, Clicks and CTR, which
@@ -198,9 +215,7 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
             # device eligibility ("... B2B CTV", "... Mobile") is lost.
             if not values and table.rows and cells:
                 head = cells[0]
-                looks_like_heading = bool(
-                    re.search(r"(Conversions|Performance|Breakout|by Day|by Strategy|"
-                              r"by Ad Size|Screenshots|Publishers)", raw))
+                looks_like_heading = bool(NEXT_TITLE.match(raw))
                 if (head[1] < name_col_end and as_number(head[0]) is None
                         and not looks_like_heading and len(cells) == 1):
                     prev_name, prev_vals = table.rows[-1]

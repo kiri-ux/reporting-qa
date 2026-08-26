@@ -1247,3 +1247,80 @@ def test_a_broken_publisher_image_counts_too(tmp_path):
     assert len(got) == 1, "the real logo is not blank and the broken one is"
     assert got[0][1] == "Top CTV Publishers"
     assert got[0][2] == "publisher image"
+
+
+# ------------------ the product names the widget, the column names the metric
+_TVCC = """\
+Line Item Performance
+ Line Item Name                                          Impressions   Clicks    CTR
+
+ Trinity Valley Community College - Retargeting Social         330        0    0.00%
+ Mirror CTV
+
+                                   Digital Marketing Report for Trinity Valley
+                                   Date range Jul 01, 2026 to Jul 31, 2026
+                                   Created On Aug 25, 2026
+
+Social Mirror CTV Creative Performance
+ Preview Image     Creative Name                     Impressions   Video Completion Rate
+
+ Thumbnail not available   TVCC_Social Mirror CTV_Home     5,614                  98.69%
+"""
+
+
+def test_a_completion_rate_two_lines_under_its_own_title_counts():
+    """This asked for the product and the word "Completion" on ONE LINE, and
+    they are never on one line here. Trinity Valley prints "Social Mirror CTV
+    Creative Performance" as the title and "Video Completion Rate" as a column
+    header underneath it, so the report was FAILED for a rate printed two
+    lines below the name it was being looked for beside."""
+    from app.checks.quality import check_completion_present
+    assert check_completion_present(
+        {"text": _TVCC, "products": {"Social Mirror CTV"},
+         "page_of": lambda o: 2 if o < 200 else 8}) == []
+
+
+def test_a_product_widget_with_no_completion_column_still_fails():
+    """The rule is not switched off, only pointed at the right place."""
+    from app.checks.quality import check_completion_present
+    text = _TVCC.replace("Video Completion Rate", "                CTR")
+    out = check_completion_present(
+        {"text": text, "products": {"Social Mirror CTV"},
+         "page_of": lambda o: 2 if o < 200 else 8})
+    assert len(out) == 1
+    # AND IT SAYS WHERE IT SHOULD HAVE BEEN. It used to point at the first line
+    # mentioning the product at all - the Line Item Performance row on page
+    # two, where a completion rate is never printed and nobody would look.
+    assert out[0]["where"] == "p8 · Social Mirror CTV Creative Performance"
+
+
+def test_a_flat_clipped_logo_is_not_an_empty_cell(tmp_path):
+    """Northeast Texas Community College came back "2 creative previews did
+    not render" when one had. Its creatives come through as a solid navy band
+    clipped to a few points tall - two or three colours in the whole cell - and
+    the colour count alone called them empty."""
+    pytest.importorskip("reportlab")
+    from reportlab.lib.colors import Color
+    from reportlab.pdfgen import canvas
+    from app.checks.quality import blank_previews, page_words
+
+    path = tmp_path / "flat.pdf"
+    c = canvas.Canvas(str(path), pagesize=(792, 612))
+    c.setFont("Helvetica", 11)
+    c.drawString(40, 560, "Mobile Conquesting Creative Performance")
+    c.setFont("Helvetica", 9)
+    for x, t in ((40, "Preview"), (200, "Creative Name"),
+                 (430, "Impressions"), (520, "Clicks")):
+        c.drawString(x, 535, t)
+    c.setFillColor(Color(0.09, 0.13, 0.36))
+    c.rect(42, 500, 110, 11, fill=1, stroke=0)      # the clipped navy band
+    c.setFillColorRGB(0, 0, 0)
+    for y, name, imps in ((482, "NTCCCA_1.gif", "42,018"),
+                          (432, "Scroller Ad", "38,809")):
+        c.drawString(200, y, name)
+        c.drawString(430, y, imps)
+        c.drawString(520, y, "112")
+    c.save()
+
+    got = blank_previews(path, page_words(path))
+    assert len(got) == 1, "only the row with nothing in it at all"

@@ -536,6 +536,11 @@ def _clipped_cells(text: str) -> tuple[list[tuple[str, str]], int]:
 # the threshold does not have to be clever.
 BLANK_COLORS = 12
 
+# How much of a cell has to be something other than its background before it
+# counts as holding a picture. A table border and nothing else is a few per
+# cent; a clipped logo is a quarter of the cell.
+INK_TO_COUNT = 0.10
+
 _BBOX_WORD = re.compile(
     r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">(.*?)</word>')
 _BBOX_PAGE = re.compile(r'<page width="([\d.]+)" height="([\d.]+)"')
@@ -632,9 +637,23 @@ def check_blank_screenshots(ctx) -> list[dict]:
 
 def is_blank(crop) -> bool:
     """A cell holding a real ad has thousands of colors; an empty one has the
-    table fill and its border."""
+    table fill and its border.
+
+    A FLAT PICTURE IS STILL A PICTURE. Northeast Texas Community College's
+    creatives come through as a solid navy band clipped to a few points tall -
+    two or three colours in the whole cell - and the colour count alone called
+    two of them empty when one was. So a cell with few colours is asked the
+    other question: how much of it is NOT the background. Almost all of it, and
+    the cell is empty; a quarter of it in navy, and something is printed there.
+    """
     colors = crop.getcolors(maxcolors=300000) or []
-    return len(colors) < BLANK_COLORS
+    if len(colors) >= BLANK_COLORS:
+        return False
+    total = crop.width * crop.height
+    if not total or not colors:
+        return True
+    biggest = max(n for n, _c in colors)
+    return (total - biggest) / total < INK_TO_COUNT
 
 
 def _empty_cells(path, page_no: int, top: float, bottom: float,
@@ -842,7 +861,7 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
                          and NUMERIC.match(w[4])})
             if len(ys) < 1:
                 continue
-            want.append((n, title, noun, cols[0][0], cols[1][0], ys))
+            want.append((n, title, noun, cols[0][0], cols[1][0], ys, h[1]))
 
     out: list[tuple[int, str, str]] = []
     if not want:
@@ -851,7 +870,7 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
     sc = dpi / 72.0
     done: set = set()
     with tempfile.TemporaryDirectory() as tmp:
-        for n, title, noun, x0, x1, ys in want:
+        for n, title, noun, x0, x1, ys, head_y in want:
             stem = str(_P(tmp) / f"p{n}")
             _proc.run([_bin("pdftoppm"), "-f", str(n), "-l", str(n),
                        "-r", str(dpi), "-png", str(path), stem],
@@ -860,14 +879,21 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
             if not hits:
                 continue
             im = Image.open(hits[0]).convert("RGB")
-            # Half the distance to the nearest neighbouring row, so a tall row
-            # is not cropped to a sliver and a short one does not reach into
-            # the row above it.
+            # THE WHOLE CELL, not a band around the number.
+            #
+            # The row's figures are centred vertically and its picture is not -
+            # a short logo sits at the TOP of a tall row - so a symmetric slice
+            # around the number missed it and called the cell empty. Northeast
+            # Texas Community College came back "2 previews did not render"
+            # when one had. Halfway to the row above, halfway to the row below:
+            # that is the cell, whatever shape it is.
             for i, y in enumerate(ys):
-                gaps = [abs(y - o) for o in ys if o != y] or [24.0]
-                half = max(min(min(gaps) / 2 - 2, 40.0), 6.0)
-                box = (max(int(x0 * sc) - 4, 0), max(int((y - half) * sc), 0),
-                       int(x1 * sc) - 6, min(int((y + half) * sc), im.height))
+                above = ys[i - 1] if i else max(head_y, y - 60.0)
+                below = ys[i + 1] if i + 1 < len(ys) else y + (y - above)
+                top = max(y - (y - above) / 2 + 1, head_y + 3)
+                bottom = y + (below - y) / 2 - 1
+                box = (max(int(x0 * sc) - 4, 0), max(int(top * sc), 0),
+                       int(x1 * sc) - 6, min(int(bottom * sc), im.height))
                 if box[2] - box[0] < 8 or box[3] - box[1] < 8:
                     continue
                 if is_blank(im.crop(box)):
@@ -1449,26 +1475,78 @@ def _completion_without_sections(ctx, text: str) -> list[dict]:
     if not watched:
         return []
     lines = text.split("\n")
-    missing, trace = [], []
+    offsets, pos = [], 0
+    for ln in lines:
+        offsets.append(pos)
+        pos += len(ln) + 1
+
+    missing, trace, spot = [], [], {}
     for product in watched:
         low = product.lower()
-        got = any(low in ln.lower() and "completion" in ln.lower() for ln in lines)
+        # THE PRODUCT NAMES THE WIDGET; THE COLUMN NAMES THE METRIC.
+        #
+        # This asked for the product and the word "Completion" on ONE LINE, and
+        # they are never on one line here. Trinity Valley Community College
+        # prints "Social Mirror CTV Creative Performance" as the title and
+        # "Video Completion Rate" as a column header underneath it, so the
+        # report was FAILED for a rate printed two lines below the name it was
+        # being looked for beside - 98.69% and 98.76%, right there on page 8.
+        #
+        # A widget is titled after its product and the figures are inside it,
+        # so the question is whether the product's OWN WIDGET carries one.
+        widgets = _widgets_named(lines, low)
+        got = any("completion" in body.lower() for _i, body in widgets)
+        if widgets:
+            spot[product] = widgets[0][0]
+        if not got:
+            # A tile rather than a grid - "CTV Completion Rate" all on its own
+            # line - is the other shape this comes in.
+            got = any(low in ln.lower() and "completion" in ln.lower()
+                      for ln in lines)
         trace.append((product, "completion figures found"
-                      if got else "no completion rate anywhere it is named"))
+                      if got else "no completion rate in the widgets naming it"))
         if not got:
             missing.append(product)
     if not missing:
         return []
-    at = -1
-    for i, ln in enumerate(lines):
-        if missing[0].lower() in ln.lower():
-            at = sum(len(x) + 1 for x in lines[:i])
-            break
+    # WHERE IT SHOULD HAVE BEEN, which is the product's own widget. It used to
+    # point at the first line mentioning the product at all - the Line Item
+    # Performance row on page two, where a completion rate is never printed and
+    # nobody would look for one.
+    i = spot.get(missing[0])
+    at = offsets[i] if i is not None else -1
     return [_f("completion_missing", "fail",
                f"{len(missing)} product{'s' if len(missing) > 1 else ''} with no "
                f"completion rate",
                "No completion figures for: " + ", ".join(missing) + ".",
-               trace, where=_where(ctx, at, widget_at(text, at)))]
+               trace, where=_where(ctx, at, lines[i].strip()[:60] if i is not None
+                                   else widget_at(text, at)))]
+
+
+def _widgets_named(lines: list, low: str) -> list[tuple[int, str]]:
+    """(title line, block) for every widget whose title carries this name.
+
+    A widget's block runs to the next widget title or the next page, which is
+    where its own figures stop and somebody else's start.
+    """
+    idx = [(l, 0) for l in lines]
+    out = []
+    for i, ln in enumerate(lines):
+        t = ln.strip()
+        if not t or low not in t.lower():
+            continue
+        if not WIDGET_TITLE.match(t) or _looks_like_row(t):
+            continue
+        j = i + 1
+        while j < len(lines):
+            nxt = lines[j].strip()
+            if PAGE_BREAK.search(lines[j]):
+                break
+            if nxt and WIDGET_TITLE.match(nxt) and not _looks_like_row(nxt):
+                break
+            j += 1
+        out.append((i, "\n".join(lines[i:j])))
+    return out
 
 
 # --------------------------------------- 11. store visits against their table
