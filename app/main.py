@@ -204,6 +204,29 @@ def _sum_orders(rows) -> dict:
 templates.env.filters["humanhours"] = _human_hours
 templates.env.filters["workingdays"] = _working_days
 templates.env.filters["sum_orders"] = _sum_orders
+
+
+def _io_kind(status: str) -> str:
+    """Which colour an order status gets on the board.
+
+    Green live, orange paused, red cancelled, blue complete. Read off the
+    words rather than off a fixed list, because the export writes "Cancelled"
+    on the order header and "IO Cancelled" on a line item and they mean the
+    same thing.
+    """
+    s = (status or "").strip().lower()
+    if "cancel" in s:
+        return "cancelled"
+    if "complete" in s:
+        return "complete"
+    if "paus" in s:
+        return "paused"
+    if "live" in s:
+        return "live"
+    return "other"
+
+
+templates.env.filters["iokind"] = _io_kind
 # Chrome that every page needs and no view should have to remember to pass.
 # ---------------------------------------------------------------- who is here
 #

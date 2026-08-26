@@ -751,9 +751,19 @@ def has_name_column(text: str, start: int) -> bool:
     return False
 
 
-# The preview column, by whichever name a template gives it.
-PREVIEW_COLUMN = re.compile(r"^(Preview Image|Ad Preview|Preview|Thumbnail)$", re.I)
+# A column that holds a PICTURE, by whichever name a template gives it. The
+# creative grids call it Preview Image; the publisher lists call it Publisher
+# Image and have exactly the same problem.
+PREVIEW_COLUMN = re.compile(
+    r"^(Preview Image|Publisher Image|Station Image|Ad Preview|Preview"
+    r"|Thumbnail|Logo|Image)$", re.I)
 NO_THUMBNAIL = "Thumbnail not available"
+
+# What to call the things in that column, on the finding.
+IMAGE_NOUN = {"preview image": "creative preview", "ad preview": "creative preview",
+              "preview": "creative preview", "thumbnail": "creative preview",
+              "publisher image": "publisher image", "station image": "station image",
+              "logo": "logo", "image": "image"}
 
 
 def _column_groups(words, y, x_from=0.0):
@@ -772,8 +782,8 @@ def _column_groups(words, y, x_from=0.0):
              " ".join(w[4] for w in g)) for i, g in enumerate(cols)]
 
 
-def blank_previews(path, pages) -> list[tuple[int, str]]:
-    """Creative rows whose preview cell holds NOTHING, as (page, grid title).
+def blank_previews(path, pages) -> list[tuple[int, str, str]]:
+    """Rows whose picture cell holds NOTHING, as (page, grid title, noun).
 
     THERE ARE TWO WAYS FOR A PREVIEW TO BE MISSING AND THE REPORT ONLY SAYS
     ONE OF THEM OUT LOUD. Wine and Design Newport News' CTV grid has five
@@ -794,23 +804,34 @@ def blank_previews(path, pages) -> list[tuple[int, str]]:
     from PIL import Image
     from .parser import _bin
 
-    want = []                      # (page index, title, x0, x1, [row y])
+    want = []                # (page index, title, noun, x0, x1, [row y])
     for n, page in enumerate(pages, start=1):
         words = page["words"]
-        heads = [w for w in words if w[4] == "Preview"]
+        # A PUBLISHER LIST HAS THE SAME COLUMN AND THE SAME PROBLEM. It is not
+        # only the creative grids: Top CTV Publishers prints a Publisher Image
+        # per row, and one of them coming through as the browser's broken-image
+        # glyph is the same failure with a different word on the header.
+        heads = [w for w in words
+                 if w[4] in ("Preview", "Publisher", "Station", "Thumbnail",
+                             "Logo", "Image", "Ad")]
+        seen_rows = set()
         for h in heads:
             cols = _column_groups(words, h[1])
             if not cols or not PREVIEW_COLUMN.match(cols[0][2].strip()):
                 continue
             if len(cols) < 3:
                 continue           # no name column and no numbers column
+            if round(h[1], 1) in seen_rows:
+                continue           # two words of the same header
+            seen_rows.add(round(h[1], 1))
+            noun = IMAGE_NOUN.get(cols[0][2].strip().lower(), "image")
             title = ""
             above = [w for w in words if w[3] <= h[1] - 2]
             if above:
                 ty = max(w[1] for w in above)
                 title = " ".join(w[4] for w in sorted(
                     [w for w in above if abs(w[1] - ty) < 3], key=lambda w: w[0]))
-            if "Creative Performance" not in title:
+            if not title:
                 continue
             # One row per number in the column after the name column.
             num_x0 = cols[2][0]
@@ -821,15 +842,16 @@ def blank_previews(path, pages) -> list[tuple[int, str]]:
                          and NUMERIC.match(w[4])})
             if len(ys) < 1:
                 continue
-            want.append((n, title, cols[0][0], cols[1][0], ys))
+            want.append((n, title, noun, cols[0][0], cols[1][0], ys))
 
-    out: list[tuple[int, str]] = []
+    out: list[tuple[int, str, str]] = []
     if not want:
         return out
     dpi = 100
     sc = dpi / 72.0
+    done: set = set()
     with tempfile.TemporaryDirectory() as tmp:
-        for n, title, x0, x1, ys in want:
+        for n, title, noun, x0, x1, ys in want:
             stem = str(_P(tmp) / f"p{n}")
             _proc.run([_bin("pdftoppm"), "-f", str(n), "-l", str(n),
                        "-r", str(dpi), "-png", str(path), stem],
@@ -849,7 +871,74 @@ def blank_previews(path, pages) -> list[tuple[int, str]]:
                 if box[2] - box[0] < 8 or box[3] - box[1] < 8:
                     continue
                 if is_blank(im.crop(box)):
-                    out.append((n, title))
+                    key = (n, round(y, 1), round(x0, 1))
+                    if key in done:
+                        continue   # the same grid found twice by two header words
+                    done.add(key)
+                    out.append((n, title, noun))
+    return out
+
+
+COMPLETION_HEADER = re.compile(r"Completion Rate", re.I)
+
+
+def _cells_with_span(line: str) -> list[tuple[str, int, int]]:
+    """(text, start column, end column) for each cell on the line."""
+    return [(m.group().strip(), m.start(), m.end())
+            for m in re.finditer(r"\S+(?: \S+)*?(?=\s{2,}|\s*$)", line)
+            if m.group().strip()]
+
+
+def zero_completion(text: str) -> list[tuple[int, str, int]]:
+    """Grids whose completion rate is 0% on EVERY row: (offset, title, rows).
+
+    A completion rate is the one number a video or CTV buy exists to report,
+    and a column of 0.00% down a publisher list is not a result - nobody
+    watched none of every ad on Samsung TV Plus, Philo, Vizio, DIRECTV and
+    Pluto in the same month. It is the metric arriving unmapped, and it goes
+    out to the client looking like the campaign did nothing at all.
+
+    Every row, not some: a single publisher at zero is ordinary.
+    """
+    out = []
+    lines = text.split("\n")
+    starts, pos = [], 0
+    for ln in lines:
+        starts.append(pos)
+        pos += len(ln) + 1
+
+    i = 0
+    while i < len(lines):
+        cells = _cells_with_span(lines[i])
+        head = next((c for c in cells if COMPLETION_HEADER.search(c[0])), None)
+        if not head or any(NUMERIC.match(c[0]) for c in cells) or len(cells) < 2:
+            i += 1
+            continue
+        title = ""
+        for j in range(i - 1, max(-1, i - 8), -1):
+            t = lines[j].strip()
+            if t and not _is_chrome(lines[j]) and len(t) > 3:
+                title = t
+                break
+        vals, j = [], i + 1
+        while j < len(lines):
+            if PAGE_BREAK.search(lines[j]) or _title_of_next_widget(
+                    [(l, 0) for l in lines], j):
+                break
+            for c in _cells_with_span(lines[j]):
+                # Right-aligned under its own header, which is how a number
+                # column is printed - matching the START would take the first
+                # digit of a wide number and land in the column before.
+                if abs(c[2] - head[2]) <= 4 and c[0].endswith("%"):
+                    v = c[0][:-1].replace(",", "")
+                    try:
+                        vals.append(float(v))
+                    except ValueError:
+                        pass
+            j += 1
+        if len(vals) >= 2 and not any(vals):
+            out.append((starts[i], title or "Completion Rate", len(vals)))
+        i = max(j, i + 1)
     return out
 
 

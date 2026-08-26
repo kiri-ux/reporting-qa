@@ -339,6 +339,43 @@ def budgets_for(db: Session, client: str, account_ids: str,
     return out
 
 
+def _live_lines(line, period: str | None) -> dict | None:
+    """This row's money with the CANCELLED line items taken out.
+
+    {"budget": float|None, "impressions": float|None, "any": bool}, or None
+    when the row carries no line-item detail - written before build 88 - in
+    which case there is nothing to take out and the merged figures stand.
+
+    None stays None inside it: "the order does not say" is not "the order says
+    nothing", and a pacing line that treats the two the same reads 100% under
+    on a column that is simply absent.
+    """
+    detail = getattr(line, "detail", None)
+    if not detail:
+        return None
+    out = {"budget": None, "impressions": None, "any": False}
+    for d in detail:
+        if not isinstance(d, dict) or d.get("canceled"):
+            continue
+        if period and not _ran_during(_Window(d.get("starts"), d.get("ends")),
+                                     period):
+            continue
+        out["any"] = True
+        for key in ("budget", "impressions"):
+            v = d.get(key)
+            if v is not None:
+                out[key] = float(v) if out[key] is None else out[key] + float(v)
+    return out
+
+
+class _Window:
+    """One line item's own flight, shaped like an order line for _ran_during."""
+
+    def __init__(self, starts, ends):
+        self.flights = [[starts, ends]]
+        self.starts_on, self.ends_on = starts, ends
+
+
 def ordered_for(db: Session, client: str, account_ids: str,
                 period: str | None = None, lifetime: bool = False,
                 window: tuple | None = None) -> dict:
@@ -417,6 +454,32 @@ def ordered_for(db: Session, client: str, account_ids: str,
                 row["started"] = began
             if ran is not None:
                 row["days"] = ran if row["days"] is None else max(row["days"], ran)
+            # A CANCELLED LINE ITEM IS NOT PART OF WHAT THE MONTH IS OWED.
+            #
+            # The stored row is one answer per client and product, so Houston
+            # Concierge Medicine's Social Mirror is three line items on order
+            # 54985 added together: two cancelled at 120,000 each and one live
+            # at 100,000. Paced against all 340,000 the report read 84% short
+            # of a goal that two thirds of was called off. Against the 100,000
+            # still being asked for, it is 47% short - which is a real number
+            # about a real buy.
+            #
+            # Only when the line items are actually known: a row loaded before
+            # they were kept falls back to the merged figures, which is the
+            # answer this always gave.
+            live = _live_lines(l, period)
+            if live is not None:
+                for key in ("budget", "impressions"):
+                    v = live.get(key)
+                    if v is not None:
+                        row[key] = v if row[key] is None else row[key] + v
+                # And the row is only "stopped" if nothing is left running.
+                # One cancelled line beside a live one is not a campaign that
+                # was called off, and marking it so silenced the finding on
+                # the half that is still delivering.
+                if live["any"]:
+                    row["stopped"] = False
+                continue
             for key in ("budget", "impressions"):
                 v = getattr(l, key, None)
                 if v is not None:

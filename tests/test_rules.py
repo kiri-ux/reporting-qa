@@ -2901,3 +2901,58 @@ def test_missing_previews_are_counted_per_widget():
                for w, t in by.items())
     assert any("Video" in w and "1 creative preview did not render" == t
                for w, t in by.items())
+
+
+# --------------------------------------- BARCK+ on a CTV-only report
+def test_a_ctv_only_report_does_not_owe_site_and_app():
+    """KB House of Guns runs BARCK+ on one CTV line item and was FAILED for
+    not carrying Site and App Performance. CTV does not get one - its
+    inventory is the publisher list, which was on the report - so the fail was
+    about a widget TapClicks would not print for that buy."""
+    from app.checks.rules import check_required_widgets
+    text = ("BARCK+ Targeting\n"
+            "Top CTV Publishers\n"
+            " Publisher Image   Publisher Name      Impressions   Completion Rate\n"
+            " SAMSUNG TV PLUS                             2,264            98.10%\n")
+    ctx = {"text": text, "products": {"CTV", "Video"}, "page_of": lambda _o: 6}
+    assert [f["code"] for f in check_required_widgets(ctx)] == []
+
+
+def test_barck_still_owes_site_and_app_where_it_would_list_something():
+    """This is "the breakout it carries is the right one for what ran", not
+    "CTV reports owe nothing"."""
+    from app.checks.rules import check_required_widgets
+    text = "BARCK+ Targeting\nMobile Conquesting Creative Performance\n"
+    ctx = {"text": text, "products": {"Mobile Conquesting"},
+           "page_of": lambda _o: 4}
+    assert "widget_missing" in {f["code"] for f in check_required_widgets(ctx)}
+
+
+# --------------------------------------- a column of zeroes is not a result
+def test_a_completion_rate_of_zero_on_every_row_is_flagged():
+    """It is the one number a video or CTV buy exists to report, and KB House
+    of Guns' publisher list ran 0.00% down every row. Nobody watched none of
+    every ad on Samsung, Philo, Vizio, DIRECTV and Pluto in the same month."""
+    from app.checks.rules import check_zero_completion
+    text = ("Top CTV Publishers\n"
+            " Publisher Image      Publisher Name        Impressions    Completion Rate\n"
+            "                      SAMSUNG TV PLUS             2,264              0.00%\n"
+            "                      Philo TV                    1,875              0.00%\n"
+            "                      Vizio - WatchFree+          1,316              0.00%\n")
+    out = check_zero_completion({"text": text, "page_of": lambda _o: 6})
+    assert len(out) == 1 and out[0]["code"] == "completion_all_zero"
+    assert "Top CTV Publishers" in out[0]["title"]
+
+
+def test_one_publisher_at_zero_is_ordinary():
+    from app.checks.rules import check_zero_completion
+    text = ("Top CTV Publishers\n"
+            " Publisher Image      Publisher Name        Impressions    Completion Rate\n"
+            "                      SAMSUNG TV PLUS             2,264             97.30%\n"
+            "                      Philo TV                    1,875              0.00%\n")
+    assert check_zero_completion({"text": text, "page_of": lambda _o: 6}) == []
+
+
+def test_no_completion_column_is_no_finding():
+    from app.checks.rules import check_zero_completion
+    assert check_zero_completion({"text": "Line Item Performance\n"}) == []

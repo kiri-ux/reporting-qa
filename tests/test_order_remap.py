@@ -1204,3 +1204,43 @@ def test_products_bought_by_the_month_are_not_paced(db):
                         "Social Mirror": {"impressions": 100, "budget": None}})
     assert [r["product"] for r in rows if not r.get("total")] == ["Social Mirror"]
 
+
+
+# ------------------------------- a cancelled line is not part of what is owed
+def test_cancelled_line_items_are_out_of_the_pacing_goal(db):
+    """Houston Concierge Medicine's Social Mirror is three line items on order
+    54985 added together: two cancelled at 120,000 each and one live at
+    100,000. Paced against all 340,000 the report read 84% short of a goal
+    that two thirds of was called off."""
+    from app.orders_io import import_io_export
+    from app.roster import ordered_for
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    rows = ("BU,IO Live,Houston Concierge Medicine,54985,Social Mirror Ads,133137,"
+            "Cancelled,2026-07-15,2026-07-15,2026-10-14,2026-10-14,120000\n"
+            "BU,IO Live,Houston Concierge Medicine,54985,Social Mirror Ads,133139,"
+            "Cancelled,2026-07-15,2026-07-15,2026-10-14,2026-10-14,120000\n"
+            "BU,IO Live,Houston Concierge Medicine,54985,Social Mirror Ads,133136,"
+            "IO Live,2026-07-16,2026-07-16,2026-10-14,2026-10-14,100000\n")
+    import_io_export(db, (head + rows).encode(), period="2026-07")
+    got = ordered_for(db, "Houston Concierge Medicine", "54985", "2026-07")
+    assert got["Social Mirror"]["impressions"] == 100_000
+    # And one cancelled line beside a live one is not a campaign that was
+    # called off - marking it so silenced the finding on the half still
+    # delivering.
+    assert got["Social Mirror"]["stopped"] is False
+
+
+def test_a_wholly_cancelled_product_is_not_paced_at_all(db):
+    from app.orders_io import import_io_export
+    from app.roster import ordered_for
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    rows = ("BU,IO Live,Acme,700,Social Mirror Ads,8001,Cancelled,"
+            "2026-07-01,2026-07-01,2026-10-14,2026-10-14,120000\n")
+    import_io_export(db, (head + rows).encode(), period="2026-07")
+    # Every line cancelled means the row itself is not live, and a product
+    # nobody is running has no goal to be short of.
+    assert ordered_for(db, "Acme", "700", "2026-07") == {}

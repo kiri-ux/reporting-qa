@@ -484,7 +484,15 @@
             {%- for oid in e.account_ids.replace(',', ' ').split() %}
               <a href="{{ io_order_url }}{{ oid }}" target="_blank" rel="noopener"
                  title="Open order {{ oid }} in the IO tool">{{ oid }}</a>{% if not loop.last %} {% endif %}
-            {%- endfor %}</span>{% endif %}</td>
+            {%- endfor %}
+            {#- WHAT THE ORDER ITSELF SAYS, beside the order it says it about.
+                It used to sit under the review pill two columns over, where it
+                read as part of the verdict rather than as the fact behind it -
+                and as words, on a row that has none to spare. #}
+            {%- if e.statuses %} <span class="iodots">
+              {%- for st in e.statuses %}<span class="iodot io-{{ st|iokind }}"
+                data-tip="{{ st }} - what the order says"></span>{% endfor -%}
+            </span>{% endif %}</span>{% endif %}</td>
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
           <span class="chip" data-name="{{ p.name }}" tabindex="0"
                 style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
@@ -511,14 +519,7 @@
                   data-tip="This campaign was cancelled or completed early. It last delivered on {{ e.stopped_on }}, so pull the report to that date rather than the {{ e.ends_on }} on the order.">stopped {{ e.stopped_on }}</span>
           {% endif %}
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
-        <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>
-          {# WHAT THE ORDER ITSELF SAYS. Every rule on this board is that fact
-             reduced to a yes or a no, and when a row looks wrong the first
-             question is always what the order says - which meant opening the
-             IO tool in another tab. #}
-          {% if e.statuses %}<br>
-            <span class="acct iostatus">{{ e.statuses|join(', ') }}</span>
-          {% endif %}</td>
+        <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
           {% if e.report and e.report.renamed_from %}
             <span class="wpill" title="Arrived as {{ e.report.renamed_from }} - the order id was missing or wrong, so it was renamed.">renamed</span>
@@ -883,8 +884,17 @@
 .oid{display:inline-block;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;
  background:var(--atlas-10);color:#3D5468;padding:1px 8px;border-radius:20px;
  margin-top:3px;user-select:all}
-.iostatus{display:inline-block;margin-top:3px;font-size:11px;line-height:1.3;
- max-width:22ch;white-space:normal}
+/* WHAT THE ORDER SAYS, as a colour beside the order it says it about.
+   Green live, orange paused, red cancelled, blue complete - and the words
+   themselves on hover, because a colour is a reminder and not a label. */
+.iodots{display:inline-flex;gap:3px;vertical-align:middle;margin-left:5px}
+.iodot{width:9px;height:9px;border-radius:50%;display:inline-block;cursor:help;
+ box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
+.iodot.io-live{background:var(--ok)}
+.iodot.io-paused{background:var(--warn)}
+.iodot.io-cancelled{background:var(--crit)}
+.iodot.io-complete{background:var(--velocity)}
+.iodot.io-other{background:var(--ink-50)}
 .oid a{color:inherit;text-decoration:none;border-bottom:1px dotted #8FA5B8}
 .oid a:hover{color:var(--velocity);border-bottom-color:currentColor}
 .oid.lid{background:transparent;color:var(--muted);

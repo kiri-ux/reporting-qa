@@ -988,3 +988,26 @@ def test_the_not_owed_list_sits_with_the_reports():
     html = (TPL / "cycle.html").read_text()
     assert html.index('<section id="reports">') < html.index('class="notowed"')
     assert html.index('class="glist" id="glist"') < html.index('class="notowed"')
+
+
+def test_the_order_status_sits_with_the_order_it_is_about():
+    """It sat under the review pill two columns over, where it read as part of
+    the verdict rather than as the fact behind it - and as words, on a row
+    that has none to spare. Green live, orange paused, red cancelled, blue
+    complete, and the words themselves on hover."""
+    from app.main import _io_kind
+    assert _io_kind("IO Live") == "live"
+    assert _io_kind("IO Paused") == "paused"
+    assert _io_kind("Cancelled") == "cancelled"
+    assert _io_kind("IO Cancelled") == "cancelled"
+    assert _io_kind("IO Complete") == "complete"
+    assert _io_kind("") == "other"
+
+    html = (TPL / "cycle.html").read_text()
+    assert 'class="iodot io-{{ st|iokind }}"' in html
+    assert 'data-tip="{{ st }} - what the order says"' in html
+    # It rides with the order id, not with the review pill.
+    assert html.index('class="oid" title="Order id"') < html.index('class="iodots"')
+    assert 'class="acct iostatus"' not in html
+    for kind in ("live", "paused", "cancelled", "complete"):
+        assert f".iodot.io-{kind}{{background:" in html

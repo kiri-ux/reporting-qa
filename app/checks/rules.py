@@ -530,6 +530,7 @@ def check_thumbnails(ctx) -> list[dict]:
     """
     text = ctx["text"]
     counts: dict[str, int] = {}
+    nouns: dict[str, str] = {}
     for m in re.finditer("Thumbnail not available", text):
         where = _where(ctx, m.start(), widget_at(text, m.start()))
         counts[where] = counts.get(where, 0) + 1
@@ -546,17 +547,22 @@ def check_thumbnails(ctx) -> list[dict]:
         if path:
             pages = ctx.get("page_words") or page_words(path)
             ctx["page_words"] = pages
-            for page_no, title in blank_previews(path, pages):
+            for page_no, title, noun in blank_previews(path, pages):
                 where = f"p{page_no} · {title}" if title else f"p{page_no}"
                 counts[where] = counts.get(where, 0) + 1
+                nouns[where] = noun
     except Exception:      # a preview count is never worth failing the run
         pass
 
-    return [_f("missing_thumbnail", "warn",
-               f"{n} creative preview{'s' if n > 1 else ''} did not render",
-               'The report prints "Thumbnail not available", or nothing at '
-               'all, in place of the preview image.', where=where)
-            for where, n in counts.items()]
+    out = []
+    for where, n in counts.items():
+        noun = nouns.get(where, "creative preview")
+        out.append(_f("missing_thumbnail", "warn",
+                      f"{n} {noun}{'s' if n > 1 else ''} did not render",
+                      'The cell prints "Thumbnail not available", a broken '
+                      'image, or nothing at all, in place of the picture.',
+                      where=where))
+    return out
 
 
 # ---------------------------------------------------------------- empty widgets
@@ -1527,6 +1533,31 @@ def _dooh_only(ctx) -> bool:
     return bool(products) and products <= {"DOOH"}
 
 
+# Products whose inventory breakout is NOT the generic site-and-app list. A
+# billboard has neither. A CTV ad runs on Samsung TV Plus and Pluto, which the
+# report lists as Top CTV Publishers - and that widget IS the breakout.
+NO_SITE_APP_PRODUCTS = {"DOOH", "CTV", "Social Mirror CTV", "Video"}
+
+
+def _site_app_not_owed(ctx, heads: dict) -> bool:
+    """Would a Site and App Performance widget have anything to list?
+
+    KB House of Guns runs BARCK+ on one CTV line item and was FAILED for not
+    carrying Site and App Performance. CTV does not get one: its inventory is
+    the publisher list, which was on the report - so the fail was about a
+    widget TapClicks would not print for that buy.
+
+    The inventory widget has to actually BE there. This is "the breakout it
+    carries is the right one for what ran", not "CTV reports owe nothing".
+    """
+    if _dooh_only(ctx):
+        return True
+    products = {p for p in (ctx.get("products") or set())}
+    if not products or not products <= NO_SITE_APP_PRODUCTS:
+        return False
+    return heads.get(W_CTV_PUBS, 0) > 0 or heads.get(W_AMZ_SITE, 0) > 0
+
+
 def check_required_widgets(ctx) -> list[dict]:
     """Products that owe a particular widget have to actually carry it."""
     from ..product_codes import code_for
@@ -1618,8 +1649,34 @@ def check_required_widgets(ctx) -> list[dict]:
     #
     # Except on a DOOH-only report. A billboard has no site and no app: there
     # is nothing for that widget to list, and TapClicks does not print one.
-    if BARCK.search(text) and not _dooh_only(ctx):
+    if BARCK.search(text) and not _site_app_not_owed(ctx, heads):
         owed(W_SITE_APP, 1, "BARCK+ targeting")
+    return out
+
+
+def check_zero_completion(ctx) -> list[dict]:
+    """A completion rate of 0% on every row is a broken widget, not a result.
+
+    It is the one number a video or CTV buy exists to report, and KB House of
+    Guns' Top CTV Publishers list ran 0.00% down every publisher - Samsung TV
+    Plus, Philo, Vizio, DIRECTV, Pluto. Nobody watched none of every ad on all
+    of them in the same month. The metric arrived unmapped, and it goes to the
+    client reading as a campaign that did nothing at all.
+
+    Every row, not some: one publisher at zero is ordinary.
+    """
+    from .quality import zero_completion
+    text = ctx.get("text") or ""
+    page_of = ctx.get("page_of")
+    out = []
+    for at, title, rows in zero_completion(text):
+        where = (f"p{page_of(at)} · " if page_of else "") + title
+        out.append(_f("completion_all_zero", "fail",
+                      f"Every completion rate on {title} is 0%",
+                      f"All {rows} rows show 0.00%. A completion rate is what "
+                      f"a video or CTV buy is judged on, and a column of "
+                      f"zeroes is the metric arriving unmapped rather than an "
+                      f"audience that watched none of it.", where=where))
     return out
 
 
@@ -1652,6 +1709,7 @@ CHECKS: list[tuple] = [
     (check_lifetime_goal,  "A finished campaign delivered what it was sold"),
     (check_month_within_lifetime,
      "The month does not report more than the whole campaign"),
+    (check_zero_completion, "No completion widget is 0% all the way down"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
@@ -1686,6 +1744,7 @@ SKIP_WHY = {
     "check_row_math": "no grids on the report",
     "check_rate_ceiling": "no grids on the report",
     "check_completion_rates": "no completion widget on the report",
+    "check_zero_completion": "no completion rate column on the report",
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
     "check_geofence_names": "no geo-fencing table on the report",
@@ -1757,6 +1816,8 @@ def _rule_applies(rule, ctx) -> bool:
         return bool(ctx.get("tables"))
     if name == "check_completion_rates":
         return "Completion Performance" in (ctx.get("text") or "")
+    if name == "check_zero_completion":
+        return "Completion Rate" in (ctx.get("text") or "")
     if name == "check_devices_known":
         return "Device Performance" in (ctx.get("text") or "")
     if name == "check_required_widgets":

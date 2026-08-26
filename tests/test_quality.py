@@ -1195,3 +1195,55 @@ def test_a_preview_that_printed_nothing_counts_too(tmp_path):
     got = blank_previews(path, page_words(path))
     assert len(got) == 1, "the working thumbnail and the worded one are not blank"
     assert got[0][1] == "Connected TV (CTV) Creative Performance"
+
+
+def test_a_broken_publisher_image_counts_too(tmp_path):
+    """It is not only the creative grids. Top CTV Publishers prints a
+    Publisher Image per row, and one coming through as the browser's
+    broken-image glyph is the same failure with a different word on the
+    header."""
+    import io
+    import random
+    pytest.importorskip("reportlab")
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+    from PIL import Image
+    from app.checks.quality import blank_previews, page_words
+
+    random.seed(11)
+    logo = Image.new("RGB", (120, 90))
+    px = logo.load()
+    for y in range(90):
+        for x in range(120):
+            px[x, y] = (random.randrange(256), random.randrange(256),
+                        random.randrange(256))
+    buf = io.BytesIO()
+    logo.save(buf, "PNG")
+
+    path = tmp_path / "publishers.pdf"
+    c = canvas.Canvas(str(path), pagesize=(792, 612))
+    c.setFont("Helvetica", 11)
+    c.drawString(40, 560, "Top CTV Publishers")
+    c.setFont("Helvetica", 9)
+    for x, t in ((40, "Publisher Image"), (200, "Publisher Name"),
+                 (430, "Impressions"), (540, "Completion Rate")):
+        c.drawString(x, 535, t)
+    y = 495
+    for name, imps, kind in (("FOX 8", "2,264", "image"),
+                             ("Fox News", "1,875", "broken")):
+        if kind == "image":
+            buf.seek(0)
+            c.drawImage(ImageReader(buf), 42, y - 22, width=110, height=40)
+        else:
+            # What a broken image looks like in the PDF: a tiny placeholder
+            # glyph and nothing else.
+            c.rect(70, y - 4, 7, 7)
+        c.drawString(200, y, name)
+        c.drawString(430, y, imps)
+        y -= 70
+    c.save()
+
+    got = blank_previews(path, page_words(path))
+    assert len(got) == 1, "the real logo is not blank and the broken one is"
+    assert got[0][1] == "Top CTV Publishers"
+    assert got[0][2] == "publisher image"

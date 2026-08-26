@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-92"
-BUILD_NOTES = ("A preview that printed nothing counts as one that did not "
-               "render, and the card filters narrow the whole cycle instead "
-               "of the twenty cards on screen.")
+BUILD = "2026.08.26-93"
+BUILD_NOTES = ("Cancelled line items are out of the pacing goal, the order "
+               "status is a colour beside its order, and a column of zero "
+               "completion rates is a finding.")
 
 # ---------------------------------------------------------------------------
 
