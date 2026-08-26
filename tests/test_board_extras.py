@@ -438,3 +438,148 @@ def test_the_audit_matches_on_order_id_and_reports_both_directions():
     assert [m["client"] for m in got["matched"]] == ["Salem RV"]
     assert [m["client"] for m in got["missing"]] == ["Benton Rodeo"]
     assert [e.client for e in got["extra"]] == ["SVEC"]
+
+
+def test_the_cycle_search_covers_the_whole_cycle_not_just_the_page():
+    """The box filtered the rows the browser had, and the table is capped at
+    150 of 763 - so "paul" said "28 of 150 rows" and looked like it had
+    searched everything."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert "q: str = Query(\"\")" in src
+    assert "rows = [e for e in rows if _matches(e, q)]" in src
+    html = (TPL / "cycle.html").read_text()
+    assert 'name="q" value="{{ q }}"' in html
+    assert "press Enter" in html
+
+
+def test_a_search_matches_every_word_anywhere_on_the_row():
+    from app.board import Expected
+    from app.main import _matches
+    e = Expected(market="ADX Communications", group="ADX", client="Armada Advisors",
+                 kind="monthly", account_ids="53174", reporter="Paulina",
+                 products=["CTV"])
+    assert _matches(e, "paul")
+    assert _matches(e, "armada ctv")          # both words, either order
+    assert _matches(e, "53174")
+    assert not _matches(e, "armada meta")
+
+
+def test_the_audit_says_why_a_row_is_not_on_the_board():
+    """"Not on the board" is where the question starts. The useful answer is
+    which of the dozen reasons this cycle has for not owing a report applies."""
+    import datetime as dt
+
+    import app.board as B
+    from app.audit import audit
+    from app.db import OrderLine
+
+    class FakeDb:
+        def __init__(self, lines):
+            self._lines = lines
+
+        def scalars(self, *a, **k):
+            outer = self
+
+            class R:
+                def all(self):
+                    return outer._lines
+            return R()
+
+    real = B.expected_for
+    B.expected_for = lambda db, period, skipped=None: (
+        skipped.append({"market": "7 Mountains PA Altoona",
+                        "client": "Sorge Funeral Home", "kind": "lifetime",
+                        "why": "lifetime already delivered in 2026-06"})
+        or [])
+    try:
+        got = audit(FakeDb([]), "2026-07",
+                    "7MOU ALT - Sorge Funeral Home #45911 LIFETIME\n"
+                    "7MOU ALT - Nobody At All #99999")
+    finally:
+        B.expected_for = real
+
+    why = {m["client"]: m["why"] for m in got["missing"]}
+    assert why["Sorge Funeral Home"] == "lifetime already delivered in 2026-06"
+    assert "not in the export" in why["Nobody At All"]
+
+
+def test_the_audit_reads_the_order_line_when_the_board_has_no_reason():
+    import datetime as dt
+
+    import app.board as B
+    from app.audit import audit
+
+    class L:
+        client, product = "Carl Feather Homes", "Display"
+        account_ids, line_ids = "49822", "1"
+        starts_on = dt.date(2024, 1, 1)
+        ends_on = order_ends_on = dt.date(2026, 5, 31)
+        order_starts_on, flights, live, canceled = starts_on, None, True, False
+
+    class FakeDb:
+        def scalars(self, *a, **k):
+            class R:
+                def all(self):
+                    return [L()]
+            return R()
+
+    real = B.expected_for
+    B.expected_for = lambda db, period, skipped=None: []
+    try:
+        got = audit(FakeDb(), "2026-07", "7MOU PA - Carl Feather Homes #49822")
+    finally:
+        B.expected_for = real
+    assert "ended by 2026-05-31" in got["missing"][0]["why"]
+
+
+def test_the_comparison_limits_itself_to_the_partners_the_list_covers():
+    """A list covering one partner compared against the whole board reported
+    the other 145 partners as "missing from your list" - 1,050 rows of noise
+    around the handful that matter."""
+    import app.board as B
+    from app.audit import audit
+    from app.board import Expected
+
+    rows = [
+        Expected(market="7 Mountains PA Selinsgrove", group="7 Mountains",
+                 client="Salem RV", kind="monthly", account_ids="52793"),
+        Expected(market="7 Mountains PA Altoona", group="7 Mountains",
+                 client="Reliance Bank", kind="monthly", account_ids="43850"),
+        Expected(market="ADX Communications", group="ADX",
+                 client="Armada Advisors", kind="monthly", account_ids="53174"),
+    ]
+    real = B.expected_for
+    B.expected_for = lambda db, period, skipped=None: rows
+    try:
+        got = audit(None, "2026-07", "7MOU SG - Salem RV #52793")
+    finally:
+        B.expected_for = real
+
+    assert got["covered"] == ["7 Mountains"]
+    # Reliance Bank is a 7 Mountains row the list has not got - worth saying.
+    # Armada Advisors is another partner entirely - not this list's business.
+    assert [e.client for e in got["extra"]] == ["Reliance Bank"]
+
+
+def test_with_nothing_matched_the_whole_cycle_is_still_shown():
+    import app.board as B
+    from app.audit import audit
+    from app.board import Expected
+
+    rows = [Expected(market="ADX Communications", group="ADX",
+                     client="Armada Advisors", kind="monthly", account_ids="53174")]
+    real = B.expected_for
+    B.expected_for = lambda db, period, skipped=None: rows
+    try:
+        got = audit(None, "2026-07", "7MOU SG - Nobody #11111")
+    finally:
+        B.expected_for = real
+    assert got["covered"] == [] and len(got["extra"]) == 1
+
+
+def test_a_note_after_the_lifetime_marker_is_not_part_of_the_client_name():
+    from app.audit import parse_list
+    got = parse_list("7MOU ALT - Sorge Funeral Home & Crematory #45911 "
+                     "LIFETIME -End Date 2026-12-31")
+    assert got[0]["client"] == "Sorge Funeral Home & Crematory"
+    assert got[0]["kind"] == "lifetime"

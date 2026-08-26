@@ -205,6 +205,21 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     rep.rules_version = rules_version()
     rep.logo_hash = logo
 
+    # A NAME THAT WAS NEVER BUILT GETS BUILT NOW.
+    #
+    # Renaming only ever happened on the feed and on a replacement, so every
+    # report uploaded by hand kept whatever it arrived as - and two of them
+    # reached a partner's Dropbox folder as "Digital Marketing Report.pdf".
+    # This is the same self-healing every other fix in here relies on: the
+    # reports that already exist are put right the next time they are read.
+    from .naming import canonical_name, ids_for_report
+    ids = ids_for_report(db, rep)
+    if ids and ids != (rep.account_ids or ""):
+        rep.account_ids = ids
+    built = canonical_name(rep)
+    if built and built != rep.filename:
+        rep.filename = built
+
     fresh = _new_failures(old_findings, old_acked, rep.findings)
     reset = False
     if fresh and rep.review_state in ("reviewed", "waived"):

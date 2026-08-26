@@ -17,11 +17,13 @@
       <div class="tools" style="margin-bottom:10px">
         <label>Partner
           <input type="text" name="group" value="{{ group }}" size="24"
-                 placeholder="7 Mountains"
+                 placeholder="Usually blank"
                  style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
                         border:1px solid var(--line);background:var(--surface);color:var(--ink)">
         </label>
-        <span class="acct">Leave blank to check the whole cycle.</span>
+        <span class="acct">Usually leave this blank - the comparison already
+          limits itself to the partners the list covers. Use it only to narrow
+          further.</span>
       </div>
       <textarea name="rows" rows="10" style="width:100%;font:inherit;font-size:13px;
                 padding:10px;border-radius:10px;border:1px solid var(--line);
@@ -39,25 +41,31 @@
       {{ result.listed|length }} on the list · {{ result.board|length }} on the board</h2>
   </div>
   <p class="sub">{{ result.matched|length }} match.
-    {% if group %}Board rows narrowed to partners matching <b>{{ group }}</b>.{% endif %}</p>
+    {% if result.covered %}Comparing against
+      {{ result.covered|length }} partner{{ 's' if result.covered|length != 1 }}
+      the list covers: <b>{{ result.covered|join(', ') }}</b>.
+    {% else %}Nothing on the list matched a board row, so the whole cycle is
+      shown below.{% endif %}
+    {% if group %}Narrowed to <b>{{ group }}</b>.{% endif %}</p>
 
   <h2 style="margin-top:22px">On the list, not on the board ({{ result.missing|length }})</h2>
   {% if result.missing %}
-    <p class="sub">Either the order is not in the export, or its dates put it
-    outside this cycle. Open the client's order lines to see which.</p>
+    <p class="sub">Why, for each one - the board's own reason where it has one,
+    and the order line's where it does not.</p>
     <div class="tw"><table>
-      <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>As written</th></tr></thead>
+      <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>Why not</th></tr></thead>
       <tbody>{% for r in result.missing %}
-        <tr><td><b>{{ r.client }}</b></td>
-          <td><span class="pill p-{{ 'info' if r.kind == 'lifetime' else 'month' }}">{{ r.kind }}</span></td>
+        <tr><td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
+          <td class="nw"><span class="pill p-{{ 'info' if r.kind == 'lifetime' else 'month' }}">{{ r.kind }}</span></td>
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
-          <td class="acct">{{ r.raw }}</td></tr>
+          <td style="max-width:52ch">{{ r.why }}</td></tr>
       {% endfor %}</tbody></table></div>
   {% else %}<p class="empty">Nothing. Every row on the list is on the board.</p>{% endif %}
 
   <h2 style="margin-top:22px">On the board, not on the list ({{ result.extra|length }})</h2>
   {% if result.extra %}
-    <p class="sub">The order export says these are owed a report this cycle.</p>
+    <p class="sub">The order export says these are owed a report this cycle,
+    and the list does not have them.</p>
     <div class="tw"><table>
       <thead><tr><th>Partner</th><th>Client</th><th>Kind</th><th>Order</th>
         <th>Status</th></tr></thead>

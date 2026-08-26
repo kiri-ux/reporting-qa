@@ -988,3 +988,118 @@ def test_accepting_one_of_several_stays_on_the_report(client):
                headers={"referer": f"http://x/report/{rep.id}/view"},
                follow_redirects=False)
     assert f"/report/{rep.id}/view" in r.headers["location"]
+
+
+def test_a_hand_uploaded_report_is_named_the_way_the_feed_names_them(client):
+    """TapClicks calls every file you download by hand "Digital Marketing
+    Report.pdf". Two of those reached a partner's Dropbox folder under that
+    name, because renaming only ever happened on the feed and on a
+    replacement."""
+    c, (db, dbm, imod) = client
+    pdf = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    r = c.post("/cycle/upload", files={"file": ("Digital Marketing Report.pdf", pdf, "application/pdf")},
+               data={"period": "2026-07", "market": "7 Mountains PA Selinsgrove",
+                     "client": "All Seasons Powersports", "account_ids": "47329",
+                     "kind": "monthly"}, follow_redirects=False)
+    rid = int(r.headers["location"].split("/")[2])
+    db.expire_all()
+    rep = db.get(dbm.Report, rid)
+    assert rep.filename == "July 2026_All Seasons Powersports 47329.pdf"
+    assert rep.renamed_from == "Digital Marketing Report.pdf"
+
+
+def test_a_hand_uploaded_lifetime_is_named_as_one(client):
+    c, (db, dbm, imod) = client
+    pdf = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    r = c.post("/cycle/upload", files={"file": ("Digital Marketing Report.pdf", pdf, "application/pdf")},
+               data={"period": "2026-07", "market": "7 Mountains PA Selinsgrove",
+                     "client": "All Seasons Powersports", "account_ids": "47329",
+                     "kind": "lifetime"}, follow_redirects=False)
+    rid = int(r.headers["location"].split("/")[2])
+    db.expire_all()
+    assert db.get(dbm.Report, rid).filename \
+        == "Lifetime_All Seasons Powersports 47329.pdf"
+
+
+def test_the_delivered_name_is_built_whatever_the_report_is_called():
+    """The last mile says so too, so one missed path cannot put an unfilable
+    name in front of a partner again."""
+    from app.delivery import report_filename
+
+    class R:
+        filename = "Digital Marketing Report.pdf"
+        client = "All Seasons Powersports"
+        account_ids = "47329"
+        period = "2026-07"
+        is_lifetime = False
+
+    class E:
+        report = R()
+        client = "All Seasons Powersports"
+        kind = "monthly"
+
+    assert report_filename(E()) == "July 2026_All Seasons Powersports 47329.pdf"
+    R.is_lifetime, E.kind = True, "lifetime"
+    assert report_filename(E()) == "Lifetime_All Seasons Powersports 47329.pdf"
+
+
+def test_a_re_check_puts_an_old_name_right(client):
+    """The reports that already exist are fixed the next time they are read."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    rep.filename = "Digital Marketing Report.pdf"
+    rep.rules_version = "stale"
+    db.commit()
+    from app.recheck import recheck
+    recheck(db, rep)
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).filename != "Digital Marketing Report.pdf"
+
+
+def test_the_name_carries_every_order_the_report_covers(monkeypatch):
+    """Congressman Mike Kelly's July report covers CTV on order 53130 and
+    Online Audio on 50589 and 53130, and was named "...Mike Kelly 53130.pdf" -
+    because the ids were only filled in when the file arrived with none at all.
+    A name that names one of three orders looks complete and is not."""
+    import datetime as dt
+
+    from app import naming as N
+    from app import roster as R
+
+    class L:
+        def __init__(self, ids, s, e):
+            self.account_ids, self.canceled = ids, False
+            self.starts_on, self.ends_on, self.flights = s, e, None
+
+    lines = [L("53130", dt.date(2026, 6, 28), dt.date(2026, 7, 4)),
+             L("50589 53130", dt.date(2026, 1, 1), dt.date(2026, 12, 31))]
+    monkeypatch.setattr(R, "client_lines", lambda *a, **k: lines)
+
+    class Rep:
+        client, account_ids, period, is_lifetime = "Congressman Mike Kelly", "53130", "2026-07", False
+
+    assert N.ids_for_report(None, Rep()) == "50589 53130"
+    Rep.account_ids = N.ids_for_report(None, Rep())
+    assert N.canonical_name(Rep()) == "July 2026_Congressman Mike Kelly 50589 53130.pdf"
+
+
+def test_another_campaign_of_the_same_client_stays_out_of_the_name(monkeypatch):
+    """Scoped to the lines this report is judged against."""
+    import datetime as dt
+
+    from app import naming as N
+    from app import roster as R
+
+    class L:
+        def __init__(self, ids, s, e):
+            self.account_ids, self.canceled = ids, False
+            self.starts_on, self.ends_on, self.flights = s, e, None
+
+    monkeypatch.setattr(R, "client_lines", lambda *a, **k: [
+        L("53130", dt.date(2026, 6, 28), dt.date(2026, 7, 4)),
+        L("99999", dt.date(2026, 9, 1), dt.date(2026, 12, 31))])
+
+    class Rep:
+        client, account_ids, period, is_lifetime = "Congressman Mike Kelly", "53130", "2026-07", False
+
+    assert N.ids_for_report(None, Rep()) == "53130"

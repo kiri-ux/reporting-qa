@@ -747,7 +747,7 @@ def _recheck_jobs(db: Session) -> dict:
 @app.get("/cycle", response_class=HTMLResponse)
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
                state: str = Query(""), rows_: str = Query("", alias="rows"),
-               db: Session = Depends(get_db)):
+               q: str = Query(""), db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
     from .cycle import current_period, cycle_for, recent_periods
@@ -772,6 +772,14 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     rows = [e for g in groups for e in g.expected]
     if state:
         rows = [e for e in rows if e.state == state]
+    # SEARCHING THE WHOLE CYCLE, NOT THE PAGE.
+    #
+    # The box above the table filtered the rows the browser had, and the table
+    # is capped at 150 of 763 - so "paul" said "28 of 150 rows" and looked like
+    # it had searched everything. Enter now sends the search here, where the
+    # other 613 are.
+    if q.strip():
+        rows = [e for e in rows if _matches(e, q)]
     # Signed off and nothing failing: done, and in the way. It goes to its own
     # section at the bottom so the top of the page is only what is still open.
     done = [e for e in rows if e.ready]
@@ -805,7 +813,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # "763 not received" does not answer the question anybody has, which is
         # whether that is a morning's work or the rest of the week.
         "pace": pace(db, period, summary(exp)["missing"]),
-        "filter_group": group, "filter_state": state,
+        "filter_group": group, "filter_state": state, "q": q,
         "deliveries": latest_deliveries(db, period),
         # Packaging runs in the background, so the card has to say where it is.
         "packing": delivery_jobs(db),
@@ -1100,6 +1108,48 @@ def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
     if group:
         back += f"&group={quote(group)}"
     return RedirectResponse(back, status_code=303)
+
+
+def _matches(e, q: str) -> bool:
+    """Every word has to appear somewhere on the row, in any order.
+
+    The same rule the box on the page uses, so pressing Enter widens the search
+    rather than changing it.
+    """
+    hay = " ".join(str(x or "") for x in (
+        e.market, e.group, e.client, e.kind, e.account_ids, e.line_ids,
+        e.buyer, e.reporter, e.state,
+        ", ".join(e.products or []),
+        " ".join(f.get("title", "") for f in
+                 ((e.report.open_findings if e.report else []) or [])),
+    )).lower()
+    return all(w in hay for w in q.lower().split())
+
+
+def _rename(rep, arrived: str, db=None) -> None:
+    """File this report under its built name, and remember the one it came in
+    under when that name was missing or wrong about the order id.
+
+    A file that arrived without its order id came out of a folder somebody put
+    together by hand, and that is worth seeing on the report rather than being
+    quietly corrected.
+    """
+    from .checks.parser import meta_from_filename as _mfn
+    from .naming import ids_for_report
+
+    if db is not None:
+        ids = ids_for_report(db, rep)
+        if ids:
+            rep.account_ids = ids
+    built = canonical_filename(rep)
+    arrived = (arrived or "").strip()
+    if built != arrived:
+        was = _mfn(arrived)
+        mine = {i for i in (rep.account_ids or "").replace(",", " ").split()}
+        theirs = set((was.get("account_ids") or "").split())
+        if mine and theirs != mine:
+            rep.renamed_from = arrived[:512]
+    rep.filename = built
 
 
 @app.get("/cycle/audit", response_class=HTMLResponse)
@@ -1526,6 +1576,15 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     db.add(rep)
     db.flush()
     attach_owners(db, rep)
+    # NAMED HERE TOO, NOT ONLY ON THE FEED.
+    #
+    # The feed renames every report it takes in and the replace route renames
+    # what it is handed, but a file uploaded by hand kept whatever it was
+    # called - and TapClicks calls every file you download by hand "Digital
+    # Marketing Report.pdf". Two of those landed in a partner's Dropbox folder
+    # as "Digital Marketing Report.pdf" and "Digital Marketing Report -
+    # Lifetime.pdf", which is not a name anybody can file by.
+    _rename(rep, file.filename or "", db)
     db.commit()
     return RedirectResponse(f"/report/{rep.id}/view", status_code=303)
 
@@ -1698,7 +1757,7 @@ async def replace_report(report_id: int, request: Request,
         rep.is_lifetime = True
     if up.get("client") and not rep.client:
         rep.client = up["client"]
-    rep.filename = canonical_filename(rep)
+    _rename(rep, file.filename or "", db)
     path = Path(rep.stored_path) if rep.stored_path else None
     if path is None:
         store = settings.data_dir / f"batch-{rep.batch_id}"

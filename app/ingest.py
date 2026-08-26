@@ -417,12 +417,14 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         # the file arrived without them. A hand-pulled "Digital Marketing
         # Report.pdf" becomes "July 2026_All Seasons Powersports 53908.pdf",
         # which is what the board, the zip and the partner's folder all file by.
-        if not rep.account_ids:
-            hit = client_lines(db, rep.client, rep.account_ids) or []
-            ids = " ".join(dict.fromkeys(
-                i for l in hit for i in (l.account_ids or "").replace(",", " ").split()))
-            if ids:
-                rep.account_ids = ids[:255]
+        # EVERY ORDER THE REPORT COVERS, not just the one it was filed under.
+        # This used to run only when the file arrived with no ids at all, so a
+        # report whose name carried one of its three orders kept that name -
+        # which is worse than carrying none, because it looks complete.
+        from .naming import ids_for_report
+        ids = ids_for_report(db, rep)
+        if ids:
+            rep.account_ids = ids
         # RENAMED, AND WHY IT MATTERS. A file that arrived without its order
         # id - or with the wrong one - came out of a folder somebody put
         # together by hand, and that is worth seeing on the report rather than

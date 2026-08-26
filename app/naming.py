@@ -64,3 +64,45 @@ def canonical_name(rep) -> str:
     if not stem:
         stem = f"report-{getattr(rep, 'id', '') or 'unnamed'}"
     return f"{_safe(stem)}.{(ext or 'pdf').lower()}"
+
+
+def ids_for_report(db, rep) -> str:
+    """EVERY ORDER THIS REPORT COVERS, not just the one it was filed under.
+
+    Congressman Mike Kelly's July report covers CTV on order 53130 and Online
+    Audio on 50589 and 53130 - and was named "July 2026_Congressman Mike Kelly
+    53130.pdf", because the ids were only ever filled in when the file arrived
+    with none at all. A name that names one of three orders is worse than one
+    that names none: it looks complete.
+
+    Scoped to the lines this report is judged against - the ones that ran in
+    the period, or on a lifetime the ones inside the campaign's flight. A
+    client's other campaign is not in this report and does not belong in its
+    name.
+    """
+    from .roster import _overlaps, _ran_during, client_lines
+
+    have = ids_of((getattr(rep, "account_ids", "") or "").replace(",", " "))
+    hit = client_lines(db, getattr(rep, "client", ""), have) or []
+    if not hit:
+        return have
+
+    period = getattr(rep, "period", "") or ""
+    if getattr(rep, "is_lifetime", False):
+        from .ingest import client_flight
+        window = client_flight(db, rep.client, have)
+        if window and window[0]:
+            hit = [l for l in hit if _overlaps(l, window[0], window[1])]
+    elif period:
+        hit = [l for l in hit if _ran_during(l, period)]
+
+    out = list(have.split()) if have else []
+    for l in hit:
+        if getattr(l, "canceled", False):
+            continue
+        for i in (l.account_ids or "").replace(",", " ").split():
+            if i not in out:
+                out.append(i)
+    # Stable and readable: the file was filed under one of these, and a name
+    # whose ids move around between re-checks is a name nobody can search for.
+    return " ".join(sorted(out))[:255]

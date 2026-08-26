@@ -45,9 +45,22 @@ def report_filename(e) -> str:
     work left is stripping a browser's "(1)" and making sure it is a .pdf.
     """
     from .checks.parser import DUPLICATE_SUFFIX
+    from .naming import canonical_name
 
     r = getattr(e, "report", None) or e
-    raw = (getattr(r, "filename", "") or "").strip()
+    # THE BUILT NAME, WHATEVER HAPPENED UPSTREAM.
+    #
+    # Renaming used to happen only on the feed and on a replacement, so a
+    # report uploaded by hand kept whatever it arrived as - and two of them
+    # reached a partner's Dropbox folder as "Digital Marketing Report.pdf" and
+    # "Digital Marketing Report - Lifetime.pdf". Every path names its reports
+    # now; this is the last mile saying so, so one missed path cannot put an
+    # unfilable name in front of a partner again.
+    built = canonical_name(r) if getattr(r, "period", None) is not None else ""
+    if built and built.lower() != (getattr(r, "filename", "") or "").lower():
+        raw = built
+    else:
+        raw = (getattr(r, "filename", "") or "").strip()
     stem, dot, ext = raw.rpartition(".")
     if not dot:
         stem, ext = raw, "pdf"

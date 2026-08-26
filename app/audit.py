@@ -57,8 +57,13 @@ def parse_list(text: str) -> list[dict]:
                 break
             best = cells[i] + ", " + best
         ids = ORDER_ID.findall(best)
-        name = LIFETIME.sub("", ORDER_ID.sub("", best))
-        name = re.sub(r"\bSEO\b\s*$", "", name)
+        # THE NAME ENDS AT THE MARKER. "Sorge Funeral Home & Crematory #45911
+        # LIFETIME -End Date 2026-12-31" is a client and a note somebody left
+        # themselves; removing the word LIFETIME and keeping the rest gave a
+        # client called "Sorge Funeral Home & Crematory -End Date 2026-12-31".
+        head = LIFETIME.split(best)[0]
+        head = re.split(r"\bSEO\b", head)[0]
+        name = ORDER_ID.sub("", head)
         name = PREFIX.sub("", name)
         name = re.sub(r"[\\/\s]+", " ", name).strip(" -/\\")
         if not name and not ids:
@@ -72,11 +77,19 @@ def parse_list(text: str) -> list[dict]:
 
 
 def audit(db, period: str, text: str, group: str = "") -> dict:
-    """What the list has that the board does not, and the other way round."""
+    """What the list has that the board does not, and the other way round.
+
+    AND WHY, for every row that is missing. "Not on the board" is where the
+    question starts, not where it ends - the useful answer is which of the
+    dozen reasons this cycle has for not owing a report applies to this one.
+    """
     from .board import excluded, expected_for
 
     listed = parse_list(text)
-    board = [e for e in expected_for(db, period) if not excluded(e.market)]
+    # The board's own reasons for the rows it decided not to ask for.
+    not_owed: list = []
+    board = [e for e in expected_for(db, period, skipped=not_owed)
+             if not excluded(e.market)]
     if group:
         g = _key(group)
         board = [e for e in board
@@ -103,8 +116,79 @@ def audit(db, period: str, text: str, group: str = "") -> dict:
                 hit.add(id(e))
             matched.append({**row, "board": found[0]})
         else:
-            missing.append(row)
+            missing.append({**row, "why": _why(db, period, row, not_owed)})
 
-    extra = [e for e in board if id(e) not in hit]
+    # THE LIST SCOPES ITSELF.
+    #
+    # A list covering one partner compared against the whole board reports the
+    # other 145 partners as "missing from your list", which is 1,050 rows of
+    # noise around the handful that matter. The partners the list DOES cover
+    # are the ones it can say anything about - and they are known, because its
+    # rows matched board rows in them.
+    covered = {e.group for e in board if id(e) in hit}
+    extra = [e for e in board if id(e) not in hit
+             and (not covered or e.group in covered)]
     return {"listed": listed, "board": board, "matched": matched,
-            "missing": missing, "extra": extra}
+            "missing": missing, "extra": extra,
+            "covered": sorted(covered)}
+
+
+def _why(db, period: str, row: dict, not_owed: list) -> str:
+    """Why this row is not on the board, in the board's own words where it has
+    them and in the order line's where it does not."""
+    from .db import OrderLine
+    from .cycle import cycle_for
+    from sqlalchemy import select
+
+    want = _key(row["client"])
+    # 1. The board looked at it and decided not to ask. That reason is the best
+    #    one there is, because it is the actual rule that fired.
+    for s in not_owed:
+        if _key(s.get("client", "")) == want and s.get("kind", row["kind"]) == row["kind"]:
+            return s.get("why", "not owed this cycle")
+
+    # 2. No order line carries these ids at all.
+    lines = []
+    if db is not None:
+        ids = row["ids"]
+        if ids:
+            for l in db.scalars(select(OrderLine)).all():
+                have = set((l.account_ids or "").replace(",", " ").split())
+                if have & set(ids):
+                    lines.append(l)
+        if not lines:
+            for l in db.scalars(select(OrderLine)).all():
+                if _key(l.client or "") == want:
+                    lines.append(l)
+    if not lines:
+        return ("no order line carries "
+                + (", ".join(row["ids"]) if row["ids"] else "this client")
+                + " - it is not in the export, or the export is out of date")
+
+    if all(getattr(l, "canceled", False) for l in lines):
+        return "every line on this order is canceled"
+
+    cyc = cycle_for(period)
+    ends = [l.ends_on for l in lines if l.ends_on]
+    starts = [l.starts_on for l in lines if l.starts_on]
+    if ends and max(ends) < cyc.starts_on:
+        return f"every line ended by {max(ends)}, before this cycle"
+    if starts and min(starts) > cyc.ends_on:
+        return f"nothing starts until {min(starts)}, after this cycle"
+
+    if row["kind"] == "lifetime":
+        from .partners import is_seo
+        if all(is_seo(l.product or "") for l in lines):
+            return "SEO is not owed a lifetime"
+        if ends and not any(cyc.needs_lifetime(l.order_ends_on or l.ends_on)
+                            for l in lines):
+            last = max((l.order_ends_on or l.ends_on) for l in lines
+                       if (l.order_ends_on or l.ends_on))
+            return (f"the campaign runs to {last}, past this cycle's lifetime "
+                    f"window (to {cyc.lifetime_cutoff})")
+        return "no line ends inside this cycle's lifetime window"
+
+    if not any(cyc.was_live(l.starts_on, l.ends_on) for l in lines):
+        return "no line was live during the data month"
+    return ("the order is loaded and looks live - open the client's order lines,"
+            " this is worth a closer look")

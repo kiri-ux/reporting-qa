@@ -549,9 +549,9 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
 {% macro capnote(shown, total) %}
   {% if total > shown %}
     <p class="sub" style="font-size:12.5px;margin:8px 0 0">
-      Showing the first <b>{{ shown }}</b> of {{ total }}. The search and filters
-      above cover the {{ shown }} on screen - narrow to a partner, or
-      <a href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}&rows=all#reports">load all {{ total }}</a>.
+      Showing the first <b>{{ shown }}</b> of {{ total }}. Typing in the box
+      filters these {{ shown }}; <b>press Enter</b> to search all {{ total }}.
+      Or <a href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}&rows=all#reports">load all {{ total }}</a>.
     </p>
   {% endif %}
 {% endmacro %}
@@ -564,11 +564,23 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
       {%- if filter_state %} · {{ state_label[filter_state] }}{% endif %}</h2>
   </div>
   {% if rows %}
-  <div class="tools">
-    <input type="search" data-filter="tbl-cycle" data-count="cnt-cycle"
-           placeholder="Search everything...">
+  {# TYPING FILTERS THE PAGE, ENTER SEARCHES THE CYCLE.
+     The box used to do only the first, on a table capped at 150 of 763 - so it
+     said "28 of 150 rows" and looked like it had searched everything. #}
+  <form method="get" action="/cycle" class="tools" id="cyclesearch">
+    <input type="hidden" name="period" value="{{ period }}">
+    {% if filter_group %}<input type="hidden" name="group" value="{{ filter_group }}">{% endif %}
+    {% if filter_state %}<input type="hidden" name="state" value="{{ filter_state }}">{% endif %}
+    {% if show_all %}<input type="hidden" name="rows" value="all">{% endif %}
+    <input type="search" name="q" value="{{ q }}"
+           data-filter="tbl-cycle" data-count="cnt-cycle"
+           placeholder="Search everything... (Enter to search all {{ row_total }})">
     <span class="count" id="cnt-cycle"></span>
-  </div>
+    {% if q %}
+      <a class="chip" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}"
+         title="Drop this search">{{ q }} &times;</a>
+    {% endif %}
+  </form>
   <div class="colfilters" data-filters-for="tbl-cycle"><span class="frow">Reports</span></div>
 
   {# Bulk sign-off. Most of a cycle is reports where everything passed, and
