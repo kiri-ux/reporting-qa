@@ -622,9 +622,69 @@ def test_the_report_page_can_show_the_rows_it_is_judged_against(db):
     without me guessing from a screenshot."""
     from pathlib import Path as _P
     tpl = _P("app/templates/report_orders_body.html").read_text()
-    assert "Would be" in tpl and "none recorded" in tpl
+    # "Would be" was its own column; it is now a line under the product, said
+    # in words, because it is only ever interesting when it disagrees.
+    assert "reads as {{ r.would_be }} today" in tpl
+    assert "merged span" in tpl
     assert "/report/{{ rep.id }}/orders" in _P("app/templates/viewer.html").read_text()
     assert '@app.get("/report/{report_id}/orders")' in _P("app/main.py").read_text()
+
+
+# ------------------------------------- one row per order and per line item
+_HEAD = ("client_business_unit,orders_status,client,orders_id,product,id,"
+         "status,orders_start_date,start_date,end_date,orders_end_date\n")
+# Two orders selling one product. 101 ran through July and stops mid-August;
+# 102 does not start until August. Merged they are one buy running June to
+# December, which is true of neither of them.
+TWO_FLIGHTS = ("BU,IO Live,Acme,101,Social Mirror Ads,7001,IO Live,"
+               "2026-06-01,2026-06-01,2026-08-15,2026-08-15\n"
+               "BU,IO Live,Acme,102,Social Mirror Ads,7002,IO Live,"
+               "2026-08-01,2026-08-01,2026-12-31,2026-12-31\n")
+
+
+def test_a_closed_orders_end_date_beats_its_line_items(db):
+    """Order 48135 is IO Complete and ended on 28 February. Its Social Mirror
+    line item is still dated 1 April to 31 December, so the line item's own end
+    kept it alive and it sat on Long Jewelers' JULY report as a running buy,
+    five months after somebody closed the order."""
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    rows = (
+        "VB Blvd,IO Complete,Long Jewelers,48135,Social Mirror Ads,127806,,"
+        "2025-11-11,2026-04-01,2026-12-31,2026-02-28\n"
+        "VB Blvd,IO Live,Long Jewelers,53342,Social Mirror Ads,127821,IO Live,"
+        "2026-05-01,2026-05-01,2026-12-31,2026-12-31\n")
+    import_io_export(db, (_HEAD + rows).encode(), period="2026-07")
+    row = db.query(OrderLine).filter_by(product="Social Mirror").one()
+    assert row.account_ids == "53342", "48135 closed in February"
+    assert [d["order"] for d in row.detail] == ["53342"]
+
+
+def test_a_live_order_with_a_stale_header_date_keeps_its_line_item(db):
+    """The other way round. A line item re-flighted under a live order is the
+    newer fact of the two, so this is not a plain min() of the two dates."""
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    rows = ("BU,IO Live,Acme,900,Social Mirror Ads,9001,IO Live,"
+            "2026-01-01,2026-04-01,2026-12-31,2026-02-28\n")
+    import_io_export(db, (_HEAD + rows).encode(), period="2026-07")
+    assert db.query(OrderLine).filter_by(product="Social Mirror").one()
+
+
+def test_each_line_item_is_kept_with_its_own_order_and_its_own_dates(db):
+    """The stored row is one answer per client and product, merged across every
+    order that sells it, because that is what the checks ask. Read by a person
+    it hides what they came for: the order ids, the line ids and the flights
+    were three separate lists with nothing tying them together."""
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    import_io_export(db, (_HEAD + TWO_FLIGHTS).encode(), period="2026-08")
+    row = db.query(OrderLine).filter_by(product="Social Mirror").one()
+    assert row.account_ids == "101, 102"          # still merged, as the checks want
+    detail = {d["order"]: d for d in row.detail}
+    assert set(detail) == {"101", "102"}
+    assert detail["101"]["line"] == "7001" and detail["101"]["ends"] == "2026-08-15"
+    assert detail["102"]["line"] == "7002" and detail["102"]["starts"] == "2026-08-01"
 
 
 def test_what_todays_code_would_map_a_raw_name_to_is_shown():

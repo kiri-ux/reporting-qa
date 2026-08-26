@@ -380,7 +380,9 @@ def test_seo_is_never_owed_a_lifetime():
 
 def test_the_order_panel_shows_what_the_month_was_bought_to_do():
     html = (TPL / "report_orders_body.html").read_text()
-    for col in ("Impressions", "Budget", "Ad spend"):
+    # The eleven-column version had a header per number and needed dragging
+    # sideways to reach the dates. Two stacked money columns instead.
+    for col in ("This month", "Campaign total"):
         assert col in html
     for field in ("r.impressions", "r.budget", "r.spend",
                   "r.total_impressions", "r.total_budget"):

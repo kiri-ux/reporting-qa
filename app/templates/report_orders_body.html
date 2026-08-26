@@ -1,11 +1,15 @@
 {# The order lines themselves. Rendered on their own page AND inside the modal
-   on the report, so there is one copy of it. #}
+   on the report, so there is one copy of it.
+
+   ONE ROW PER ORDER AND LINE ITEM. Everywhere else in the app an order line is
+   one answer per client and product, merged across every order that sells it,
+   because that is the question the checks ask. Read by a person it hides the
+   thing they came here for: which order those dates belong to. #}
 <p class="sub">
-  Every row {{ rep.client }}'s {{ rep.period }} report is judged against - not
-  the summary a finding prints, the actual rows. <b>Would be</b> is what
-  today's code would map the raw product name to; where that differs from
-  <b>Product</b>, the row was written by an older import and that is the whole
-  answer.
+  Every line item {{ rep.client }}'s {{ rep.period }} report is judged against -
+  one row each, with its own order and its own dates. The checks see these
+  merged into one row per product, which is why a date here can look narrower
+  than the finding does.
 </p>
 
 {% if running %}
@@ -36,55 +40,117 @@
   </div>
 {% endif %}
 
-{% if rows %}
-  <div class="tw"><table>
-    <thead><tr><th>Product</th><th>Would be</th><th>Raw name on the order</th>
-      <th>Order</th><th>Line items</th><th>Live</th>
-      <th>Ran in {{ rep.period }}</th><th>Flights</th>
-      <th style="text-align:right">Impressions<br><span class="acct">a month</span></th>
-      <th style="text-align:right">Budget<br><span class="acct">a month</span></th>
-      <th style="text-align:right">Ad spend</th></tr></thead>
+{% macro olines(rows) %}
+  <div class="tw"><table class="olines">
+    <thead><tr>
+      <th>Order</th><th>Product</th><th>Status</th><th>Flight</th>
+      <th class="w1">In {{ rep.period }}</th>
+      <th style="text-align:right">This month</th>
+      <th style="text-align:right">Campaign total</th>
+    </tr></thead>
     <tbody>
       {% for r in rows %}
-        <tr>
-          <td><b>{{ r.product }}</b></td>
-          <td{% if r.would_be != r.product %} style="color:var(--crit);font-weight:600"{% endif %}>
-            {{ r.would_be }}</td>
-          <td class="acct">{{ r.raw }}</td>
-          <td class="mono nw">{{ r.orders }}</td>
-          <td class="mono nw" style="font-size:11px">{{ r.lines }}</td>
-          <td>{% if r.canceled %}<span style="color:var(--crit);font-weight:600"
-                 title="Canceled. Not owed on the report - and not an error if it is on it.">CANCELED</span>
-              {% elif r.live %}yes{% else %}PAUSED{% endif %}</td>
-          <td>{% if r.ran is none %}—{% elif r.ran %}yes{% else %}<span style="color:var(--muted)">no</span>{% endif %}</td>
-          <td class="mono" style="font-size:11px">
-            {% if r.flights %}
-              {% for w in r.flights %}{{ w[0] or '?' }} &rarr; {{ w[1] or 'open' }}{% if not loop.last %}<br>{% endif %}{% endfor %}
-            {% else %}
-              <span style="color:var(--crit)">none recorded</span> —
-              {{ r.starts or '?' }} &rarr; {{ r.ends or 'open' }}
+        <tr{% if r.first and not loop.first %} class="grp"{% endif %}>
+          <td class="mono nw">
+            {% if r.order %}
+              <a href="{{ io_order_url }}{{ r.order.split(',')[0].strip() }}"
+                 target="_blank" rel="noopener">{{ r.order }}</a>
+            {% else %}<span class="acct">no order id</span>{% endif %}
+            {% if r.line %}<br><span class="acct">{{ r.line }}</span>{% endif %}
+          </td>
+          <td>
+            {% if r.first %}<b>{{ r.product }}</b>
+            {% else %}<span class="acct" title="{{ r.product }}">&#8221;</span>{% endif %}
+            {% if r.raw and r.raw != r.product %}
+              <br><span class="acct">{{ r.raw }}</span>{% endif %}
+            {% if r.would_be != r.product %}
+              <br><span class="warnline">reads as {{ r.would_be }} today</span>
             {% endif %}
           </td>
-          <td class="mono nw" style="text-align:right">
-            {% if r.impressions %}{{ '{:,.0f}'.format(r.impressions) }}{% endif %}
-            {%- if r.total_impressions %}<br><span class="acct"
-              title="Campaign total on the order">{{ '{:,.0f}'.format(r.total_impressions) }} total</span>{% endif %}</td>
-          <td class="mono nw" style="text-align:right">
+          <td class="nw">
+            {% if r.canceled %}
+              <span class="pill p-fail"
+                    data-tip="Canceled. Not owed on the report - and not an error if it is on it.">canceled</span>
+            {% elif r.complete %}
+              <span class="pill p-warn"
+                    data-tip="IO Complete. The campaign finished, whatever the end date says.">complete</span>
+            {% elif r.live %}
+              <span class="pill p-pass">live</span>
+            {% elif r.paused %}
+              <span class="pill p-warn"
+                    data-tip="Paused. Not delivering, so not owed - and not a surprise if it turns up.">paused</span>
+            {% else %}<span class="acct">-</span>{% endif %}
+            {% if r.status %}<br><span class="acct">{{ r.status }}</span>{% endif %}
+          </td>
+          <td class="mono nw" style="font-size:12px">
+            {% if r.starts or r.ends %}
+              {{ r.starts or '?' }}<br>{{ r.ends or 'open' }}
+            {% else %}<span style="color:var(--crit)">no dates</span>{% endif %}
+            {% if r.merged %}
+              <br><span class="warnline"
+                data-tip="This row predates build 42, when each order's own window started being kept. The dates are the merged span across every order behind it, so a gap between two flights is invisible until the orders are re-read.">merged span</span>
+            {% endif %}
+          </td>
+          <td class="w1">
+            {% if r.ran is none %}<span class="acct">-</span>
+            {% elif r.ran %}yes
+            {% else %}<span style="color:var(--muted)">no</span>{% endif %}
+          </td>
+          <td class="n" style="font-size:12.5px">
+            {% if r.impressions %}{{ '{:,.0f}'.format(r.impressions) }}<br>{% endif %}
             {% if r.budget %}${{ '{:,.2f}'.format(r.budget) }}{% endif %}
-            {%- if r.total_budget %}<br><span class="acct"
-              title="Campaign total on the order">${{ '{:,.0f}'.format(r.total_budget) }} total</span>{% endif %}</td>
-          <td class="mono nw" style="text-align:right">
-            {% if r.spend %}${{ '{:,.2f}'.format(r.spend) }}{% endif %}</td>
+            {% if r.first and r.spend %}<br><span class="acct"
+              data-tip="Ad spend, from the spend upload">${{ '{:,.2f}'.format(r.spend) }} spent</span>{% endif %}
+            {% if not r.impressions and not r.budget %}<span class="acct">-</span>{% endif %}
+          </td>
+          <td class="n" style="font-size:12.5px">
+            {% if r.total_impressions %}{{ '{:,.0f}'.format(r.total_impressions) }}<br>{% endif %}
+            {% if r.total_budget %}${{ '{:,.0f}'.format(r.total_budget) }}{% endif %}
+            {% if not r.total_impressions and not r.total_budget %}<span class="acct">-</span>{% endif %}
+          </td>
         </tr>
       {% endfor %}
     </tbody>
   </table></div>
-  <p class="sub" style="font-size:12.5px">
-    <b>Flights: none recorded</b> means the row predates build 42, which is
-    when each order's own window started being kept. Until it is re-read, the
-    period test falls back to the merged span and a gap between two flights is
-    invisible.
-  </p>
+{% endmacro %}
+
+{% if rows %}
+  {{ olines(rows) }}
+{% elif other %}
+  <p class="empty">Nothing this client bought was running in {{ rep.period }}.</p>
 {% else %}
   <p class="empty">No order lines match this client at all.</p>
 {% endif %}
+
+{% if other %}
+  {# ORDERS THAT DID NOT RUN IN THIS MONTH ARE NOT WHAT THIS REPORT IS ABOUT.
+     48135 ended on 28 February and sat on a July report's order list looking
+     like evidence. Still the same client and often the same product, so they
+     are here rather than gone. #}
+  <details class="offmonth">
+    <summary>{{ other|length }} more line item{{ 's' if other|length != 1 }}
+      that did not run in {{ rep.period }}</summary>
+    <p class="sub" style="margin:10px 0 0">
+      Nothing on this report is judged against these - their flights end before
+      the month or start after it. They are here because they are the same
+      client and often the same product, so a missing section is worth checking
+      against them before deciding the order list is wrong.
+    </p>
+    {{ olines(other) }}
+  </details>
+{% endif %}
+
+<style>
+/* This table is read, not scanned - seven narrow columns rather than eleven
+   wide ones, so it fits without being dragged sideways to find the dates. */
+.olines th, .olines td { padding:7px 10px }
+.olines td { font-size:13px }
+.olines tr.grp td { border-top:2px solid var(--line) }
+.olines .warnline { font-size:11.5px;color:var(--crit);font-weight:600 }
+.offmonth { margin-top:14px }
+.offmonth > summary { cursor:pointer;font-family:Agdasima,sans-serif;font-size:14px;
+ font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
+ padding:8px 0 }
+.offmonth > summary:hover { color:var(--ink) }
+.offmonth .tw { margin-top:10px }
+</style>

@@ -1,21 +1,82 @@
-build 2026.08.26-87
+build 2026.08.26-88
 Changed files only.
 
+app/db.py
+app/main.py
+app/orders_io.py
+app/templates/report_orders_body.html
 app/version.py
-app/templates/cycle.html
 tests/test_board_extras.py
+tests/test_manual_upload.py
+tests/test_order_remap.py
 
-606 tests pass.
+610 tests pass.
 
 
-"93 CLIENTS NOT OWED A REPORT THIS CYCLE" MOVED
-=================================================
-It sat between the summary tiles and the partner cards, which is nowhere: it is
-not a number about the cycle and it is not about a partner.
+ONE ROW PER ORDER AND LINE ITEM
+==================================
+Long Jewelers - VB Blvd was one row reading
 
-It is a statement about which reports this cycle wants and which it does not,
-so it now sits in the Reports section, under the table and its pager - next to
-the rows it is the other half of.
+  ORDER 48135, 53342 | LINE ITEMS 127806, 127821
+  FLIGHTS 2026-04-01 -> 2026-12-31   2026-05-01 -> 2026-12-31
 
-Everything about it is unchanged: the reason per client, and the "Needs a
-report" override with its note.
+which is three lists side by side with nothing tying them together. Two of
+those dates belong to an order that is not on the other line.
+
+Everywhere else in the app an order line is one answer per client and product,
+merged across every order that sells it, because that is the question the
+checks ask. This panel is the one place a person is asking the other question,
+so it now keeps the line items themselves as well as the answer and prints one
+row each - its own order, its own line item, its own dates, its own status, its
+own "did it run this month".
+
+The rows are still merged everywhere else. Nothing about the board changed.
+
+
+NO MORE SIDEWAYS SCROLLING
+=============================
+Eleven columns down to seven, by folding the ones that were only ever read
+together:
+
+  Would be         -> a red line under the product, and only when it disagrees
+  Impressions      -> stacked in ONE "this month" column
+  Budget           -> same column
+  Ad spend         -> under it, on the first row of the product
+  Total impressions-> stacked in ONE "campaign total" column
+  Total budget     -> same column
+  Live/canceled    -> one pill, with the order's own status underneath
+
+The product name prints once per group rather than eight times, with a rule
+between groups.
+
+
+48135 IS OFF THE JULY REPORT
+===============================
+This one was not a display problem.
+
+Order 48135 is IO Complete and ended 28 February. Its Social Mirror line item
+127806 is still dated 1 April to 31 December. The import took the line item's
+end date whenever it had one, so 48135 read as running until December and went
+on Long Jewelers' JULY order list as a live buy - five months after somebody
+closed the order.
+
+A line item cannot deliver past the order that pays for it. When the order is
+CLOSED - complete or cancelled - its end date now wins. Only then: a live order
+with a stale header date is the opposite case, the line item is the newer fact
+there, so this is not a plain earliest-of-the-two.
+
+That fix is in the import, not the panel, so it also takes 48135 off the board.
+
+One more, related: the orders are read for the month being worked on, so a July
+report gets looked at against an August import, and a buy that does not start
+until August was on its order list looking like evidence. Those move below the
+fold now - "N more line items that did not run in 2026-07", one click to open.
+They are the same client and often the same product, so they are worth being
+able to see; they are just not what the report is judged against.
+
+
+ON DEPLOY
+============
+The import changed, so the orders re-read themselves automatically. Until that
+lands - a minute or two - the panel shows the old merged rows with a small red
+"merged span" note on the dates saying so. It clears itself.

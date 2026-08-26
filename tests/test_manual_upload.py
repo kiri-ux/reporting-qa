@@ -746,6 +746,26 @@ def test_order_lines_come_back_as_a_fragment_for_the_sheet(client):
     assert "Social Mirror" in frag
 
 
+def test_a_line_item_that_missed_the_month_sits_below_the_fold(client):
+    """The orders are read for the month being worked on, so a July report gets
+    looked at against an August import - and a buy that does not start until
+    August was sitting on its order list looking like evidence."""
+    from tests.test_order_remap import _HEAD, TWO_FLIGHTS
+    from app.orders_io import import_io_export
+    c, (db, dbm, imod) = client
+    import_io_export(db, (_HEAD + TWO_FLIGHTS).encode(), period="2026-08")
+    rep = dbm.Report(batch_id=1, filename="a.pdf", period="2026-07",
+                     client="Acme", market="BU", review_state="new",
+                     account_ids="101, 102")
+    db.add(rep); db.commit()
+
+    html = c.get(f"/report/{rep.id}/orders?frag=1").text
+    head, _, tail = html.partition("did not run in 2026-07")
+    assert tail, "the off-month section is missing"
+    assert "7001" in head and "7002" not in head, "July's line item, and only it"
+    assert "7002" in tail
+
+
 # --------------------------------------------------------------- delivery
 def test_a_delivered_report_keeps_its_own_name(app_db):
     """The partner's copy used to be named after the client - no month, no

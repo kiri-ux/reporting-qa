@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-87"
-BUILD_NOTES = ("The not-owed list moved down under the reports, where it is "
-               "about the same thing.")
+BUILD = "2026.08.26-88"
+BUILD_NOTES = ("The order panel splits into one row per order and line item, "
+               "and a closed order's end date now beats its line items.")
 
 # ---------------------------------------------------------------------------
 

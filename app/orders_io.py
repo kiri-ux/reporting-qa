@@ -352,6 +352,25 @@ def import_io_export(db: Session, sources, period: str | None = None,
             end = line_end or order_end
             start = _date(r.get("start_date")) or _date(r.get("orders_start_date"))
 
+            # A CLOSED ORDER STOPS EVERY LINE ITEM UNDER IT.
+            #
+            # Order 48135 is IO Complete and ended on 28 February. Its Social
+            # Mirror line item 127806 is still dated 1 April to 31 December, so
+            # the line item's own end kept it alive and it sat on Long Jewelers'
+            # JULY report as a running buy, five months after somebody closed
+            # the order. A line item cannot deliver past the order that pays
+            # for it, and the header is the newer fact of the two: closing an
+            # order is a deliberate act, while a line item's end date is
+            # whatever it was when it was written.
+            #
+            # Only when the order is CLOSED. A live order with a stale header
+            # date is the opposite case - there the line item is the newer fact
+            # - which is why this is not a plain min() of the two.
+            if (order_end and (line_end is None or order_end < line_end)
+                    and (DEAD_ORDER_STATUS.match(order_status)
+                         or order_status.lower() == "io complete")):
+                end = order_end
+
             # A CANCELED LINE IS KEPT, NOT DROPPED.
             #
             # It used to be thrown away at import, so a report carrying the
@@ -419,6 +438,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "campaign": product_raw, "starts_on": start, "ends_on": end,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
+                        "detail": [],
                         "live": False, "canceled": True, "complete": True,
                         "paused": True, "status": set(),
                         "budget": None, "impressions": None,
@@ -470,6 +490,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # it maps to. "CTV + Video Ads" is one buy with one budget, and
                 # adding it to both halves would say the client is spending
                 # twice what the order says.
+                money = imps = whole = all_imps = None
                 if product == products[0]:
                     # A product with its own money column falls back to the
                     # campaign budget when that column is empty: Performance
@@ -513,6 +534,23 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 kept[k]["flights"].append(
                     [start.isoformat() if start else None,
                      end.isoformat() if end else None])
+                # AND THE LINE ITEM ITSELF, tied to its own order and its own
+                # dates. The lists above answer "when did this product run";
+                # only this can answer "which order was that".
+                kept[k]["detail"].append({
+                    "order": order_id, "line": line_id,
+                    "raw": product_raw,
+                    "starts": start.isoformat() if start else None,
+                    "ends": end.isoformat() if end else None,
+                    "order_starts": os_.isoformat() if os_ else None,
+                    "order_ends": order_end.isoformat() if order_end else None,
+                    "status": line_status or order_status or "",
+                    "order_status": order_status or "",
+                    "live": bool(line_live), "canceled": bool(canceled),
+                    "complete": bool(line_done), "paused": bool(paused),
+                    "budget": money, "impressions": imps,
+                    "total_budget": whole, "total_impressions": all_imps,
+                })
                 # Every order and line item that rolled into this row, so a
                 # client running one product across three orders can be traced.
                 if order_id:
@@ -561,7 +599,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             line_ids=", ".join(sorted(v["lines"]))[:512],
             campaign=v["campaign"], product=product,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
-            flights=v["flights"], live=bool(v["live"]),
+            flights=v["flights"], detail=v["detail"], live=bool(v["live"]),
             canceled=bool(v.get("canceled")),
             paused=bool(v.get("paused")),
             status=", ".join(sorted(x for x in v.get("status") or () if x))[:48],

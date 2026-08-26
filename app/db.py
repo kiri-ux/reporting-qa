@@ -374,6 +374,20 @@ class OrderLine(Base):
     #
     # A list of [start, end] ISO strings, either of which may be null.
     flights: Mapped[list] = mapped_column(JSON, default=list)
+    # THE LINE ITEMS THEMSELVES, one entry each, unmerged.
+    #
+    # Everything else on this row is an answer about the client's product across
+    # every order that sells it, which is what the checks want and what the
+    # board wants. It is not what a person wants when they are looking at the
+    # row and asking why. Long Jewelers' Social Mirror is orders 48135 and
+    # 53342, and merged it reads as one buy running April to December - when
+    # 48135 finished on 28 February and only 53342 ran in July. The merged row
+    # cannot say that, because the order ids, the line ids and the flights are
+    # three separate lists with nothing tying them together.
+    #
+    # So the rows are kept as well as the answer. Nothing reads this except the
+    # order panel: it is the receipt, not the verdict.
+    detail: Mapped[list] = mapped_column(JSON, default=list)
     # Is ANY of the line items behind this row actually running? A paused line
     # is neither expected on the report nor a surprise when it turns up - the
     # buy exists, it is just not delivering - so it makes no claim either way.
@@ -699,6 +713,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
      "WHERE delivered_as = '' AND filename <> ''"),
     ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
+    ("order_lines", "detail", "JSON"),
 ]
 
 

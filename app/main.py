@@ -2567,6 +2567,19 @@ def pull_range_rows(db: Session, today: dt.date | None = None) -> list[tuple]:
                   key=lambda r: (r[1] or dt.date.max, r[0] or ""))
 
 
+class _OneFlight:
+    """One line item's own window, shaped like an order line.
+
+    So the "did it run in this month" test is the same code for a single line
+    item as for the merged row - a second copy of that rule is a second answer
+    waiting to disagree with the board.
+    """
+
+    def __init__(self, starts, ends):
+        self.flights = [[starts, ends]]
+        self.starts_on, self.ends_on = starts, ends
+
+
 @app.get("/report/{report_id}/orders")
 def report_orders(report_id: int, request: Request, db: Session = Depends(get_db)):
     """Every order line this report is being judged against, as stored.
@@ -2587,34 +2600,98 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
     lines = client_lines(db, rep.client, rep.account_ids) or []
     rows = []
     for l in sorted(lines, key=lambda x: (x.product or "", x.account_ids or "")):
-        rows.append({
-            "product": l.product or "(unmapped)",
-            "raw": l.campaign or "",
-            # What TODAY's code would map that raw name to. When this differs
-            # from the stored product, the row was written by an older import
-            # and that is the whole answer.
-            "would_be": ", ".join(map_order_products(l.campaign or "")) or "(nothing)",
-            "orders": l.account_ids or "", "lines": l.line_ids or "",
-            "live": bool(getattr(l, "live", True)),
-            "canceled": bool(getattr(l, "canceled", False)),
-            "flights": getattr(l, "flights", None) or [],
-            "starts": l.starts_on, "ends": l.ends_on,
+        product = l.product or "(unmapped)"
+        # What TODAY's code would map the raw name to. When this differs from
+        # the stored product, the row was written by an older import and that
+        # is the whole answer.
+        would_be = ", ".join(map_order_products(l.campaign or "")) or "(nothing)"
+        base = {
+            "product": product, "raw": l.campaign or "", "would_be": would_be,
             # WHAT THE MONTH WAS BOUGHT TO DO. The panel exists to answer
             # "what is this finding actually judging", and the goal is half of
             # every pacing answer - it was the one column not on the table.
-            "budget": l.budget, "spend": getattr(l, "spend", None),
-            "impressions": getattr(l, "impressions", None),
-            "total_budget": getattr(l, "total_budget", None),
-            "total_impressions": getattr(l, "total_impressions", None),
-            "ran": _ran_during(l, rep.period) if rep.period else None,
-        })
+            "spend": getattr(l, "spend", None),
+        }
+        # ONE ROW PER ORDER AND LINE ITEM.
+        #
+        # The stored row is one answer per client and product, merged across
+        # every order that sells it, because that is the question the checks
+        # ask. Read by a person it is a lie of omission: Long Jewelers' Social
+        # Mirror showed orders 48135 and 53342 above one span running April to
+        # December, when 48135 finished on 28 February. Merged dates cannot say
+        # which order they came from, so here the line items are unpacked.
+        for d in (getattr(l, "detail", None) or []):
+            rows.append({
+                **base, "merged": False,
+                "order": d.get("order") or "", "line": d.get("line") or "",
+                "raw": d.get("raw") or base["raw"],
+                "starts": d.get("starts"), "ends": d.get("ends"),
+                "order_starts": d.get("order_starts"),
+                "order_ends": d.get("order_ends"),
+                "status": d.get("status") or "",
+                "live": bool(d.get("live")), "canceled": bool(d.get("canceled")),
+                "complete": bool(d.get("complete")),
+                "paused": bool(d.get("paused")),
+                "budget": d.get("budget"), "impressions": d.get("impressions"),
+                "total_budget": d.get("total_budget"),
+                "total_impressions": d.get("total_impressions"),
+                "ran": (_ran_during(_OneFlight(d.get("starts"), d.get("ends")),
+                                    rep.period) if rep.period else None),
+            })
+        if not (getattr(l, "detail", None) or []):
+            # No line items kept - a row loaded before they were. Show the
+            # merged answer rather than nothing, and say which it is.
+            rows.append({
+                **base, "merged": True,
+                "order": l.account_ids or "", "line": l.line_ids or "",
+                "starts": l.starts_on, "ends": l.ends_on,
+                "order_starts": getattr(l, "order_starts_on", None),
+                "order_ends": getattr(l, "order_ends_on", None),
+                "status": getattr(l, "status", "") or "",
+                "live": bool(getattr(l, "live", True)),
+                "canceled": bool(getattr(l, "canceled", False)),
+                "complete": bool(getattr(l, "complete", False)),
+                "paused": bool(getattr(l, "paused", False)),
+                "budget": l.budget, "impressions": getattr(l, "impressions", None),
+                "total_budget": getattr(l, "total_budget", None),
+                "total_impressions": getattr(l, "total_impressions", None),
+                "ran": _ran_during(l, rep.period) if rep.period else None,
+            })
+    rows.sort(key=lambda r: (r["product"], r.get("starts") or "",
+                             str(r.get("order") or "")))
+    # Only the first row of each product group prints the product, so the eye
+    # reads the group and not the same word eight times.
+    seen_product = ""
+    for r in rows:
+        r["first"] = r["product"] != seen_product
+        seen_product = r["product"]
+
+    # ORDERS THAT DID NOT RUN IN THIS MONTH ARE NOT WHAT THIS REPORT IS ABOUT.
+    #
+    # 48135 ended on 28 February and was sitting on a July report's order list
+    # looking like evidence. They are still worth being able to see - it is the
+    # same client and the same product - so they move below the fold instead of
+    # disappearing. A lifetime covers every month, so it keeps all of them.
+    other: list = []
+    if rep.period and not getattr(rep, "is_lifetime", False):
+        other = [r for r in rows if r["ran"] is False]
+        rows = [r for r in rows if r["ran"] is not False]
+        seen_product = ""
+        for r in rows:
+            r["first"] = r["product"] != seen_product
+            seen_product = r["product"]
+        seen_product = ""
+        for r in other:
+            r["first"] = r["product"] != seen_product
+            seen_product = r["product"]
     from .orders_s3 import NOT_A_SYNC, running_sync
     sync = db.scalars(select(OrderSync)
                       .where(OrderSync.state != "running",
                              ~OrderSync.source.like(NOT_A_SYNC))
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     ctx = {
-        "nav": "cycle", "rep": rep, "rows": rows, "sync": sync,
+        "nav": "cycle", "rep": rep, "rows": rows, "other": other, "sync": sync,
+        "io_order_url": settings.io_order_url,
         "map_now": product_map_version(),
         "stale": bool(sync and sync.ok and
                       (sync.map_version or "") != product_map_version()),
