@@ -376,6 +376,15 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <a href="{{ d.archive_url }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
             <span class="acct">{{ d.reports }} file{{ 's' if d.reports != 1 }}</span>
+            {# THE LINK IS STILL GOOD; WHAT IS BEHIND IT IS NOT. Reports get
+               corrected all cycle and the folder only changes when somebody
+               presses sync, so this partner can be handing out a link to last
+               Tuesday's work and nothing would say so. #}
+            {% set behind = stale_pack.get(g.group) or [] %}
+            {% if behind %}
+              <a class="pendtag" href="/cycle/links?period={{ period }}"
+                 data-tip="{{ behind|length }} report{{ 's' if behind|length != 1 }} changed since this was packaged: {{ behind[:4]|join(', ') }}{% if behind|length > 4 %} and {{ behind|length - 4 }} more{% endif %}. Sync it on the links page.">needs a sync</a>
+            {% endif %}
           {% elif d and d.ok %}
             <a class="btn gold" href="/delivery/{{ d.id }}/file">Download zip</a>
             <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>
@@ -450,6 +459,14 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
              date alone does not tell the reporter what to pull. #}
           {% if e.starts_on or e.ends_on %}<br>
             <span class="acct">{{ e.starts_on or '?' }} &rarr; {{ e.ends_on or 'open' }}</span>
+          {% endif %}
+          {# THE ORDER'S END DATE IS WHAT IT WAS SOLD TO RUN TO. Nothing on the
+             export says when somebody hit cancel, so a lifetime pulled to that
+             date covers weeks of nothing. The last day with delivery on it is
+             where the campaign actually ended. #}
+          {% if e.stopped_on %}<br>
+            <span class="pendtag"
+                  data-tip="This campaign was cancelled or completed early. It last delivered on {{ e.stopped_on }}, so pull the report to that date rather than the {{ e.ends_on }} on the order.">stopped {{ e.stopped_on }}</span>
           {% endif %}
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
         <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
@@ -535,7 +552,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <input type="hidden" name="kind" value="{{ e.kind }}">
               {% if e.done_by or e.forced_by %}
                 <button class="iconbtn" name="action" value="clear"
-                        title="Undo - put this row back the way the rules had it">
+                        data-tip="Undo - put this row back the way the rules had it">
                   <svg aria-hidden="true"><use href="#ic-undo"/></svg>
                   <span class="sr">Undo</span></button>
               {% else %}
@@ -544,21 +561,21 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
                    row of a hundred-and-fifty-partner board a paragraph. What
                    they do is on hover, where it is read once. #}
                 <button class="iconbtn ok" name="action" value="done"
-                        title="Done, no report - handled this month with no PDF. Next month it is back asking for a report.">
+                        data-tip="Done, no report - handled this month with no PDF. Next month it is back asking for a report.">
                   <svg aria-hidden="true"><use href="#ic-done"/></svg>
                   <span class="sr">Done, no report</span></button>
                 {# A PAUSED ORDER IS ON THE BOARD BECAUSE IT MIGHT HAVE RUN.
                    The export gives a flight, not the day somebody hit pause,
                    so the board asks and a person answers. This cycle only. #}
                 <button class="iconbtn no" name="action" value="none"
-                        title="Not needed - it did not run this month, so nothing is owed. Next month it is back on the board.">
+                        data-tip="Not needed - it did not run this month, so nothing is owed. Next month it is back on the board.">
                   <svg aria-hidden="true"><use href="#ic-notneeded"/></svg>
                   <span class="sr">Not needed</span></button>
                 {# The note is the point of the override - six weeks later
                    "checked off by Lauren" answers who and not why - but it is
                    the optional part, so it sits after the two decisions. #}
                 <input type="text" name="note" class="notebox" placeholder="Note"
-                       title="Why - kept with the mark and shown on the row">
+                       aria-label="Why - kept with the mark and shown on the row">
               {% endif %}
             </form>
            </div>
@@ -571,14 +588,25 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <input type="text" name="who" placeholder="Your name" size="10"
                      value="{{ e.report.signed_off_by }}">
             {% endif %}
-            <button class="mini ok" name="state" value="reviewed"
-                    {% if e.report.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
-            <button class="mini warn" name="state" value="needs_fix"
-                    {% if e.report.review_state == 'needs_fix' %}disabled{% endif %}>Needs fix</button>
+            {# THE SAME THREE, AS ICONS. Filled, so on a row already carrying
+               a partner, a client, five product chips, a date range and a
+               findings list they read as the thing to press. #}
+            <button class="iconbtn ok" name="state" value="reviewed"
+                    data-tip="Reviewed - signed off and clear to ship"
+                    {% if e.report.review_state == 'reviewed' %}disabled{% endif %}>
+              <svg aria-hidden="true"><use href="#ic-done"/></svg>
+              <span class="sr">Reviewed</span></button>
+            <button class="iconbtn warn" name="state" value="needs_fix"
+                    data-tip="Needs fix - send it back to be re-pulled"
+                    {% if e.report.review_state == 'needs_fix' %}disabled{% endif %}>
+              <svg aria-hidden="true"><use href="#ic-needsfix"/></svg>
+              <span class="sr">Needs fix</span></button>
             {% if e.report.severity == 'fail' %}
-              <button class="mini" name="state" value="waived"
-                      title="Ship it anyway - the finding is a known quirk"
-                      {% if e.report.review_state == 'waived' %}disabled{% endif %}>Waive</button>
+              <button class="iconbtn" name="state" value="waived"
+                      data-tip="Waive - ship it anyway, the finding is a known quirk"
+                      {% if e.report.review_state == 'waived' %}disabled{% endif %}>
+                <svg aria-hidden="true"><use href="#ic-waive"/></svg>
+                <span class="sr">Waive</span></button>
             {% endif %}
           </form>
           {% else %}<span class="empty">—</span>{% endif %}
@@ -792,8 +820,8 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
 .signoff{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 /* The note is the optional part, so it sits after the two decisions and out
    at the right rather than in front of them. */
-.rowacts{flex-wrap:nowrap}
-.rowacts .signoff{flex:1}
+.rowacts{flex-wrap:nowrap;justify-content:flex-end}
+.rowacts .signoff{flex:0 0 auto}
 .signoff input{font:inherit;font-size:12.5px;padding:4px 8px;border:1px solid var(--line);
  border-radius:14px;background:var(--surface);color:var(--ink);width:88px}
 .mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;

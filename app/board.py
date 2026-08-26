@@ -80,6 +80,12 @@ class Expected:
     # gets the last word. Who said so and why.
     forced_by: str = ""
     forced_note: str = ""
+    # THE LAST DAY THIS CLIENT ACTUALLY DELIVERED, when the campaign is
+    # cancelled or complete. The end date on the order is what it was SOLD to
+    # run to - nothing on the export says when somebody hit cancel - so a
+    # lifetime pulled to that date covers weeks of nothing. This is the date to
+    # pull to instead.
+    stopped_on: dt.date | None = None
 
     @property
     def state(self) -> str:
@@ -298,6 +304,9 @@ def expected_for(db: Session, period: str,
     # have is still running - which is the same thing the end date says, only
     # sooner and more reliably.
     all_stopped: dict[tuple[str, str], bool] = {}
+    # And whether ANY line was stopped, which is a different question: it is
+    # the one that says "this campaign did not run to the date on the order".
+    any_stopped: dict[tuple[str, str], bool] = {}
     for l in cols:
         if excluded(l.market) or is_seo(l.product):
             continue
@@ -305,6 +314,7 @@ def expected_for(db: Session, period: str,
         stopped = bool(getattr(l, "canceled", False)
                        or getattr(l, "complete", False))
         all_stopped[k] = all_stopped.get(k, True) and stopped
+        any_stopped[k] = any_stopped.get(k, False) or stopped
 
     for l in cols:
         if excluded(l.market):
@@ -340,10 +350,24 @@ def expected_for(db: Session, period: str,
         #
         # AND ONLY WHEN IT STOPPED THIS MONTH, where the serving file can say.
         finished = (gone or bool(getattr(l, "complete", False))) and \
-            all_stopped.get((_key(l.market), _key(l.client)), False) and \
-            (not served_now
-             or served_now.get((_key(l.market), _key(l.client)), 0) > 0)
-        life = (not is_seo(l.product)) and (
+            all_stopped.get((_key(l.market), _key(l.client)), False)
+        # A CAMPAIGN THAT NEVER DELIVERED HAS NOTHING TO REPORT.
+        #
+        # Orders 51217 and 50760 were both sold, cancelled, and never served a
+        # single impression - 50760's own notes say so - and both were owed a
+        # lifetime, because their end dates fall inside this cycle and a date
+        # is all the export gives. There is no report to pull for a campaign
+        # with no delivery behind it.
+        #
+        # This is also what dates a close-out. "Cancelled" and "IO Complete"
+        # say a campaign is over and not WHICH MONTH, so without this the flag
+        # alone closed out years of finished campaigns into one cycle.
+        #
+        # With no serving file loaded there is nothing to test against and the
+        # dates stand on their own, exactly as before.
+        ran = (not served_now
+               or served_now.get((_key(l.market), _key(l.client)), 0) > 0)
+        life = (not is_seo(l.product)) and ran and (
             finished or cyc.needs_lifetime(l.order_ends_on or l.ends_on))
         if not live and not life:
             continue
@@ -439,6 +463,21 @@ def expected_for(db: Session, period: str,
                     if oid and oid not in have:
                         have.append(oid)
             e.account_ids = " ".join(have)
+
+    # AND WHERE A CAMPAIGN ACTUALLY STOPPED, for the ones that were cancelled.
+    from .serving import last_served
+    stopped = last_served(db, period)
+    for (mk, ck, kind), e in rows.items():
+        if kind != "lifetime":
+            continue
+        if not any_stopped.get((mk, ck)):
+            continue
+        day = stopped.get((mk, ck))
+        # Only when it is EARLIER than what the order says. A campaign that ran
+        # to its end date needs no correcting, and saying so anyway would put a
+        # note on half the board.
+        if day and e.ends_on and day < e.ends_on:
+            e.stopped_on = day
 
     # HOW MANY DAYS IT ACTUALLY SERVED, IF ANYBODY KNOWS.
     #

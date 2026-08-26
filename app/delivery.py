@@ -604,6 +604,29 @@ def deliver(db: Session, period: str, group_name: str, *,
     return rec
 
 
+def out_of_sync(group) -> list[str]:
+    """Reports in this partner that are not what is sitting in its folder.
+
+    A LINK THAT STOPPED BEING THE CURRENT MONTH IS THE THING TO AVOID. Files
+    get corrected, re-checked, renamed and replaced all cycle, and the folder
+    only changes when somebody presses sync - so a partner can be showing a
+    perfectly good link to last Tuesday's reports.
+
+    Every report records what it was last filed as, which makes this exact
+    rather than a guess: a name that does not match, or was never filed at all,
+    is a report the partner does not have.
+    """
+    out = []
+    for e in group.expected:
+        r = getattr(e, "report", None)
+        if not r or not getattr(r, "stored_path", ""):
+            continue
+        want = report_filename(e)
+        if (getattr(r, "delivered_as", "") or "") != want:
+            out.append(e.client or want)
+    return out
+
+
 def latest_deliveries(db: Session, period: str) -> dict[str, Delivery]:
     """The partner's OWN link, per group - the one that never moves.
 

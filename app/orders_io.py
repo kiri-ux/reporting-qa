@@ -83,6 +83,8 @@ HEADER_ALIASES = {
     "start date": "start_date",
     "end date": "end_date",
     "campaign manager": "campaign_manager",
+    "order type": "orders_type",
+    "order's type": "orders_type",
     "monthly campaign budget": "monthly_campaign_budget",
     "monthly budget": "monthly_campaign_budget",
     "monthly meta ad spend": "monthly_meta_ad_spend",
@@ -166,7 +168,8 @@ def previous_period(today: dt.date | None = None) -> str:
 # Only these columns are read. Pulling them by index with csv.reader is about
 # three times faster than csv.DictReader building a 30-key dict per row, which
 # matters at a couple of million rows.
-WANTED = ("orders_id", "id", "orders_status", "status", "client", "product",
+WANTED = ("orders_id", "id", "orders_status", "status", "orders_type",
+          "client", "product",
           "client_business_unit", "orders_start_date", "orders_end_date",
           "start_date", "end_date", "date",
           "campaign_manager",
@@ -326,7 +329,18 @@ def import_io_export(db: Session, sources, period: str | None = None,
 
             if not client or not product_raw:
                 skip("no client or product"); continue
-            if RFP.search(order_status) or RFP.search(line_status):
+            # AN RFP IS A PROPOSAL, NOT A BUY.
+            #
+            # It was only ever read off the two STATUS columns, and order 51217
+            # sits at Order Type "Request for Proposal" with Order Status
+            # "Cancelled" - so nothing said RFP anywhere the import was looking,
+            # and a proposal that was never sold went on the board owed a
+            # lifetime report. The TYPE column is where that fact actually
+            # lives.
+            order_type = _txt(r.get("orders_type"))
+            if (RFP.search(order_status) or RFP.search(line_status)
+                    or RFP.search(order_type)
+                    or "request for proposal" in order_type.lower()):
                 skip("RFP"); continue
 
             order_end = _date(r.get("orders_end_date"))

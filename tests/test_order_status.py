@@ -146,3 +146,29 @@ def test_the_count_of_overruled_headers_is_reported(db):
         _row("IO Pending Launch", "IO Live", product="Display Ads", line_id="2"),
         _row("IO Live", "IO Live", product="Video Ads", line_id="3")))
     assert res["kept"] == 3 and res["header_overruled"] == 2
+
+
+def test_an_rfp_is_caught_by_the_order_type_not_only_the_status(db):
+    """ORDER 51217. Order Type "Request for Proposal", Order Status
+    "Cancelled" - so nothing said RFP anywhere the import was looking, and a
+    proposal that was never sold went on the board owed a lifetime report."""
+    head = ("orders_id,id,orders_status,status,order type,client,product,"
+            "client_business_unit,orders_start_date,orders_end_date,"
+            "start_date,end_date,campaign_manager\n")
+    row = ("51217,120588,Cancelled,Cancelled,Request for Proposal,Glasgow Garage,"
+           "Connected TV Ads,7 Mountains KY,2026-01-15,2026-07-31,"
+           "2026-01-15,2026-07-31,Someone\n")
+    res = _import(db, (head + row).encode())
+    assert res["kept"] == 0
+    assert "RFP" in res["skipped"]
+
+
+def test_a_real_insertion_order_is_still_kept(db):
+    """The type column must only ever drop proposals."""
+    head = ("orders_id,id,orders_status,status,order type,client,product,"
+            "client_business_unit,orders_start_date,orders_end_date,"
+            "start_date,end_date,campaign_manager\n")
+    row = ("50760,119158,IO Live,IO Live,Insertion Order,The Vincent Group,"
+           "Connected TV Ads,7 Mountains KY,2026-01-15,2026-07-15,"
+           "2026-01-15,2026-07-15,Someone\n")
+    assert _import(db, (head + row).encode())["kept"] == 1

@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-79"
-BUILD_NOTES = ("One reports grid, signed-off filtered out by default, fifty a "
-               "page, order ids linking to the IO tool. Package again is now "
-               "Sync reports with a timestamp, and a broken pipe mid-upload "
-               "retries itself instead of failing the partner.")
+BUILD = "2026.08.26-80"
+BUILD_NOTES = ("An RFP is caught by the order TYPE now, and a campaign that "
+               "never delivered is not owed a lifetime - which is 51217 and "
+               "50760. Cancelled campaigns say when they actually stopped. "
+               "Sign-off is filled icons with the page's own tooltips.")
 
 # ---------------------------------------------------------------------------
 

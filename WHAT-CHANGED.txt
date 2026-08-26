@@ -1,84 +1,89 @@
-build 2026.08.26-79
+build 2026.08.26-80
 Changed files only. Drop these over your copy, keeping the paths.
 
 app/version.py
-app/config.py
+app/board.py
 app/delivery.py
 app/main.py
+app/orders_io.py
+app/serving.py
 app/templates/base.html
 app/templates/cycle.html
-app/templates/links.html
-app/templates/viewer.html
 tests/test_board_extras.py
-tests/test_rules.py
+tests/test_order_status.py
+tests/test_serving.py
 
-576 tests pass.
-
-
-1. ONE REPORTS GRID
---------------------
-Signed-off reports had their own collapsed section at the bottom, so a report
-changed which table it was in the moment somebody signed it, and finding it
-again meant knowing that.
-
-It is a filter now. Signed off and clear are hidden by default, with a chip
-saying how many - click it and they appear in the same grid, sorted last.
-Click it again and they go.
-
-Fifty a page, with a pager. The old table was capped at 150 of 763 with a
-"load all" that put four seconds of browser time on the page.
+584 tests pass.
 
 
-2. ORDER IDS LINK TO THE ORDER
--------------------------------
-Every order id on the board is now a link to
-reporting.zone/client/iotool/dist/#/items/viewOrder/<id>, opening in a new tab.
-Rows carrying several ids link each one separately.
+1. 51217 - AN RFP THE IMPORT COULD NOT SEE
+--------------------------------------------
+RFP was only ever read off the two STATUS columns. 51217 sits at Order Type
+"Request for Proposal" with Order Status "Cancelled", so nothing said RFP
+anywhere the import was looking, and a proposal that was never sold went on the
+board owed a lifetime.
 
-The base address is a setting (IO_ORDER_URL) so it can be changed without a
-deploy if that tool ever moves.
+The TYPE column is where that fact actually lives. It is read now, and any
+order whose type is a request for proposal is dropped the same way an RFP
+status always was.
 
-
-3. "PACKAGE AGAIN" IS "SYNC REPORTS", WITH A TIMESTAMP
---------------------------------------------------------
-"Package again" sounded like it made a new link. It does not - the same folder
-gets the current files under the link the partner already has, which is the
-whole point. It says "Sync reports", and beside it "last synced Aug 26,
-1:55 PM", because otherwise there is no way to tell a link made before this
-morning's corrections from one made after.
-
-It is off the partner cards entirely now. That card is where reports get
-judged.
+The orders re-read themselves on this deploy - the import fingerprint changed.
 
 
-4. THE BROKEN PIPE
--------------------
-"Filing to Drive failed: BrokenPipeError: [Errno 32] Broken pipe" and it worked
-on the third press. Nothing was wrong with the report - the connection went
-away mid-upload, which is precisely the thing the tool should handle rather
-than hand back.
+2. 50760 - SOLD, CANCELLED, NEVER SERVED
+------------------------------------------
+This one is a real insertion order, so the type does not catch it. Its own
+notes say "Cancelled after pending launch for 2 months. No impressions served."
 
-Each file now retries up to four times, with Google's own retry inside that,
-and a fresh upload object each attempt because the old one cannot be reused
-after a failure. A file that truly will not go up says which file and how many
-attempts it took to be sure.
+It was on the board because its end date falls inside this cycle, and a date is
+all the order export has to offer. There is no report to pull for a campaign
+with no delivery behind it, so a lifetime now needs the serving file to show
+the client delivering in the data month.
 
-And the failure no longer lands on the partner card. You packaged from the
-links page, so it belongs there - the card just says the last sync failed and
-points at the links page.
-
-
-5. WHAT STATE EACH UNPACKAGED PARTNER IS IN
----------------------------------------------
-"Ready, not packaged" now shows the report count, where it delivers, and - if
-there was a failed attempt - when it failed and why on hover. A partner sitting
-in that list because a sync broke looked exactly like one nobody had got to
-yet, and that difference was the whole question.
+This also replaces the narrower rule from build 75, which only applied the test
+to campaigns closed out by the cancelled/complete flag. It applies to every
+lifetime now. With no serving file loaded for a month, the dates stand on their
+own exactly as before.
 
 
-6. THE RENAMED-FILE NOTE
--------------------------
-Moved down beside "Replace the file", where the other facts about the file are,
-and drawn as a plain grey line rather than a bordered warning panel. It is
-housekeeping - what the file was called when it arrived and what it is filed as
-now - and it was reading as something waiting on you.
+3. WHEN A CANCELLED CAMPAIGN ACTUALLY STOPPED
+-----------------------------------------------
+The end date on a cancelled order is what it was SOLD to run to. Nothing on the
+export says when somebody hit cancel, so a lifetime pulled to that date covers
+weeks of nothing.
+
+A cancelled or completed campaign whose last delivery came before its end date
+now carries "stopped 2026-07-12" on the board, with the full explanation on
+hover. Pull the report to that date instead. A campaign that ran to its end
+date is not annotated - saying so would put a note on half the board.
+
+
+4. "NEEDS A SYNC" ON THE PARTNER CARD
+---------------------------------------
+Reports get corrected all cycle and the folder only changes when somebody
+presses sync, so a partner could be handing out a perfectly good link to last
+Tuesday's work with nothing saying so.
+
+Each report records what it was last filed as, which makes this exact rather
+than a guess: a name that does not match what it would be filed as now, or one
+never filed at all, is a report the partner does not have. The card links
+straight to the links page.
+
+
+5. SIGN-OFF IS FILLED ICONS
+-----------------------------
+Reviewed, Needs fix and Waive are icons too now, filled rather than outlined -
+on a row already carrying a partner, a client, five product chips, a date range
+and a findings list, a pale outline reads as decoration.
+
+The note box was being squeezed out of existence by the row's no-wrap layout.
+It is back, and it widens when you click into it.
+
+
+6. TOOLTIPS THAT ARRIVE WHEN YOU POINT AT THEM
+------------------------------------------------
+The browser's own title= tooltip takes about a second and a half to appear and
+is drawn by the operating system, so it is both slow and the only thing on the
+page that does not look like the page. They are the page's own now: instant,
+dark, and readable, with the ones near the right edge flipped so they do not
+run off it.

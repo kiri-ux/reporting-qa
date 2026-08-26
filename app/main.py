@@ -791,7 +791,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
     from .cycle import current_period, cycle_for, recent_periods
-    from .delivery import delivery_jobs, latest_deliveries
+    from .delivery import delivery_jobs, latest_deliveries, out_of_sync
     from .pace import pace
 
     show_all = rows_ == "all"
@@ -866,6 +866,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "pace": pace(db, period, summary(exp)["missing"]),
         "filter_group": group, "filter_state": state, "q": q,
         "deliveries": latest_deliveries(db, period),
+        # WHICH PACKAGED PARTNERS ARE SHOWING A LINK TO OLD FILES. Reports get
+        # corrected all cycle and the folder only changes when somebody presses
+        # sync, so a partner can be handing out a perfectly good link to last
+        # Tuesday's work.
+        "stale_pack": {g.group: out_of_sync(g) for g in groups},
         # Packaging runs in the background, so the card has to say where it is.
         "packing": delivery_jobs(db),
         # The finished links, at the top. A partner that is done sorts in with

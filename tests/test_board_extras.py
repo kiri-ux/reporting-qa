@@ -375,7 +375,7 @@ def test_seo_is_never_owed_a_lifetime():
     """It is bought by the month and reported on by the month. There is no
     campaign that finishes and no delivery-to-date to sum up."""
     src = (Path(__file__).resolve().parents[1] / "app" / "board.py").read_text()
-    assert "life = (not is_seo(l.product)) and (" in src
+    assert "life = (not is_seo(l.product)) and ran and (" in src
 
 
 def test_the_order_panel_shows_what_the_month_was_bought_to_do():
@@ -627,3 +627,41 @@ def test_a_broken_pipe_mid_upload_is_retried():
     assert "num_retries=4" in src
     assert "RETRY_UPLOAD" in src
     assert BrokenPipeError in delivery.RETRY_UPLOAD
+
+
+def test_a_packaged_partner_says_when_its_folder_is_behind():
+    """Reports get corrected all cycle and the folder only changes when
+    somebody presses sync, so a partner can be handing out a perfectly good
+    link to last Tuesday's work with nothing saying so."""
+    from app.board import Expected, GroupRow
+    from app.db import Report
+    from app.delivery import out_of_sync
+
+    filed = Report(filename="July 2026_Acme 123.pdf", stored_path="/x.pdf",
+                   delivered_as="July 2026_Acme 123.pdf", client="Acme")
+    moved = Report(filename="July 2026_Beta 999.pdf", stored_path="/y.pdf",
+                   delivered_as="July 2026_Beta 111.pdf", client="Beta")
+    never = Report(filename="July 2026_Gamma 7.pdf", stored_path="/z.pdf",
+                   delivered_as="", client="Gamma")
+    g = GroupRow("P", "drive", [
+        Expected(market="M", group="P", client="Acme", kind="monthly", report=filed),
+        Expected(market="M", group="P", client="Beta", kind="monthly", report=moved),
+        Expected(market="M", group="P", client="Gamma", kind="monthly", report=never),
+        # No PDF behind it: nothing was ever owed to the folder for this one.
+        Expected(market="M", group="P", client="Delta", kind="monthly"),
+    ])
+    assert out_of_sync(g) == ["Beta", "Gamma"]
+
+
+def test_the_tooltips_are_the_page_s_own_not_the_operating_system_s():
+    """The browser's title= takes about a second and a half and is drawn by the
+    OS, so it is both slow and the only thing on the page that does not look
+    like the page."""
+    base = (TPL / "base.html").read_text()
+    assert "[data-tip]::after" in base
+    assert "content:attr(data-tip)" in base
+    html = (TPL / "cycle.html").read_text()
+    # The sign-off row is the one that gets pointed at all day.
+    assert 'data-tip="Done, no report' in html
+    assert 'data-tip="Not needed' in html
+    assert 'data-tip="Reviewed' in html

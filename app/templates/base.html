@@ -131,17 +131,55 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 /* ---- where a link goes, at a glance ---- */
 .tgt{width:15px;height:15px;vertical-align:-3px;flex:none}
 .tgt.big{width:17px;height:17px}
+/* ---- tooltips that arrive when you point at them ----
+   The browser's own title= tooltip takes about a second and a half to appear
+   and is drawn by the operating system, so it is both slow and the only thing
+   on the page that does not look like the page. data-tip is instant. */
+[data-tip]{position:relative}
+[data-tip]::after{content:attr(data-tip);position:absolute;left:50%;bottom:100%;
+ transform:translate(-50%,-6px);z-index:60;
+ min-width:120px;max-width:280px;width:max-content;
+ padding:7px 10px;border-radius:8px;
+ background:var(--atlas);color:#fff;font:400 12px/1.45 var(--body,inherit);
+ letter-spacing:0;text-transform:none;text-align:left;white-space:normal;
+ box-shadow:0 6px 20px rgba(16,32,48,.28);
+ opacity:0;visibility:hidden;transition:opacity .09s ease,visibility .09s;
+ pointer-events:none}
+[data-tip]::before{content:"";position:absolute;left:50%;bottom:100%;
+ transform:translate(-50%,1px);border:5px solid transparent;
+ border-top-color:var(--atlas);z-index:61;
+ opacity:0;visibility:hidden;transition:opacity .09s ease,visibility .09s;
+ pointer-events:none}
+[data-tip]:hover::after,[data-tip]:focus-visible::after,
+[data-tip]:hover::before,[data-tip]:focus-visible::before{opacity:1;visibility:visible}
+/* Near the right-hand edge of a wide table it would run off the page. */
+[data-tip][data-tip-left]::after{left:auto;right:0;transform:translate(0,-6px)}
+[data-tip][data-tip-left]::before{left:auto;right:14px;transform:translate(0,1px)}
+@media (prefers-reduced-motion:reduce){
+  [data-tip]::after,[data-tip]::before{transition:none}
+}
 /* ---- sign-off: an icon and a tooltip, not a sentence ---- */
+/* FILLED, so they read as the buttons they are. Outlined in a pale grey they
+   looked like decoration on a row that already has a lot of small type. */
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;
- width:26px;height:26px;padding:0;border-radius:50%;border:1px solid var(--line);
- background:var(--surface);color:var(--muted);cursor:pointer}
-.iconbtn:hover{color:var(--ink);border-color:var(--ink-2)}
-.iconbtn svg{width:14px;height:14px}
-.iconbtn.ok:hover{color:var(--ok,#1a7f47);border-color:var(--ok,#1a7f47)}
-.iconbtn.no:hover{color:var(--crit);border-color:var(--crit)}
+ width:28px;height:28px;padding:0;border-radius:50%;border:1px solid transparent;
+ background:var(--atlas-10);color:#3D5468;cursor:pointer;
+ transition:background .1s ease,color .1s ease}
+.iconbtn:hover{background:var(--atlas);color:#fff}
+.iconbtn svg{width:15px;height:15px}
+.iconbtn.ok{background:var(--ok-bg);color:var(--ok)}
+.iconbtn.ok:hover{background:var(--ok);color:#fff}
+.iconbtn.no{background:var(--crit-bg);color:var(--crit)}
+.iconbtn.no:hover{background:var(--crit);color:#fff}
+.iconbtn.warn{background:var(--warn-bg);color:var(--warn)}
+.iconbtn.warn:hover{background:var(--warn);color:#fff}
+.iconbtn[disabled]{opacity:.35;cursor:default}
+.iconbtn[disabled]:hover{background:var(--atlas-10);color:#3D5468}
+/* flex:none, or the row's nowrap squeezed it to nothing and it vanished. */
 .notebox{font:inherit;font-size:12px;padding:4px 10px;border-radius:14px;
  border:1px solid var(--line);background:var(--surface);color:var(--ink);
- width:92px;margin-left:auto}
+ width:88px;flex:none;margin-left:6px}
+.notebox:focus{width:180px;outline:2px solid var(--velocity);outline-offset:1px}
 /* ---- packaging, beside the link it replaces ---- */
 .repack{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
  padding-top:8px;margin-top:2px;border-top:1px solid var(--line)}
@@ -529,6 +567,19 @@ body.fit .pdfwrap object{height:100%}
     <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/>
     <path d="M6.4 6.4l11.2 11.2" stroke="currentColor" stroke-width="2.2"
           stroke-linecap="round"/>
+  </symbol>
+  <symbol id="ic-needsfix" viewBox="0 0 24 24">
+    <path d="M12 4.5 21 19.5H3z" fill="none" stroke="currentColor"
+          stroke-width="2.1" stroke-linejoin="round"/>
+    <path d="M12 10v4.2" stroke="currentColor" stroke-width="2.1"
+          stroke-linecap="round"/>
+    <circle cx="12" cy="17.2" r="1.15" fill="currentColor"/>
+  </symbol>
+  <symbol id="ic-waive" viewBox="0 0 24 24">
+    <path d="M4 12h16" stroke="currentColor" stroke-width="2.3"
+          stroke-linecap="round"/>
+    <path d="M14 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.3"
+          stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
   <symbol id="ic-undo" viewBox="0 0 24 24">
     <path d="M4 10h9a5 5 0 110 10H8M4 10l4-4M4 10l4 4" fill="none"

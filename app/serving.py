@@ -298,6 +298,20 @@ def unmatched(db: Session, period: str, limit: int = 40) -> list[str]:
     return sorted(out)[:limit]
 
 
+def last_served(db: Session, period: str) -> dict[tuple[str, str], object]:
+    """{(market key, client key): the last day it delivered this month}.
+
+    THE END DATE ON A CANCELLED ORDER IS THE DATE IT WAS SOLD TO RUN TO, not
+    the day it stopped. Nothing on the export says when somebody hit cancel, so
+    a lifetime pulled to the order's end date covers weeks of nothing. The last
+    day with delivery on it is the real end of the campaign, and it is the
+    date the report should be pulled to.
+    """
+    return {(r.market_key, r.client_key): r.last_day for r in db.scalars(
+        select(ServedDays).where(ServedDays.period == period)).all()
+        if r.last_day}
+
+
 def has_serving(db: Session, period: str) -> bool:
     return db.scalar(select(ServedDays.id).where(
         ServedDays.period == period).limit(1)) is not None

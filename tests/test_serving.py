@@ -268,3 +268,90 @@ def test_a_row_the_rules_dropped_can_be_put_back(db):
     assert rows[0].forced_note == "client asked for it anyway"
     # And it is not confused with a row somebody checked off.
     assert rows[0].done_by == "" and not rows[0].done_only
+
+
+def test_a_campaign_that_never_served_is_not_owed_a_lifetime(db):
+    """ORDERS 51217 AND 50760. Both sold, both cancelled, neither served a
+    single impression - 50760's own notes say so - and both were owed a
+    lifetime, because their end dates fall inside the cycle and a date is all
+    the order export gives. There is no report to pull for a campaign with no
+    delivery behind it."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="7 Mountains KY", client="Glasgow Garage",
+                     account_ids="51217", line_ids="120588", product="CTV",
+                     campaign="Connected TV Ads", live=False, canceled=True,
+                     starts_on=D("2026-01-15"), ends_on=D("2026-07-31"),
+                     order_starts_on=D("2026-01-15"), order_ends_on=D("2026-07-31")))
+    db.commit()
+    # No file loaded: the dates are all there is, and it stays.
+    assert [e.kind for e in expected_for(db, "2026-07")] == ["lifetime"]
+    # A file that shows somebody else running and not this one settles it.
+    import_serving(db, _rows(HEAD, *_days("Someone Else", "7 Mountains KY",
+                                          "2026-07-01", 20)))
+    skipped: list = []
+    assert expected_for(db, "2026-07", skipped=skipped) == []
+
+
+def test_a_campaign_that_ended_mid_month_still_gets_its_lifetime(db):
+    """It ran to the 15th, so it is in the file for fifteen days."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Real Campaign", account_ids="1",
+                     line_ids="1", product="CTV", campaign="Connected TV Ads",
+                     live=True, starts_on=D("2026-01-15"), ends_on=D("2026-07-15"),
+                     order_starts_on=D("2026-01-15"), order_ends_on=D("2026-07-15")))
+    db.commit()
+    import_serving(db, _rows(HEAD, *_days("Real Campaign", "M", "2026-07-01", 15)))
+    assert "lifetime" in {e.kind for e in expected_for(db, "2026-07")}
+
+
+def test_a_cancelled_campaign_says_when_it_actually_stopped(db):
+    """THE END DATE ON THE ORDER IS WHAT IT WAS SOLD TO RUN TO. Nothing on the
+    export says when somebody hit cancel, so a lifetime pulled to that date
+    covers weeks of nothing. The last day with delivery on it is where the
+    campaign actually ended, and that is the date to pull to."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Stopped Early", account_ids="51217",
+                     line_ids="1", product="CTV", campaign="Connected TV Ads",
+                     live=False, canceled=True,
+                     starts_on=D("2026-01-15"), ends_on=D("2026-07-31"),
+                     order_starts_on=D("2026-01-15"), order_ends_on=D("2026-07-31")))
+    db.commit()
+    import_serving(db, _rows(HEAD, *_days("Stopped Early", "M", "2026-07-01", 12)))
+    life = [e for e in expected_for(db, "2026-07") if e.kind == "lifetime"]
+    assert len(life) == 1
+    assert life[0].stopped_on == D("2026-07-12")
+    assert life[0].ends_on == D("2026-07-31")      # the order still says this
+
+
+def test_a_campaign_that_ran_to_its_end_date_is_not_annotated(db):
+    """Saying so anyway would put a note on half the board."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Ran To The End", account_ids="1",
+                     line_ids="1", product="CTV", campaign="Connected TV Ads",
+                     live=False, complete=True,
+                     starts_on=D("2026-01-15"), ends_on=D("2026-07-15"),
+                     order_starts_on=D("2026-01-15"), order_ends_on=D("2026-07-15")))
+    db.commit()
+    import_serving(db, _rows(HEAD, *_days("Ran To The End", "M", "2026-07-01", 15)))
+    life = [e for e in expected_for(db, "2026-07") if e.kind == "lifetime"]
+    assert len(life) == 1 and life[0].stopped_on is None
