@@ -538,9 +538,14 @@ def orders_view(request: Request, view: str = Query("clients"),
     _days = served_days(db, _p)
     if _days:
         from .serving import unmatched as _unmatched
+        from .serving import unmatched_count as _unmatched_n
         served = {"period": _p, "clients": len(_days),
                   "ran": sum(1 for n in _days.values() if n >= MIN_DAYS_IN_MONTH),
-                  "unmatched": _unmatched(db, _p)}
+                  "unmatched": _unmatched(db, _p),
+                  # THE NUMBER, not a sample of it. "40+" hid the difference
+                  # between a few dark campaigns and the board losing three
+                  # hundred rows.
+                  "unmatched_n": _unmatched_n(db, _p)}
     else:
         served = None
     # THE SERVING UPLOAD'S OWN RESULT, in the serving panel. It shares the sync
@@ -1113,7 +1118,11 @@ def mark_row_done(request: Request, period: str = Form(...),
         row = CycleDone(period=period, ident=ident)
         db.add(row)
     row.market, row.client, row.kind = market, client, kind
-    row.reason = "none" if action == "none" else "done"
+    # THREE OVERRIDES, AND THEY ARE NOT THE SAME STATEMENT.
+    #   done    somebody did the work, there is just no PDF (SEO)
+    #   none    no report was owed - it did not run
+    #   needed  the rules took it off and they are wrong about this one
+    row.reason = action if action in {"done", "none", "needed"} else "done"
     row.note = note.strip()[:255]
     row.marked_by = name
     row.marked_at = dt.datetime.utcnow()

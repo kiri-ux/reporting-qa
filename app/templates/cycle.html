@@ -88,7 +88,22 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
             <tr><td>{{ r.market }}</td><td style="text-align:left">{{ r.client }}</td>
               <td class="mono nw" style="text-align:left">{{ r.starts or '?' }}
                 &rarr; {{ r.ends or 'open' }}</td>
-              <td style="text-align:right">{{ r.why }}</td></tr>
+              <td style="text-align:right">{{ r.why }}</td>
+              {# EVERY RULE UP THERE IS A RULE ABOUT THE USUAL CASE. Somebody
+                 who knows this client gets the last word. #}
+              <td class="nw" style="text-align:right">
+                <form method="post" action="/cycle/done" class="signoff">
+                  <input type="hidden" name="period" value="{{ period }}">
+                  <input type="hidden" name="market" value="{{ r.market }}">
+                  <input type="hidden" name="client" value="{{ r.client }}">
+                  <input type="hidden" name="kind" value="{{ r.kind or 'monthly' }}">
+                  <input type="text" name="note" size="14" placeholder="Why"
+                         style="font:inherit;font-size:12px;padding:3px 8px;
+                                border-radius:12px;border:1px solid var(--line);
+                                background:var(--surface);color:var(--ink)">
+                  <button class="mini" name="action" value="needed"
+                          title="Put this back on the board for this cycle - the rule is wrong about this one">Needs a report</button>
+                </form></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -476,6 +491,12 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
                                    else "Checked off, no report" }}</span>
             {% if e.done_note %}<br>
               <span class="notetag" title="{{ e.done_note }}">note</span>{% endif %}
+          {% elif e.forced_by %}
+            {# The rules took this off and somebody put it back. Saying so
+               matters: otherwise it reads as a row the board asked for, and
+               the next person spends an afternoon working out why. #}
+            <span class="empty">Not received</span><br>
+            <span class="pendtag" title="{{ e.forced_note or 'kept on the board by hand' }}">kept on by hand</span>
           {% else %}<span class="empty">Not received</span>{% endif %}
         </td>
         <td class="nw">{{ e.reporter }}
@@ -518,10 +539,16 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <input type="hidden" name="market" value="{{ e.market }}">
               <input type="hidden" name="client" value="{{ e.client }}">
               <input type="hidden" name="kind" value="{{ e.kind }}">
-              {% if e.done_by %}
+              {% if e.done_by or e.forced_by %}
                 <button class="mini" name="action" value="clear"
-                        title="Put this row back on the board">Undo</button>
+                        title="Put this row back the way the rules had it">Undo</button>
               {% else %}
+                {# The note is the point of the override. Six weeks later
+                   "checked off by Lauren" answers who and not why. #}
+                <input type="text" name="note" size="12" placeholder="Note"
+                       style="font:inherit;font-size:12px;padding:3px 8px;
+                              border-radius:12px;border:1px solid var(--line);
+                              background:var(--surface);color:var(--ink)">
                 <button class="mini ok" name="action" value="done"
                         title="Handled this month with no PDF - next month it is back asking for a report">Done, no report</button>
                 {# A PAUSED ORDER IS ON THE BOARD BECAUSE IT MIGHT HAVE RUN.

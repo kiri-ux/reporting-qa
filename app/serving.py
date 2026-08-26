@@ -121,6 +121,35 @@ def _key(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+MONTHS = ("january", "february", "march", "april", "may", "june", "july",
+          "august", "september", "october", "november", "december")
+
+
+def normalize_period(period: str | None) -> str | None:
+    """"July 2026", "2026-7", "7/2026" all mean 2026-07.
+
+    THE BOX SAYS "e.g. 2026-07" AND IS A TEXT FIELD, so it gets typed in
+    however the person thinks about months. "July 2026" matched none of a file
+    full of July and reported "0 clients across no month, 16,574 rows read" -
+    which reads like the file is broken when the file is fine.
+    """
+    s = (period or "").strip()
+    if not s:
+        return None
+    m = re.match(r"^(\d{4})[-/](\d{1,2})$", s)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}"
+    m = re.match(r"^(\d{1,2})[-/](\d{4})$", s)
+    if m:
+        return f"{m.group(2)}-{int(m.group(1)):02d}"
+    low = s.lower()
+    year = re.search(r"\b(20\d{2})\b", low)
+    for i, name in enumerate(MONTHS, start=1):
+        if low.startswith(name[:3]) and year:
+            return f"{year.group(1)}-{i:02d}"
+    return s
+
+
 def import_serving(db: Session, rows, *, period: str | None = None,
                    replace: bool = True) -> dict:
     """Count the days each client delivered on, per period.
@@ -151,8 +180,10 @@ def import_serving(db: Session, rows, *, period: str | None = None,
     # loud rather than assumed.
     money = [f for f in ("impressions", "spend", "clicks") if f in cols]
 
+    period = normalize_period(period)
     days: dict[tuple[str, str, str], set] = {}
     names: dict[tuple[str, str, str], tuple[str, str]] = {}
+    found_months: set[str] = set()
     read = 0
     for r in rows[head + 1:]:
         if not any(str(c).strip() for c in r):
@@ -170,11 +201,32 @@ def import_serving(db: Session, rows, *, period: str | None = None,
         if money and not any(_num(g(f)) > 0 for f in money):
             continue                       # a row with nothing in it is not a day
         p = when.strftime("%Y-%m")
+        found_months.add(p)
         if period and p != period:
             continue
         k = (p, _key(market), _key(client))
         days.setdefault(k, set()).add(when)
         names.setdefault(k, (market, client))
+
+    # A PERIOD THAT MATCHES NOTHING IS A TYPO, NOT AN EMPTY FILE.
+    #
+    # "2026-7" against a file of July dates dropped every row and reported "0
+    # clients across no month, 16,574 rows read" - which reads like the file is
+    # the problem when the file is fine. Normalizing the box handles the near
+    # misses; this handles the rest by naming what the file actually holds.
+    if period and not days and found_months:
+        raise ValueError(
+            f"Nothing in this file is dated {period}. It holds "
+            + ", ".join(sorted(found_months))
+            + ". Leave the period blank to load whatever is in the file.")
+    if not days:
+        if not read:
+            raise ValueError("No rows with both a client and a date in them.")
+        raise ValueError(
+            f"Read {read:,} rows and none of them counted as a day of "
+            f"delivery. Every one has a zero in "
+            + " and ".join(money) + "." if money else
+            f"Read {read:,} rows and none of them counted.")
 
     if replace:
         periods = {k[0] for k in days} or ({period} if period else set())
@@ -206,6 +258,21 @@ def served_days(db: Session, period: str) -> dict[tuple[str, str], int]:
     """
     return {(r.market_key, r.client_key): r.days for r in db.scalars(
         select(ServedDays).where(ServedDays.period == period)).all()}
+
+
+def unmatched_count(db: Session, period: str) -> int:
+    """How many, not a sample of them. The sample says what the problem looks
+    like; the number says how big it is, and 40+ hid the difference between a
+    handful of dark campaigns and the board losing three hundred rows."""
+    from .db import OrderLine
+
+    known = {(r.market_key, r.client_key) for r in db.scalars(
+        select(ServedDays).where(ServedDays.period == period)).all()}
+    if not known:
+        return 0
+    return sum(1 for market, client in db.execute(
+        select(OrderLine.market, OrderLine.client).distinct()).all()
+        if (_key(market), _key(client)) not in known)
 
 
 def unmatched(db: Session, period: str, limit: int = 40) -> list[str]:

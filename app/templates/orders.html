@@ -292,7 +292,7 @@
            Two hundred is a matching problem, and it should not take anybody
            going looking to notice. #}
         <p class="sub" style="margin-top:0">
-          <b>{{ served.unmatched|length }}{% if served.unmatched|length >= 40 %}+{% endif %}</b>
+          <b>{{ served.unmatched_n }}</b>
           clients on the order list are not in this file, so they read as
           having served nothing. A few is normal. A lot means the two tools
           spell clients differently:

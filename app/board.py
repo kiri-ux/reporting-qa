@@ -75,6 +75,11 @@ class Expected:
     #           tell the difference between paused on the 2nd and paused on the
     #           30th, and a person can.
     done_kind: str = "done"
+    # PUT BACK ON THE BOARD BY HAND. Every rule for deciding a report is not
+    # owed is a rule about the usual case, and somebody who knows this client
+    # gets the last word. Who said so and why.
+    forced_by: str = ""
+    forced_note: str = ""
 
     @property
     def state(self) -> str:
@@ -104,6 +109,13 @@ class Expected:
     @property
     def ident(self) -> str:
         return f"{_key(self.market)}|{_key(self.client)}|{self.kind}"
+
+
+def overrides(db: Session, period: str) -> dict:
+    """Every hand override on this cycle, by ident."""
+    from .db import CycleDone
+    return {m.ident: m for m in db.scalars(
+        select(CycleDone).where(CycleDone.period == period)).all()}
 
 
 # A CAMPAIGN THAT BARELY RAN IS NOT OWED A MONTHLY.
@@ -173,6 +185,7 @@ def expected_for(db: Session, period: str,
     - which runs past month end to the 3rd business day, so a campaign that
     finished on the 1st ships with the monthlies instead of waiting a month.
     """
+    from .serving import served_days
     cyc = cycle_for(period)
     idx = _partner_index(db)
 
@@ -258,6 +271,20 @@ def expected_for(db: Session, period: str,
     life_order: dict[tuple[str, str, str], str] = {}
     windows: dict[tuple[str, str], list[tuple]] = {}
 
+    # WHEN DID IT STOP? The export never says.
+    #
+    # "Cancelled" and "IO Complete" say a campaign is over and not which month
+    # it ended in, while its end date still reads whatever it was sold to run
+    # to. So closing out on the flag alone closes out YEARS of finished
+    # campaigns into this one cycle - 7 Mountains grew by a hundred rows and
+    # almost none of them were finished in July.
+    #
+    # The serving file dates it. A campaign that delivered this month is one
+    # that finished this month; one that last delivered in March finished in
+    # March, and is not this cycle's work. With no serving file loaded there is
+    # nothing to test against and the flag stands on its own, as before.
+    served_now = served_days(db, period)
+
     # IS THIS CLIENT FINISHED, OR IS ONE LINE ITEM OF THEIRS FINISHED?
     #
     # Build 89 read "cancelled or complete" off a single line and put a
@@ -310,8 +337,12 @@ def expected_for(db: Session, period: str,
         # ONLY WHEN THE WHOLE CLIENT HAS STOPPED. One cancelled line item under
         # a live order is not a campaign that finished, and reading it as one
         # put a hundred lifetimes on 7 Mountains that nobody owed.
+        #
+        # AND ONLY WHEN IT STOPPED THIS MONTH, where the serving file can say.
         finished = (gone or bool(getattr(l, "complete", False))) and \
-            all_stopped.get((_key(l.market), _key(l.client)), False)
+            all_stopped.get((_key(l.market), _key(l.client)), False) and \
+            (not served_now
+             or served_now.get((_key(l.market), _key(l.client)), 0) > 0)
         life = (not is_seo(l.product)) and (
             finished or cyc.needs_lifetime(l.order_ends_on or l.ends_on))
         if not live and not life:
@@ -389,8 +420,7 @@ def expected_for(db: Session, period: str,
     # A MONTH WITH NO FILE LOADED IS NOT A MONTH WHERE NOBODY RAN. Absent means
     # fall back to the dates - concluding otherwise would empty the board on
     # the strength of a file that was never uploaded.
-    from .serving import served_days
-    served = served_days(db, period)
+    served = served_now
 
     # Under a week in the month, and nothing has arrived for it: not owed.
     # A report that HAS turned up is never hidden - somebody pulled it, and
@@ -421,9 +451,18 @@ def expected_for(db: Session, period: str,
     seen_before = _clients_with_a_monthly(db, period)
 
     _attach_reports(db, period, rows)
+    # EVERY RULE BELOW IS A RULE ABOUT THE USUAL CASE. Somebody who knows this
+    # client gets the last word, so a row marked "needs a report" by hand
+    # survives all of them, and says who kept it there.
+    marks = overrides(db, period)
     for k in list(rows):
         mk, ck, kind = k
         e = rows[k]
+        m = marks.get(e.ident)
+        if m is not None and getattr(m, "reason", "") == "needed":
+            e.forced_by = m.marked_by or "kept on by hand"
+            e.forced_note = m.note or ""
+            continue
         if kind == "monthly" and k in short and e.report is None:
             if skipped is not None:
                 n = short[k]
@@ -496,7 +535,7 @@ def expected_for(db: Session, period: str,
     # when it IS the first - a client who has had monthlies before is mid
     # relationship, and last month's report is not this month's.
     for (mk, ck, kind), e in list(rows.items()):
-        if kind != "monthly" or e.report is not None:
+        if kind != "monthly" or e.report is not None or e.forced_by:
             continue
         life = rows.get((mk, ck, "lifetime"))
         if life is None or ck in seen_before:
@@ -534,7 +573,7 @@ def _stamp_done(db: Session, period: str, rows: list[Expected]) -> None:
         return
     for e in rows:
         m = marks.get(e.ident)
-        if m is not None:
+        if m is not None and getattr(m, "reason", "") != "needed":
             e.done_by = m.marked_by or "checked off"
             e.done_note = m.note or ""
             e.done_kind = getattr(m, "reason", "") or "done"

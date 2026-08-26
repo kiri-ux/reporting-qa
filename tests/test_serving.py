@@ -184,3 +184,87 @@ def test_the_serving_file_can_put_a_short_flight_back_on_the_board(db):
     import_serving(db, _rows(HEAD, *_days("Acme Co", "Market One",
                                           "2026-07-10", 21)))
     assert [e.kind for e in expected_for(db, "2026-07")] == ["monthly"]
+
+
+def test_july_2026_in_the_period_box_means_2026_07():
+    """IT IS A TEXT FIELD. "July 2026" matched none of a file full of July and
+    reported "0 clients across no month, 16,574 rows read" - which reads like
+    the file is broken when the file is fine."""
+    from app.serving import normalize_period
+    for typed in ("July 2026", "july 2026", "2026-7", "7/2026", "2026-07"):
+        assert normalize_period(typed) == "2026-07", typed
+    assert normalize_period("") is None
+
+
+def test_a_period_that_matches_nothing_says_what_the_file_holds(db):
+    from app.serving import import_serving
+    with pytest.raises(ValueError) as exc:
+        import_serving(db, _rows(HEAD, *_days("Acme Co", "M", "2026-07-01", 9)),
+                       period="2026-05")
+    assert "2026-07" in str(exc.value)
+
+
+def test_a_campaign_that_stopped_months_ago_is_not_closed_out_now(db):
+    """CANCELLED AND IO COMPLETE SAY A CAMPAIGN IS OVER, NOT WHICH MONTH.
+    Closing out on the flag alone dumped years of finished campaigns into one
+    cycle. The serving file dates it: no delivery this month, it did not finish
+    this month."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Long Gone", account_ids="1",
+                     line_ids="1", product="Display", campaign="Display Ads",
+                     live=False, canceled=True,
+                     starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-01-01"), order_ends_on=D("2026-12-31")))
+    db.commit()
+    # With no serving file the flag stands on its own, as before.
+    assert [e.kind for e in expected_for(db, "2026-07")] == ["lifetime"]
+    # With one that says somebody else ran in July and this client did not.
+    import_serving(db, _rows(HEAD, *_days("Someone Else", "M", "2026-07-01", 20)))
+    assert [e.kind for e in expected_for(db, "2026-07")] == []
+
+
+def test_a_campaign_that_stopped_this_month_still_closes_out(db):
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Just Finished", account_ids="1",
+                     line_ids="1", product="Display", campaign="Display Ads",
+                     live=False, canceled=True,
+                     starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-01-01"), order_ends_on=D("2026-12-31")))
+    db.commit()
+    import_serving(db, _rows(HEAD, *_days("Just Finished", "M", "2026-07-01", 18)))
+    assert "lifetime" in {e.kind for e in expected_for(db, "2026-07")}
+
+
+# ------------------------------------------------------------ hand overrides
+def test_a_row_the_rules_dropped_can_be_put_back(db):
+    """EVERY RULE IS A RULE ABOUT THE USUAL CASE. Somebody who knows this
+    client gets the last word."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import CycleDone
+    from app.serving import import_serving
+    _order(db)
+    import_serving(db, _rows(HEAD, *_days("Acme Co", "Market One",
+                                          "2026-07-01", 2)))
+    assert expected_for(db, "2026-07") == []
+    db.add(CycleDone(period="2026-07", ident="marketone|acmeco|monthly",
+                     market="Market One", client="Acme Co", kind="monthly",
+                     reason="needed", note="client asked for it anyway",
+                     marked_by="kiri"))
+    db.commit()
+    rows = expected_for(db, "2026-07")
+    assert [e.kind for e in rows] == ["monthly"]
+    assert rows[0].forced_by == "kiri"
+    assert rows[0].forced_note == "client asked for it anyway"
+    # And it is not confused with a row somebody checked off.
+    assert rows[0].done_by == "" and not rows[0].done_only

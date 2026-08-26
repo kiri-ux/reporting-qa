@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-74"
-BUILD_NOTES = ("The serving file. Upload what actually delivered, by client, "
-               "by day, and the board stops guessing whether a campaign ran "
-               "from its flight dates. 7+ days served means a report is owed; "
-               "fewer means it did not run.")
+BUILD = "2026.08.26-75"
+BUILD_NOTES = ("A cancelled or complete campaign only closes out in the month "
+               "it last delivered, per the serving file - it was dumping years "
+               "of finished campaigns into one cycle. Overrides both ways, with "
+               "a note. \"July 2026\" works in the period box.")
 
 # ---------------------------------------------------------------------------
 
