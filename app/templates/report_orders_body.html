@@ -51,7 +51,9 @@
           <td class="acct">{{ r.raw }}</td>
           <td class="mono nw">{{ r.orders }}</td>
           <td class="mono nw" style="font-size:11px">{{ r.lines }}</td>
-          <td>{{ 'yes' if r.live else 'PAUSED' }}</td>
+          <td>{% if r.canceled %}<span style="color:var(--crit);font-weight:600"
+                 title="Canceled. Not owed on the report - and not an error if it is on it.">CANCELED</span>
+              {% elif r.live %}yes{% else %}PAUSED{% endif %}</td>
           <td>{% if r.ran is none %}—{% elif r.ran %}yes{% else %}<span style="color:var(--muted)">no</span>{% endif %}</td>
           <td class="mono" style="font-size:11px">
             {% if r.flights %}

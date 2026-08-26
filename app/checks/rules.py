@@ -1778,7 +1778,7 @@ def _filed_client(filename: str) -> str:
     return got.get("client", "") if got.get("named") else ""
 
 
-def run_all(path: Path, filename: str | None = None,
+def run_all(path: Path, filename: str | None = None, for_client: str = "",
             expected_products: set[str] | None = None,
             flight: tuple | None = None, flight_lines: list | None = None,
             period: str | None = None,
@@ -1861,11 +1861,17 @@ def run_all(path: Path, filename: str | None = None,
         # else being a client named Digital Marketing Report. The cover page
         # says who it is for; the filename only says so when it was named.
         "client": _client_named(text, filename or path.name),
-        # WHO THE FILE SAID IT WAS FOR, before anything opened it. The whole
-        # check suite is built from this name - the products, the order, the
-        # flight - so when it disagrees with the cover page, every other
-        # finding on the report is being made against the wrong campaign.
-        "filed_as": _filed_client(filename or path.name),
+        # WHO THIS REPORT WAS BEING JUDGED AS, before anything opened it. The
+        # whole check suite is built from this name - the products, the order,
+        # the flight - so when it disagrees with the cover page, every other
+        # finding on the page is being made against the wrong campaign.
+        #
+        # THE CALLER FIRST. A file uploaded against a board row is judged as
+        # that row's client whatever it happens to be called, and TapClicks
+        # calls every file you download by hand "Digital Marketing Report.pdf".
+        # Bloomsburg Theatre Ensemble's July slot held seven pages of Benton
+        # Rodeo and nothing was said, because the filename named nobody.
+        "filed_as": (for_client or "").strip() or _filed_client(filename or path.name),
     }
     findings: list[dict] = []
     checks: list[dict] = []

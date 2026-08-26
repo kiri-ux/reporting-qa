@@ -10,6 +10,7 @@ import datetime as dt
 import io
 
 import pytest
+from sqlalchemy import select
 
 
 @pytest.fixture()
@@ -71,13 +72,41 @@ def test_a_line_item_can_only_rescue_an_order_never_drop_one(db):
     assert _import(db, _csv(_row("IO Live", "IO Pending Launch")))["kept"] == 1
 
 
-def test_a_cancelled_line_is_still_dropped(db):
-    assert _import(db, _csv(_row("IO Live", "Cancelled")))["kept"] == 0
+def test_a_cancelled_line_is_kept_but_marked(db):
+    """IT USED TO BE THROWN AWAY, and that is why a report carrying the product
+    read as carrying one nobody ordered. Roto Rooter's PPC was cancelled on 28
+    July and its July report was failed for showing it.
+
+    A cancelled buy is not OWED on the report. It is not a surprise there
+    either - it ran, it was stopped, and the data is real."""
+    from app.db import OrderLine
+    assert _import(db, _csv(_row("IO Live", "Cancelled")))["kept"] == 1
+    row = db.scalars(select(OrderLine)).first()
+    assert row.canceled is True and row.live is False
 
 
-def test_a_cancelled_order_drops_its_lines_whatever_they_say(db):
+def test_a_cancelled_order_marks_its_lines_whatever_they_say(db):
     """Cancelling an order is a deliberate act, unlike a header nobody moved."""
-    assert _import(db, _csv(_row("Cancelled", "IO Live")))["kept"] == 0
+    from app.db import OrderLine
+    assert _import(db, _csv(_row("Cancelled", "IO Live")))["kept"] == 1
+    assert db.scalars(select(OrderLine)).first().canceled is True
+
+
+def test_a_cancelled_line_is_not_owed_and_not_a_surprise(db):
+    from app.db import OrderLine
+    from app.roster import expected_products, quiet_products
+    _import(db, _csv(_row("IO Live", "Cancelled")))
+    row = db.scalars(select(OrderLine)).first()
+    exp = expected_products(db, row.client, row.account_ids, period="2026-07")
+    quiet = quiet_products(db, row.client, row.account_ids, period="2026-07")
+    assert row.product not in (exp or set())
+    assert row.product in quiet
+
+
+def test_a_cancelled_line_does_not_put_a_report_on_the_board(db):
+    from app.board import expected_for
+    _import(db, _csv(_row("IO Live", "Cancelled")))
+    assert expected_for(db, "2026-07") == []
 
 
 def test_an_rfp_is_never_reported_from_either_level(db):

@@ -254,8 +254,11 @@ IO_EXPORT = FIXTURES / "orders_io_export.csv"
 
 @pytest.mark.skipif(not IO_EXPORT.exists(), reason="no IO export fixture")
 def test_io_export_eligibility():
-    """Live IOs and orders live inside the period only. No RFPs, no cancelled
-    line items, nothing that ended before the period started."""
+    """Live IOs and orders live inside the period only. No RFPs, nothing that
+    ended before the period started.
+
+    Cancelled lines ARE kept, marked canceled and not live - they are not owed
+    on a report and they are not a surprise on one either."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -269,9 +272,12 @@ def test_io_export_eligibility():
 
     assert res["skipped"].get("RFP")
     assert res["skipped"].get("ended before the period")
-    assert res["skipped"].get("line item canceled")
+    assert "line item canceled" not in res["skipped"]
 
     rows = db.query(OrderLine).all()
+    for r in rows:
+        if r.canceled:
+            assert not r.live, f"{r.client}/{r.product} canceled but live"
     assert all("RFP" not in (r.campaign or "") for r in rows)
     # one row per client and product, so a client's report has one expected set
     assert len({(r.client, r.product) for r in rows}) == len(rows)
@@ -2385,3 +2391,38 @@ def test_the_month_window_clips_a_flight_to_the_reporting_month():
     class M:
         starts_on, ends_on, flights = dt.date(2026, 3, 1), dt.date(2026, 12, 31), None
     assert _month_window(M(), "2026-07") == (dt.date(2026, 7, 1), 31)
+
+
+def test_a_hand_saved_file_is_still_judged_against_the_row_it_was_uploaded_to():
+    """Bloomsburg Theatre Ensemble's July slot held seven pages of Benton
+    Rodeo and nothing was said - the file was called "Digital Marketing Report
+    56 1.pdf", which names nobody, and the check only ever read the filename.
+
+    The row somebody chose on the upload form is the better answer, and it is
+    what every other check on the page was built from."""
+    from app.checks.rules import check_client_matches_order
+    out = check_client_matches_order({"filed_as": "Bloomsburg Theatre Ensemble",
+                                      "client": "Benton Rodeo"})
+    assert len(out) == 1 and out[0]["code"] == "wrong_client_file"
+
+
+def test_the_caller_beats_the_filename():
+    from app.checks.rules import _filed_client
+    import inspect
+
+    from app.checks import rules as R
+    src = inspect.getsource(R.run_all)
+    assert '"filed_as": (for_client or "").strip() or _filed_client(' in src
+    assert _filed_client("Digital Marketing Report 56 1.pdf") == ""
+
+
+def test_every_run_all_caller_says_which_client_the_report_is_for():
+    """Miss it on one caller and that path goes back to reading the filename,
+    which on a hand-saved file names nobody."""
+    import re as _re
+    from pathlib import Path as _P
+    root = _P(__file__).resolve().parents[1] / "app"
+    for f in ("main.py", "recheck.py", "ingest.py"):
+        src = (root / f).read_text()
+        for m in _re.finditer(r"run_all\((.{0,400}?)\)\n", src, _re.S):
+            assert "for_client=" in m.group(1), f"{f}: {m.group(0)[:70]}"

@@ -146,6 +146,13 @@ def _match_partner(idx: dict[str, Partner], market: str) -> Partner | None:
     return best
 
 
+def _not_canceled():
+    """Rows the client did not cancel. NULL counts as not canceled, for order
+    lines loaded before the column existed."""
+    from sqlalchemy import or_ as _or
+    return _or(OrderLine.canceled.is_(False), OrderLine.canceled.is_(None))
+
+
 def expected_for(db: Session, period: str,
                  skipped: list | None = None) -> list[Expected]:
     """Every report this cycle owes, joined to whatever has arrived.
@@ -182,7 +189,12 @@ def expected_for(db: Session, period: str,
                 OrderLine.ends_on >= cyc.starts_on,
                 OrderLine.order_ends_on >= cyc.starts_on),
             or_(OrderLine.starts_on.is_(None),
-                OrderLine.starts_on <= cyc.ends_on))).all()
+                OrderLine.starts_on <= cyc.ends_on),
+            # A CANCELED BUY IS NOT OWED A REPORT. These rows used to be
+            # dropped at import, which is why a report carrying the product
+            # read as carrying one nobody ordered. They are kept now, so the
+            # board is what has to leave them out.
+            _not_canceled())).all()
 
     # The client's whole flight, aggregated by the database rather than by
     # walking every line again in Python. This is the only reason the finished
@@ -200,6 +212,7 @@ def expected_for(db: Session, period: str,
         OrderLine.market, OrderLine.client,
         func.min(func.coalesce(OrderLine.order_starts_on, OrderLine.starts_on)),
         func.max(func.coalesce(OrderLine.order_ends_on, OrderLine.ends_on)))
+        .where(_not_canceled())
         .group_by(OrderLine.market, OrderLine.client)).all()
     span: dict[tuple[str, str], list] = {}
     for market, client, first, last in spans:

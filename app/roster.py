@@ -273,15 +273,19 @@ def expected_products(db: Session, client: str, account_ids: str,
         # a report without it is not missing anything.
         if window and (window[0] or window[1]):
             hit = [l for l in hit if _overlaps(l, window[0], window[1])]
-        return {l.product for l in hit if l.product}
+        # A canceled buy is not owed on a lifetime either.
+        return {l.product for l in hit
+                if l.product and not getattr(l, "canceled", False)}
     if period:
         # An empty result here is not the same as no order list. If every one
         # of a client's products stopped before the period, the honest answer
         # is "nothing was owed" - an empty set, which the check reads as a
         # pass - not None, which it reads as "we cannot say".
         hit = [l for l in hit if _ran_during(l, period)]
-    # A paused buy is not delivering, so it is not owed on the report.
-    return {l.product for l in hit if l.product and getattr(l, "live", True)}
+    # A paused buy is not delivering, so it is not owed on the report. Nor is a
+    # canceled one - which live=False already covers, but says so out loud.
+    return {l.product for l in hit if l.product and getattr(l, "live", True)
+            and not getattr(l, "canceled", False)}
 
 
 def quiet_products(db: Session, client: str, account_ids: str,
@@ -301,7 +305,11 @@ def quiet_products(db: Session, client: str, account_ids: str,
     for l in hit:
         if not l.product:
             continue
-        if not getattr(l, "live", True):
+        # A CANCELED BUY IS QUIET WHATEVER ITS DATES SAY. Roto Rooter's PPC was
+        # canceled on 28 July, mid-month, so it ran for most of the period and
+        # the date test alone would have left it expected - and then failed the
+        # report for showing a product nobody ordered.
+        if getattr(l, "canceled", False) or not getattr(l, "live", True):
             out.add(l.product)
         elif period and not _ran_during(l, period):
             out.add(l.product)

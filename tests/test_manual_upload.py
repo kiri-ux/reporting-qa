@@ -951,3 +951,40 @@ def test_every_route_that_scopes_a_flight_imports_what_it_needs():
             continue
         assert "import" in body and "cycle_for" in body.split("cycle_for(")[0], \
             f"{node.name} calls cycle_for without importing it"
+
+
+def test_an_auto_review_lands_back_on_the_board(client):
+    """Ticking the last finding IS the review, so it goes where pressing
+    Reviewed goes - the board you came from, not the report you just signed."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/me", data={"who": "Kiri"})
+    # Arriving from the board is what teaches the page the way back.
+    c.get(f"/report/{rep.id}/view",
+          headers={"referer": "http://x/cycle?period=2026-07&group=Benton"})
+
+    bad = [i for i, f in enumerate(rep.findings)
+           if f.get("severity") in ("fail", "warn")]
+    assert len(bad) >= 1
+    last = None
+    for i in bad:
+        last = c.post(f"/report/{rep.id}/ack", data={"index": i, "on": "1"},
+                      headers={"referer": f"http://x/report/{rep.id}/view"},
+                      follow_redirects=False)
+    assert last.headers["location"].startswith("/cycle?period=2026-07")
+
+
+def test_accepting_one_of_several_stays_on_the_report(client):
+    """Only the LAST one is a review. Ticking one of four is still working."""
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    c.post("/me", data={"who": "Kiri"})
+    c.get(f"/report/{rep.id}/view", headers={"referer": "http://x/cycle?period=2026-07"})
+    bad = [i for i, f in enumerate(rep.findings)
+           if f.get("severity") in ("fail", "warn")]
+    if len(bad) < 2:
+        return                     # nothing to prove on a one-finding fixture
+    r = c.post(f"/report/{rep.id}/ack", data={"index": bad[0], "on": "1"},
+               headers={"referer": f"http://x/report/{rep.id}/view"},
+               follow_redirects=False)
+    assert f"/report/{rep.id}/view" in r.headers["location"]

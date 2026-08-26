@@ -324,7 +324,10 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                                 period=batch.period, lifetime=life_guess,
                                 window=flight)
         try:
-            result = run_all(path, filename=name, expected_products=exp,
+            result = run_all(path, filename=name,
+                             for_client=meta_guess["client"]
+                             if meta_guess.get("named") else "",
+                             expected_products=exp,
                              flight=flight, flight_lines=flines,
                              period=batch.period,
                              market=batch.market or "",

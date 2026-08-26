@@ -1337,9 +1337,14 @@ def ack_finding(report_id: int, request: Request, index: int = Form(...),
         rep.signoff_cleared_at = None
         auto = True
     db.commit()
+    # AND AN AUTO-REVIEW GOES BACK TO THE BOARD, like pressing Reviewed does.
+    #
+    # Ticking the last finding is the last thing you do with a report, so
+    # landing on it again means scrolling the board back to where you were -
+    # the same walk pressing the button by hand used to be.
+    if auto:
+        return RedirectResponse(_back_cookie(request) or "/cycle", status_code=303)
     back = request.headers.get("referer") or f"/report/{report_id}/view"
-    if auto and "#" not in back:
-        back += "#signoff"
     return RedirectResponse(back, status_code=303)
 
 
@@ -1465,7 +1470,9 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     try:
-        result = run_all(path, filename=file.filename, expected_products=exp,
+        result = run_all(path, filename=file.filename,
+                         # The row it was uploaded against.
+                         for_client=client, expected_products=exp,
                          flight=flight,
                          flight_lines=flight_lines(db, client, account_ids),
                          # The kind chosen on the form. A person saying this is
@@ -1584,7 +1591,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     logo = header_logo_hash(target)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    result = run_all(target, filename=rep.filename, expected_products=exp,
+    result = run_all(target, filename=rep.filename,
+                     for_client=rep.client, expected_products=exp,
                      flight=flight,
                      flight_lines=flight_lines(db, rep.client, rep.account_ids),
                      is_lifetime=bool(rep.is_lifetime),
@@ -1698,7 +1706,8 @@ async def replace_report(report_id: int, request: Request,
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     try:
-        result = run_all(path, filename=rep.filename, expected_products=exp,
+        result = run_all(path, filename=rep.filename,
+                         for_client=rep.client, expected_products=exp,
                          flight=flight,
                          flight_lines=flight_lines(db, rep.client, rep.account_ids),
                          is_lifetime=bool(rep.is_lifetime),
@@ -2078,6 +2087,7 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
             "would_be": ", ".join(map_order_products(l.campaign or "")) or "(nothing)",
             "orders": l.account_ids or "", "lines": l.line_ids or "",
             "live": bool(getattr(l, "live", True)),
+            "canceled": bool(getattr(l, "canceled", False)),
             "flights": getattr(l, "flights", None) or [],
             "starts": l.starts_on, "ends": l.ends_on,
             "budget": l.budget,

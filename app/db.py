@@ -348,6 +348,12 @@ class OrderLine(Base):
     # is neither expected on the report nor a surprise when it turns up - the
     # buy exists, it is just not delivering - so it makes no claim either way.
     live: Mapped[bool] = mapped_column(Boolean, default=True)
+    # CANCELED IS NOT THE SAME AS PAUSED. A canceled buy is not owed on the
+    # report at all - not this month, not on the lifetime - but if it turns up
+    # anyway that is not an error either: it ran and was stopped, and the data
+    # is real. These rows used to be dropped at import, so a report carrying a
+    # canceled product read as carrying a product nobody ordered.
+    canceled: Mapped[bool] = mapped_column(Boolean, default=False)
     # What this line item is meant to spend in a month, and what it actually
     # spent. Pacing is the comparison of the two, and neither number is on the
     # report - both come off the order.
@@ -583,6 +589,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "signoff_cleared_at", "TIMESTAMP"),
     ("order_lines", "flights", "JSON"),
     ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
+    ("order_lines", "canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("reports", "logo_hash", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_sync", "trigger", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_lines", "budget", "DOUBLE PRECISION"),

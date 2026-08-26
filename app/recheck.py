@@ -180,7 +180,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     logo = rep.logo_hash or header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    result = run_all(path, filename=rep.filename, expected_products=exp,
+    result = run_all(path, filename=rep.filename,
+                     for_client=rep.client, expected_products=exp,
                      flight=flight,
                      flight_lines=flight_lines(db, rep.client, rep.account_ids),
                      # What the report row says it is - a person may have said

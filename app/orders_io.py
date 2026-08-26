@@ -319,19 +319,23 @@ def import_io_export(db: Session, sources, period: str | None = None,
             end = line_end or order_end
             start = _date(r.get("start_date")) or _date(r.get("orders_start_date"))
 
-            # Status before dates, so the reason a row was dropped is the
-            # interesting one. A canceled line item has almost always ended as
-            # well, and "ended before the period" is the less useful of the two
-            # things you can say about it.
-            if DEAD_LINE_STATUS.match(line_status):
-                skip("line item canceled"); continue
-            if DEAD_ORDER_STATUS.match(order_status):
-                skip("order canceled"); continue
+            # A CANCELED LINE IS KEPT, NOT DROPPED.
+            #
+            # It used to be thrown away at import, so a report carrying the
+            # product read as carrying a product nobody ordered - Roto Rooter's
+            # PPC was canceled on 28 July and its July report was failed for
+            # showing it. A canceled buy is not OWED on the report; it is not a
+            # surprise there either. It ran, it was stopped, and the data is
+            # real. Kept with live=False so every rule that asks "is this
+            # delivering" gets the right answer, and canceled=True so the ones
+            # that ask "was this ever owed" get theirs.
+            canceled = bool(DEAD_LINE_STATUS.match(line_status)
+                            or DEAD_ORDER_STATUS.match(order_status))
             if end and end < p_start:
                 skip("ended before the period"); continue
             if start and start > p_end:
                 skip("starts after the period"); continue
-            if order_status.lower() not in LIVE_STATUS:
+            if not canceled and order_status.lower() not in LIVE_STATUS:
                 if line_status.lower() in LIVE_STATUS:
                     header_overruled += 1        # the line item rescued it
                 else:
@@ -359,8 +363,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # the July report was failed for a missing Meta section. A paused
             # buy is not delivering, so it is not owed on the report - and if
             # its product does turn up, that is not a surprise either.
-            line_live = line_status.lower() in LIVE_STATUS or (
-                not line_status and order_status.lower() in LIVE_STATUS)
+            line_live = (not canceled) and (
+                line_status.lower() in LIVE_STATUS
+                or (not line_status and order_status.lower() in LIVE_STATUS))
             for product in products:
                 k = (client, product)
                 if k not in kept:
@@ -370,7 +375,8 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "campaign": product_raw, "starts_on": start, "ends_on": end,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
-                        "live": False, "budget": None, "impressions": None,
+                        "live": False, "canceled": True,
+                        "budget": None, "impressions": None,
                         # The ORDER's own campaign window, kept apart from the
                         # line item's. A lifetime report covers the order; the
                         # line item only says what was delivering this month.
@@ -390,6 +396,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Live if ANY line item behind this row is. A client running one
                 # product across a live order and a paused one is running it.
                 kept[k]["live"] = kept[k]["live"] or line_live
+                # Canceled only while EVERY line behind this row is. One live
+                # line and one canceled one is a product the client is running.
+                kept[k]["canceled"] = kept[k]["canceled"] and canceled
                 if len(products) > 1:
                     kept[k]["sold_with"].update(products)
 
@@ -497,6 +506,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             campaign=v["campaign"], product=product,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
             flights=v["flights"], live=bool(v["live"]),
+            canceled=bool(v.get("canceled")),
             budget=v["budget"], impressions=v["impressions"],
             order_starts_on=v["order_starts"], order_ends_on=v["order_ends"],
             total_budget=v["total_budget"],
