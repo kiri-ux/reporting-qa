@@ -875,11 +875,10 @@ SITE_GRID = re.compile(
 SITE_CTR_CEILING = 5.0
 
 # Below this many impressions the 5% line is arithmetic rather than behavior.
-# Field Of Dreams had "Slicing Hero: Sword Master: 10 clicks on 183 impressions
-# is 5.46%" - one click either way moves that by half a point, and 183
-# impressions of a 62,679-impression campaign is not something anybody is going
-# to act on.
-SITE_CTR_MIN_IMPS = 1000
+# "BeReal. Your friends for real.: 83 clicks on 1,278 impressions is 6.49%" is
+# a placement nobody is going to act on, and one click either way moves it by
+# a tenth of a point.
+SITE_CTR_MIN_IMPS = 5000
 
 # ...but a small placement can still be unmistakable, and throwing those away
 # would have lost the case this check was written for: "Slicing Hero: Sword

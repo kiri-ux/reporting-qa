@@ -880,8 +880,11 @@ def report_logo(report_id: int, db: Session = Depends(get_db)):
     png = crop_png(rep.stored_path)
     if not png:
         raise HTTPException(404)
+    # The URL carries ?v=<file token>, so a cached copy can only ever be the
+    # crop from the file that token names. Without it the browser held the old
+    # logo for a day after a replacement and showed it beside the new report.
     return Response(content=png, media_type="image/png",
-                    headers={"Cache-Control": "public, max-age=86400"})
+                    headers={"Cache-Control": "public, max-age=86400, immutable"})
 
 
 @app.post("/logo/{logo}/mark")
@@ -990,6 +993,49 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
                             status_code=303)
     # First sign-off of the day remembers you, so there is no separate step to
     # find before the thing you came to do.
+    if who.strip():
+        _remember(resp, who)
+    return resp
+
+
+@app.post("/cycle/done")
+def mark_row_done(request: Request, period: str = Form(...),
+                  market: str = Form(""), client: str = Form(""),
+                  kind: str = Form("monthly"), action: str = Form("done"),
+                  who: str = Form(""), note: str = Form(""),
+                  db: Session = Depends(get_db)):
+    """Check a row off for this cycle with no PDF behind it.
+
+    SEO is done outside TapClicks, so there is no report to upload and the row
+    sat at "Not received" all month, holding its partner off ready. This marks
+    it handled for THIS cycle only - next month it is back on the board asking
+    for a report.
+    """
+    from .board import _key as board_key
+    from .db import CycleDone
+    if kind not in {"monthly", "lifetime"}:
+        raise HTTPException(400, "unknown report kind")
+    back = request.headers.get("referer") or f"/cycle?period={period}"
+    ident = f"{board_key(market)}|{board_key(client)}|{kind}"
+    if not board_key(market) or not board_key(client):
+        raise HTTPException(400, "no row to mark")
+    row = db.scalar(select(CycleDone).where(CycleDone.period == period,
+                                            CycleDone.ident == ident))
+    if action == "clear":
+        if row is not None:
+            db.delete(row)
+        db.commit()
+        return RedirectResponse(back, status_code=303)
+    name = who.strip() or whoami(request) or "checked off"
+    if row is None:
+        row = CycleDone(period=period, ident=ident)
+        db.add(row)
+    row.market, row.client, row.kind = market, client, kind
+    row.note = note.strip()[:255]
+    row.marked_by = name
+    row.marked_at = dt.datetime.utcnow()
+    db.commit()
+    resp = RedirectResponse(back, status_code=303)
     if who.strip():
         _remember(resp, who)
     return resp
@@ -1121,8 +1167,8 @@ def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
     rows = [[e.market, e.client, e.kind, ", ".join(e.products),
              e.account_ids, e.line_ids, e.starts_on or "", e.ends_on or "",
              e.buyer, e.reporter,
-             e.state, e.report.reviewed_by if e.report else "",
-             e.report.review_note if e.report else ""]
+             e.state, e.report.reviewed_by if e.report else e.done_by,
+             e.report.review_note if e.report else e.done_note]
             for e in expected_for(db, period)]
     return _csv_response(f"report-qa-cycle-{period}.csv",
                          ["Partner", "Client", "Kind", "Products",

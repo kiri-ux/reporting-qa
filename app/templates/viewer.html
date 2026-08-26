@@ -301,7 +301,11 @@
       {# The picture, not the fingerprint. Marking a logo is a decision about
          what it looks like, and this is the exact crop the check compares. #}
       <div class="logobox">
-        <img src="/report/{{ rep.id }}/logo.png" alt="The logo in the top-left corner of page one">
+        {# ?v= for the same reason the PDF carries one: the URL is identical
+           before and after a replacement, so a browser holding the old crop
+           showed the wrong logo beside the right report. #}
+        <img src="/report/{{ rep.id }}/logo.png?v={{ file_v }}"
+             alt="The logo in the top-left corner of page one">
         <form method="post" action="/logo/{{ logo_hash }}/mark">
           {% if logo_generic %}
             <p class="sub">Marked as the reporting tool's default, so every
@@ -400,7 +404,7 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
 .allclear{margin:0;font-size:13.5px;color:var(--ok);background:var(--ok-bg);
  padding:9px 13px;border-radius:8px}
 .fbody{display:flex;flex-direction:column;gap:3px;font-size:13.5px}
-.fbody .pill{align-self:flex-start}
+.fbody .pill,.fbody .wpill{align-self:flex-start}
 .fdetail{color:var(--ink-2);font-size:12.5px}
 .flist li.acked .fbody b{text-decoration:line-through;text-decoration-thickness:1px}
 .flist li.acked .fbody{opacity:.62}

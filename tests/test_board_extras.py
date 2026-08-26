@@ -152,3 +152,63 @@ def test_markets_by_group_builds_the_index_once():
     import inspect
     from app import board
     assert "def markets_by_group" in inspect.getsource(board)
+
+
+# --- checking a row off with no report -------------------------------------
+#
+# SEO is pulled outside TapClicks, so those rows sat at "Not received" all
+# month and held their partner off ready for a report that was never coming.
+
+
+def test_a_row_checked_off_with_no_report_reads_as_ready():
+    from app.board import Expected
+    e = Expected(market="Curtis Media", group="Curtis Media", client="A",
+                 kind="monthly", products=["Search Engine Optimization+"])
+    assert e.state == "missing" and not e.ready
+    e.done_by = "kiri"
+    assert e.state == "ready" and e.ready and e.done_only
+
+
+def test_a_report_beats_the_check_off():
+    """The mark says nothing is coming. If something came anyway, it is the
+    thing to judge - not a row hidden behind somebody's tick."""
+    from app.board import Expected
+
+    class R:
+        board_state, ready = "errors", False
+    e = Expected(market="Curtis Media", group="Curtis Media", client="A",
+                 kind="monthly", done_by="kiri", report=R())
+    assert e.state == "errors" and not e.ready and not e.done_only
+
+
+def test_the_check_off_is_for_one_cycle_only():
+    """Next month the row comes back asking for a report, because SEO reports
+    are going to start being uploaded."""
+    from app.db import CycleDone
+    cols = {c.name for c in CycleDone.__table__.columns}
+    assert "period" in cols and "ident" in cols
+    uq = [c for c in CycleDone.__table__.constraints
+          if getattr(c, "name", "") == "uq_cycle_done"]
+    assert uq and {c.name for c in uq[0].columns} == {"period", "ident"}
+
+
+def test_the_board_row_offers_the_button_and_a_way_back():
+    html = (TPL / "cycle.html").read_text()
+    assert 'action="/cycle/done"' in html
+    assert "Done, no report" in html
+    assert 'name="action" value="clear"' in html
+
+
+def test_the_mark_is_stamped_by_the_board_not_by_the_page():
+    """The board, the CSV and the partner counts have to agree on whether a
+    partner is finished."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "board.py").read_text()
+    assert "_stamp_done(db, period, out)" in src
+
+
+def test_every_view_of_the_stored_file_carries_a_version_token():
+    """The URL is identical before and after a replacement, so a browser that
+    cached the old one showed the wrong logo beside the right report."""
+    html = (TPL / "viewer.html").read_text()
+    for m in re.finditer(r'"(/report/\{\{ rep\.id \}\}/(?:file|logo\.png))([^"]*)"', html):
+        assert "v={{ file_v }}" in m.group(2), m.group(0)

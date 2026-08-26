@@ -65,15 +65,30 @@ class Expected:
     # without this the row looks like a lifetime asked for on a live campaign.
     life_note: str = ""
     report: Report | None = None
+    # Handled this cycle without a PDF - SEO, mostly, which is pulled outside
+    # TapClicks. Who said so, and anything they typed.
+    done_by: str = ""
+    done_note: str = ""
 
     @property
     def state(self) -> str:
         """missing | in | warnings | errors | needs_fix | ready"""
-        return self.report.board_state if self.report else "missing"
+        if self.report:
+            return self.report.board_state
+        # A REPORT ALWAYS WINS. The mark says "nothing is coming"; if something
+        # came anyway, it is the thing to judge.
+        return "ready" if self.done_by else "missing"
 
     @property
     def ready(self) -> bool:
-        return bool(self.report and self.report.ready)
+        if self.report:
+            return bool(self.report.ready)
+        return bool(self.done_by)
+
+    @property
+    def done_only(self) -> bool:
+        """Checked off with no PDF behind it."""
+        return bool(self.done_by) and self.report is None
 
     @property
     def ident(self) -> str:
@@ -387,9 +402,29 @@ def expected_for(db: Session, period: str,
             del rows[(mk, ck, kind)]
 
     out = list(rows.values())
+    _stamp_done(db, period, out)
     out.sort(key=lambda e: (e.group.lower(), e.market.lower(),
                             e.client.lower(), e.kind))
     return out
+
+
+def _stamp_done(db: Session, period: str, rows: list[Expected]) -> None:
+    """Carry this cycle's hand-checked rows onto the board.
+
+    Done here rather than in the view so every reader agrees - the board, the
+    CSV export and the partner counts were three different answers to "is this
+    partner finished" the first time this only lived in the page.
+    """
+    from .db import CycleDone
+    marks = {m.ident: m for m in db.scalars(
+        select(CycleDone).where(CycleDone.period == period)).all()}
+    if not marks:
+        return
+    for e in rows:
+        m = marks.get(e.ident)
+        if m is not None:
+            e.done_by = m.marked_by or "checked off"
+            e.done_note = m.note or ""
 
 
 def _running_overlap(windows, own_order: str, starts, ends, cutoff) -> str:

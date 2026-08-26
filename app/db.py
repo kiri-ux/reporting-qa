@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, ForeignKey,
-                        Integer, String, Text, create_engine)
+                        Integer, String, Text, UniqueConstraint, create_engine)
 from sqlalchemy.orm import (DeclarativeBase, Mapped, mapped_column,
                             relationship, sessionmaker)
 
@@ -394,6 +394,32 @@ class KnownLogo(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     logo_hash: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     kind: Mapped[str] = mapped_column(String(16), default="generic")  # generic | ok
+    marked_by: Mapped[str] = mapped_column(String(128), default="")
+    marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class CycleDone(Base):
+    """A row somebody handled this cycle without a PDF.
+
+    SEO is the case that forced it. The work is done outside TapClicks, so
+    there is nothing to upload, and the row sat at "Not received" all month
+    holding its partner off "ready" for a report that was never coming.
+
+    ONE CYCLE ONLY. It is not a rule about the client, and next month the row
+    comes back asking for a report - which is what she wants, because SEO
+    reports are going to start being uploaded.
+    """
+    __tablename__ = "cycle_done"
+    __table_args__ = (UniqueConstraint("period", "ident", name="uq_cycle_done"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(16), index=True)
+    # market|client|kind, normalized - the same identity the board rows carry.
+    ident: Mapped[str] = mapped_column(String(255), index=True)
+    market: Mapped[str] = mapped_column(String(255), default="")
+    client: Mapped[str] = mapped_column(String(255), default="")
+    kind: Mapped[str] = mapped_column(String(16), default="monthly")
+    note: Mapped[str] = mapped_column(String(255), default="")
     marked_by: Mapped[str] = mapped_column(String(128), default="")
     marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
