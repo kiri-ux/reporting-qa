@@ -233,7 +233,8 @@ def attach_owners(db: Session, report: Report) -> None:
 
 
 def expected_products(db: Session, client: str, account_ids: str,
-                     period: str | None = None) -> set[str] | None:
+                     period: str | None = None,
+                     lifetime: bool = False) -> set[str] | None:
     """Products the client's qualifying orders say belong on this report.
 
     Returns None when the client is not on the order list, so the check stays
@@ -248,6 +249,13 @@ def expected_products(db: Session, client: str, account_ids: str,
     hit = client_lines(db, client, account_ids)
     if hit is None:
         return None
+    # A LIFETIME IS ABOUT THE WHOLE CAMPAIGN, so every product the client ever
+    # bought on it belongs on the report - including the ones that stopped
+    # months ago and the ones that are paused now. Judged against this month,
+    # Burt Young Sales' lifetime was failed for carrying CTV and Native
+    # Display, which is exactly what a campaign-to-date report should carry.
+    if lifetime:
+        return {l.product for l in hit if l.product}
     if period:
         # An empty result here is not the same as no order list. If every one
         # of a client's products stopped before the period, the honest answer
@@ -259,7 +267,8 @@ def expected_products(db: Session, client: str, account_ids: str,
 
 
 def quiet_products(db: Session, client: str, account_ids: str,
-                   period: str | None = None) -> set[str]:
+                   period: str | None = None,
+                   lifetime: bool = False) -> set[str]:
     """Products the client has bought but that are not owed on this report.
 
     Paused line items, and anything whose flight does not touch the month. It
@@ -267,6 +276,8 @@ def quiet_products(db: Session, client: str, account_ids: str,
     the half that was missing: a paused Meta line was failed for BOTH, once for
     being absent and, on another client, once for being present.
     """
+    if lifetime:
+        return set()          # on a lifetime nothing the client bought is a surprise
     hit = client_lines(db, client, account_ids) or []
     out = set()
     for l in hit:
@@ -318,21 +329,53 @@ def ordered_for(db: Session, client: str, account_ids: str,
     hit = client_lines(db, client, account_ids) or []
     if period and not lifetime:
         hit = [l for l in hit if _ran_during(l, period)]
-    fields = (("total_budget", "budget"), ("total_impressions", "impressions")) \
-        if lifetime else (("budget", "budget"), ("impressions", "impressions"))
     out: dict[str, dict] = {}
     for l in hit:
         if not l.product:
             continue
         if not lifetime and not getattr(l, "live", True):
             continue
-        row = out.setdefault(l.product, {"budget": None, "impressions": None})
-        for src, key in fields:
+        row = out.setdefault(l.product, {"budget": None, "impressions": None,
+                                         "basis": ""})
+        if not lifetime:
+            for key in ("budget", "impressions"):
+                v = getattr(l, key, None)
+                if v is not None:
+                    row[key] = float(v) if row[key] is None else row[key] + float(v)
+            continue
+
+        # A LIFETIME IS THE WHOLE CAMPAIGN, and most orders do not carry a
+        # campaign total - they carry a monthly goal and a flight. So when the
+        # export has a real total it is used, and otherwise the total is the
+        # monthly goal across the months the campaign ran. That is a derived
+        # figure and the page says so, rather than quietly presenting it as
+        # something the order stated.
+        months = _months_of(l)
+        for src, key in (("total_budget", "budget"),
+                         ("total_impressions", "impressions")):
             v = getattr(l, src, None)
             if v is None:
-                continue
+                monthly = getattr(l, key, None)
+                if monthly is None or not months:
+                    continue
+                v = float(monthly) * months
+                row["basis"] = (f"{months} month{'s' if months != 1 else ''} "
+                                f"at the monthly figure on the order")
             row[key] = float(v) if row[key] is None else row[key] + float(v)
     return out
+
+
+def _months_of(line) -> int:
+    """How many months this order ran, at least one.
+
+    Rounded rather than truncated: a flight of 2026-01-09 to 2026-07-08 is six
+    months of delivery, not five and a bit.
+    """
+    start = getattr(line, "order_starts_on", None) or line.starts_on
+    end = getattr(line, "order_ends_on", None) or line.ends_on
+    if not start or not end or end < start:
+        return 0
+    return max(1, round(((end - start).days + 1) / 30.44))
 
 
 def expected_any(db: Session, client: str, account_ids: str,

@@ -1327,10 +1327,12 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     path = store / safe
     path.write_bytes(blob)
 
-    exp = expected_products(db, client, account_ids, period=period)
+    exp = expected_products(db, client, account_ids, period=period,
+                            lifetime=is_lifetime)
     why = expected_why(db, client, account_ids, period=period)
     any_of = expected_any(db, client, account_ids, period=period)
-    quiet = quiet_products(db, client, account_ids, period=period)
+    quiet = quiet_products(db, client, account_ids, period=period,
+                           lifetime=is_lifetime)
     budgets = budgets_for(db, client, account_ids, period=period)
     orders_ok = not _orders_stale(db)
     # The corner of page one, and which other markets print the same mark.
@@ -1400,6 +1402,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     somebody's manual upload without asking.
     """
     from .checks import run_all
+    from .cycle import cycle_for
     from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
                      expected_why, quiet_products)
@@ -1440,17 +1443,24 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
         except OSError:
             pass
 
-    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
+                            lifetime=bool(rep.is_lifetime))
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
-    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
+                           lifetime=bool(rep.is_lifetime))
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     orders_ok = not _orders_stale(db)
     from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(target)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    flight = client_flight(db, rep.client, rep.account_ids)
+    # A lifetime is measured against the campaign that ended, so its flight
+    # stops at this cycle's lifetime window rather than at whatever else the
+    # client still has running.
+    flight = client_flight(db, rep.client, rep.account_ids,
+                           cutoff=(cycle_for(rep.period).lifetime_cutoff
+                                   if rep.is_lifetime and rep.period else None))
     result = run_all(target, filename=rep.filename, expected_products=exp,
                      flight=flight,
                      flight_lines=flight_lines(db, rep.client, rep.account_ids),
@@ -1497,6 +1507,7 @@ async def replace_report(report_id: int, request: Request,
     """
     from .checks import run_all
     from .checks.parser import meta_from_filename
+    from .cycle import cycle_for
     from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
                      expected_why, quiet_products)
@@ -1543,17 +1554,24 @@ async def replace_report(report_id: int, request: Request,
         path = store / rep.filename
     path.write_bytes(blob)
 
-    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
+                            lifetime=bool(rep.is_lifetime))
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
-    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
+                           lifetime=bool(rep.is_lifetime))
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     orders_ok = not _orders_stale(db)
     from .checks.logo import header_logo_hash, is_generic
     logo = header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    flight = client_flight(db, rep.client, rep.account_ids)
+    # A lifetime is measured against the campaign that ended, so its flight
+    # stops at this cycle's lifetime window rather than at whatever else the
+    # client still has running.
+    flight = client_flight(db, rep.client, rep.account_ids,
+                           cutoff=(cycle_for(rep.period).lifetime_cutoff
+                                   if rep.is_lifetime and rep.period else None))
     try:
         result = run_all(path, filename=rep.filename, expected_products=exp,
                          flight=flight,

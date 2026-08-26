@@ -12,14 +12,14 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-64"
-BUILD_NOTES = ("A campaign that ran fewer than seven days in the month is no "
-               "longer owed a monthly - The Grove started on 30 July, so its "
-               "July report was two days of near-zero numbers. Lifetimes are "
-               "exempt, and one that has already gone out is not asked for "
-               "twice unless the end date has moved since. The board says what "
-               "it is not asking for and why, and there is a record of every "
-               "lifetime delivered.")
+BUILD = "2026.08.26-65"
+BUILD_NOTES = ("Lifetimes are judged as lifetimes now: against the whole "
+               "campaign rather than this month. That was three false failures "
+               "at once - products that stopped months ago read as not live, "
+               "pacing compared a nine-month report to one month's goal, and "
+               "the range took its end from whatever else the client still had "
+               "running. Also: total_campaign_impressions is not always an "
+               "impression count.")
 
 # ---------------------------------------------------------------------------
 

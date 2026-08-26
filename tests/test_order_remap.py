@@ -823,3 +823,44 @@ def test_an_extended_campaign_goes_back_on_the_schedule(db):
     db.commit()
     kinds = {e.kind for e in expected_for(db, "2026-07")}
     assert kinds == {"monthly", "lifetime"}
+
+
+def test_a_lifetime_paces_against_the_whole_flight(db):
+    """"523,636 / 1, +52,363,500% over" - the export has four columns called
+    total_campaign_impressions and the populated one carries 0.999999999999,
+    a share of goal rather than a count. So a total under a thousand is not a
+    campaign total, and the figure is built from the monthly goal instead."""
+    import datetime as dt
+    from app.roster import ordered_for
+    from app.db import OrderLine
+    D = dt.date.fromisoformat
+
+    db.add(OrderLine(market="7 Mountains NY Olean/Hornell", client="Burt Young Sales",
+                     account_ids="51751", line_ids="122691", product="Social Mirror",
+                     campaign="Social Mirror Ads", live=True,
+                     impressions=87_000, budget=1500,
+                     starts_on=D("2026-01-09"), ends_on=D("2026-07-08"),
+                     order_starts_on=D("2026-01-09"), order_ends_on=D("2026-07-08")))
+    db.commit()
+
+    month = ordered_for(db, "Burt Young Sales", "51751", "2026-07")
+    assert month["Social Mirror"]["impressions"] == 87_000
+
+    life = ordered_for(db, "Burt Young Sales", "51751", "2026-07", lifetime=True)
+    # Six months of a six-month flight, not one month and not a ratio.
+    assert life["Social Mirror"]["impressions"] == 87_000 * 6
+    assert "6 months" in life["Social Mirror"]["basis"]
+
+
+def test_a_share_of_goal_is_not_an_impression_total(db):
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions,total_campaign_impressions\n")
+    row = ("BU,IO Live,Acme,1,Social Mirror Ads,10,IO Live,"
+           "2026-01-01,2026-01-01,2026-12-31,2026-12-31,87000,0.999999999999\n")
+    import_io_export(db, (head + row).encode(), period="2026-07")
+    line = db.query(OrderLine).one()
+    assert line.impressions == 87000
+    assert line.total_impressions is None

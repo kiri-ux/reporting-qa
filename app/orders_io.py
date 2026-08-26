@@ -414,7 +414,15 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     if whole is not None:
                         cur = kept[k]["total_budget"]
                         kept[k]["total_budget"] = whole if cur is None else cur + whole
+                    # NOT EVERY COLUMN CALLED total_campaign_impressions HOLDS
+                    # IMPRESSIONS. This export repeats the header four times
+                    # and the populated one carries 0.999999999999 - a share of
+                    # goal, not a count - which turned a lifetime's pacing into
+                    # "523,636 / 1, 52,363,500% over". Anything under a
+                    # thousand is not a campaign's impression total.
                     all_imps = _num(r.get("total_campaign_impressions"))
+                    if all_imps is not None and all_imps < 1000:
+                        all_imps = None
                     if all_imps is not None:
                         cur = kept[k]["total_impressions"]
                         kept[k]["total_impressions"] = (

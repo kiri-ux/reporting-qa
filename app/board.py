@@ -60,6 +60,10 @@ class Expected:
     ends_on: dt.date | None = None
     buyer: str = ""
     reporter: str = ""
+    # Why a lifetime is on the board: the order that ended, and when. A client
+    # can have one campaign finishing and another running for months, and
+    # without this the row looks like a lifetime asked for on a live campaign.
+    life_note: str = ""
     report: Report | None = None
 
     @property
@@ -204,6 +208,10 @@ def expected_for(db: Session, period: str,
     # is owed a monthly if ANY of them ran a real week - one product starting on
     # the 30th does not excuse the rest of the campaign.
     ran_days: dict[tuple[str, str, str], int] = {}
+    # The end date that actually put a lifetime on the board. A client can have
+    # one order finishing this month and another running to October; the
+    # lifetime is about the one that finished.
+    life_end: dict[tuple[str, str, str], dt.date] = {}
     for l in cols:
         if excluded(l.market):
             continue
@@ -243,6 +251,12 @@ def expected_for(db: Session, period: str,
             if kind == "monthly":
                 ran_days[k] = max(ran_days.get(k, 0),
                                   days_in_cycle(cyc, l.starts_on, l.ends_on))
+            else:
+                ends = l.order_ends_on or l.ends_on
+                if ends and (k not in life_end or ends > life_end[k]):
+                    life_end[k] = ends
+                    e.life_note = (f"Order {l.account_ids or '?'} ends "
+                                   f"{ends.isoformat()}")
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
             # A client's lifetime covers several products, so its line ids are
@@ -256,11 +270,20 @@ def expected_for(db: Session, period: str,
             if l.ends_on and (e.ends_on is None or l.ends_on > e.ends_on):
                 e.ends_on = l.ends_on
 
-    # The span is built in the pass above, from every line the client runs -
-    # including the ones that are neither live nor ending this cycle.
+    # THE LIFETIME COVERS THE CAMPAIGN THAT ENDED, not everything the client
+    # has ever run. Overlapping orders are one continuous campaign, so the
+    # start still reaches back across them - but an order that is still running
+    # to October says nothing about the one that finished in July, and letting
+    # it set the end read as "a lifetime is needed" on a campaign with months
+    # left in it.
     for (mk, ck, kind), e in rows.items():
-        if kind == "lifetime" and (mk, ck) in span:
-            e.starts_on, e.ends_on = span[(mk, ck)]
+        if kind != "lifetime":
+            continue
+        end = life_end.get((mk, ck, kind)) or (span.get((mk, ck)) or [None, None])[1]
+        start = (span.get((mk, ck)) or [None, None])[0]
+        e.ends_on = end
+        if start and end and start <= end:
+            e.starts_on = start
 
     # Under a week in the month, and nothing has arrived for it: not owed.
     # A report that HAS turned up is never hidden - somebody pulled it, and

@@ -120,11 +120,13 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
             got = spent.get(product)
             rows.append({"product": product, "unit": "money",
                          "served": got, "ordered": want.get("budget"),
+                         "basis": want.get("basis") or "",
                          "pace": pacing_pct(got, want.get("budget"))})
             continue
         got = served["by_product"].get(product)
         rows.append({"product": product, "unit": "impressions",
                      "served": got, "ordered": want.get("impressions"),
+                     "basis": want.get("basis") or "",
                      "pace": pacing_pct(got, want.get("impressions"))})
 
     want_total = sum(v["impressions"] for p, v in ordered.items()

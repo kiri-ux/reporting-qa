@@ -123,15 +123,17 @@
 
     {% if pacing %}
       {# SERVED AGAINST ORDERED. Not a check - a number to look at. Impressions
-         for everything bought on a delivery goal, dollars for the four
-         products the report prints spend for. Pacing is 100% minus what was
-         served over what was ordered, so a positive number is short. #}
+         for everything bought on a delivery goal, dollars for the three
+         products the report prints spend for. Negative is short of the order,
+         positive is over. #}
       <h2 style="margin-top:22px">Pacing{% if rep.is_lifetime %} · campaign to date{% endif %}</h2>
       <table class="pacing">
         <tbody>
           {% for p in pacing %}
             <tr{% if p.total %} class="tot"{% endif %}>
-              <td>{{ p.product }}</td>
+              <td>{{ p.product }}
+                {%- if p.basis %}<br><span class="acct" style="font-size:11px"
+                  title="The order carries a monthly figure, not a campaign total, so this is that figure across the months the campaign ran.">{{ p.basis }}</span>{% endif %}</td>
               <td class="mono nw">
                 {% if p.unit == 'money' %}
                   {% if p.served is not none %}${{ '{:,.0f}'.format(p.served) }}{% else %}—{% endif %}/{%

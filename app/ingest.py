@@ -145,7 +145,8 @@ def open_batch(db: Session, market: str, period: str) -> Batch | None:
     ).first()
 
 
-def client_flight(db: Session, client: str, accounts: str) -> tuple | None:
+def client_flight(db: Session, client: str, accounts: str,
+                  cutoff: dt.date | None = None) -> tuple | None:
     """(first start, last end) across every one of this client's order lines.
 
     Two overlapping orders are one continuous campaign to the client, so the
@@ -154,11 +155,20 @@ def client_flight(db: Session, client: str, accounts: str) -> tuple | None:
     happened to be looked up.
     """
     out = flight_lines(db, client, accounts)
-    starts = [l["starts"] for l in out if l["starts"]]
-    ends = [l["ends"] for l in out if l["ends"]]
+    # A CUTOFF SCOPES IT TO THE CAMPAIGN THAT ENDED. A client can have one
+    # order finishing this month and another running to October, and a lifetime
+    # about the first should not be checked against the second's end date.
+    ends = [l["ends"] for l in out if l["ends"]
+            and (cutoff is None or l["ends"] <= cutoff)]
+    last = max(ends) if ends else None
+    starts = [l["starts"] for l in out if l["starts"]
+              and (last is None or l["starts"] <= last)]
+    if not starts:
+        starts = [l["starts"] for l in out if l["starts"]]
     if not starts:
         return None
-    return (min(starts), max(ends) if ends else None)
+    return (min(starts), last if last else (max(
+        [l["ends"] for l in out if l["ends"]], default=None)))
 
 
 def flight_lines(db: Session, client: str, accounts: str) -> list[dict]:
@@ -272,14 +282,17 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         path = store / f".incoming-{uuid.uuid4().hex}.pdf"
         path.write_bytes(blob)
         meta_guess = meta_from_filename(name)
+        # The name is the only thing known about the file at this point, and a
+        # lifetime is judged against the whole campaign rather than the month.
+        life_guess = bool(meta_guess.get("is_lifetime"))
         exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"],
-                                period=batch.period)
+                                period=batch.period, lifetime=life_guess)
         why = expected_why(db, meta_guess["client"], meta_guess["account_ids"],
                            period=batch.period)
         any_of = expected_any(db, meta_guess["client"], meta_guess["account_ids"],
                               period=batch.period)
         quiet = quiet_products(db, meta_guess["client"], meta_guess["account_ids"],
-                               period=batch.period)
+                               period=batch.period, lifetime=life_guess)
         budgets = budgets_for(db, meta_guess["client"], meta_guess["account_ids"],
                               period=batch.period)
         from .recheck import _orders_current

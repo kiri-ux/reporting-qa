@@ -423,7 +423,8 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
           {% if e.line_ids %}<span class="oid lid" title="Line item ids">{{ e.line_ids }}</span>{% endif %}
           <span class="sr">{% for p in chips.get(e.ident, []) %}{{ p.name }} {% endfor %}</span></td>
         <td class="nw">{% if e.kind == 'lifetime' %}
-          <span class="pill p-info">lifetime</span>
+          <span class="pill p-info"
+                {% if e.life_note %}title="{{ e.life_note }}. A lifetime is owed when a campaign finishes, whatever else this client still has running."{% endif %}>lifetime</span>
           {# Both dates: this is the range the report has to cover, and the end
              date alone does not tell the reporter what to pull. #}
           {% if e.starts_on or e.ends_on %}<br>

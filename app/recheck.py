@@ -122,6 +122,7 @@ def _orders_current(db: Session) -> bool:
 def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     """Re-read this report's PDF with today's rules. Returns what changed."""
     from .checks.rules import run_all
+    from .cycle import cycle_for
     from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
                      expected_why, quiet_products)
@@ -146,10 +147,12 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
         from .roster import attach_owners
         attach_owners(db, rep)
 
-    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period)
+    exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
+                            lifetime=bool(rep.is_lifetime))
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
-    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period)
+    quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
+                           lifetime=bool(rep.is_lifetime))
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     orders_ok = _orders_current(db)
     # The corner of page one, and which other markets print the same mark.
@@ -169,7 +172,12 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     logo = rep.logo_hash or header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    flight = client_flight(db, rep.client, rep.account_ids)
+    # A lifetime is measured against the campaign that ended, so its flight
+    # stops at this cycle's lifetime window rather than at whatever else the
+    # client still has running.
+    flight = client_flight(db, rep.client, rep.account_ids,
+                           cutoff=(cycle_for(rep.period).lifetime_cutoff
+                                   if rep.is_lifetime and rep.period else None))
     result = run_all(path, filename=rep.filename, expected_products=exp,
                      flight=flight,
                      flight_lines=flight_lines(db, rep.client, rep.account_ids),
