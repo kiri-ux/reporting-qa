@@ -340,7 +340,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
             {# Packaging uploads every PDF in the partner, which on a big one is
                several minutes. It runs in the background now, so the card says
                where it is rather than the browser sitting on a spinner. #}
-            <span class="mini busy"><span class="spin"></span><b
+            <span class="mini busy" data-packing="{{ g.group }}"><span class="spin"></span><b
               >{{ pack.done }} of {{ pack.total or '?' }}</b> packaged</span>
             {% if pack.note %}<span class="acct">{{ pack.note }}</span>{% endif %}
           {% elif d and d.ok and d.share_url %}
@@ -778,6 +778,27 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
   };
   setInterval(tick, 4000);
   tick();
+})();
+
+// PACKAGING SAYS SOMETHING THE MOMENT YOU PRESS IT.
+//
+// It uploads every PDF in the partner, which is a minute or two, and until the
+// redirect came back the page did nothing at all - so the only way to tell a
+// press that had registered from one that had not was to press it again. The
+// button goes busy on submit, and the card is polled until the link appears.
+(function () {
+  document.querySelectorAll('form[action*="/deliver"]').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var b = f.querySelector('button');
+      if (!b || b.dataset.went) return;
+      b.dataset.went = '1';
+      b.disabled = true;
+      b.innerHTML = '<span class="spin"></span>Packaging...';
+    });
+  });
+  if (document.querySelector('[data-packing]')) {
+    setTimeout(function () { location.reload(); }, 6000);
+  }
 })();
 </script>
 {% endblock %}

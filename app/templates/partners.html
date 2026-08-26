@@ -10,57 +10,6 @@
 </div>
 
 <section>
-  <div class="secbar">
-    <h2 style="border:0;margin:0;padding:0">Roster ({{ partners|length }})</h2>
-  </div>
-  {% if partners %}
-  <div class="tools">
-    <input type="search" data-filter="tbl-partners" data-count="cnt-partners"
-           placeholder="Search everything...">
-    <span class="count" id="cnt-partners"></span>
-    <a class="btn" href="/partners.csv">Download CSV</a>
-  </div>
-  <div class="colfilters" data-filters-for="tbl-partners"></div>
-  <div class="tw"><table id="tbl-partners">
-    <thead><tr><th>Partner</th><th data-col="Buyer">Buyer</th><th data-col="SEO">SEO</th>
-    <th data-col="Manager">Manager</th><th data-col="Reporter">Reporter</th>
-    <th data-col="Trainer">Trainer</th><th data-col="Delivery">Delivery</th>
-    <th>Reports go to</th><th>Notes</th></tr></thead>
-    <tbody>{% for p in partners %}
-      <tr>
-        <td><b>{{ p.partner }}</b></td>
-        <td>{{ p.buyer }}{% if p.buyer_email %}<br>
-          <span class="acct">{{ p.buyer_email }}</span>{% endif %}</td>
-        <td>{{ p.seo }}{% if p.seo_email %}<br>
-          <span class="acct">{{ p.seo_email }}</span>{% endif %}</td>
-        <td>{{ p.manager }}</td>
-        <td>{{ p.reporting_team }}</td>
-        {# WHERE THIS PARTNER'S CLIENTS GET THEIR LINK. It comes off the
-           roster, and a partner the roster does not name at all - a market
-           added since the last export - silently defaulted to Drive. Set it
-           here rather than editing a spreadsheet and re-uploading it. #}
-        <td class="nw">
-          <form method="post" action="/partners/{{ p.id }}/target" class="tset">
-            <select name="target" onchange="this.form.submit()">
-              {% for opt in ('drive', 'dropbox', 'local') %}
-                <option value="{{ opt }}"
-                  {% if (p.delivery_target or 'drive') == opt %}selected{% endif %}>{{ opt }}</option>
-              {% endfor %}
-            </select>
-          </form>
-        </td>
-        <td>{% for e in p.recipients %}<span class="acct">{{ e }}</span><br>{% endfor %}</td>
-        <td style="font-size:12.5px;color:var(--ink-2);max-width:34ch">
-          {{ p.reporting_notes }}{% if p.buyer_notes %}
-          <br><i>{{ p.buyer_notes }}</i>{% endif %}</td>
-      </tr>
-    {% endfor %}</tbody></table></div>
-  {% else %}
-    <p class="empty">No roster loaded.</p>
-  {% endif %}
-</section>
-
-<section>
   <h2>Where reports go</h2>
   <div class="panel">
     <p class="sub" style="margin:0 0 10px">
@@ -87,6 +36,61 @@
       <button class="btn" type="submit">Set them</button>
     </form>
   </div>
+</section>
+
+<section>
+  <div class="secbar">
+    <h2 style="border:0;margin:0;padding:0">Roster ({{ partners|length }})</h2>
+  </div>
+  {% if partners %}
+  <div class="tools">
+    <input type="search" data-filter="tbl-partners" data-count="cnt-partners"
+           placeholder="Search everything...">
+    <span class="count" id="cnt-partners"></span>
+    <a class="btn" href="/partners.csv">Download CSV</a>
+  </div>
+  <div class="colfilters" data-filters-for="tbl-partners"></div>
+  <div class="tw"><table id="tbl-partners">
+    <thead><tr><th>Partner</th><th data-col="Buyer">Buyer</th><th data-col="SEO">SEO</th>
+    <th data-col="Manager">Manager</th><th data-col="Reporter">Reporter</th>
+    <th data-col="Trainer">Trainer</th><th data-col="Delivery">Delivery</th>
+    <th>Reports go to</th><th>Notes</th></tr></thead>
+    <tbody>{% for p in partners %}
+      <tr>
+        <td><b>{{ p.partner }}</b></td>
+        <td>{{ p.buyer }}{% if p.buyer_email %}<br>
+          <span class="acct">{{ p.buyer_email }}</span>{% endif %}</td>
+        <td>{{ p.seo }}{% if p.seo_email %}<br>
+          <span class="acct">{{ p.seo_email }}</span>{% endif %}</td>
+        <td>{{ p.manager }}</td>
+        <td>{{ p.reporting_team }}</td>
+        {# THE TRAINER COLUMN WAS MISSING ITS CELL. Nine headings, eight cells,
+           so the delivery dropdown sat under "Trainer" and every column from
+           there rightwards showed the one beside it. #}
+        <td>{{ p.trainer }}</td>
+        {# WHERE THIS PARTNER'S CLIENTS GET THEIR LINK. It comes off the
+           roster, and a partner the roster does not name at all - a market
+           added since the last export - silently defaulted to Drive. Set it
+           here rather than editing a spreadsheet and re-uploading it. #}
+        <td class="nw">
+          <form method="post" action="/partners/{{ p.id }}/target" class="tset">
+            <select name="target" onchange="this.form.submit()">
+              {% for opt in ('drive', 'dropbox', 'local') %}
+                <option value="{{ opt }}"
+                  {% if (p.delivery_target or 'drive') == opt %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>{% for e in p.recipients %}<span class="acct">{{ e }}</span><br>{% endfor %}</td>
+        <td style="font-size:12.5px;color:var(--ink-2);max-width:34ch">
+          {{ p.reporting_notes }}{% if p.buyer_notes %}
+          <br><i>{{ p.buyer_notes }}</i>{% endif %}</td>
+      </tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}
+    <p class="empty">No roster loaded.</p>
+  {% endif %}
 </section>
 
 <section>

@@ -262,3 +262,38 @@ def test_drive_reads_each_folder_once_not_once_per_file():
     src = (Path(__file__).resolve().parents[1] / "app" / "delivery.py").read_text()
     assert "if dest not in dest_files:" in src
     assert "if parent_folders is None:" in src
+
+
+def test_the_roster_table_has_a_cell_for_every_heading():
+    """Nine headings, eight cells: the delivery dropdown sat under "Trainer"
+    and every column from there rightwards showed the one beside it."""
+    import re as _re
+    html = (TPL / "partners.html").read_text()
+    head = html[html.index("<thead>"):html.index("</thead>")]
+    body = html[html.index("<tbody>"):html.index("</tbody>")]
+    row = body[body.index("<tr>"):body.index("</tr>")]
+    assert len(_re.findall(r"<th\b", head)) == len(_re.findall(r"<td\b", row))
+    assert "{{ p.trainer }}" in html
+
+
+def test_where_reports_go_sits_above_the_roster():
+    """It was below 280 partner rows, which is where things go to not be
+    found."""
+    html = (TPL / "partners.html").read_text()
+    assert html.index("Where reports go") < html.index("Roster ({{ partners|length }})")
+
+
+def test_the_package_button_says_something_the_moment_it_is_pressed():
+    html = (TPL / "cycle.html").read_text()
+    assert 'form[action*="/deliver"]' in html
+    assert "Packaging..." in html
+
+
+def test_the_way_back_from_a_report_survives_the_page_reloading_itself():
+    """Accepting a finding, saving a note and re-checking all redirect back to
+    the report, and from then on the referer IS the report - so Reviewed left
+    you sitting on the one you had just signed off."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert 'BACK_COOKIE = "qa_back"' in src
+    assert "target or _back_cookie(request)" in src
+    assert 'resp.set_cookie(BACK_COOKIE' in src

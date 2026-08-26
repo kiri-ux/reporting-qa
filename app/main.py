@@ -96,6 +96,25 @@ def _remember(response, who: str) -> None:
                         max_age=USER_COOKIE_MAX_AGE, samesite="lax", path="/")
 
 
+# WHERE THE REPORT PAGE WAS OPENED FROM.
+#
+# Read off the referer, which is right exactly once - the first arrival from
+# the board. Accepting a finding, saving a note, re-checking or replacing the
+# file all redirect back to the same page, and from then on the referer IS that
+# page. So the way back went blank and Reviewed left you sitting on the report
+# you had just signed off. A short-lived cookie carries it across those.
+BACK_COOKIE = "qa_back"
+BACK_COOKIE_MAX_AGE = 60 * 60 * 8
+
+
+def _back_cookie(request: Request) -> str:
+    v = (request.cookies.get(BACK_COOKIE) or "").strip()[:512]
+    # Same-site paths only. A cookie is user input like any other.
+    if not v.startswith("/") or v.startswith("//") or "/report/" in v:
+        return ""
+    return v
+
+
 templates.env.globals.update(
     head_tags=brand.HEAD_TAGS,
     build_label=version.label(),
@@ -991,7 +1010,9 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     # page again means scrolling the board back to where you were, every time.
     # The board this report was opened from is carried on the form.
     target = back if back.startswith("/") and not back.startswith("//") else ""
-    resp = RedirectResponse(target or request.headers.get("referer") or "/cycle",
+    # The cookie, not the referer, as the fallback. The referer here is the
+    # report page itself, which is the one place this must not land.
+    resp = RedirectResponse(target or _back_cookie(request) or "/cycle",
                             status_code=303)
     # First sign-off of the day remembers you, so there is no separate step to
     # find before the thing you came to do.
@@ -1737,7 +1758,17 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
     if came_from:
         u = _urlparse(came_from)
         came_from = u.path + (f"?{u.query}" if u.query else "")
-    return templates.TemplateResponse(request, "viewer.html",
+    # THE WAY BACK HAS TO SURVIVE THE PAGE RELOADING ITSELF.
+    #
+    # It was read off the referer, which is right exactly once - the first
+    # arrival from the board. Accepting a finding, saving a note, re-checking
+    # the file or replacing it all redirect back to this same page, and from
+    # then on the referer IS this page, so the way back was blank and Reviewed
+    # left you sitting on the report you had just signed off. Remembered in a
+    # cookie so those round trips do not lose it.
+    if not came_from:
+        came_from = _back_cookie(request)
+    resp = templates.TemplateResponse(request, "viewer.html",
                                       {"nav": "cycle", "rep": rep,
                                        "back": came_from,
                                        "skip_why": SKIP_WHY,
@@ -1764,6 +1795,10 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                        "file_v": file_token(rep),
                                        "stale": bool(rep.rules_version)
                                        and rep.rules_version != rules_version()})
+    if came_from:
+        resp.set_cookie(BACK_COOKIE, came_from, max_age=BACK_COOKIE_MAX_AGE,
+                        samesite="lax", path="/")
+    return resp
 
 
 @app.post("/report/{report_id}/recheck")
