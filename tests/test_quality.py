@@ -1139,3 +1139,59 @@ def test_a_two_column_total_line_is_still_not_a_name():
             " Acme - Keyword PPC              15,058          14     0.09%\n"
             " Total                           15,058\n")
     assert [n for n, _at in line_item_names(text)] == ["Acme - Keyword PPC"]
+
+
+def test_a_preview_that_printed_nothing_counts_too(tmp_path):
+    """There are two ways for a preview to be missing and the report only says
+    one of them out loud. Wine and Design Newport News' CTV grid has five
+    creatives: four print "Thumbnail not available" and the fifth prints
+    nothing at all. Counting the words found four, and four is the number that
+    gets checked against the page and disbelieved.
+
+    The text cannot tell that cell from one holding a WORKING thumbnail - an
+    image is empty in pdftotext exactly like an empty cell is - so this one is
+    decided on the rendered pixels.
+    """
+    import io
+    import random
+    pytest.importorskip("reportlab")
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+    from PIL import Image
+    from app.checks.quality import blank_previews, page_words
+
+    random.seed(3)
+    thumb = Image.new("RGB", (120, 90))
+    px = thumb.load()
+    for y in range(90):
+        for x in range(120):
+            px[x, y] = (random.randrange(256), random.randrange(256),
+                        random.randrange(256))
+    buf = io.BytesIO()
+    thumb.save(buf, "PNG")
+
+    path = tmp_path / "previews.pdf"
+    c = canvas.Canvas(str(path), pagesize=(792, 612))
+    c.setFont("Helvetica", 11)
+    c.drawString(40, 560, "Connected TV (CTV) Creative Performance")
+    c.setFont("Helvetica", 9)
+    for x, t in ((40, "Preview Image"), (200, "Creative Name"),
+                 (430, "Impressions"), (540, "Video Completion Rate")):
+        c.drawString(x, 535, t)
+    y = 495
+    for name, imps, kind in (("Acme_3.30_Spring.mp4", "10,161", "image"),
+                             ("Acme_1.12_Summer.mp4", "35,030", "none"),
+                             ("Acme_12.12_Gift.mp4", "80", "text")):
+        if kind == "image":
+            buf.seek(0)
+            c.drawImage(ImageReader(buf), 42, y - 22, width=110, height=40)
+        elif kind == "text":
+            c.drawString(42, y, "Thumbnail not available")
+        c.drawString(200, y, name)
+        c.drawString(430, y, imps)
+        y -= 70
+    c.save()
+
+    got = blank_previews(path, page_words(path))
+    assert len(got) == 1, "the working thumbnail and the worded one are not blank"
+    assert got[0][1] == "Connected TV (CTV) Creative Performance"

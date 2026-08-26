@@ -1,72 +1,59 @@
-build 2026.08.26-90
+build 2026.08.26-92
 Changed files only.
 
 app/checks/quality.py
+app/checks/rules.py
 app/main.py
-app/templates/report_orders_body.html
+app/templates/base.html
+app/templates/cycle.html
 app/version.py
+tests/test_board_extras.py
 tests/test_manual_upload.py
-tests/test_order_remap.py
 tests/test_quality.py
 
-622 tests pass.
-
-The checks changed again, so every report re-checks itself on deploy.
+626 tests pass. The checks changed, so reports re-check themselves on deploy.
 
 
-"1 STRATEGY LINE NOT CATEGORIZED TO A PRODUCT"
+5 PREVIEWS, NOT 4
+====================
+Wine and Design Newport News' CTV grid has five creatives. Four print
+"Thumbnail not available". The fifth prints NOTHING AT ALL - an empty preview
+cell - which is the same failure with nothing to count.
+
+The text cannot tell that cell apart from one holding a WORKING thumbnail: an
+image is empty in pdftotext exactly like an empty cell is. So this one is
+decided on the rendered pixels, the same way the ad-screenshot check already
+works - a cell holding a real ad has thousands of colors, an empty one has the
+table fill and its border.
+
+Checked against all seven fixture reports: no new findings on any of them,
+which is right - every preview cell in them either holds an image or says
+"Thumbnail not available" already.
+
+
+THE FILTERS ONLY FILTERED THE PAGE YOU WERE ON
 =================================================
-A false fail, and the name in the finding is the evidence:
+Two bugs, both of which made a saved view show the wrong thing.
 
-  Lemmata Chiropractic - Chiropractic - 35-64/Back
+FIRST: those filters were browser state and nothing else. The JS read the URL,
+ticked the boxes, and hid cards - and the cards it can hide are the twenty on
+screen out of a hundred and forty-five. So a view for Lockwood opened on page
+one, found no Lockwood card among the twenty, and hid all twenty. A named view
+that reliably showed nothing.
 
-That is the first line of a two-line name. The second line is
+The server reads them now - partner, buyer, reporter, trainer, status, only -
+and narrows BEFORE the page is cut, so a filter reaches the whole cycle. The
+menus are still built from every group rather than from what survived, because
+offering only what is still showing means one pick and the menu can never take
+you anywhere else. Picking one reloads; typing in the search box still filters
+instantly without one, and a pick sends you back to card one, because the page
+you were on is a page of the list you just replaced.
 
-  Pain/Neck Pain Behavioral Social Mirror     reachv2
+SECOND: the Status menu offered every REPORT state - Not received, Errors, In
+review, Good to go - and a CARD is labelled "Good to go" or "Open". So every
+option in that menu but one matched no card at all and emptied the board. It
+offers the two a card actually carries now.
 
-and that gap makes it TWO cells, not one. Only single-cell lines counted as
-the tail of a wrapped name, so it was thrown away, the name lost the half
-carrying "Social Mirror", and the report was failed for a line item that names
-its product perfectly well.
-
-Any line with fewer cells than a data row and no NUMBER in them is name text
-now. A two-column total line still gets dropped, because a number in the extra
-cells is what makes something a data row rather than a name.
-
-
-"READS AS CTV, VIDEO TODAY"
-=============================
-That badge means "the stored product disagrees with what today's code reads
-the raw name as", which is worth knowing - it is the whole reason a product
-finding can be wrong. It was firing on rows nothing was wrong with, for two
-reasons:
-
-  * One line item can sell two products. "CTV + Video Ads" is one buy and two
-    rows, so the raw name mapping to CTV AND Video is normal. It was compared
-    against the whole list, so a row correctly stored as CTV read as
-    disagreeing with itself. The test is now whether the stored product is
-    still ONE OF today's answers.
-
-  * It was computed from the MERGED row's raw name, not the line item's own,
-    so line 132111 - "Connected TV Ads" - was told it reads as something else
-    because a different line item on the same order says "CTV + Video Ads".
-
-When it does fire it now says both halves - "stored as X, reads as Y today" -
-with a hover explaining that any product finding on that row is being judged
-against a stale answer until the orders are re-read.
-
-
-EVERY ROW NAMES ITS PRODUCT
-==============================
-The ditto mark saved a little ink and cost the column the one thing it is for.
-Repeats are just set lighter now.
-
-
-TOTALS
-=========
-A total row under both tables: line items, orders, how many ran in the month,
-and the two money columns.
-
-Safe to add up, which is why it can exist at all: a line item selling two
-products carries its money against the FIRST of them and nothing against the
-second, so a "CTV + Video Ads" buy counts once rather than twice.
+And what the board is narrowed to is printed as chips on the filter row, so a
+view that filters to one partner stops looking like a cycle with one partner
+in it.

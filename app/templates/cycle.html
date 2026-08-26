@@ -203,6 +203,14 @@
       <span class="chip">{{ state_label[filter_state] }}<a title="Drop this filter"
         href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}">&times;</a></span>
     {% endif %}
+    {# WHAT THE BOARD IS NARROWED TO, said on the page. These used to live only
+       in the dropdowns and in the address bar, so a saved view that filtered
+       to one partner looked like a cycle with one partner in it. #}
+    {% for key, vals in card_filters.items() %}
+      {% for v in vals %}
+        <span class="chip">{{ 'only started' if v == 'arrived' else v }}</span>
+      {% endfor %}
+    {% endfor %}
   </div>
 
   {# Saved views. The filters have been shareable since they went into the URL;

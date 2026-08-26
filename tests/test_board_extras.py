@@ -946,7 +946,10 @@ def test_the_filter_dropdowns_offer_the_whole_cycle():
     this page happens to show and called it "All (20)"."""
     src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
     assert "def _card_options(groups)" in src
-    assert '"opts": _card_options(groups)' in src
+    # Built from EVERY group, not from the ones that survived the filter -
+    # offering only what is still showing means one pick and the menu can
+    # never take you anywhere else.
+    assert '"opts": _card_options(every_group)' in src
     html = (TPL / "cycle.html").read_text()
     for key in ("partner", "buyer", "reporter", "trainer", "status"):
         assert f'data-opts-{key}="{{{{ opts.{key} }}}}"' in html
@@ -972,7 +975,10 @@ def test_card_options_are_the_whole_cycles_values():
     assert opts["partner"] == "Alpha|Lockwood Media"
     assert opts["buyer"] == "Bella|Stacy"
     assert opts["trainer"] == "Katie"          # deduplicated
-    assert "Not received" in opts["status"]
+    # THE TWO VALUES A CARD ACTUALLY CARRIES. This offered every report state -
+    # Not received, Errors, In review - and a card is labelled "Good to go" or
+    # "Open", so picking any of them matched no card and the board went empty.
+    assert opts["status"] == "Open"
 
 
 def test_the_not_owed_list_sits_with_the_reports():

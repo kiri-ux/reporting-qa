@@ -533,10 +533,29 @@ def check_thumbnails(ctx) -> list[dict]:
     for m in re.finditer("Thumbnail not available", text):
         where = _where(ctx, m.start(), widget_at(text, m.start()))
         counts[where] = counts.get(where, 0) + 1
+
+    # AND THE ONES THAT PRINT NOTHING AT ALL. Wine and Design Newport News' CTV
+    # grid has five creatives: four say "Thumbnail not available" and the fifth
+    # says nothing, which is the same failure with nothing to count. The text
+    # cannot tell that cell from one holding a working thumbnail - an image is
+    # empty in pdftotext exactly like an empty cell is - so this one is decided
+    # on the rendered pixels.
+    try:
+        from .quality import blank_previews, page_words
+        path = ctx.get("path")
+        if path:
+            pages = ctx.get("page_words") or page_words(path)
+            ctx["page_words"] = pages
+            for page_no, title in blank_previews(path, pages):
+                where = f"p{page_no} · {title}" if title else f"p{page_no}"
+                counts[where] = counts.get(where, 0) + 1
+    except Exception:      # a preview count is never worth failing the run
+        pass
+
     return [_f("missing_thumbnail", "warn",
                f"{n} creative preview{'s' if n > 1 else ''} did not render",
-               'The report prints "Thumbnail not available" in place of the '
-               'preview image.', where=where)
+               'The report prints "Thumbnail not available", or nothing at '
+               'all, in place of the preview image.', where=where)
             for where, n in counts.items()]
 
 
@@ -1676,7 +1695,7 @@ SKIP_WHY = {
     "check_truncated_text": "no line item grid on the report",
     "check_blank_screenshots": "no ad screenshot widget on the report",
     "check_conversion_names": "no conversion breakout on the report",
-    "check_creative_names": "no creative grid on the report",
+    "check_creative_names": "no creative grid on the report that has a name column - PPC prints the ad preview instead of a file name",
     "check_widget_errors": "",
     "check_page_banners": "",
     "check_social_mirror_sizes": "no Social Mirror creative grid on the report",

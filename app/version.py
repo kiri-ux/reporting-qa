@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-90"
-BUILD_NOTES = ("A wrapped line item name that ends in a second column is no "
-               "longer thrown away, and the order panel names every product "
-               "and adds itself up.")
+BUILD = "2026.08.26-92"
+BUILD_NOTES = ("A preview that printed nothing counts as one that did not "
+               "render, and the card filters narrow the whole cycle instead "
+               "of the twenty cards on screen.")
 
 # ---------------------------------------------------------------------------
 

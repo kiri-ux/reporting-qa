@@ -721,12 +721,146 @@ def check_conversion_names(ctx) -> list[dict]:
 CREATIVE_GRID = re.compile(r"^[ \t]*(\S[^\n]*Creative Performance[^\n]*)$", re.M)
 
 
+# A column header that holds the creative's name: "Creative Name", "Ad Name",
+# "Video Name". PPC's grid has none of them - its first column is "Ad Preview",
+# which is the ad's own headline and description text, and there is no file
+# name on that widget anywhere. See has_name_column.
+NAME_COLUMN = re.compile(r"\bName\b", re.I)
+
+
+def has_name_column(text: str, start: int) -> bool:
+    """Does this grid have a column for the creative's name at all?
+
+    Ram Jack of Eastern VA PPC was FAILED for "1 creative with no name". Its
+    PPC Creative Performance grid is Ad Preview, Impressions, Clicks, CTR,
+    Cost, Avg. CPC - no name column exists on it, so no row in it can be
+    missing one. What the rule actually found was the grid's own unlabeled
+    total line, read as a creative whose name cell was empty.
+
+    A rule that cannot tell "this is blank" from "there is no such column"
+    is not asking a question about the report.
+    """
+    for line in text[start:].split("\n")[:6]:
+        if not line.strip() or _is_chrome(line):
+            continue
+        cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
+        # Numbers mean the header is already behind us, or there never was one.
+        if len(cells) < 2 or any(NUMERIC.match(c) for c in cells):
+            return False
+        return any(NAME_COLUMN.search(c) for c in cells)
+    return False
+
+
+# The preview column, by whichever name a template gives it.
+PREVIEW_COLUMN = re.compile(r"^(Preview Image|Ad Preview|Preview|Thumbnail)$", re.I)
+NO_THUMBNAIL = "Thumbnail not available"
+
+
+def _column_groups(words, y, x_from=0.0):
+    """The header cells on the row at y, as [(x start, x end, text)]."""
+    row = sorted([w for w in words if abs(w[1] - y) < 3 and w[0] >= x_from],
+                 key=lambda w: w[0])
+    if not row:
+        return []
+    cols = [[row[0]]]
+    for w in row[1:]:
+        if w[0] - cols[-1][-1][2] > 12:
+            cols.append([w])
+        else:
+            cols[-1].append(w)
+    return [(g[0][0], (cols[i + 1][0][0] if i + 1 < len(cols) else None),
+             " ".join(w[4] for w in g)) for i, g in enumerate(cols)]
+
+
+def blank_previews(path, pages) -> list[tuple[int, str]]:
+    """Creative rows whose preview cell holds NOTHING, as (page, grid title).
+
+    THERE ARE TWO WAYS FOR A PREVIEW TO BE MISSING AND THE REPORT ONLY SAYS
+    ONE OF THEM OUT LOUD. Wine and Design Newport News' CTV grid has five
+    creatives: four print "Thumbnail not available" and the fifth prints
+    nothing at all. Counting the words found four, and four is the number that
+    gets checked against the page and disbelieved.
+
+    The text cannot tell the difference, and that is not a solvable problem in
+    the text: a preview that WORKED is an image, and an image is empty in
+    pdftotext exactly like an empty cell is. So this looks at the rendered
+    pixels of the cell, the same way the ad-screenshot check does - a cell
+    holding a real ad has thousands of colours and an empty one has the table
+    fill and its border.
+    """
+    from .. import proc as _proc
+    import tempfile
+    from pathlib import Path as _P
+    from PIL import Image
+    from .parser import _bin
+
+    want = []                      # (page index, title, x0, x1, [row y])
+    for n, page in enumerate(pages, start=1):
+        words = page["words"]
+        heads = [w for w in words if w[4] == "Preview"]
+        for h in heads:
+            cols = _column_groups(words, h[1])
+            if not cols or not PREVIEW_COLUMN.match(cols[0][2].strip()):
+                continue
+            if len(cols) < 3:
+                continue           # no name column and no numbers column
+            title = ""
+            above = [w for w in words if w[3] <= h[1] - 2]
+            if above:
+                ty = max(w[1] for w in above)
+                title = " ".join(w[4] for w in sorted(
+                    [w for w in above if abs(w[1] - ty) < 3], key=lambda w: w[0]))
+            if "Creative Performance" not in title:
+                continue
+            # One row per number in the column after the name column.
+            num_x0 = cols[2][0]
+            num_x1 = cols[3][0] if len(cols) > 3 else None
+            ys = sorted({round(w[1], 1) for w in words
+                         if w[1] > h[1] + 4 and w[0] >= num_x0 - 6
+                         and (num_x1 is None or w[0] < num_x1 - 2)
+                         and NUMERIC.match(w[4])})
+            if len(ys) < 1:
+                continue
+            want.append((n, title, cols[0][0], cols[1][0], ys))
+
+    out: list[tuple[int, str]] = []
+    if not want:
+        return out
+    dpi = 100
+    sc = dpi / 72.0
+    with tempfile.TemporaryDirectory() as tmp:
+        for n, title, x0, x1, ys in want:
+            stem = str(_P(tmp) / f"p{n}")
+            _proc.run([_bin("pdftoppm"), "-f", str(n), "-l", str(n),
+                       "-r", str(dpi), "-png", str(path), stem],
+                      capture_output=True, timeout=120)
+            hits = sorted(_P(tmp).glob(f"p{n}-*.png"))
+            if not hits:
+                continue
+            im = Image.open(hits[0]).convert("RGB")
+            # Half the distance to the nearest neighbouring row, so a tall row
+            # is not cropped to a sliver and a short one does not reach into
+            # the row above it.
+            for i, y in enumerate(ys):
+                gaps = [abs(y - o) for o in ys if o != y] or [24.0]
+                half = max(min(min(gaps) / 2 - 2, 40.0), 6.0)
+                box = (max(int(x0 * sc) - 4, 0), max(int((y - half) * sc), 0),
+                       int(x1 * sc) - 6, min(int((y + half) * sc), im.height))
+                if box[2] - box[0] < 8 or box[3] - box[1] < 8:
+                    continue
+                if is_blank(im.crop(box)):
+                    out.append((n, title))
+    return out
+
+
 def creative_rows(text: str) -> list[tuple[str, str, int]]:
     """(grid title, creative name, offset). The offset is what turns "on PPC
     Creative Performance" into a page number on the finding."""
     out = []
     for m in CREATIVE_GRID.finditer(text):
         title = m.group(1).strip()
+        if not has_name_column(text, m.end()):
+            continue
         for name, at in grid_rows(text, m.end()):
             out.append((title, name, at))
     return out

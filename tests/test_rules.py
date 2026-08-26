@@ -2487,17 +2487,34 @@ def test_a_ctv_tile_on_an_order_that_bought_ctv_is_fine():
 
 
 def test_the_creative_name_finding_says_which_page():
-    """"on PPC Creative Performance" meant scrolling a forty-page report
+    """"on Display Creative Performance" meant scrolling a forty-page report
     looking for the title."""
     from app.checks.quality import check_creative_names
     text = ("BLOOM HEATING - PAGE 1\n"
-            "PPC Creative Performance\n"
-            " Ad Preview                  Impressions   Clicks    CTR     Cost    CPC\n"
-            " AC Installation Experts           2,540      172  6.77%   954.10   5.55\n"
-            "                                   2,304       39  1.69%   730.33  18.73\n")
+            "Display Creative Performance\n"
+            " Preview   Creative Name           Impressions   Clicks    CTR\n"
+            " Thumbnail Bloom_300x250_June.gif        2,540      172  6.77%\n"
+            "                                        2,304       39  1.69%\n")
     out = check_creative_names({"text": text, "page_of": lambda _o: 6})
     assert len(out) == 1
-    assert out[0]["where"] == "p6 · PPC Creative Performance"
+    assert out[0]["where"] == "p6 · Display Creative Performance"
+
+
+def test_a_ppc_grid_has_no_creative_name_to_be_missing():
+    """Ram Jack of Eastern VA PPC was FAILED for "1 creative with no name". Its
+    PPC Creative Performance grid is Ad Preview, Impressions, Clicks, CTR,
+    Cost, Avg. CPC - there is no name column on it, so no row in it can be
+    missing one. What the rule found was the grid's own unlabeled total line.
+
+    A rule that cannot tell "this is blank" from "there is no such column" is
+    not asking a question about the report."""
+    from app.checks.quality import check_creative_names, creative_rows
+    text = ("PPC Creative Performance\n"
+            " Ad Preview                  Impressions   Clicks    CTR     Cost    CPC\n"
+            " Free Foundation Estimate          1,341       38  2.83%   737.76  19.41\n"
+            "                                   2,280       20  0.88%   609.69  30.48\n")
+    assert creative_rows(text) == []
+    assert check_creative_names({"text": text, "page_of": lambda _o: 7}) == []
 
 
 def test_a_line_that_ran_a_week_or_less_of_the_month_is_not_paced():

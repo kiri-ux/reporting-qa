@@ -1200,3 +1200,41 @@ def test_the_panel_totals_count_a_two_product_buy_once(client):
     html = _panel(c, db, dbm, _TWO_PRODUCT_LINE)
     assert "129,166" in html          # 66,666 + 62,500, not 195,832
     assert "line items" in html and "1 order" in html
+
+
+def test_a_card_filter_reaches_past_the_page_it_is_on(client, monkeypatch):
+    """These were browser state: the JS ticked the boxes off the URL and then
+    hid cards. With twenty cards a page that only ever filtered twenty, so a
+    saved view for Lockwood opened on page one, found no Lockwood card among
+    the twenty, and hid all of them - a named view that reliably showed
+    nothing."""
+    from app import main as mmod
+    c, (db, dbm, imod) = client
+    _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes())
+    for i, market in enumerate(("Aardvark Media", "Lockwood Denison",
+                                "Lockwood Norfolk")):
+        db.add(dbm.OrderLine(market=market, client=f"Client {i}",
+                             account_ids=f"90{i}", product="Social Mirror Ads",
+                             starts_on=dt.date(2026, 1, 1),
+                             ends_on=dt.date(2026, 12, 31)))
+    db.commit()
+    monkeypatch.setattr(mmod, "CARD_PAGE", 1)      # one card a page
+
+    page = c.get("/cycle?period=2026-07&partner=Lockwood+Denison%7CLockwood+Norfolk")
+    assert page.status_code == 200
+    # The CARDS are what the filter narrows; the menu still offers the whole
+    # cycle, so Aardvark is in the options list and must not have a card.
+    assert 'data-partner="Aardvark Media"' not in page.text, "the filter did not narrow"
+    assert 'data-partner="Lockwood Denison"' in page.text
+    assert "Aardvark Media" in page.text, "the menu should still offer it"
+
+
+def test_the_status_filter_offers_what_a_card_actually_says(client):
+    """It offered every report state - Not received, Errors, In review - and a
+    card is labelled "Good to go" or "Open", so picking any of them matched no
+    card at all and the board went empty."""
+    c, (db, dbm, imod) = client
+    _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes())
+    html = c.get("/cycle?period=2026-07").text
+    assert 'data-opts-status="Open"' in html or 'data-opts-status="Good to go"' in html
+    assert "Not received|" not in html

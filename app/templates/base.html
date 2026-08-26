@@ -1111,7 +1111,21 @@ body.fit .pdfwrap object{height:100%}
         if (names.length < 2) return;     // a filter with one option filters nothing
         var f = document.createElement('div'); f.className = 'colf';
         var lb = document.createElement('label'); lb.textContent = pair[1];
-        var sel = buildMulti(names, vals, 'cardf-' + key, lb, run);
+        // A PICK RELOADS; typing does not. The cards on screen are twenty of
+        // a hundred and forty-five, so hiding some of the twenty is not what
+        // "filter to Lockwood" means. The server does that one, which needs a
+        // trip - and the page goes back to card one, because the page you
+        // were on is a page of the list you just replaced.
+        var sel = buildMulti(names, vals, 'cardf-' + key, lb, function () {
+          run();
+          var picks = selects.filter(function (s) { return s.el.chosen.length; });
+          remember(box.value.trim(), picks,
+                   toggles.filter(function (t) { return t.classList.contains('on'); }));
+          var u = new URL(window.location.href);
+          u.searchParams.delete('cards');
+          u.searchParams.delete('page');
+          window.location.assign(u.toString());
+        });
         f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
         selects.push({ key: key, el: sel });
       });

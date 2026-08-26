@@ -926,6 +926,17 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                state: str = Query(""), rows_: str = Query("", alias="rows"),
                q: str = Query(""), done_: str = Query("", alias="done"),
                page: int = Query(1), cards: int = Query(1),
+               # THE CARD FILTERS, READ HERE RATHER THAN ONLY IN THE BROWSER.
+               #
+               # They were browser state: the JS ticked the boxes off the URL
+               # and then hid cards. With twenty cards a page that only ever
+               # filtered twenty, so a saved view for Lockwood opened on page
+               # one, found no Lockwood card among the twenty, and hid all of
+               # them - a named view that reliably showed nothing. Values are
+               # pipe-separated, which is what the browser writes.
+               partner: str = Query(""), buyer: str = Query(""),
+               reporter: str = Query(""), trainer: str = Query(""),
+               status: str = Query(""), only: str = Query(""),
                db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
@@ -946,8 +957,38 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # Counted before the filter. A partner filter narrows what is listed below;
     # it must not make the cycle look like it has one partner in it.
     delivered = _delivered(db, period, groups)
+    # THE FILTER MENUS ARE BUILT FROM THIS, not from what survives the filter.
+    # Offering only the values still showing means one pick and the menu can
+    # never take you anywhere else.
+    every_group = list(groups)
     if group:
         groups = [g for g in groups if g.group == group]
+
+    # Narrowed BEFORE the page is cut, so a filter reaches the whole cycle and
+    # not the twenty cards that happen to be on screen.
+    def _picked(val: str) -> list:
+        return [x.strip() for x in (val or "").split("|") if x.strip()]
+
+    def _any_of(field: str, want: list) -> bool:
+        return any(p.strip() in want for p in (field or "").split(",") if p.strip())
+
+    if _picked(partner):
+        want = _picked(partner)
+        groups = [g for g in groups if g.group in want]
+    for val, attr in ((buyer, "buyer"), (reporter, "reporter"),
+                      (trainer, "trainer")):
+        if _picked(val):
+            want = _picked(val)
+            groups = [g for g in groups if _any_of(getattr(g, attr, ""), want)]
+    if _picked(status):
+        want = _picked(status)
+        groups = [g for g in groups
+                  if ("Good to go" if g.ready else "Open") in want]
+    if "arrived" in _picked(only):
+        groups = [g for g in groups if g.counts.missing < len(g.expected)]
+    card_filters = {"partner": _picked(partner), "buyer": _picked(buyer),
+                    "reporter": _picked(reporter), "trainer": _picked(trainer),
+                    "status": _picked(status), "only": _picked(only)}
     # THE CARDS PAGE TOO, and the search reaches past the page.
     #
     # A search that only looked at the twenty cards on screen would be worse
@@ -1026,7 +1067,8 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # The dropdowns were built from the cards on screen, so with twenty a
         # page the Partner filter offered twenty and called it "All (20)" - a
         # partner on page five could not be picked or even seen to exist.
-        "opts": _card_options(groups),
+        "opts": _card_options(every_group),
+        "card_filters": card_filters,
         "card_page": cards, "card_pages": card_pages, "card_total": card_total,
         "rows": shown, "row_total": total,
         "show_done": show_done, "done_hidden": done_hidden,
@@ -1076,7 +1118,6 @@ def _card_options(groups) -> dict:
     """Every value each card filter could offer, across the whole cycle."""
     out = {"partner": set(), "buyer": set(), "reporter": set(),
            "trainer": set(), "status": set()}
-    from .board import STATE_LABEL
     for g in groups:
         if g.group:
             out["partner"].add(g.group)
@@ -1086,8 +1127,11 @@ def _card_options(groups) -> dict:
                 part = part.strip()
                 if part:
                     out[key].add(part)
-        for e in g.expected:
-            out["status"].add(STATE_LABEL.get(e.state, e.state))
+        # THE TWO VALUES A CARD ACTUALLY CARRIES. This offered every report
+        # state - Not received, Errors, In review - and a card is labelled
+        # "Good to go" or "Open", so picking any of them matched no card at
+        # all and the board went empty.
+        out["status"].add("Good to go" if g.ready else "Open")
     return {k: "|".join(sorted(v)) for k, v in out.items()}
 
 
