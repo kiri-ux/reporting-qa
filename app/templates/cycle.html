@@ -199,9 +199,17 @@
      says the same thing on hover, which is enough - a full-width banner for a
      condition that clears itself was shouting. #}
 
-  <div class="tools">
-    <input type="search" data-cards="glist" data-count="cnt-groups"
-           placeholder="Search partners...">
+  {# TYPING NARROWS THIS PAGE, ENTER SEARCHES THE CYCLE.
+     With twenty cards a page, a box that only filtered what was on screen said
+     "0 of 20 partners" for a partner that is on page five - which reads as the
+     partner not existing. #}
+  <form method="get" action="/cycle" class="tools">
+    <input type="hidden" name="period" value="{{ period }}">
+    {% if filter_state %}<input type="hidden" name="state" value="{{ filter_state }}">{% endif %}
+    {% if bucket != 'pending' %}<input type="hidden" name="done" value="{{ bucket }}">{% endif %}
+    <input type="search" name="q" value="{{ q }}"
+           data-cards="glist" data-count="cnt-groups"
+           placeholder="Search partners... (Enter to search all {{ card_total }})">
     {# 1,209 of 1,244 reports have not arrived yet, so most of this board is
        partners nothing has happened to. One click hides them. #}
     <button type="button" class="mini toggle" data-cardtoggle="glist"
@@ -209,7 +217,11 @@
             title="Hide the partners nothing has arrived for yet">
       Only started</button>
     <span class="count" id="cnt-groups"></span>
-  </div>
+    {% if q %}
+      <a class="chip" href="/cycle?period={{ period }}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}"
+         title="Drop this search">{{ q }} &times;</a>
+    {% endif %}
+  </form>
   {# The saved views and the share button sit ON the filter row now - they are
      all the same thought ("this set of filters"), and split across two rows
      they read as two unrelated toolbars. The JS appends the dropdowns into
@@ -266,7 +278,15 @@
     </button>
   </div>
 
-  <div class="glist" id="glist">
+  {# The filter options are the WHOLE cycle's, not this page's - see
+     _card_options. The counts beside them still come from the page, which is
+     what they describe. #}
+  <div class="glist" id="glist"
+       data-opts-partner="{{ opts.partner }}"
+       data-opts-buyer="{{ opts.buyer }}"
+       data-opts-reporter="{{ opts.reporter }}"
+       data-opts-trainer="{{ opts.trainer }}"
+       data-opts-status="{{ opts.status }}">
     {% for g in groups %}
       {% set d = deliveries.get(g.group) %}
       <div class="gcard {% if g.ready %}done{% endif %}"
@@ -427,9 +447,24 @@
           {% elif g.ready and not d %}
             <form method="post" action="/cycle/{{ period }}/deliver" style="display:inline">
               <input type="hidden" name="group" value="{{ g.group }}">
+              <input type="hidden" name="back_to" value="links">
               <button class="btn gold" type="submit">Package &amp; share</button>
             </form>
           {% elif not g.ready %}
+            {# PART WAY THROUGH, AND THE FINISHED ONES CAN GO NOW.
+               This card said "11 still open" and stopped there, so the only way
+               to send the one that was done was to know the links page existed
+               and go looking for the partner on it. #}
+            {% if g.counts.ready %}
+              <form method="post" action="/cycle/{{ period }}/deliver"
+                    style="display:inline">
+                <input type="hidden" name="group" value="{{ g.group }}">
+                <input type="hidden" name="ready_only" value="1">
+                <input type="hidden" name="back_to" value="links">
+                <button class="btn gold" type="submit"
+                        data-tip="Sends the {{ g.counts.ready }} that are signed off and clear. The {{ g.expected|length - g.counts.ready }} still open stay out of the folder until they are done - nothing is lost, they go up on the next sync.">Send the {{ g.counts.ready }} good to go</button>
+              </form>
+            {% endif %}
             <span class="acct">{{ g.expected|length - g.counts.ready }} still open</span>
           {% endif %}
         </div>

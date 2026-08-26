@@ -31,6 +31,15 @@
   </form>
 </div>
 
+{# A HUNDRED AND FORTY-FIVE PARTNERS AND NO WAY TO FIND ONE.
+   The cycle page has had a search box for weeks; this is the page where
+   somebody is looking for a specific partner's link to send. #}
+<form class="tools" onsubmit="return false" style="margin-bottom:4px">
+  <input type="search" id="linkfind" data-listfilter=".links.wide"
+         placeholder="Find a partner...">
+  <span class="count" id="linkcount"></span>
+</form>
+
 <section>
   {% if delivered.links %}
     <div class="links wide">
@@ -82,10 +91,9 @@
                three screens away from the moment you actually want it. #}
             <div class="repack">
               {% if l.running %}
-                <meta http-equiv="refresh" content="8">
-                <span class="mini busy"><span class="spin"></span><b
+                <span class="mini busy" data-busy="{{ l.group }}"><span class="spin"></span><b
                   >{{ l.running.done }} of {{ l.running.total or '?' }}</b> packaging</span>
-                {% if l.running.note %}<span class="acct">{{ l.running.note }}</span>{% endif %}
+                <span class="acct" data-busy-note>{{ l.running.note or '' }}</span>
               {% else %}
                 {# "PACKAGE AGAIN" MADE IT SOUND LIKE A NEW LINK. Nothing new
                    is made - the same folder gets the current files, under the
@@ -190,10 +198,9 @@
           <li id="g-{{ anchor(w.group) }}"{% if new and w.group == new %} class="fresh" data-fresh{% endif %}>
             <span class="lname">{{ w.group }}</span>
             {% if w.running %}
-              <meta http-equiv="refresh" content="8">
-              <span class="mini busy"><span class="spin"></span><b
+              <span class="mini busy" data-busy="{{ w.group }}"><span class="spin"></span><b
                 >{{ w.running.done }} of {{ w.running.total or '?' }}</b> packaging</span>
-              {% if w.running.note %}<span class="acct">{{ w.running.note }}</span>{% endif %}
+              <span class="acct" data-busy-note>{{ w.running.note or '' }}</span>
             {% elif w.open %}
               {# PART WAY THROUGH. The finished ones go now; the rest stay out
                  of the folder until they are signed off, and are not deleted
@@ -239,6 +246,72 @@
 </section>
 
 <script>
+// FIND A PARTNER. Every word has to appear somewhere on the row, in any order,
+// so "7 mountains dropbox" narrows rather than finding nothing. It reads the
+// partner's name, where it went and the link itself.
+(function () {
+  var box = document.getElementById('linkfind');
+  if (!box) return;
+  var out = document.getElementById('linkcount');
+  var rows = [];
+  document.querySelectorAll('.links.wide li').forEach(function (li) {
+    rows.push({ li: li, hay: li.textContent.toLowerCase() });
+  });
+  var heads = document.querySelectorAll('section h2');
+  var run = function () {
+    var terms = box.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    var shown = 0;
+    rows.forEach(function (r) {
+      var hit = terms.every(function (w) { return r.hay.indexOf(w) !== -1; });
+      r.li.hidden = !hit;
+      if (hit) shown++;
+    });
+    // A heading over a list with nothing left in it reads as a partner missing.
+    heads.forEach(function (h) {
+      var ul = h.parentNode.querySelector('.links.wide ul')
+        || (h.nextElementSibling && h.nextElementSibling.querySelector
+            ? h.nextElementSibling.querySelector('ul') : null);
+      if (!ul) return;
+      var any = Array.prototype.some.call(ul.children, function (li) {
+        return !li.hidden;
+      });
+      h.hidden = terms.length > 0 && !any;
+    });
+    out.textContent = terms.length ? shown + ' of ' + rows.length : '';
+  };
+  box.addEventListener('input', run);
+  run();
+})();
+// IT SAID "STARTING" FOR SEVERAL MINUTES AND A REFRESH SHOWED IT DONE.
+//
+// The row carried a <meta http-equiv="refresh"> to reload itself, and a meta
+// refresh belongs in the document head - inside a list item most browsers
+// ignore it. So the page sat on the first frame of a job that had already
+// finished, which is the one thing a progress indicator must never do.
+//
+// This asks the server instead, and reloads the moment nothing is running.
+(function () {
+  var busy = document.querySelector('[data-busy]');
+  if (!busy) return;
+  var period = new URLSearchParams(location.search).get('period') || '';
+  var tick = function () {
+    fetch('/cycle/packing?period=' + encodeURIComponent(period),
+          {headers: {'Accept': 'application/json'}})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var mine = (d.jobs || {})[busy.getAttribute('data-busy')];
+        if (!mine) { location.reload(); return; }
+        var n = busy.querySelector('b');
+        if (n) n.textContent = mine.done + ' of ' + (mine.total || '?');
+        var note = busy.parentNode.querySelector('[data-busy-note]');
+        if (note) note.textContent = mine.note || '';
+        setTimeout(tick, 3000);
+      })
+      // A hiccup is not a reason to stop watching.
+      .catch(function () { setTimeout(tick, 5000); });
+  };
+  setTimeout(tick, 2500);
+})();
 (function () {
   // THE MARK COMES OFF ONCE THE LINK HAS BEEN USED.
   //

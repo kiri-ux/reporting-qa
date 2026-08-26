@@ -924,3 +924,50 @@ def test_an_unfinished_report_is_not_out_of_sync():
     g = _grp(("Done", True, ""), ("Open", False, ""),
              ("Renamed", True, "July 2026_Renamed 111.pdf"))
     assert out_of_sync(g) == ["Done", "Renamed"]
+
+
+def test_the_partner_search_reaches_past_the_page_it_is_on():
+    """With twenty cards a page, a box that only filtered what was on screen
+    said "0 of 20 partners" for a partner on page five - which reads as the
+    partner not existing."""
+    html = (TPL / "cycle.html").read_text()
+    # It is a form that goes to the server, not only a client-side filter.
+    i = html.index('data-cards="glist"')
+    before = html[:i]
+    assert before.rindex('<form method="get" action="/cycle"') > before.rindex('</form>')
+    assert 'name="q"' in html[i - 400:i + 200]
+    assert "Enter to search all {{ card_total }}" in html
+
+
+def test_the_filter_dropdowns_offer_the_whole_cycle():
+    """Built from the cards on screen, the Partner filter offered the twenty
+    this page happens to show and called it "All (20)"."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert "def _card_options(groups)" in src
+    assert '"opts": _card_options(groups)' in src
+    html = (TPL / "cycle.html").read_text()
+    for key in ("partner", "buyer", "reporter", "trainer", "status"):
+        assert f'data-opts-{key}="{{{{ opts.{key} }}}}"' in html
+    base = (TPL / "base.html").read_text()
+    assert "grid.dataset[uk]" in base
+    # And a list of 145 needs a way to find one.
+    assert "multifind" in base
+
+
+def test_card_options_are_the_whole_cycles_values():
+    from app.board import Expected, GroupRow
+    from app.main import _card_options
+    groups = [
+        GroupRow("Alpha", "drive",
+                 [Expected(market="M", group="Alpha", client="a", kind="monthly")],
+                 buyer="Bella", reporter="Paulina", trainer="Katie"),
+        GroupRow("Lockwood Media", "dropbox",
+                 [Expected(market="M", group="Lockwood Media", client="b",
+                           kind="monthly")],
+                 buyer="Stacy", reporter="Taylor", trainer="Katie"),
+    ]
+    opts = _card_options(groups)
+    assert opts["partner"] == "Alpha|Lockwood Media"
+    assert opts["buyer"] == "Bella|Stacy"
+    assert opts["trainer"] == "Katie"          # deduplicated
+    assert "Not received" in opts["status"]

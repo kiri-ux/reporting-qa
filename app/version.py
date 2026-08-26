@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-85"
-BUILD_NOTES = ("The pull range reaches back to the ORDER's start, not its "
-               "live line items. ReThink's order 4701 runs from 2018 and the "
-               "page said one pull would do, while three years of it fell "
-               "outside the range and was never loaded.")
+BUILD = "2026.08.26-86"
+BUILD_NOTES = ("Searching partners reaches the whole cycle, not the twenty on "
+               "the page, and the filter dropdowns list every partner with a "
+               "find box in them. The links page has a search, a card can send "
+               "its finished reports, and packaging progress updates itself.")
 
 # ---------------------------------------------------------------------------
 

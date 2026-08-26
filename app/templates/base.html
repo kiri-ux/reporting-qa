@@ -476,6 +476,10 @@ tr[hidden]{display:none}
 .multirow i{font-style:normal;font-size:12px;color:var(--muted);
  font-variant-numeric:tabular-nums}
 .multirow input{margin:0;accent-color:var(--velocity);width:15px;height:15px}
+/* A HUNDRED AND FORTY-FIVE PARTNERS IS A LIST NOBODY SCROLLS. */
+.multifind{position:sticky;top:-5px;z-index:2;display:block;width:calc(100% - 10px);
+ margin:0 5px 5px;font:inherit;font-size:12.5px;padding:6px 10px;border-radius:14px;
+ border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 
 .mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
  padding:6px 12px;border-radius:16px;border:1px solid var(--line);cursor:pointer;
@@ -877,6 +881,25 @@ body.fit .pdfwrap object{height:100%}
       btn.classList.toggle('set', chosen.length > 0);
     };
 
+    // A HUNDRED AND FORTY-FIVE PARTNERS IS A LIST NOBODY SCROLLS.
+    // The box filters the menu itself, which is the only way to reach the ones
+    // past the fold without knowing they are there.
+    if (names.length > 12) {
+      var find = document.createElement('input');
+      find.type = 'search';
+      find.className = 'multifind';
+      find.placeholder = 'Find...';
+      find.addEventListener('input', function () {
+        var q = find.value.toLowerCase().trim();
+        menu.querySelectorAll('.multirow').forEach(function (r) {
+          r.hidden = !!q && r.textContent.toLowerCase().indexOf(q) === -1;
+        });
+      });
+      // Typing must not close the menu or tick anything.
+      find.addEventListener('click', function (e) { e.stopPropagation(); });
+      menu.appendChild(find);
+    }
+
     // The count is how many rows carry that value, and a 1 is never worth
     // printing - it is the default, it is what every row of a Partner filter
     // says, and a column of them reads as a number that means something.
@@ -1071,6 +1094,18 @@ body.fit .pdfwrap object{height:100%}
             v = v.trim();
             if (v) vals[v] = (vals[v] || 0) + 1;
           });
+        });
+        // THE WHOLE CYCLE, NOT THIS PAGE OF IT.
+        //
+        // Built from the cards on screen, the Partner filter offered the
+        // twenty this page happens to show and called it "All (20)" - so a
+        // partner on page five could not be picked, or even seen to exist.
+        // The server sends the full list; the counts still come from the page,
+        // which is what they describe.
+        var uk = 'opts' + key.charAt(0).toUpperCase() + key.slice(1);
+        (grid.dataset[uk] || '').split('|').forEach(function (v) {
+          v = v.trim();
+          if (v && !(v in vals)) vals[v] = 0;
         });
         var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
         if (names.length < 2) return;     // a filter with one option filters nothing

@@ -1,45 +1,67 @@
-build 2026.08.26-85
+build 2026.08.26-86
 Changed files only.
 
 app/version.py
 app/main.py
-tests/test_order_remap.py
+app/templates/base.html
+app/templates/cycle.html
+app/templates/links.html
+tests/test_board_extras.py
 
-602 tests pass.
+605 tests pass.
 
 
-YOU WERE RIGHT ABOUT RETHINK, AND THE LIST WAS WRONG
-======================================================
-Order 4701, Memorial Hospital, ReThink Media Group. IO Live, dated 2018-11-01
-to 2026-12-31. Its four oldest line items are IO Complete and finished between
-2021 and 2023. The three live ones start 2021-08-11 and 2024-01-03.
+1. SEARCHING FOR A PARTNER THAT IS NOT ON THIS PAGE
+----------------------------------------------------
+Typing "lockwoo" said "0 of 20 partners", which reads as the partner not
+existing. The box filtered the cards on screen, and after the twenty-a-page
+change that is twenty of a hundred and forty-five.
 
-The page asked for the earliest start among line items marked LIVE. That is
-2021-08-11, which is after the 2,000-day cutoff, so ReThink came out as "one
-pull" and sat in the middle of the table instead of at the top.
+It is a form now. Typing still narrows what is in front of you instantly;
+pressing ENTER searches the whole cycle and comes back with the partner and
+their reports. The box says so, and a search you have run shows as a chip you
+can drop.
 
-Both halves of that question were wrong.
 
-  LIVE IS NOT THE TEST. A line that is paused, cancelled or IO Complete still
-  gets reported on - a cancelled campaign is owed a lifetime covering its whole
-  history, and none of that was in the range.
+2. THE FILTER DROPDOWNS SAID "ALL (20)"
+-----------------------------------------
+Same cause: they were built from the cards on screen. So the Partner filter
+offered the twenty this page happens to show, and a partner on page five could
+not be picked or even seen to exist.
 
-  AND THE LINE ITEM IS NOT THE THING. TapClicks filters the export on the line
-  item's start date, but what has to be covered is the ORDER. When 4701 ends,
-  its lifetime reaches back to 2018 - and the check that says "this lifetime
-  does not go back to the campaign start" would have been comparing against a
-  start date three years too late.
+The server now sends the whole cycle's values for all five - partner, buyer,
+reporter, trainer, status. The counts beside them still come from the page,
+because that is what they describe.
 
-So the question is now: which orders are still being reported on, and how far
-back do they go. An order still open, or that ended recently enough to still
-owe a report, needs its whole history in the pull - line items that finished
-years ago included, because they are part of what its lifetime covers. The date
-is the earliest ORDER start, not the earliest live line.
+AND A LIST OF 145 HAS A FIND BOX IN IT. Any dropdown with more than a dozen
+options gets one, pinned to the top of the menu.
 
-An order that genuinely finished long ago is still excluded, so this does not
-drag the range back to 2011 for everybody. The test for that is on the order's
-end date now rather than a flag on one line.
 
-EXPECT THE STRAGGLER LIST TO GROW. It was four. Whatever it is now is the real
-number, and each one is still a narrow slice of one partner's history rather
-than another copy of the board.
+3. A SEARCH ON THE PACKAGED LINKS PAGE
+----------------------------------------
+It did not have one. A hundred and forty-five partners and the thing you came
+for is one link. Every word has to appear somewhere on the row, so "7 mountains
+dropbox" narrows rather than finding nothing, and a heading whose list empties
+out hides with it.
+
+
+4. THE PARTNER CARD CAN SEND ITS FINISHED REPORTS
+---------------------------------------------------
+A card part way through said "11 still open" and stopped there, so the only way
+to send the one that was done was to know the links page existed and go find
+the partner on it.
+
+It now offers "Send the 1 good to go" beside that, in the same gold as the
+other actions. It starts the packaging and takes you to that row on the links
+page, highlighted, already running.
+
+
+5. "STARTING" FOR SEVERAL MINUTES ON A JOB THAT HAD FINISHED
+--------------------------------------------------------------
+The row reloaded itself with a meta refresh written into a list item. A meta
+refresh belongs in the document head; inside a list item most browsers ignore
+it. So the page sat on the first frame of a job that was already done - the one
+thing a progress indicator must never do.
+
+It asks the server every three seconds now, updates the count in place, and
+reloads the moment nothing is running.

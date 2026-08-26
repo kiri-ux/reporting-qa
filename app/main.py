@@ -994,6 +994,12 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
         "periods": periods, "groups": shown_groups, "all_groups": groups,
+        # THE WHOLE CYCLE'S FILTER OPTIONS, not this page's.
+        #
+        # The dropdowns were built from the cards on screen, so with twenty a
+        # page the Partner filter offered twenty and called it "All (20)" - a
+        # partner on page five could not be picked or even seen to exist.
+        "opts": _card_options(groups),
         "card_page": cards, "card_pages": card_pages, "card_total": card_total,
         "rows": shown, "row_total": total,
         "show_done": show_done, "done_hidden": done_hidden,
@@ -1037,6 +1043,25 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
 
 
 SAVED_KEYS = ("q", "only", "partner", "buyer", "reporter", "trainer", "status", "state")
+
+
+def _card_options(groups) -> dict:
+    """Every value each card filter could offer, across the whole cycle."""
+    out = {"partner": set(), "buyer": set(), "reporter": set(),
+           "trainer": set(), "status": set()}
+    from .board import STATE_LABEL
+    for g in groups:
+        if g.group:
+            out["partner"].add(g.group)
+        for key, val in (("buyer", g.buyer), ("reporter", g.reporter),
+                         ("trainer", g.trainer)):
+            for part in (val or "").split(","):
+                part = part.strip()
+                if part:
+                    out[key].add(part)
+        for e in g.expected:
+            out["status"].add(STATE_LABEL.get(e.state, e.state))
+    return {k: "|".join(sorted(v)) for k, v in out.items()}
 
 
 def _saved_views(db: Session) -> list:
@@ -1576,6 +1601,21 @@ def pin_drive_folder(period: str = Form(""), market: str = Form(...),
     row.drive_folder_id = (m.group(1) if m else txt)[:128]
     db.commit()
     return RedirectResponse(f"/cycle/links?period={period}", status_code=303)
+
+
+@app.get("/cycle/packing")
+def packing_status(period: str = Query(""), db: Session = Depends(get_db)):
+    """Which packaging runs are still going, for the page watching one.
+
+    The links page used to reload itself with a meta refresh written into a
+    list item, which browsers honour in the document head and nowhere else. So
+    a finished job sat on its first frame until somebody pressed refresh - the
+    one thing a progress indicator must never do.
+    """
+    from .delivery import delivery_jobs
+    jobs = {k: v for k, v in delivery_jobs(db).items()
+            if not period or v.get("period") == period}
+    return {"jobs": jobs}
 
 
 @app.get("/delivery/{delivery_id}/file")
