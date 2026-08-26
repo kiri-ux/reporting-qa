@@ -246,3 +246,23 @@ def test_a_report_running_something_else_as_well_still_owes_it():
             "DOOH Line Item Performance\n")
     out = check_required_widgets({"text": text, "products": {"DOOH", "Display"}})
     assert [f["title"] for f in out] == ["No Site and App Performance widget"]
+
+
+def test_a_top_something_widget_ends_the_device_table():
+    """WVU Parkersburg's device table is followed by Top CTV TV Devices, whose
+    header row is "Device Make" and whose first row is "Telly". The block ran
+    on into it and reported both as devices TapClicks does not report.
+
+    Chasing suffixes one at a time was losing - Publishers, then Devices, then
+    Makes. Every one of these widgets is titled "Top something"."""
+    from app.checks.rules import check_devices_known
+    text = (" Device Performance\n"
+            " Device Name    Description                     Impressions   Clicks\n"
+            " Mobile         A portable electronic device.     1,842,279   28,647\n"
+            " Connected TV   An internet enabled device.         434,285      115\n"
+            "\n"
+            "                   Top CTV TV Devices\n"
+            " Device Make       Impressions    Video Completion Rate\n"
+            "Telly                  131,648                   72.33%\n"
+            "Vizio                  110,216                   99.13%\n")
+    assert check_devices_known({"text": text}) == []

@@ -788,9 +788,14 @@ def test_drive_upload_follows_the_existing_market_folders(monkeypatch, tmp_path)
             if "folder" in q:
                 return {"files": [{"id": i, "name": n}
                                   for (p, n), i in folders.items() if p == parent]}
-            name = q.split("name = '")[1].split("'")[0]
-            hit = files.get((parent, name))
-            return {"files": [{"id": hit}] if hit else []}
+            if "name = '" in q:
+                name = q.split("name = '")[1].split("'")[0]
+                hit = files.get((parent, name))
+                return {"files": [{"id": hit}] if hit else []}
+            # The destination folder's whole contents, read once per delivery
+            # instead of once per file - see upload_drive_folder.
+            return {"files": [{"id": i, "name": n}
+                              for (p_, n), i in files.items() if p_ == parent]}
 
     class FakePerms:
         def create(self, fileId=None, **kw):
@@ -871,11 +876,11 @@ def test_seven_mountains_archives_to_drive_but_shares_dropbox(monkeypatch, tmp_p
 
     calls = []
     monkeypatch.setattr(dmod, "upload_drive_folder",
-                        lambda g, p, l: (calls.append("drive"),
+                        lambda g, p, l, **kw: (calls.append("drive"),
                                          ("https://drive.google.com/drive/folders/DRV",
                                           "filed in Drive", 2))[1])
     monkeypatch.setattr(dmod, "upload_dropbox_folder",
-                        lambda g, p, l: (calls.append("dropbox"),
+                        lambda g, p, l, **kw: (calls.append("dropbox"),
                                          ("https://www.dropbox.com/scl/fo/XYZ",
                                           "shared on Dropbox", 2))[1])
     monkeypatch.setattr(type(dmod.settings), "delivery_configured",
@@ -931,7 +936,7 @@ def test_a_dropbox_failure_does_not_lose_the_drive_copy(monkeypatch, tmp_path):
         raise RuntimeError("insufficient_scope")
 
     monkeypatch.setattr(dmod, "upload_drive_folder",
-                        lambda g, p, l: ("https://drive.google.com/drive/folders/DRV",
+                        lambda g, p, l, **kw: ("https://drive.google.com/drive/folders/DRV",
                                          "filed", 2))
     monkeypatch.setattr(dmod, "upload_dropbox_folder", boom)
     monkeypatch.setattr(type(dmod.settings), "delivery_configured",
@@ -1701,8 +1706,11 @@ def test_a_month_already_delivered_goes_into_a_v2_folder(monkeypatch, tmp_path):
             if "folder" in q:
                 return {"files": [{"id": i, "name": n}
                                   for (p, n), i in folders.items() if p == parent]}
-            name = q.split("name = '")[1].split("'")[0]
-            return {"files": [{"id": "x"}] if name in files.get(parent, set()) else []}
+            if "name = '" in q:
+                name = q.split("name = '")[1].split("'")[0]
+                return {"files": [{"id": "x"}] if name in files.get(parent, set()) else []}
+            return {"files": [{"id": "x", "name": n}
+                              for n in files.get(parent, set())]}
 
     class FakePerms:
         def create(self, fileId=None, **kw): shared.append(fileId); return self

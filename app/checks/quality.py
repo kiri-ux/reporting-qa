@@ -40,9 +40,10 @@ def _clean_cell(s: str) -> str:
 # twice - 17,380 impressions and 3,748 clicks against 8,690 and 1,874 on the
 # report, and two fails on a report with nothing wrong with it.
 NEXT_WIDGET = re.compile(
-    r"^\s*\S.*(?:Performance|Breakout|Publishers|Screenshots|Details|"
+    r"^\s*(?:Top\s+\S.*"
+    r"|\S.*(?:Performance|Breakout|Publishers|Screenshots|Details|"
     r"Conversions|per Line Item|by Strategy|by Day|by Creative|by Ad Size|"
-    r"by Age|by Gender|by Device|by Placement)\s*$")
+    r"by Age|by Gender|by Device|by Placement))\s*$")
 
 
 def _is_chrome(line: str) -> bool:

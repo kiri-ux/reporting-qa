@@ -477,6 +477,39 @@ class RecheckJob(Base):
         return (dt.datetime.utcnow() - (self.updated_at or self.started_at)).total_seconds() > 120
 
 
+class DeliveryJob(Base):
+    """Progress of a packaging run.
+
+    Packaging a partner uploads every one of its PDFs - forty-five pages and
+    nine megabytes each, one after another - and that was happening inside the
+    browser request. Several minutes of a spinner, with no way to tell a slow
+    upload from a dead one, and a proxy timeout at the end of it.
+
+    Same shape as RecheckJob and for the same reason: a thread's progress has
+    to be readable from the other gunicorn worker.
+    """
+    __tablename__ = "delivery_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    partner_group: Mapped[str] = mapped_column(String(255), default="")
+    period: Mapped[str] = mapped_column(String(16), default="")
+    state: Mapped[str] = mapped_column(String(16), default="running")
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(String(255), default="")
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    @property
+    def stalled(self) -> bool:
+        """No progress for four minutes. One nine-megabyte upload can take a
+        while, so this is longer than a re-check's."""
+        if self.state != "running":
+            return False
+        return (dt.datetime.utcnow() - (self.updated_at or self.started_at)).total_seconds() > 240
+
+
 class OrderSync(Base):
     """Records the last successful pull of the order list, so a batch does not
     re-download an object that has not changed."""

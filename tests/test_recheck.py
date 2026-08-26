@@ -404,10 +404,28 @@ def test_the_impressions_and_clicks_findings_carry_different_working():
     assert "Left unexplained" in labels[1]
 
 
-def test_a_remainder_smaller_than_the_rounding_is_a_warning_not_a_failure():
-    """Service One: 103 clicks over the top line, 111 of them on CTV. The eight
-    left over is 0.27% of the campaign - too small to hold the report up, too
-    real to call expected."""
+def test_a_remainder_worth_a_look_but_not_a_failure_is_a_warning():
+    """Between one percent of the tile and five: not a rounding difference, not
+    a line item missing from the pull either."""
+    from app.checks.rules import check_line_items
+    text = ("Line Item Performance\n"
+            "Line Item Name        Impressions   Clicks   CTR\n"
+            "Acme - Auto Loans        64,242   600   0.93%\n"
+            "Acme - AI CTV            36,057   111   0.31%\n"
+            "Acme - Facebook          61,790   2,500   4.05%\n")
+    out = check_line_items({"text": text, "imps": 162089.0, "clicks": 3050.0})
+    f = next(x for x in out if "clicks" in x["code"])
+    assert f["severity"] == "warn"
+    assert "all but 50" in f["detail"]
+
+
+def test_a_remainder_under_one_percent_of_the_tile_says_nothing():
+    """WHICH LINES THE TILE EXCLUDES IS A JUDGEMENT.
+
+    "Retargeting Social Mirror OTT" is a Social Mirror line with an OTT
+    placement, and nothing in the PDF says whether the Clicks tile leaves it
+    out - so the remainder never lands on nought. WVU Parkersburg came out at
+    52 clicks against a tile of 39,566 and warned about it every month."""
     from app.checks.rules import check_line_items
     text = ("Line Item Performance\n"
             "Line Item Name        Impressions   Clicks   CTR\n"
@@ -415,9 +433,7 @@ def test_a_remainder_smaller_than_the_rounding_is_a_warning_not_a_failure():
             "Acme - AI CTV            36,057   111   0.31%\n"
             "Acme - Facebook          61,790   2,500   4.05%\n")
     out = check_line_items({"text": text, "imps": 162089.0, "clicks": 3008.0})
-    f = next(x for x in out if "clicks" in x["code"])
-    assert f["severity"] == "warn"
-    assert "all but 8" in f["detail"]
+    assert not [x for x in out if "clicks" in x["code"]]
 
 
 def test_an_exact_match_after_the_exclusion_is_expected_and_silent():
@@ -442,7 +458,7 @@ def test_the_trace_names_the_lines_that_were_taken_out():
             "Acme - AI CTV            36,057   103   0.31%\n"
             "Acme - Retargeting OTT    5,000     8   0.16%\n"
             "Acme - Facebook          61,790   2,500   4.05%\n")
-    out = check_line_items({"text": text, "imps": 167089.0, "clicks": 3008.0})
+    out = check_line_items({"text": text, "imps": 167089.0, "clicks": 2900.0})
     f = next(x for x in out if "clicks" in x["code"])
     named = next(t["value"] for t in f["trace"] if t["label"] == "Which lines those are")
     assert "AI CTV: 103" in named and "Retargeting OTT: 8" in named

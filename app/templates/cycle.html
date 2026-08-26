@@ -335,7 +335,15 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
                looking at, so the table arrived with its heading off screen. #}
             <a href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
           {% endif %}
-          {% if d and d.ok and d.share_url %}
+          {% set pack = packing.get(g.group) %}
+          {% if pack %}
+            {# Packaging uploads every PDF in the partner, which on a big one is
+               several minutes. It runs in the background now, so the card says
+               where it is rather than the browser sitting on a spinner. #}
+            <span class="mini busy"><span class="spin"></span><b
+              >{{ pack.done }} of {{ pack.total or '?' }}</b> packaged</span>
+            {% if pack.note %}<span class="acct">{{ pack.note }}</span>{% endif %}
+          {% elif d and d.ok and d.share_url %}
             <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
               Client link{% if d.target == 'dropbox' %} (Dropbox){% endif %}</a>
             <button type="button" class="copy" data-copy="{{ d.share_url }}"

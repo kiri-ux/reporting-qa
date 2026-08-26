@@ -203,7 +203,8 @@ def _drive_folder(svc, name: str, parent: str) -> str:
         fields="id", supportsAllDrives=True).execute()["id"]
 
 
-def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str, int]:
+def upload_drive_folder(group, period: str, cycle_label: str,
+                        progress=None) -> tuple[str, str, int]:
     """Put this market's reports where the team already keeps them.
 
     The shared drive is already organized as
@@ -229,6 +230,14 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
     n = 0
     market_folders: dict[str, str] = {}
     cycle_folders: dict[str, str] = {}
+    # ONE LISTING EACH, NOT ONE PER FILE.
+    #
+    # The parent folder was re-listed for every market and the destination
+    # folder was searched once per PDF - two round trips to Google before a
+    # single byte moved, on a partner with thirty reports. Both answers are
+    # the same all the way through one delivery.
+    parent_folders: dict[str, str] | None = None
+    dest_files: dict[str, dict[str, str]] = {}
     for e in group.expected:
         r = e.report
         if not r or not r.stored_path or not Path(r.stored_path).exists():
@@ -242,7 +251,9 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
             # in "Results Radio Chico". Matching refuses rather than guesses,
             # so an unmatched partner gets a new folder under its own name
             # instead of its reports landing in a sibling's.
-            existing = _list_folders(svc, parent)
+            if parent_folders is None:
+                parent_folders = _list_folders(svc, parent)
+            existing = parent_folders
             hit, why = pick_folder(e.market, existing)
             log.info("drive: %s -> %s", e.market, why)
             market_folders[e.market] = (existing[hit] if hit
@@ -274,22 +285,28 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
 
         # Replace rather than duplicate, so re-running a delivery after a fix
         # does not leave the partner looking at two versions of one report.
-        old = svc.files().list(
-            q=f"'{dest}' in parents and name = '{name.replace(chr(39), chr(92)+chr(39))}' "
-              f"and trashed = false",
-            fields="files(id)", supportsAllDrives=True,
-            includeItemsFromAllDrives=True, corpora="allDrives"
-        ).execute().get("files", [])
+        # The folder's contents are read once, not once per file.
+        if dest not in dest_files:
+            dest_files[dest] = {
+                f["name"]: f["id"] for f in svc.files().list(
+                    q=f"'{dest}' in parents and trashed = false",
+                    fields="files(id,name)", pageSize=1000,
+                    supportsAllDrives=True, includeItemsFromAllDrives=True,
+                    corpora="allDrives").execute().get("files", [])}
+        old_id = dest_files[dest].get(name)
         media = MediaFileUpload(r.stored_path, mimetype="application/pdf",
                                 resumable=True)
-        if old:
-            svc.files().update(fileId=old[0]["id"], media_body=media,
+        if old_id:
+            svc.files().update(fileId=old_id, media_body=media,
                                supportsAllDrives=True).execute()
         else:
-            svc.files().create(body={"name": name, "parents": [dest]},
-                               media_body=media, fields="id",
-                               supportsAllDrives=True).execute()
+            new = svc.files().create(body={"name": name, "parents": [dest]},
+                                     media_body=media, fields="id",
+                                     supportsAllDrives=True).execute()
+            dest_files[dest][name] = new["id"]
         n += 1
+        if progress:
+            progress(n, f"filing {e.client} in Drive")
 
     if not cycle_folders:
         raise RuntimeError("Nothing to upload - no report has a stored PDF.")
@@ -306,7 +323,8 @@ def upload_drive_folder(group, period: str, cycle_label: str) -> tuple[str, str,
 
 
 # ---------------------------------------------------------------- Dropbox
-def upload_dropbox_folder(group, period: str, cycle_label: str) -> tuple[str, str, int]:
+def upload_dropbox_folder(group, period: str, cycle_label: str,
+                          progress=None) -> tuple[str, str, int]:
     """The month's PDFs in a shared Dropbox folder, view only.
 
     NOT A ZIP. It used to build one and share the file, so the partner
@@ -357,6 +375,8 @@ def upload_dropbox_folder(group, period: str, cycle_label: str) -> tuple[str, st
         dbx.files_upload(data, f"{folder}/{report_filename(e)}",
                          mode=WriteMode("overwrite"))
         n += 1
+        if progress:
+            progress(n, f"sending {e.client} to Dropbox")
 
     if n == 0:
         raise RuntimeError("Nothing to upload - no report has a stored PDF.")
@@ -399,7 +419,7 @@ def _dropbox_link(dbx, path: str, SharedLinkSettings, RequestedVisibility) -> st
 
 # ---------------------------------------------------------------- orchestration
 def deliver(db: Session, period: str, group_name: str, *,
-            force: bool = False) -> Delivery:
+            force: bool = False, progress=None) -> Delivery:
     """Package one group and push it wherever that partner takes delivery."""
     groups = {g.group: g for g in by_group(db, period)}
     group = groups.get(group_name)
@@ -436,7 +456,8 @@ def deliver(db: Session, period: str, group_name: str, *,
 
     if settings.delivery_configured["drive"]:
         try:
-            archive_url, drive_msg, n = upload_drive_folder(group, period, label)
+            archive_url, drive_msg, n = upload_drive_folder(group, period, label,
+                                                            progress=progress)
         except ModuleNotFoundError as exc:
             return fail(f"The Google library is not installed on this deploy "
                         f"({exc.name}). Redeploy so requirements.txt is picked up.")
@@ -447,7 +468,8 @@ def deliver(db: Session, period: str, group_name: str, *,
 
     if share_to == "dropbox":
         try:
-            share_url, dbx_msg, n2 = upload_dropbox_folder(group, period, label)
+            share_url, dbx_msg, n2 = upload_dropbox_folder(group, period, label,
+                                                           progress=progress)
             n = n or n2
         except ModuleNotFoundError as exc:
             return fail(f"Reports are filed in Drive, but the Dropbox library is "
@@ -489,4 +511,109 @@ def latest_deliveries(db: Session, period: str) -> dict[str, Delivery]:
     for d in db.scalars(_select(Delivery).where(Delivery.period == period)
                         .order_by(Delivery.id)).all():
         out[d.group] = d              # last one per group wins
+    return out
+
+
+# ------------------------------------------------------------ in the background
+#
+# PACKAGING IS NOT A THING A BROWSER SHOULD WAIT FOR.
+#
+# It uploads every PDF in the partner - forty-five pages and nine megabytes
+# each - one after another, and that was happening inside the request. Several
+# minutes of a spinner with no way to tell a slow upload from a dead one, and
+# a proxy timeout at the end of it if the partner was big enough.
+#
+# Same shape as an on-demand re-check: a row either worker can read, a thread
+# that touches it as it goes, and a card that says "12 of 30".
+def delivery_key(period: str, group: str) -> str:
+    return f"deliver:{period}:{group}"
+
+
+def start_delivery(db: Session, period: str, group_name: str, *,
+                   force: bool = False) -> dict:
+    """Kick a packaging run off and come straight back."""
+    import threading
+
+    from sqlalchemy import select as _select
+
+    from .db import DeliveryJob, SessionLocal
+
+    key = delivery_key(period, group_name)
+    row = db.scalar(_select(DeliveryJob).where(DeliveryJob.key == key))
+    if row is not None and row.state == "running" and not row.stalled:
+        return {"done": row.done, "total": row.total}
+    if row is None:
+        row = DeliveryJob(key=key)
+        db.add(row)
+    groups = {g.group: g for g in by_group(db, period)}
+    g = groups.get(group_name)
+    row.partner_group = group_name
+    row.period = period
+    row.state = "running"
+    row.done = 0
+    row.total = len([e for e in g.expected if e.report and e.report.stored_path]) if g else 0
+    row.note = "starting"
+    row.started_at = row.updated_at = dt.datetime.utcnow()
+    db.commit()
+    total = row.total
+
+    def run():
+        from .proc import background
+        own = SessionLocal()
+
+        def touch(done: int, note: str, state: str = "running"):
+            r = own.scalar(_select(DeliveryJob).where(DeliveryJob.key == key))
+            if r is None:
+                return
+            r.done, r.note, r.state = done, note[:255], state
+            r.updated_at = dt.datetime.utcnow()
+            own.commit()
+
+        try:
+            with background():          # a page load still comes first
+                rec = deliver(own, period, group_name, force=force,
+                              progress=lambda n, note: touch(n, note))
+                touch(rec.reports or total,
+                      (rec.message or "")[:255],
+                      "done" if rec.ok else "failed")
+        except Exception as exc:                              # noqa: BLE001
+            log.exception("packaging %s failed", group_name)
+            try:
+                touch(0, f"{type(exc).__name__}: {exc}", "failed")
+            except Exception:                                 # noqa: BLE001
+                pass
+        finally:
+            own.close()
+
+    threading.Thread(target=run, name=f"deliver-{group_name}"[:30],
+                     daemon=True).start()
+    return {"done": 0, "total": total}
+
+
+def delivery_jobs(db: Session) -> dict[str, dict]:
+    """Packaging runs in flight, keyed by partner group.
+
+    A job whose thread went away with a deploy is closed out here, so a card
+    cannot sit on "12 of 30" forever looking like the tool is stuck.
+    """
+    from sqlalchemy import select as _select
+
+    from .db import DeliveryJob
+    out, dead = {}, False
+    for j in db.scalars(_select(DeliveryJob)
+                        .where(DeliveryJob.state == "running")).all():
+        if j.stalled:
+            j.state = "failed"
+            j.note = (f"Stopped after {j.done} of {j.total or '?'} - the process "
+                      f"running it went away, usually a deploy. Press Package "
+                      f"and share again.")[:255]
+            dead = True
+            continue
+        out[j.partner_group] = {"done": j.done, "total": j.total,
+                                "note": j.note, "period": j.period}
+    if dead:
+        try:
+            db.commit()
+        except Exception:                                     # noqa: BLE001
+            db.rollback()
     return out

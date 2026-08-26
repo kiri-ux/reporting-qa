@@ -323,11 +323,23 @@ def check_line_items(ctx) -> list[dict]:
                or "none"),
               ("Left unexplained", f"{unexplained:+,.0f} clicks")]
 
-    # Material is measured against the campaign, not against the excluded
-    # products. Eight clicks adrift on a report with three thousand of them is
-    # a rounding difference, however it is arrived at.
-    material = max(5.0, clicks * 0.005)
+    # WHICH LINES THE TILE EXCLUDES IS A JUDGEMENT, NOT A FACT.
+    #
+    # "Retargeting Social Mirror OTT" is a Social Mirror line with an OTT
+    # placement, and whether the Clicks tile leaves it out is not something the
+    # PDF says. So the remainder after subtracting the CTV and OTT lines is
+    # never going to land on nought, and on WVU Parkersburg it came out at 52
+    # clicks against a tile of 39,566 - a warning, every month, about one
+    # eighth of one percent.
+    #
+    # Under a percent of the tile is that judgement being slightly off, and
+    # nothing anybody can act on. Five percent is a line item missing from the
+    # pull.
+    noise = max(25.0, clicks * 0.01)
+    material = max(100.0, clicks * 0.05)
     if abs(gap) <= max(2.0, clicks * 0.005):
+        return out
+    if unexplained != 0 and abs(unexplained) <= noise:
         return out
     if unexplained == 0:
         out.append(_f("clicks_exclude_products", "info",
@@ -1100,9 +1112,17 @@ PCT = re.compile(r"(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*%")
 # Publishers, well inside the limit - so Plex, Sling TV, TCL Channel and Tubi
 # were read as devices and the report was warned for six devices TapClicks does
 # not report, none of which were devices or claimed to be.
+#
+# "Top ..." ANYTHING. WVU Parkersburg's device table is followed by Top CTV TV
+# Devices, whose header row is "Device Make" and whose first row is "Telly" -
+# so the device block ran on into it and reported Device Make and Telly as two
+# devices TapClicks does not report. Chasing suffixes one at a time was losing:
+# Publishers, then Devices, then Makes. Every one of these widgets is titled
+# "Top something".
 WIDGET_END = re.compile(
-    r"(^\s*\S.*(?:Performance|Publishers|Breakout|Screenshots|Details|"
-    r"Conversions|by Strategy|by Day|by Creative|by Ad Size)\s*$"
+    r"(^\s*(?:Top\s+\S.*"
+    r"|\S.*(?:Performance|Publishers|Breakout|Screenshots|Details|"
+    r"Conversions|per Line Item|by Strategy|by Day|by Creative|by Ad Size))\s*$"
     r"|Digital Marketing Report|Date range \w{3} \d{2}, \d{4})", re.M)
 
 

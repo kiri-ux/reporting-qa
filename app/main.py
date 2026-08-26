@@ -732,7 +732,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
     from .cycle import current_period, cycle_for, recent_periods
-    from .delivery import latest_deliveries
+    from .delivery import delivery_jobs, latest_deliveries
     from .pace import pace
 
     show_all = rows_ == "all"
@@ -788,6 +788,8 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "pace": pace(db, period, summary(exp)["missing"]),
         "filter_group": group, "filter_state": state,
         "deliveries": latest_deliveries(db, period),
+        # Packaging runs in the background, so the card has to say where it is.
+        "packing": delivery_jobs(db),
         # The finished links, at the top. A partner that is done sorts in with
         # 145 others, so the one thing you came to the page for - the link you
         # are about to send - was found by scrolling.
@@ -1044,17 +1046,19 @@ def mark_row_done(request: Request, period: str = Form(...),
 @app.post("/cycle/{period}/deliver")
 def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
                   db: Session = Depends(get_db)):
-    from .delivery import deliver
-    rec = deliver(db, period, group, force=bool(force))
-    if rec is not None and rec.ok:
-        # Straight to the links, with this one marked. Packaging a partner is
-        # the last step before sending its link to somebody, and landing back
-        # on a board of 146 cards with the new link somewhere in it is a
-        # find-it-yourself puzzle at exactly the wrong moment.
-        return RedirectResponse(
-            f"/cycle/links?period={period}&new={quote(group)}", status_code=303)
-    # A failure belongs on the card, next to the Try again button.
-    return RedirectResponse(f"/cycle?period={period}", status_code=303)
+    # IT RUNS IN THE BACKGROUND NOW.
+    #
+    # It uploads every PDF in the partner one after another, which on a big one
+    # is several minutes - and it was doing that inside this request, so the
+    # browser sat on a spinner with no way to tell a slow upload from a dead
+    # one. The card shows "12 of 30" while it works and the link appears on it
+    # when it finishes.
+    from .delivery import start_delivery
+    start_delivery(db, period, group, force=bool(force))
+    back = f"/cycle?period={period}"
+    if group:
+        back += f"&group={quote(group)}"
+    return RedirectResponse(back, status_code=303)
 
 
 @app.get("/rules", response_class=HTMLResponse)

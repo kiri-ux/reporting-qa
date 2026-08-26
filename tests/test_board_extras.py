@@ -227,3 +227,38 @@ def test_upload_and_done_sit_on_one_line():
     html = (TPL / "cycle.html").read_text()
     assert '<div class="rowacts">' in html
     assert ".rowacts{display:flex" in html
+
+
+def test_packaging_runs_in_the_background():
+    """It uploads every PDF in the partner one after another - minutes on a big
+    one - and that was happening inside the browser request."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    i = src.index("def deliver_group(")
+    body = src[i:i + 1400]
+    assert "start_delivery(" in body
+    assert "rec = deliver(" not in body
+
+
+def test_a_packaging_run_shows_its_progress_on_the_card():
+    html = (TPL / "cycle.html").read_text()
+    assert "packing.get(g.group)" in html
+    assert "packaged" in html
+
+
+def test_a_packaging_job_that_died_with_a_deploy_is_closed_out():
+    """A card cannot sit on "12 of 30" forever looking like the tool is stuck."""
+    import datetime as dt
+    from app.db import DeliveryJob
+    j = DeliveryJob(key="deliver:2026-07:X", state="running", done=12, total=30,
+                    started_at=dt.datetime.utcnow() - dt.timedelta(minutes=30),
+                    updated_at=dt.datetime.utcnow() - dt.timedelta(minutes=30))
+    assert j.stalled
+    j.updated_at = dt.datetime.utcnow()
+    assert not j.stalled
+
+
+def test_drive_reads_each_folder_once_not_once_per_file():
+    """Two round trips to Google before a byte moved, per PDF."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "delivery.py").read_text()
+    assert "if dest not in dest_files:" in src
+    assert "if parent_folders is None:" in src
