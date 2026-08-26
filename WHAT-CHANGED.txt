@@ -1,54 +1,69 @@
-build 2026.08.26-96
+build 2026.08.26-98
 Changed files only.
 
-app/checks/quality.py
-app/checks/rules.py
-app/main.py
-app/templates/orders.html
+app/orders_io.py
 app/version.py
-tests/test_board_extras.py
-tests/test_rules.py
+tests/test_order_status.py
 
-648 tests pass. The checks changed, so reports re-check themselves on deploy.
-
-
-NO PREVIEW LINK ON A CREATIVE
-================================
-New check. The Social Mirror AI grid prints "Click to View" with the ad's URL
-behind it, one per variant, and a row with that column empty is a variant
-nobody reading the report can see - which is the column somebody opens when
-they want to know what an underperforming variant actually looks like.
-
-"3 of 11 creatives have no preview link", on the widget it happened in.
+652 tests pass. The import changed, so the orders re-read themselves on deploy.
 
 
-A ROW AT 0% WATCHED
-======================
-New check, and the other half of the one that shipped in build 93. That one
-fails when EVERY row of a completion column is zero, which is a broken widget.
-This one warns when SOME are: one creative at 0.00% among nine that watched
-fine is not a metric fault, but it is not something to send a client without
-having looked at it either.
+THE NEW FILES LOOK RIGHT
+===========================
+Both of the things I flagged on the first pair are fixed.
 
-Only on the widgets where a completion rate is the point of the buy - video,
-CTV, audio. A percentage column on a display grid is something else.
+  orders_type IS BACK, reading "Insertion Order". The RFP rule has its column
+  again - the one that catches an order sitting at Order Type "Request for
+  Proposal" with Order Status "Cancelled", where nothing else on the row says
+  RFP anywhere.
+
+  THE MONEY IS THERE, under new names. monthly_campaign_budget is still not in
+  the file, but budget_combined and client_monthly_budget both carry it, and
+  total_budget_combined and client_total_budget carry the campaign total. All
+  four now map to the two canonical names, so the first-non-empty rule that
+  already handles repeated columns picks whichever one the export filled in.
+
+"Client" in client_monthly_budget is misleading and I nearly did not wire it
+in on the first pair for that reason. It is PER LINE ITEM: order 36184 has
+three line items and they read 1500, 500 and 500. And total_budget_combined is
+that figure across months_running - 1500 x 63 = 94,500 - which is the same sum
+the lifetime panel was deriving for itself. It now has the real one.
+
+Imported end to end, not just parsed: Runaway Tractor comes out at $1,500 a
+month against 100,000 impressions, $136,500 for the campaign.
+
+Still no clashes. Fifteen repeated column names across the ReThink file,
+fourteen across Stephens Medford, 877 rows between them - and not one row
+anywhere carries two different values for the same field. Same answer as the
+first pair.
 
 
-WHITEFIELD MEDIA, AND THE 23 MARCH 2020 PULL
-===============================================
-Nothing on the export says when somebody hit cancel. So a campaign called off
-in 2021 can still be dated to 2027, and the pull list's test - "does this order
-end after the cutoff" - kept it forever. Whitefield Media has no live order at
-all and was asking for a pull reaching back six years on the strength of one.
+WHAT THE RETHINK FILE SAYS, WHICH IS WORTH KNOWING
+=====================================================
+It is the case from a few builds back, in full, and both orders are dead:
 
-A row nobody is running any more is now judged on the LINE ITEM's own end,
-which is the last date anything was actually bought to deliver. A live row is
-still judged on the order's end, because an open-ended one genuinely has no
-end yet. A cancelled campaign that stopped last month still gets its full
-range, because its lifetime covers the whole thing.
+  4701  Memorial Hospital   header IO Live to 2026-12-31
+        line 8180           IO Complete, ended 2021-07-31
 
-AND THE WHOLE LIST CAN BE AUDITED. "Whitefield Media, 23 March 2020" is a claim
-about an order somebody has to be able to find, so there is a second download
-on the orders page: every partner's date with the line items behind it, each
-one marked counted or not and why. That answers "are there any others" without
-either of us guessing.
+  36184 Hilbing Autobody    header IO Live to 2026-12-31
+        lines 78306/7/8     all Cancelled, ended 2023-04-20, 2020-07-31,
+                            2021-11-30
+
+Two orders whose headers say live to the end of next year and whose every line
+item stopped years ago. That is exactly what was putting ReThink on the pull
+list asking for 2018 - and exactly what build 96 stopped doing. All four rows
+are dropped at import now ("ended before the period"), so ReThink contributes
+nothing to the pull list at all, which is right.
+
+
+ONE THING STILL EMPTY
+========================
+Every ad-spend column - monthly and total, PM, PPC, LinkedIn, Meta - is
+present and blank on all 877 rows, as are monthly_budget, total_budget,
+total_campaign_budget, campaign_type, billing_type and total_setup_fee.
+
+Not a problem: budget_combined covers what pacing needs. Worth knowing only
+because Performance Max, PPC and LinkedIn are the three products that pace on
+their OWN spend column rather than the campaign budget, and with those blank
+they now fall back to budget_combined - which is the right answer if that
+figure includes their ad spend, and slightly wrong if it does not.

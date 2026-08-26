@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-97"
-BUILD_NOTES = ("The sync takes only the orders-db exports. Two columns the "
-               "new file no longer carries are worth knowing about - see "
-               "WHAT-CHANGED.")
+BUILD = "2026.08.26-98"
+BUILD_NOTES = ("The money is back: budget_combined and total_budget_combined "
+               "read as the monthly and campaign budgets.")
 
 # ---------------------------------------------------------------------------
 

@@ -205,3 +205,54 @@ def test_a_repeated_column_is_read_first_non_empty():
     assert row["total_campaign_impressions"] == "250000"
     assert row["start_date"] == "2026-01-01"
     assert row["end_date"] == "2026-12-31"
+
+
+def test_the_new_exports_budget_columns_are_read():
+    """The orders-db export dropped monthly_campaign_budget and carries the
+    same figure as budget_combined, with client_monthly_budget holding it
+    again. "Client" in that name is misleading: order 36184 has three line
+    items and they read 1500, 500 and 500, which is the LINE ITEM's own
+    monthly budget."""
+    from app.orders_io import _open_source, normalize_header
+    assert normalize_header("budget_combined") == "monthly_campaign_budget"
+    assert normalize_header("client_monthly_budget") == "monthly_campaign_budget"
+    assert normalize_header("total_budget_combined") == "total_campaign_budget"
+    assert normalize_header("client_total_budget") == "total_campaign_budget"
+
+    csv = ("client,orders_id,id,product,budget_combined,client_monthly_budget,"
+           "total_budget_combined,client_total_budget\n"
+           "Acme,1,10,Display Ads,500,500.00,49500,49500.00\n")
+    row = next(iter(_open_source(csv.encode())))
+    assert row["monthly_campaign_budget"] == "500"
+    assert row["total_campaign_budget"] == "49500"
+
+
+def test_the_orders_db_export_loads_end_to_end():
+    """Not just parsed - imported, with the money landing where pacing reads
+    it. Runaway Tractor: $1,500 a month, $136,500 for the campaign."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_type,orders_start_date,start_date,end_date,"
+            "orders_end_date,budget_combined,client_monthly_budget,"
+            "total_budget_combined,monthly_campaign_impressions\n")
+    # The daily grain, and the dates carry a time now.
+    rows = "".join(
+        "Stephens Medford OR,IO Live,Runaway Tractor,7820,"
+        "Mobile Conquesting Display & Video Ads,13941,IO Live,Insertion Order,"
+        "2019-06-10 21:00:00,2019-06-10 21:00:00,2026-12-31 21:00:00,"
+        "2026-12-31 21:00:00,1500,1500.00,136500,100000\n" for _ in range(5))
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    res = import_io_export(db, (head + rows).encode(), period="2026-07")
+    assert res["rows_read"] == 5 and res["duplicate_rows"] == 4
+    line = db.query(OrderLine).one()
+    assert line.budget == 1500.0 and line.total_budget == 136500.0
+    assert line.impressions == 100000.0
+    assert line.starts_on.isoformat() == "2019-06-10"
+    db.close(); eng.dispose()

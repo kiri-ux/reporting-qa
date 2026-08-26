@@ -91,6 +91,22 @@ HEADER_ALIASES = {
     "monthly ppc ad spend": "monthly_ppc_ad_spend",
     "monthly linkedin ad spend": "monthly_linkedin_ad_spend",
     "monthly linked ad spend": "monthly_linkedin_ad_spend",
+
+    # THE MONEY, UNDER ITS NEW NAMES.
+    #
+    # The orders-db export dropped monthly_campaign_budget and total_campaign_
+    # budget and carries the same two figures as budget_combined and
+    # total_budget_combined, with client_monthly_budget and client_total_budget
+    # holding the same values again. "Client" in those names is misleading:
+    # they are PER LINE ITEM. Order 36184 has three, and they read 1500, 500
+    # and 500 - which is the line item's own monthly budget, not the client's.
+    #
+    # All four map to the two canonical names, so the first-non-empty rule that
+    # already handles repeated columns picks whichever the export filled in.
+    "budget_combined": "monthly_campaign_budget",
+    "client_monthly_budget": "monthly_campaign_budget",
+    "total_budget_combined": "total_campaign_budget",
+    "client_total_budget": "total_campaign_budget",
 }
 
 
