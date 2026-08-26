@@ -1077,11 +1077,19 @@ def mark_row_done(request: Request, period: str = Form(...),
             db.delete(row)
         db.commit()
         return RedirectResponse(back, status_code=303)
+    # TWO WAYS OFF THE BOARD, AND THEY MEAN DIFFERENT THINGS.
+    #
+    # "done" is somebody did the work and there is no PDF to show for it - SEO,
+    # mostly. "none" is that no report was owed at all, which is the answer a
+    # paused order needs: the export cannot tell paused-on-the-2nd from
+    # paused-on-the-30th, and it takes a person to say the campaign did not run
+    # this month. Both clear the row for THIS cycle only.
     name = who.strip() or whoami(request) or "checked off"
     if row is None:
         row = CycleDone(period=period, ident=ident)
         db.add(row)
     row.market, row.client, row.kind = market, client, kind
+    row.reason = "none" if action == "none" else "done"
     row.note = note.strip()[:255]
     row.marked_by = name
     row.marked_at = dt.datetime.utcnow()

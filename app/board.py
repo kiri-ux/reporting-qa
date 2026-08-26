@@ -69,6 +69,12 @@ class Expected:
     # TapClicks. Who said so, and anything they typed.
     done_by: str = ""
     done_note: str = ""
+    # "done"  - handled this cycle, there is just no PDF (SEO, mostly).
+    # "none"  - no report is owed at all. A paused order that did not actually
+    #           run this month is the case this exists for: the export cannot
+    #           tell the difference between paused on the 2nd and paused on the
+    #           30th, and a person can.
+    done_kind: str = "done"
 
     @property
     def state(self) -> str:
@@ -89,6 +95,11 @@ class Expected:
     def done_only(self) -> bool:
         """Checked off with no PDF behind it."""
         return bool(self.done_by) and self.report is None
+
+    @property
+    def not_owed(self) -> bool:
+        """Marked as owing no report at all this cycle."""
+        return self.done_kind == "none" and self.report is None
 
     @property
     def ident(self) -> str:
@@ -246,6 +257,28 @@ def expected_for(db: Session, period: str,
     # the ones still running.
     life_order: dict[tuple[str, str, str], str] = {}
     windows: dict[tuple[str, str], list[tuple]] = {}
+
+    # IS THIS CLIENT FINISHED, OR IS ONE LINE ITEM OF THEIRS FINISHED?
+    #
+    # Build 89 read "cancelled or complete" off a single line and put a
+    # lifetime on the board for the whole client, and 7 Mountains grew by a
+    # hundred rows overnight. Almost none of them were finished campaigns: a
+    # cancelled line item inside a live order is an ordinary thing, and every
+    # campaign that has ever ended sits at "IO Complete" forever.
+    #
+    # Closing a campaign out is a statement about the CLIENT, not about one
+    # line of their order. So the flag only earns a lifetime when nothing they
+    # have is still running - which is the same thing the end date says, only
+    # sooner and more reliably.
+    all_stopped: dict[tuple[str, str], bool] = {}
+    for l in cols:
+        if excluded(l.market) or is_seo(l.product):
+            continue
+        k = (_key(l.market), _key(l.client))
+        stopped = bool(getattr(l, "canceled", False)
+                       or getattr(l, "complete", False))
+        all_stopped[k] = all_stopped.get(k, True) and stopped
+
     for l in cols:
         if excluded(l.market):
             continue
@@ -272,9 +305,13 @@ def expected_for(db: Session, period: str,
         # date on the export is still whatever it was sold to run to, so
         # waiting for that date means waiting for a lifetime nobody is ever
         # going to be asked for - order 45911's four line items are all "IO
-        # Complete" and two of them are dated to the end of 2026. The
-        # already-delivered check below is what stops it repeating.
-        finished = gone or bool(getattr(l, "complete", False))
+        # Complete" and two of them are dated to the end of 2026.
+        #
+        # ONLY WHEN THE WHOLE CLIENT HAS STOPPED. One cancelled line item under
+        # a live order is not a campaign that finished, and reading it as one
+        # put a hundred lifetimes on 7 Mountains that nobody owed.
+        finished = (gone or bool(getattr(l, "complete", False))) and \
+            all_stopped.get((_key(l.market), _key(l.client)), False)
         life = (not is_seo(l.product)) and (
             finished or cyc.needs_lifetime(l.order_ends_on or l.ends_on))
         if not live and not life:
@@ -452,6 +489,7 @@ def _stamp_done(db: Session, period: str, rows: list[Expected]) -> None:
         if m is not None:
             e.done_by = m.marked_by or "checked off"
             e.done_note = m.note or ""
+            e.done_kind = getattr(m, "reason", "") or "done"
 
 
 # Products that never get a report of their own. A client running one of these

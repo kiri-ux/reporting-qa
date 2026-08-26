@@ -986,6 +986,31 @@ def test_every_line_marked_io_complete_owes_a_lifetime(db):
     assert "lifetime" in {e.kind for e in expected_for(db, "2026-07")}
 
 
+def test_one_stopped_line_under_a_running_client_is_not_a_lifetime(db):
+    """7 MOUNTAINS GREW BY A HUNDRED ROWS OVERNIGHT. Reading "cancelled or
+    complete" off a single line item put a lifetime on the board for the whole
+    client - and a cancelled line inside a live order is an ordinary thing,
+    while every campaign that ever ended sits at IO Complete forever."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(OrderLine(market="M", client="Busy Client", account_ids="1",
+                     line_ids="1", product="Display", campaign="Display Ads",
+                     live=False, canceled=True,
+                     starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-01-01"), order_ends_on=D("2026-12-31")))
+    db.add(OrderLine(market="M", client="Busy Client", account_ids="1",
+                     line_ids="2", product="Meta", campaign="Meta Display & Video Ads",
+                     live=True,
+                     starts_on=D("2025-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2025-01-01"), order_ends_on=D("2026-12-31")))
+    db.commit()
+    kinds = {e.kind for e in expected_for(db, "2026-07")}
+    assert kinds == {"monthly"}
+
+
 def test_the_lifetime_only_expects_what_that_campaign_ran(db):
     """"Ordered but not on the report: Display" on a lifetime covering Dec to
     July, where the Display order starts on 28 July."""

@@ -359,6 +359,11 @@ class OrderLine(Base):
     # items are all complete and two of them are dated to the end of 2026, so
     # waiting for the date means waiting for a lifetime nobody will ask for.
     complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    # EVERY LINE BEHIND THIS ROW IS "IO Paused". The buy is not delivering
+    # today, but it delivered up to the day somebody paused it - so it is owed
+    # a monthly for the month it ran in. These rows used to be dropped at
+    # import, which is why 53392 and 54937 were on nobody's board.
+    paused: Mapped[bool] = mapped_column(Boolean, default=False)
     # What this line item is meant to spend in a month, and what it actually
     # spent. Pacing is the comparison of the two, and neither number is on the
     # report - both come off the order.
@@ -430,6 +435,10 @@ class CycleDone(Base):
     market: Mapped[str] = mapped_column(String(255), default="")
     client: Mapped[str] = mapped_column(String(255), default="")
     kind: Mapped[str] = mapped_column(String(16), default="monthly")
+    # "done" - handled, no PDF coming. "none" - no report was owed in the first
+    # place. Both take the row off the board for this cycle; only one of them
+    # means somebody did the work.
+    reason: Mapped[str] = mapped_column(String(16), default="done")
     note: Mapped[str] = mapped_column(String(255), default="")
     marked_by: Mapped[str] = mapped_column(String(128), default="")
     marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
@@ -596,6 +605,8 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
     ("order_lines", "canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_lines", "complete", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("order_lines", "paused", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("cycle_done", "reason", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
     ("reports", "logo_hash", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_sync", "trigger", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("order_lines", "budget", "DOUBLE PRECISION"),

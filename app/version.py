@@ -12,11 +12,12 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-72"
-BUILD_NOTES = ("Cancelled orders owe a lifetime again, not a monthly. A Live "
-               "Chat order no longer holds one up, and neither does an order "
-               "whose lines all read IO Complete. Completion rates are asked "
-               "per product, so one tile stops answering for another.")
+BUILD = "2026.08.26-73"
+BUILD_NOTES = ("The hundred extra 7 Mountains lifetimes: build 72 read "
+               "cancelled-or-complete off ONE line item and closed out the "
+               "whole client. It now takes every line. Paused orders are on "
+               "the board, with a 'Not needed' button for the ones that did "
+               "not run.")
 
 # ---------------------------------------------------------------------------
 

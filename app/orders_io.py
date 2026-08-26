@@ -48,6 +48,19 @@ LIVE_STATUS = {"io live", "io complete"}
 # and cancelling an order cancels what is under it.
 DEAD_ORDER_STATUS = re.compile(r"^(Cancelled)$", re.I)
 
+# PAUSED IS NOT DROPPED. IT RAN AND THEN STOPPED.
+#
+# 53392 and 54937 both sit at "IO Paused" and neither was on the board, because
+# a paused header is not a live one and the import threw the order away. But a
+# campaign paused on the 20th delivered for nineteen days, and those nineteen
+# days are owed a report.
+#
+# So a paused order is kept and lands on the board on the strength of its
+# dates. If it turns out it did not run at all this month, that is a judgement
+# nothing in the export can make - mark the row "no report needed" and it comes
+# off, for that cycle only.
+PAUSED_STATUS = re.compile(r"^(IO\s+)?Paused$", re.I)
+
 
 # THE SAME EXPORT COMES IN TWO SPELLINGS.
 #
@@ -335,7 +348,10 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 skip("ended before the period"); continue
             if start and start > p_end:
                 skip("starts after the period"); continue
-            if not canceled and order_status.lower() not in LIVE_STATUS:
+            paused = bool(PAUSED_STATUS.match(line_status)
+                          or (not line_status
+                              and PAUSED_STATUS.match(order_status)))
+            if not canceled and not paused and order_status.lower() not in LIVE_STATUS:
                 if line_status.lower() in LIVE_STATUS:
                     header_overruled += 1        # the line item rescued it
                 else:
@@ -384,6 +400,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
                         "live": False, "canceled": True, "complete": True,
+                        "paused": True,
                         "budget": None, "impressions": None,
                         # The ORDER's own campaign window, kept apart from the
                         # line item's. A lifetime report covers the order; the
@@ -407,6 +424,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Canceled only while EVERY line behind this row is. One live
                 # line and one canceled one is a product the client is running.
                 kept[k]["canceled"] = kept[k]["canceled"] and canceled
+                # Paused only while EVERY line behind this row is. One live
+                # line and one paused one is a product still delivering.
+                kept[k]["paused"] = kept[k]["paused"] and paused
                 # Complete only while EVERY line behind this row is. One live
                 # line means the campaign has not finished.
                 kept[k]["complete"] = kept[k]["complete"] and line_done
@@ -518,6 +538,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
             flights=v["flights"], live=bool(v["live"]),
             canceled=bool(v.get("canceled")),
+            paused=bool(v.get("paused")),
             complete=bool(v.get("complete")),
             budget=v["budget"], impressions=v["impressions"],
             order_starts_on=v["order_starts"], order_ends_on=v["order_ends"],

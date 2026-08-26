@@ -469,7 +469,11 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <span class="pendtag" title="A newer file arrived and is waiting for a decision">newer file waiting</span>
             {% endif %}
           {% elif e.done_only %}
-            <span class="empty">Checked off, no report</span>
+            {# "No report needed" and "checked off" both clear the row, and
+               they are not the same statement. One means the work is done
+               somewhere else; the other means there was no work. #}
+            <span class="empty">{{ "No report needed" if e.not_owed
+                                   else "Checked off, no report" }}</span>
             {% if e.done_note %}<br>
               <span class="notetag" title="{{ e.done_note }}">note</span>{% endif %}
           {% else %}<span class="empty">Not received</span>{% endif %}
@@ -520,6 +524,11 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               {% else %}
                 <button class="mini ok" name="action" value="done"
                         title="Handled this month with no PDF - next month it is back asking for a report">Done, no report</button>
+                {# A PAUSED ORDER IS ON THE BOARD BECAUSE IT MIGHT HAVE RUN.
+                   The export gives a flight, not the day somebody hit pause,
+                   so the board asks and a person answers. This cycle only. #}
+                <button class="mini" name="action" value="none"
+                        title="It did not run this month, so nothing is owed - next month it is back on the board">Not needed</button>
               {% endif %}
             </form>
            </div>
