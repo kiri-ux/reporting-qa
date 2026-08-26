@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-84"
-BUILD_NOTES = ("Good to go only now reaches the partners that need it - one "
-               "two reports into twenty was on neither list. And a report "
-               "nobody has signed off no longer reads as out of sync, since "
-               "it was never going to be in the folder.")
+BUILD = "2026.08.26-85"
+BUILD_NOTES = ("The pull range reaches back to the ORDER's start, not its "
+               "live line items. ReThink's order 4701 runs from 2018 and the "
+               "page said one pull would do, while three years of it fell "
+               "outside the range and was never loaded.")
 
 # ---------------------------------------------------------------------------
 

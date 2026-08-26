@@ -2476,20 +2476,54 @@ def pull_strategy(db: Session, today: dt.date | None = None,
             "covered": covered, "runs": 1 + extra, "extra_runs": extra}
 
 
-def pull_range_rows(db: Session) -> list[tuple]:
-    """(partner, earliest start still running, live line items), oldest first.
+def pull_range_rows(db: Session, today: dt.date | None = None) -> list[tuple]:
+    """(partner, earliest date the pull has to reach, line items), oldest first.
 
-    Only lines that are STILL RUNNING. A campaign that finished in 2011 does
-    not need to be in the pull, and letting it set a partner's date is how one
-    dead line item keeps a daily sync at a couple of million rows.
+    THE ORDER'S START, NOT THE LINE ITEM'S - AND NOT "IS IT LIVE".
+
+    This asked for the earliest start among line items marked live, and both
+    halves of that were wrong.
+
+    ReThink Media Group is the case. Order 4701, Memorial Hospital, IO Live,
+    dated 2018-11-01 to 2026-12-31. Its four oldest line items are IO Complete
+    and ended between 2021 and 2023; the three live ones start in 2021 and
+    2024. So the old rule answered 2021-08-11 and the page said one pull would
+    do - while everything that order did in its first three years fell outside
+    the range and was never loaded.
+
+    That matters because a lifetime covers the CAMPAIGN. When 4701 finally ends
+    its report has to reach back to 2018, and the check that says "this
+    lifetime does not go back to the campaign start" would have been comparing
+    against a start date three years too late.
+
+    So the question is: which orders are still being reported on, and how far
+    back do THEY go. An order still open, or that ended recently enough to
+    still owe a report, needs its whole history in the pull - line items that
+    finished years ago included, because they are part of what the lifetime
+    covers.
     """
+    today = today or dt.date.today()
+    # Two months back, to the first. This month's cycle reports on last month,
+    # and a lifetime for a campaign that ended then covers all of it.
+    y, m = today.year, today.month - 2
+    while m < 1:
+        m += 12
+        y -= 1
+    keep_from = dt.date(y, m, 1)
+
+    # WHEN THE ORDER FINISHES, falling back to the line's own end where the
+    # export did not carry the order's. One OR per column let a line with no
+    # end date of its own through on an order that closed in 2012.
+    from sqlalchemy import or_ as _or
+    order_end = func.coalesce(OrderLine.order_ends_on, OrderLine.ends_on)
     rows = db.execute(
         select(OrderLine.market,
-               func.min(OrderLine.starts_on),
+               func.min(func.coalesce(OrderLine.order_starts_on,
+                                      OrderLine.starts_on)),
                func.count(OrderLine.id))
-        .where(OrderLine.live.is_(True))
+        .where(_or(order_end.is_(None), order_end >= keep_from))
         .group_by(OrderLine.market)).all()
-    return sorted(((m, e, n) for m, e, n in rows),
+    return sorted(((m_, e, n) for m_, e, n in rows),
                   key=lambda r: (r[1] or dt.date.max, r[0] or ""))
 
 

@@ -465,28 +465,68 @@ def test_a_line_with_no_budget_on_file_contributes_nothing(db):
 
 def test_the_pull_range_is_per_partner_and_oldest_first(db):
     """One date for 146 partners is why the guidance says 2018. Per partner,
-    almost none of them need it."""
+    almost none of them need it - and a campaign that finished years ago must
+    not drag one back."""
     import datetime as _d
+    D = _d.date
     db.add_all([
         OrderLine(market="Recent Radio", client="a", account_ids="1", live=True,
-                  product="PPC", starts_on=_d.date(2026, 5, 1)),
+                  product="PPC", starts_on=D(2026, 5, 1),
+                  order_starts_on=D(2026, 5, 1), order_ends_on=D(2026, 12, 31)),
         OrderLine(market="Old Media", client="b", account_ids="2", live=True,
-                  product="PPC", starts_on=_d.date(2018, 3, 4)),
+                  product="PPC", starts_on=D(2018, 3, 4),
+                  order_starts_on=D(2018, 3, 4), order_ends_on=D(2026, 12, 31)),
         OrderLine(market="Old Media", client="c", account_ids="3", live=True,
-                  product="Meta", starts_on=_d.date(2026, 1, 1)),
-        # A finished line must not drag a partner's date backwards.
+                  product="Meta", starts_on=D(2026, 1, 1),
+                  order_starts_on=D(2026, 1, 1), order_ends_on=D(2026, 12, 31)),
+        # An order that finished years ago is done being reported on, and must
+        # not drag its partner's date backwards.
         OrderLine(market="Recent Radio", client="d", account_ids="4", live=False,
-                  product="Meta", starts_on=_d.date(2011, 1, 1)),
+                  product="Meta", starts_on=D(2011, 1, 1),
+                  order_starts_on=D(2011, 1, 1), order_ends_on=D(2012, 1, 1)),
     ])
     db.commit()
 
     from app.main import pull_range_rows
-    got = pull_range_rows(db)
+    got = pull_range_rows(db, today=D(2026, 8, 26))
     assert [(m, e.isoformat()) for m, e, _n in got] == [
         ("Old Media", "2018-03-04"),
         ("Recent Radio", "2026-05-01"),
-    ], "oldest first, and a finished line must not drag a partner back"
+    ], "oldest first, and a finished order must not drag a partner back"
     assert dict((m, n) for m, _e, n in got)["Old Media"] == 2
+
+
+def test_the_pull_reaches_back_to_the_orders_start_not_the_live_lines(db):
+    """RETHINK MEDIA GROUP. Order 4701, Memorial Hospital, IO Live, dated
+    2018-11-01 to 2026-12-31. Its four oldest line items are IO Complete and
+    finished between 2021 and 2023; the live ones start in 2021 and 2024.
+
+    Reading the earliest LIVE line answered 2021-08-11 and the page said one
+    pull would do - while everything that order did in its first three years
+    fell outside the range and was never loaded. A lifetime for 4701 covers all
+    of it, so the pull has to reach 2018."""
+    import datetime as _d
+    D = _d.date
+    db.add_all([
+        # The live lines, which is all the old rule looked at.
+        OrderLine(market="ReThink Media Group", client="Memorial Hospital",
+                  account_ids="4701", live=True, product="Native Display",
+                  starts_on=D(2021, 8, 11), ends_on=D(2026, 12, 31),
+                  order_starts_on=D(2018, 11, 1), order_ends_on=D(2026, 12, 31)),
+        OrderLine(market="ReThink Media Group", client="Memorial Hospital",
+                  account_ids="4701", live=True, product="Online Audio",
+                  starts_on=D(2024, 1, 3), ends_on=D(2026, 12, 31),
+                  order_starts_on=D(2018, 11, 1), order_ends_on=D(2026, 12, 31)),
+    ])
+    db.commit()
+    from app.main import pull_range_rows, pull_strategy
+    got = pull_range_rows(db, today=D(2026, 8, 26))
+    assert got[0][1] == D(2018, 11, 1), got
+
+    # And that puts it in the list of partners needing their own pull, rather
+    # than quietly inside a bulk window that does not reach it.
+    plan = pull_strategy(db, today=D(2026, 8, 26))
+    assert [s["market"] for s in plan["stragglers"]] == ["ReThink Media Group"]
 
 
 def test_a_long_range_is_cut_into_windows_tapclicks_will_accept(db):
