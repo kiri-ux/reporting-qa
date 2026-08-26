@@ -2105,3 +2105,21 @@ def test_a_click_or_two_over_the_tile_is_rounding():
             " 100,000       4,153    4.15%\n")
     out = check_social_placement_totals({"text": text})
     assert [f for f in out if f["code"] == "placement_over_total"] == []
+
+
+def test_a_geo_fencing_strategy_owes_its_fence_breakout():
+    """The line items name the strategy - "Watsontown Trucking - 8.1 Geo-Fencing
+    Mobile" - and the widget is the list of fences behind it."""
+    from app.checks.rules import check_geofence_widget
+    lines = (" Line Item Performance\n"
+             " Acme - 8.1 Geo-Fencing Mobile      3,582   6   0.17%\n"
+             " Acme - Keyword Social Mirror      17,737  28   0.16%\n")
+    out = check_geofence_widget({"text": lines})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert out[0]["title"] == "No Geo-Fencing Performance widget"
+    # With the breakout on the report, nothing to say.
+    assert check_geofence_widget(
+        {"text": lines + "Mobile Conquesting Geo-Fencing Performance\n"}) == []
+    # And no geo-fencing strategy means the check has nothing to check.
+    assert check_geofence_widget(
+        {"text": " Line Item Performance\n Acme - Keyword Social Mirror  10  1  1%\n"}) == []

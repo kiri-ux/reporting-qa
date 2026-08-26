@@ -552,6 +552,37 @@ def check_geofence_names(ctx) -> list[dict]:
                f"latitude or longitude. Expected if the fence was built from an address list.")]
 
 
+GEOFENCE_LINE = re.compile(r"\bgeo[- ]?fenc", re.I)
+GEOFENCE_WIDGET = "Geo-Fencing Performance"
+
+
+def check_geofence_widget(ctx) -> list[dict]:
+    """A geo-fencing strategy owes the geo-fencing breakout.
+
+    The line items name the strategy - "Watsontown Trucking - 8.1 Geo-Fencing
+    Mobile" - and the widget is the list of fences behind it. Without it the
+    client is told a number and not where it came from.
+    """
+    from .quality import _sample, line_item_totals
+
+    text = ctx.get("text") or ""
+    if not text:
+        return []
+    fenced = [n for n, _i, _c in line_item_totals(text) if GEOFENCE_LINE.search(n)]
+    if not fenced:
+        return []
+    if GEOFENCE_WIDGET in text:
+        return []
+    return [_f("geofence_widget_missing", "fail",
+               "No Geo-Fencing Performance widget",
+               f"{len(fenced)} geo-fencing strategy line"
+               f"{'s are' if len(fenced) > 1 else ' is'} running - "
+               + _sample(sorted(fenced), 6) +
+               " - and the report does not carry the Geo-Fencing Performance "
+               "breakout that lists the fences.",
+               where=_where(ctx, text.find(fenced[0]), "Line Item Performance"))]
+
+
 def _product_trace(expected: set, found: set, why=None,
                    about=()) -> list[tuple[str, str]]:
     """The evidence for THIS finding, and nothing else.
@@ -1214,6 +1245,7 @@ CHECKS: list[tuple] = [
     (check_thumbnails,     "Every creative preview rendered"),
     (check_blank_pages,    "No widget page came out blank"),
     (check_geofence_names, "Every geo-fencing row has a business name"),
+    (check_geofence_widget, "A geo-fencing strategy carries its fence breakout"),
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
     (check_client_data,    "The data on the report belongs to the client it names"),
@@ -1254,6 +1286,7 @@ SKIP_WHY = {
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
     "check_geofence_names": "no geo-fencing table on the report",
+    "check_geofence_widget": "no geo-fencing strategy on the report",
     "check_strategy_categorized": "no line item grid on the report",
     "check_truncated_text": "no line item grid on the report",
     "check_blank_screenshots": "no ad screenshot widget on the report",
@@ -1353,6 +1386,10 @@ def _rule_applies(rule, ctx) -> bool:
         return bool(SITE_GRID.search(ctx.get("text") or ""))
     if name == "check_social_placement_totals":
         return bool(PLACEMENT_GRID.search(ctx.get("text") or ""))
+    if name == "check_geofence_widget":
+        from .quality import line_item_totals
+        return any(GEOFENCE_LINE.search(n)
+                   for n, _i, _c in line_item_totals(ctx.get("text") or ""))
     if name == "check_geofence_names":
         # No geo-fencing on the report means nothing was verified. Reporting a
         # pass would claim every business name is filled in on a table that is
