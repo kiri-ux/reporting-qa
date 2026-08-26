@@ -825,6 +825,50 @@ def check_pacing(ctx) -> list[dict]:
     return out
 
 
+# --------------------------------- the month against the campaign it sits in
+# A LIFETIME COVERS THE MONTH. The two reports go out together, in the same
+# folder, to the same person - so if the month prints more impressions than the
+# whole campaign, one of the two was pulled with the wrong range and whoever
+# opens them will see it before we do.
+#
+# ONLY EVER FLAGGED ON THE PAIR. Nothing here fires without both reports in
+# hand, and the finding names the other one so it can be opened.
+def check_month_within_lifetime(ctx) -> list[dict]:
+    sib = ctx.get("sibling") or {}
+    if not sib:
+        return []
+    # Whichever of the two this report is, the comparison is the same one: the
+    # month cannot be bigger than the campaign that contains it.
+    mine = {"impressions": ctx.get("imps"), "clicks": ctx.get("clicks")}
+    if ctx.get("is_lifetime"):
+        month, life, other = sib, mine, "monthly"
+    else:
+        month, life, other = mine, sib, "lifetime"
+
+    trace, bad = [], []
+    for label, key in (("Impressions", "impressions"), ("Clicks", "clicks")):
+        m, l = month.get(key), life.get(key)
+        if not m or not l:            # a figure nobody read is not a comparison
+            continue
+        trace.append((f"{label}, the month", f"{m:,.0f}"))
+        trace.append((f"{label}, the campaign", f"{l:,.0f}"))
+        # A LITTLE OVER IS ROUNDING, NOT A WRONG RANGE. TapClicks prints these
+        # rounded and the two reports are pulled minutes apart, so a hair of
+        # daylight between them is the tool, not a mistake.
+        if m > l * 1.005:
+            bad.append(f"{label.lower()} {m:,.0f} against {l:,.0f}")
+    if not bad:
+        return []
+    name = sib.get("filename") or f"the {other}"
+    return [_f("month_over_lifetime", "fail",
+               "The month reports more than the whole campaign",
+               f"This month prints {'; '.join(bad)} on the lifetime. A month is "
+               f"inside the campaign it belongs to, so one of the two was "
+               f"pulled with the wrong date range. The other report is "
+               f"{name}.",
+               trace, where=_where(ctx, 0))]
+
+
 def check_lifetime_goal(ctx) -> list[dict]:
     """A finished campaign that did not deliver what it was sold.
 
@@ -1566,6 +1610,8 @@ CHECKS: list[tuple] = [
     (check_impression_pacing,
      "Delivery is within 50% of what the order asked for"),
     (check_lifetime_goal,  "A finished campaign delivered what it was sold"),
+    (check_month_within_lifetime,
+     "The month does not report more than the whole campaign"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
@@ -1793,7 +1839,8 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
             is_lifetime: bool | None = None, ordered: dict | None = None,
             logo_generic: bool = False, logo_known: bool = False,
             logo_hash: str = "", budgets: dict | None = None,
-            orders_current: bool = True) -> dict:
+            orders_current: bool = True,
+            sibling: dict | None = None) -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
     # a finding say WHERE on a forty-one page report to look.
@@ -1815,6 +1862,11 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
     imps, clicks, ctr = headline(text)
     tables = extract_tables(text, strict=True)
     ctx = {
+        # THE OTHER HALF OF THE PAIR, when this client is getting a monthly and
+        # a lifetime in the same delivery. {"impressions", "clicks",
+        # "is_lifetime", "filename"} off the counterpart report, or nothing at
+        # all - and nothing at all means no comparison is made.
+        "sibling": sibling or {},
         # Which orders were looked at and what their dates were. Three separate
         # "this is a false positive" rounds all needed exactly this to settle
         # them, and reading it off the code cost a screenshot, a guess and a

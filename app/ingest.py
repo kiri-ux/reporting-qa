@@ -296,7 +296,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         budgets = budgets_for(db, meta_guess["client"], meta_guess["account_ids"],
                               period=batch.period)
 
-        from .recheck import _orders_current
+        from .recheck import _orders_current, sibling_for
         orders_ok = _orders_current(db)
         # The corner of page one, and which other markets print the same
         # mark. Worked out here rather than inside the check because it takes
@@ -335,7 +335,12 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok)
+                     orders_current=orders_ok,
+                     # The other half of the pair, if this client is getting
+                     # both. Looked up from what is known - the row this is
+                     # about does not exist yet.
+                     sibling=sibling_for(db, meta_guess["client"], batch.period,
+                                         batch.market or "", life_guess))
         except Exception as exc:
             result = {"meta": {"client": Path(name).stem, "period": batch.period,
                                "account_ids": "", "is_lifetime": False},

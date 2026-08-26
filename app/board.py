@@ -389,6 +389,17 @@ def expected_for(db: Session, period: str,
                 lid = lid.strip()
                 if lid and lid not in e.line_ids:
                     e.line_ids = (e.line_ids + ", " + lid).strip(", ")
+            # AND SO ARE ITS ORDER IDS.
+            #
+            # River Valley Builders' lifetime row read "31050" while the report
+            # itself, opened, correctly showed 31050 31171 43182 - because the
+            # line ids were unioned here and the order ids were whatever the
+            # first line carried. The row is about the campaign, and the
+            # campaign is every order behind it.
+            for oid in (l.account_ids or "").replace(",", " ").split():
+                oid = oid.strip()
+                if oid and oid not in e.account_ids.split():
+                    e.account_ids = (e.account_ids + " " + oid).strip()
             if l.starts_on and (e.starts_on is None or l.starts_on < e.starts_on):
                 e.starts_on = l.starts_on
             if l.ends_on and (e.ends_on is None or l.ends_on > e.ends_on):
@@ -408,6 +419,26 @@ def expected_for(db: Session, period: str,
         e.ends_on = end
         if start and end and start <= end:
             e.starts_on = start
+        # AND ITS ORDER IDS ARE EVERY ORDER INSIDE THAT RANGE.
+        #
+        # River Valley Builders' lifetime row read "31050" while the report
+        # itself was correctly filed as 31050 31171 43182. A lifetime covers
+        # the campaign, and overlapping orders are one campaign - so the row
+        # has to name the same orders the report does, or the person holding
+        # the row cannot tell it is the same thing.
+        if e.starts_on and e.ends_on:
+            have = e.account_ids.split()
+            for order, w_start, w_end, _product in windows.get((mk, ck), []):
+                if not order:
+                    continue
+                if w_end and w_end < e.starts_on:
+                    continue
+                if w_start and w_start > e.ends_on:
+                    continue
+                for oid in order.replace(",", " ").split():
+                    if oid and oid not in have:
+                        have.append(oid)
+            e.account_ids = " ".join(have)
 
     # HOW MANY DAYS IT ACTUALLY SERVED, IF ANYBODY KNOWS.
     #

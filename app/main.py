@@ -1664,6 +1664,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     # Computed here rather than inside the checks because it takes a database
     # question, and a check is handed facts rather than going looking.
     from .checks.logo import header_logo_hash, is_generic
+    from .recheck import sibling_for, sibling_of
     logo = header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
@@ -1681,7 +1682,12 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok)
+                     orders_current=orders_ok,
+                     # The other half of the pair, if this client is getting
+                     # both. Looked up from what is known - the row this is
+                     # about does not exist yet.
+                     sibling=sibling_for(db, client, period, market,
+                                         is_lifetime))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
@@ -1795,6 +1801,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     orders_ok = not _orders_stale(db)
     from .checks.logo import header_logo_hash, is_generic
+    from .recheck import sibling_for, sibling_of
     logo = header_logo_hash(target)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
@@ -1808,7 +1815,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok)
+                     orders_current=orders_ok,
+                     sibling=sibling_of(db, rep))
     rep.stored_path = str(target)
     rep.logo_hash = logo
     rep.pages = result["pages"]
@@ -1909,6 +1917,7 @@ async def replace_report(report_id: int, request: Request,
     budgets = budgets_for(db, rep.client, rep.account_ids, period=rep.period)
     orders_ok = not _orders_stale(db)
     from .checks.logo import header_logo_hash, is_generic
+    from .recheck import sibling_for, sibling_of
     logo = header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
@@ -1923,7 +1932,8 @@ async def replace_report(report_id: int, request: Request,
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok)
+                     orders_current=orders_ok,
+                     sibling=sibling_of(db, rep))
     except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",

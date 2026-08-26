@@ -1,85 +1,65 @@
-build 2026.08.26-77
+build 2026.08.26-78
 Changed files only. Drop these over your copy, keeping the paths.
 
-Dockerfile
 app/version.py
-app/db.py
-app/delivery.py
+app/board.py
+app/checks/rules.py
+app/ingest.py
 app/main.py
-app/orders_io.py
+app/recheck.py
 app/templates/base.html
 app/templates/cycle.html
 app/templates/links.html
 tests/test_rules.py
 
-565 tests pass.
+572 tests pass.
 
 
-1. DRIVE LINKS ARE FOLDERS, NOT ZIPS
--------------------------------------
-Always have been. The link is
-drive.google.com/drive/folders/<id> - the partner opens it and sees the client
-names, takes the one they want, or copies the whole thing into their own drive.
+1. THE MONTH CANNOT REPORT MORE THAN ITS OWN LIFETIME
+------------------------------------------------------
+New check. When a client is getting both reports in the same cycle, the month
+is compared against the campaign that contains it. More impressions or clicks
+in the month than in the whole campaign means one of the two was pulled with
+the wrong date range - and since they go out together, in one folder, to one
+person, they will see it before we do.
 
-A zip only appears when NEITHER Drive nor Dropbox is configured, as a last
-resort so a delivery is not lost. On the links page that shows as "Download
-zip" instead of "Open", so you can always tell which one you got.
+  Fires only on the pair. A client getting one report is never compared
+  against anything, and a figure that could not be read off a report is not
+  compared either - "not read" is not zero.
 
+  Half a percent of slack. TapClicks prints these rounded and the two reports
+  are pulled minutes apart, so a sliver of daylight is the tool, not a mistake.
 
-2. STROUDSBURG - IT USED YOURS BECAUSE THE NAME STILL MATCHED
---------------------------------------------------------------
-Which is luck, not a guarantee. The market folder is found by matching the
-partner's name against the folders under the parent, so your fixed folder was
-found because it is still called what the roster calls it. Rename it, merge it,
-or move it and the match either finds something else or makes a new folder.
+  It shows on both reports and names the other one, so whichever you open first
+  tells you the same thing and says what to open next.
 
-So folders can now be pinned. On the links page, under each partner: "Drive
-folders (n)". Paste the folder's address from your browser - the whole URL, the
-id is pulled out of it - and that market files there, with no matching at all.
-Blank goes back to matching by name.
+Every re-check picks this up automatically - the checks fingerprint changed, so
+reports already on the board get re-read without anybody pressing anything.
 
 
-3. PACKAGING MOVED TO THE LINKS PAGE
--------------------------------------
-"Package again" is off the partner card. The card is where reports get judged;
-handing links over is a different job, and re-packaging belongs beside the link
-it replaces rather than three screens away. The card now links across.
+2. RIVER VALLEY BUILDERS SHOWING ONLY 31050
+--------------------------------------------
+The row's line ids were the union across every order behind it and the order
+ids were whatever the first line happened to carry. So the report was correctly
+filed as 31050 31171 43182 and the row it sits on said 31050.
 
-Partners that are ready but never packaged are on the links page too, under
-"Ready, not packaged", so "Package & share" is in the same place as everything
-else about links.
-
-
-4. A SECOND LINK, ON PURPOSE
------------------------------
-Next to "Package again" there is a tag box and "New link".
-
-  Package again    same folder, same link, files replaced under it
-  New link         a separate folder with its own link
-
-The tag becomes the folder name - "2026-07 July - corrected" in Drive,
-"7 Mountains July 2026 Reports - corrected" in Dropbox - so six months from now
-it still says what it was for. The tagged links are listed under the partner's
-own one, and the partner's own link is never touched by making one.
-
-A tagged copy also does not count as "what this report was last filed as", so
-it cannot confuse the duplicate cleanup in the real folder.
+Both are unions now. For a lifetime, the ids are every order overlapping the
+campaign the lifetime covers - the same set the report's own name is built
+from, which is what makes them recognisable as the same thing.
 
 
-5. THE MEMORY RESTART
-----------------------
-Standard 2 GB is the right call - keep it, and do not drop the worker count,
-which is where speed would go.
+3. DROPBOX AND DRIVE ICONS
+---------------------------
+On the links page and on the partner card. The word "Dropbox" set in grey next
+to the word "Drive" set in grey is not something you can read at a glance down
+a list of a hundred and fifty partners; the logo is.
 
-Two changes so 2 GB is comfortable rather than just bigger:
 
-  The order import kept one four-part tuple per line-item flight while it read
-  a couple of million rows. That is five objects where one will do, and it was
-  the largest thing the import held. It is one string now.
+4. SIGN-OFF IS TWO ICONS AND THE NOTE MOVED RIGHT
+---------------------------------------------------
+  check      Done, no report
+  slash      Not needed
+  Note       out at the right
 
-  gunicorn recycles a worker every ~800 requests, staggered so the two never
-  recycle together. A slow leak now never reaches the ceiling; one worker cold
-  starts while the other keeps serving, so nothing gets slower.
-
-If it happens again, it will be during an order sync, and the next thing to
-change is to run the sync in its own process rather than inside a web worker.
+What each one does is on hover, where it gets read once instead of taking up
+the row forever. Undo is an icon too, on a row that has been marked.

@@ -119,6 +119,46 @@ def _orders_current(db: Session) -> bool:
     return (row.map_version or "") == product_map_version()
 
 
+def sibling_for(db, client: str, period: str, market: str,
+                is_lifetime: bool, exclude_id=None) -> dict:
+    """The counterpart report, looked up from what is known rather than from a
+    row - two of the callers run before the row exists."""
+    from sqlalchemy import select as _select
+
+    from .db import Report
+
+    if not client or not period:
+        return {}
+    other = db.scalars(
+        _select(Report).where(Report.client == client,
+                              Report.period == period,
+                              Report.market == (market or ""),
+                              Report.is_lifetime.is_(not bool(is_lifetime)),
+                              Report.id != (exclude_id or -1))
+        .order_by(Report.id.desc()).limit(1)).first()
+    if other is None:
+        return {}
+    return {"impressions": float(other.impressions or 0) or None,
+            "clicks": float(other.clicks or 0) or None,
+            "is_lifetime": bool(other.is_lifetime),
+            "filename": other.filename or ""}
+
+
+def sibling_of(db, rep) -> dict:
+    """The other report this client is getting in the same cycle.
+
+    A monthly and a lifetime go out together, in the same folder, to the same
+    person. If the month prints more impressions than the whole campaign, one
+    of the two was pulled with the wrong range - and the person opening them
+    will see it before we do.
+
+    Returns {} when there is no counterpart, and a check that gets {} makes no
+    comparison at all rather than inventing one.
+    """
+    return sibling_for(db, rep.client, rep.period, rep.market or "",
+                       bool(rep.is_lifetime), exclude_id=rep.id)
+
+
 def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     """Re-read this report's PDF with today's rules. Returns what changed."""
     from .checks.rules import run_all
@@ -192,7 +232,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok)
+                     orders_current=orders_ok,
+                     sibling=sibling_of(db, rep))
 
     was_sev = rep.severity
     old_findings, old_acked = list(rep.findings or []), list(rep.acked or [])

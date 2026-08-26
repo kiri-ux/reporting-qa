@@ -360,7 +360,8 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
             {% if pack.note %}<span class="acct">{{ pack.note }}</span>{% endif %}
           {% elif d and d.ok and d.share_url %}
             <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
-              Client link{% if d.target == 'dropbox' %} (Dropbox){% endif %}</a>
+              <svg class="tgt" aria-hidden="true"><use href="#ic-{{ 'dropbox' if d.target == 'dropbox' else 'drive' }}"/></svg>
+              Client link</a>
             <button type="button" class="copy" data-copy="{{ d.share_url }}"
                     title="Copy the link">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -535,22 +536,31 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <input type="hidden" name="client" value="{{ e.client }}">
               <input type="hidden" name="kind" value="{{ e.kind }}">
               {% if e.done_by or e.forced_by %}
-                <button class="mini" name="action" value="clear"
-                        title="Put this row back the way the rules had it">Undo</button>
+                <button class="iconbtn" name="action" value="clear"
+                        title="Undo - put this row back the way the rules had it">
+                  <svg aria-hidden="true"><use href="#ic-undo"/></svg>
+                  <span class="sr">Undo</span></button>
               {% else %}
-                {# The note is the point of the override. Six weeks later
-                   "checked off by Lauren" answers who and not why. #}
-                <input type="text" name="note" size="12" placeholder="Note"
-                       style="font:inherit;font-size:12px;padding:3px 8px;
-                              border-radius:12px;border:1px solid var(--line);
-                              background:var(--surface);color:var(--ink)">
-                <button class="mini ok" name="action" value="done"
-                        title="Handled this month with no PDF - next month it is back asking for a report">Done, no report</button>
+                {# ICONS, NOT SENTENCES. Two buttons reading "Done, no report"
+                   and "Not needed" beside an Upload and a note box made every
+                   row of a hundred-and-fifty-partner board a paragraph. What
+                   they do is on hover, where it is read once. #}
+                <button class="iconbtn ok" name="action" value="done"
+                        title="Done, no report - handled this month with no PDF. Next month it is back asking for a report.">
+                  <svg aria-hidden="true"><use href="#ic-done"/></svg>
+                  <span class="sr">Done, no report</span></button>
                 {# A PAUSED ORDER IS ON THE BOARD BECAUSE IT MIGHT HAVE RUN.
                    The export gives a flight, not the day somebody hit pause,
                    so the board asks and a person answers. This cycle only. #}
-                <button class="mini" name="action" value="none"
-                        title="It did not run this month, so nothing is owed - next month it is back on the board">Not needed</button>
+                <button class="iconbtn no" name="action" value="none"
+                        title="Not needed - it did not run this month, so nothing is owed. Next month it is back on the board.">
+                  <svg aria-hidden="true"><use href="#ic-notneeded"/></svg>
+                  <span class="sr">Not needed</span></button>
+                {# The note is the point of the override - six weeks later
+                   "checked off by Lauren" answers who and not why - but it is
+                   the optional part, so it sits after the two decisions. #}
+                <input type="text" name="note" class="notebox" placeholder="Note"
+                       title="Why - kept with the mark and shown on the row">
               {% endif %}
             </form>
            </div>
@@ -771,6 +781,10 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
 .p-errors{background:var(--crit-bg);color:var(--crit)}
 .p-missing{background:var(--ink-10);color:#5B6672}
 .signoff{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+/* The note is the optional part, so it sits after the two decisions and out
+   at the right rather than in front of them. */
+.rowacts{flex-wrap:nowrap}
+.rowacts .signoff{flex:1}
 .signoff input{font:inherit;font-size:12.5px;padding:4px 8px;border:1px solid var(--line);
  border-radius:14px;background:var(--surface);color:var(--ink);width:88px}
 .mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;

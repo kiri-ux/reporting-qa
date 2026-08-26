@@ -2573,8 +2573,12 @@ def test_every_run_all_caller_says_which_client_the_report_is_for():
     root = _P(__file__).resolve().parents[1] / "app"
     for f in ("main.py", "recheck.py", "ingest.py"):
         src = (root / f).read_text()
-        for m in _re.finditer(r"run_all\((.{0,400}?)\)\n", src, _re.S):
+        for m in _re.finditer(r"run_all\((.{0,600}?)\)\n", src, _re.S):
             assert "for_client=" in m.group(1), f"{f}: {m.group(0)[:70]}"
+            # AND WHICH OTHER REPORT THIS CLIENT IS GETTING. Miss it on one
+            # caller and the month-against-lifetime check silently never runs
+            # on that path, which looks exactly like the reports being fine.
+            assert "sibling=" in m.group(1), f"{f}: {m.group(0)[:70]}"
 
 
 def test_a_pinned_drive_folder_beats_matching_by_name(monkeypatch, tmp_path):
@@ -2721,3 +2725,93 @@ def test_a_tagged_delivery_is_a_second_folder_not_a_replacement(monkeypatch, tmp
     assert files[side] == {"July 2026_Awaken Bakery.pdf"}
     # And a side copy does not become what the partner's own folder holds.
     assert rep.delivered_as == "July 2026_Awaken Bakery.pdf"
+
+
+
+# ------------------------- the month against the campaign it belongs to
+def test_a_month_bigger_than_its_own_lifetime_is_an_error():
+    """They go out together, in one folder, to one person. A month that prints
+    more impressions than the whole campaign means one of the two was pulled
+    with the wrong date range, and whoever opens them sees it before we do."""
+    from app.checks.rules import check_month_within_lifetime as chk
+    out = chk({"is_lifetime": False, "text": "x", "imps": 5_710_018, "clicks": 900,
+               "sibling": {"impressions": 4_000_000, "clicks": 800,
+                           "is_lifetime": True,
+                           "filename": "Lifetime_River Valley Builders.pdf"}})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert "5,710,018" in out[0]["detail"]
+    # It names the other report, so it can be opened without hunting for it.
+    assert "Lifetime_River Valley Builders.pdf" in out[0]["detail"]
+
+
+def test_it_reads_the_same_from_either_side_of_the_pair():
+    """The lifetime is checked too - whichever of the two is opened first
+    should say the same thing."""
+    from app.checks.rules import check_month_within_lifetime as chk
+    out = chk({"is_lifetime": True, "text": "x", "imps": 4_000_000, "clicks": 800,
+               "sibling": {"impressions": 5_710_018, "clicks": 900,
+                           "is_lifetime": False, "filename": "July 2026_X.pdf"}})
+    assert len(out) == 1 and "5,710,018" in out[0]["detail"]
+
+
+def test_a_month_inside_its_lifetime_says_nothing():
+    from app.checks.rules import check_month_within_lifetime as chk
+    assert chk({"is_lifetime": False, "text": "x", "imps": 300_000, "clicks": 40,
+                "sibling": {"impressions": 5_710_018, "clicks": 900}}) == []
+
+
+def test_a_hair_over_is_rounding_not_a_wrong_range():
+    """TapClicks prints these rounded and the two reports are pulled minutes
+    apart, so a sliver of daylight between them is the tool, not a mistake."""
+    from app.checks.rules import check_month_within_lifetime as chk
+    assert chk({"is_lifetime": False, "text": "x", "imps": 1_000_400, "clicks": 10,
+                "sibling": {"impressions": 1_000_000, "clicks": 10}}) == []
+    assert chk({"is_lifetime": False, "text": "x", "imps": 1_200_000, "clicks": 10,
+                "sibling": {"impressions": 1_000_000, "clicks": 10}})
+
+
+def test_with_no_counterpart_no_comparison_is_made():
+    """Most clients get one report. Nothing here may fire on its own."""
+    from app.checks.rules import check_month_within_lifetime as chk
+    assert chk({"is_lifetime": False, "text": "x", "imps": 9_999_999,
+                "clicks": 9999}) == []
+    assert chk({"is_lifetime": False, "text": "x", "imps": 9_999_999,
+                "clicks": 9999, "sibling": {}}) == []
+
+
+def test_a_figure_nobody_read_is_not_a_comparison():
+    """A report whose headline could not be parsed has no number to compare,
+    and zero is not the same claim as "not read"."""
+    from app.checks.rules import check_month_within_lifetime as chk
+    assert chk({"is_lifetime": False, "text": "x", "imps": None, "clicks": None,
+                "sibling": {"impressions": 100, "clicks": 1}}) == []
+    assert chk({"is_lifetime": False, "text": "x", "imps": 500, "clicks": 5,
+                "sibling": {"impressions": None, "clicks": None}}) == []
+
+
+def test_the_sibling_is_the_other_kind_for_the_same_client_and_month(tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, Batch, Report
+    from app.recheck import sibling_for
+    import datetime as _dt
+
+    engine = create_engine(f"sqlite:///{tmp_path/'s.db'}")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    db.add(Batch(email_subject="x", received_at=_dt.datetime(2026, 8, 1)))
+    db.add(Report(batch_id=1, filename="Lifetime_Acme 123.pdf", client="Acme",
+                  market="M", period="2026-07", is_lifetime=True,
+                  impressions=4_000_000, clicks=800))
+    # Same client, different month - not the counterpart.
+    db.add(Report(batch_id=1, filename="Lifetime_Acme 123.pdf", client="Acme",
+                  market="M", period="2026-06", is_lifetime=True,
+                  impressions=1, clicks=1))
+    db.commit()
+
+    got = sibling_for(db, "Acme", "2026-07", "M", is_lifetime=False)
+    assert got["impressions"] == 4_000_000 and got["is_lifetime"] is True
+    # And a client with no counterpart gets nothing rather than a guess.
+    assert sibling_for(db, "Nobody", "2026-07", "M", is_lifetime=False) == {}
+    assert sibling_for(db, "Acme", "2026-07", "M", is_lifetime=True) == {}
+    db.close(); engine.dispose()

@@ -128,6 +128,20 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .links.wide li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;
  background:var(--surface)}
 .links.wide .lname{min-width:260px}
+/* ---- where a link goes, at a glance ---- */
+.tgt{width:15px;height:15px;vertical-align:-3px;flex:none}
+.tgt.big{width:17px;height:17px}
+/* ---- sign-off: an icon and a tooltip, not a sentence ---- */
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;
+ width:26px;height:26px;padding:0;border-radius:50%;border:1px solid var(--line);
+ background:var(--surface);color:var(--muted);cursor:pointer}
+.iconbtn:hover{color:var(--ink);border-color:var(--ink-2)}
+.iconbtn svg{width:14px;height:14px}
+.iconbtn.ok:hover{color:var(--ok,#1a7f47);border-color:var(--ok,#1a7f47)}
+.iconbtn.no:hover{color:var(--crit);border-color:var(--crit)}
+.notebox{font:inherit;font-size:12px;padding:4px 10px;border-radius:14px;
+ border:1px solid var(--line);background:var(--surface);color:var(--ink);
+ width:92px;margin-left:auto}
 /* ---- packaging, beside the link it replaces ---- */
 .repack{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
  padding-top:8px;margin-top:2px;border-top:1px solid var(--line)}
@@ -489,6 +503,38 @@ body.fit .pdfwrap object{height:100%}
   body.fit main{height:auto;overflow:visible}
 }
 </style></head><body class="{% block bodyclass %}{% endblock %}">
+
+{# ---- icons used across pages, drawn once and referenced with <use> ----
+   Where a link goes is a fact you want at a glance across a list of a
+   hundred and fifty partners, and the word "Dropbox" set in grey next to
+   the word "Drive" set in grey does not give you that. #}
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="ic-dropbox" viewBox="0 0 24 24">
+    <path fill="#0061FF" d="M6 1.807 0 5.629l6 3.822 6-3.822L6 1.807Zm12 0-6 3.822 6 3.822 6-3.822-6-3.822ZM0 13.274l6 3.822 6-3.822L6 9.452 0 13.274Zm18-3.822-6 3.822 6 3.822 6-3.822-6-3.822ZM6 18.371l6 3.822 6-3.822-6-3.822-6 3.822Z"/>
+  </symbol>
+  <symbol id="ic-drive" viewBox="0 0 87.3 78">
+    <path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/>
+    <path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z"/>
+    <path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"/>
+    <path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/>
+    <path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/>
+    <path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"/>
+  </symbol>
+  <symbol id="ic-done" viewBox="0 0 24 24">
+    <path d="M20 6.5 9.5 17 4 11.5" fill="none" stroke="currentColor"
+          stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="ic-notneeded" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/>
+    <path d="M6.4 6.4l11.2 11.2" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round"/>
+  </symbol>
+  <symbol id="ic-undo" viewBox="0 0 24 24">
+    <path d="M4 10h9a5 5 0 110 10H8M4 10l4-4M4 10l4 4" fill="none"
+          stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </symbol>
+</svg>
 
 <nav class="rail" aria-label="Sections">
   <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">

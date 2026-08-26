@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-77"
-BUILD_NOTES = ("Packaging moved to the links page, with a tagged second link "
-               "beside the partner's own one. Drive folders can be pinned by "
-               "id instead of matched by name. And the import keeps a lot less "
-               "in memory, which is what was restarting the service.")
+BUILD = "2026.08.26-78"
+BUILD_NOTES = ("A monthly that reports more than its own lifetime is now an "
+               "error - they go out together and one of the two was pulled "
+               "with the wrong range. Board rows name every order behind them. "
+               "Dropbox and Drive have icons, and sign-off is two icons.")
 
 # ---------------------------------------------------------------------------
 
