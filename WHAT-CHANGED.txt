@@ -1,141 +1,45 @@
-build 2026.08.26-82
-Changed files only. Drop these over your copy, keeping the paths.
+build 2026.08.26-83
+HOTFIX for build 82. Two files.
 
 app/version.py
-app/board.py
-app/config.py
-app/db.py
-app/delivery.py
-app/main.py
-app/orders_io.py
-app/pace.py
-app/serving.py
 app/templates/base.html
-app/templates/cycle.html
-app/templates/links.html
 tests/test_board_extras.py
-tests/test_serving.py
-
-597 tests pass.
 
 
-1. THE SERVING FILE CRASH
---------------------------
-"duplicate key value violates unique constraint uq_served_days" on re-loading a
-month that was already there. The deletes and the inserts went to the database
-in one batch and it did the inserts first.
+ONE MISSING SPACE
+==================
+This is mine and it is as dumb as it looks.
 
-Fixed, and to answer the question: YES, overlapping uploads are fine and always
-were meant to be. Every month the file covers is replaced wholesale, and a
-month it does not cover is left alone. Upload the last 180 days as often as you
-like.
+I added this line to the stylesheet in build 82:
 
+    @media (prefers-reduced-motion:reduce){#tip{transition:none}}
 
-2. "STOPPED 2026-07-31" ON EVERY ROW
---------------------------------------
-That was the first upload being July only. Every client's last day was the last
-day there was any data, so the whole board read as having stopped on it.
+An open brace followed straight by a hash - `{` then `#` - is how a template
+comment starts. So the engine read everything from there as a comment until it
+found a closer, which it never did: it swallowed the rest of the stylesheet,
+the tag that closes it, and every tag after that. The browser got a document
+whose stylesheet never ended, so it rendered the whole page as CSS text and
+showed one line of footer.
 
-"It stopped" now means "it stopped before the data did". A client still
-delivering on the last day the file knows about has not stopped at all - and
-neither the flag nor the close-out rule fires for it.
+The fix is a space:
 
+    @media (prefers-reduced-motion:reduce){ #tip{transition:none} }
 
-3. "33 REPORTS CHANGED SINCE THIS WAS PACKAGED"
--------------------------------------------------
-One had. The other thirty-two had simply gone out before the tool started
-recording what each report was filed as, so the whole board read as never
-delivered.
-
-Two fixes. Existing reports are backfilled on this deploy with the name they
-already carry, and a report with no recorded file stamp is no longer treated as
-changed - the name still has to match, and the stamp gets written the first
-time it does go up. Crying wolf about this is worse than missing one.
+CSS does not care. The template engine does.
 
 
-4. "0 OF 10 PACKAGING" WITH ONE FILE TO SEND
-----------------------------------------------
-The count was every report in the partner rather than the ones actually going
-up. It counts what it is going to send now, so one file reads "0 of 1" and
-finishes.
+AND WHY 599 TESTS DID NOT CATCH IT
+====================================
+Because every one of them checks a status code or looks for a substring, and a
+page that returns 200 with a broken stylesheet does both perfectly well. The
+substring was even THERE - it was just inside a comment.
 
+So there are two new tests:
 
-5. 54169 AND 48327 - THE PENDING LAUNCH LINE
-----------------------------------------------
-You had it exactly. Both have a line at IO Pending Launch dated to start in
-September, and this cycle's date filter drops it - so every line the board
-could see was complete and it closed out an order that has not launched half of
-what was sold.
+  Every page is rendered with real data and the document is checked for
+  balance - style, head, body, html, main, table, form, select, textarea - and
+  that it ends with the closing html tag. Anything that swallows a chunk of
+  the page now fails a test rather than shipping.
 
-"Is this campaign over" is now asked of every line the client has, including
-the ones that have not started yet. A campaign is finished when nothing is
-left.
-
-
-6. THE ORDER'S STATUS, ON THE ROW
------------------------------------
-Under the report status. "IO Live, IO Pending Launch" is the answer to why a
-campaign that looks finished is not, and it took opening the IO tool to see it.
-
-
-7. PENDING / COMPLETED / ALL
-------------------------------
-Three buckets above the table with counts on them, Pending by default. Replaces
-the "hiding N signed off" chip.
-
-
-8. TWENTY PARTNER CARDS A PAGE
---------------------------------
-A hundred and fifty of them was four screens of scrolling before the reports
-table. The search reaches past the page - it narrows the partners first and the
-page applies to what is left.
-
-
-9. "GOOD TO GO ONLY"
----------------------
-On the links page. Sends the reports that are signed off and clear and leaves
-the rest out of the folder until they are done. A partner is not all or
-nothing, and holding thirty finished reports back for the last dozen is a week
-of nobody having anything.
-
-
-10. THE TOOLTIP
-----------------
-It was drawn on the element it belonged to, and the reports table scrolls
-sideways - anything that scrolls sideways cuts off whatever leaves it. It is
-one floating element now, fixed over the page, kept inside the window, and it
-appears in a tenth of a second.
-
-
-11. "AUTO-PULL HAS STOPPED"
------------------------------
-A cycle arrives in a flood and then it stops, and what is left is lifetimes
-somebody pulls by hand. Under twenty an hour, against the busiest hour the
-cycle has had, the tile says so instead of projecting "about 25 hours to go"
-off a trickle - which reads as a schedule when it is really a note that nothing
-is coming on its own.
-
-
-12. THE LINKS PAGE
--------------------
-Sync reports and its timestamp on the top row. The tagged second link moved
-under the expander with the Drive folder pins, since it is the rare thing to
-want.
-
-
-13. A PASSWORD ON THE SITE
-----------------------------
-Set SITE_PASSWORD in Render's environment and every page asks for it once and
-remembers on that browser for a month. Blank leaves it open, which is what it
-has been.
-
-One shared password rather than accounts: this is an internal tool behind a
-link nobody outside has, and what is worth stopping is a forwarded link, not a
-colleague. /healthz stays open or Render marks the service down. The cookie
-carries a hash, not the password.
-
-STILL OPEN: 54853 and 54852 are RFPs and the board still wants lifetimes for
-them. The type column fix from build 97 only works if "Order Type" is actually
-in the S3 export - the IO tool shows it on the page, but I cannot tell from
-here whether the export carries it. Check one export's header for an Order Type
-column and tell me either way.
+  And the same bug at the source: no template may contain an unterminated
+  brace-hash, or that CSS shape at all.

@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-82"
-BUILD_NOTES = ("The serving file reloads without crashing, and a partial "
-               "upload no longer says the whole board stopped. Pending / "
-               "Completed / All buckets, twenty partner cards a page, order "
-               "status on the row, and the site can take a password.")
+BUILD = "2026.08.26-83"
+BUILD_NOTES = ("Every page was blank. A media query written `){#tip{` with "
+               "no space starts a template comment, and it ate the rest of the "
+               "stylesheet and every tag after it. One space, plus a test that "
+               "renders every page and checks the document closes.")
 
 # ---------------------------------------------------------------------------
 

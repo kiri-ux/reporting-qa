@@ -149,7 +149,13 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 #tip.on{opacity:1;visibility:visible}
 [data-tip]{cursor:help}
 button[data-tip],a[data-tip]{cursor:pointer}
-@media (prefers-reduced-motion:reduce){#tip{transition:none}}
+/* THE SPACE AFTER THE BRACE IS LOAD-BEARING.
+   An open brace followed straight by a hash starts a template comment, so a
+   media query wrapping a hash-id selector swallowed the rest of this
+   stylesheet, the tag that closes it, and every tag after that - and the whole
+   site rendered as one line of footer text on a blank page.
+   CSS does not care about the space. The template engine does. */
+@media (prefers-reduced-motion:reduce){ #tip{transition:none} }
 /* ---- sign-off: an icon and a tooltip, not a sentence ---- */
 /* FILLED, so they read as the buttons they are. Outlined in a pale grey they
    looked like decoration on a row that already has a lot of small type. */

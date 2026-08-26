@@ -797,3 +797,83 @@ def test_the_site_can_be_put_behind_one_shared_password(tmp_path, monkeypatch):
     monkeypatch.delenv("SITE_PASSWORD")
     for m in (app.config, app.db, app.main):
         importlib.reload(m)
+
+
+def _render_every_page(tmp_path, monkeypatch):
+    import datetime as dt
+    import importlib
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'r.db'}")
+    import app.config, app.db, app.main
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)
+    from fastapi.testclient import TestClient
+    app.db.Base.metadata.create_all(app.db.engine)
+    db = app.db.SessionLocal()
+    D = dt.date.fromisoformat
+    db.add(app.db.Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1)))
+    db.add(app.db.Partner(partner="P", group="P", delivery_target="dropbox"))
+    db.add(app.db.OrderLine(
+        market="P", client="C", account_ids="10", line_ids="1", product="CTV",
+        campaign="Connected TV Ads", live=True, status="IO Live",
+        starts_on=D("2026-01-01"), ends_on=D("2026-12-31"),
+        order_starts_on=D("2026-01-01"), order_ends_on=D("2026-12-31")))
+    db.commit()
+    db.add(app.db.Report(batch_id=1, filename="July 2026_C 10.pdf", client="C",
+                         market="P", period="2026-07", severity="fail",
+                         review_state="new", checks=[],
+                         findings=[{"code": "x", "severity": "fail",
+                                    "title": "t", "detail": "d"}]))
+    db.add(app.db.Delivery(period="2026-07", group="P", target="dropbox",
+                           ok=True, reports=1, share_url="https://d/x"))
+    db.commit()
+    db.close()
+    c = TestClient(app.main.app)
+    pages = ["/", "/cycle?period=2026-07", "/cycle?period=2026-07&done=all",
+             "/cycle/links?period=2026-07", "/orders", "/partners", "/people",
+             "/rules", "/lifetimes", "/cycle/audit?period=2026-07"]
+    return c, pages
+
+
+def test_every_page_closes_the_tags_it_opens(tmp_path, monkeypatch):
+    """AN OPEN BRACE FOLLOWED STRAIGHT BY A HASH STARTS A TEMPLATE COMMENT.
+
+    A media query wrapping a hash-id selector - `){#tip{` with no space - ate
+    the rest of the stylesheet, the tag that closes it, and every tag after
+    that. The whole site rendered as one line of footer text on a blank page,
+    and every test passed, because they all check status codes and substrings
+    and none of them had ever looked at the shape of the document.
+    """
+    import re
+    c, pages = _render_every_page(tmp_path, monkeypatch)
+    for url in pages:
+        r = c.get(url)
+        assert r.status_code in (200, 303), f"{url} -> {r.status_code}"
+        t = r.text
+        if "text/html" not in r.headers.get("content-type", ""):
+            continue
+        # And the page actually got as far as the end. Checked before the
+        # scripts are stripped, since that is the whole document.
+        assert t.rstrip().endswith("</html>"), f"{url}: truncated"
+        opened = len(re.findall(r"<script[\s>]", t))
+        assert opened == t.count("</script>"), f"{url}: <script> unbalanced"
+        # Prose inside a script talking ABOUT a tag is not a tag.
+        body = re.sub(r"<script\b.*?</script>", "", t, flags=re.S)
+        for tag in ("style", "head", "body", "html", "main",
+                    "table", "form", "select", "textarea"):
+            n = len(re.findall(rf"<{tag}[\s>]", body))
+            closed = body.count(f"</{tag}>")
+            assert n == closed, f"{url}: <{tag}> {n} open, {closed} closed"
+
+
+def test_no_template_has_an_accidental_comment_opener():
+    """The same bug, caught at the source rather than in the output."""
+    import re
+    for f in sorted(TPL.glob("*.html")):
+        src = f.read_text()
+        # A brace-hash that is not a real comment, i.e. one with no closer.
+        for m in re.finditer(r"\{#", src):
+            rest = src[m.start():]
+            assert "#}" in rest, f"{f.name}: unterminated template comment"
+        # The CSS shape that caused it: an open brace immediately before an id.
+        assert not re.search(r"\)\{#[A-Za-z]", src), (
+            f"{f.name}: `){{#` in CSS - put a space after the brace")
