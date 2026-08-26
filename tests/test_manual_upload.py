@@ -1149,3 +1149,54 @@ def test_a_report_with_nothing_to_pace_says_why(client):
     html = c.get(f"/report/{rep_id}/view").text
     assert "Nothing to pace against" in html
     assert "no order line matches this client" in html
+
+
+_MONEY_HEAD = ("client_business_unit,orders_status,client,orders_id,product,id,"
+               "status,orders_start_date,start_date,end_date,orders_end_date,"
+               "monthly_campaign_impressions\n")
+# One line item selling two products, and one selling one. 117304 is a single
+# buy that becomes two rows.
+_TWO_PRODUCT_LINE = (
+    "BU,IO Live,Lemmata,49813,CTV + Video Ads,117304,IO Live,"
+    "2025-11-01,2025-11-01,2026-10-31,2026-10-31,66666\n"
+    "BU,IO Live,Lemmata,49813,Connected TV Ads,132111,IO Live,"
+    "2026-06-04,2026-06-04,2027-01-08,2027-01-08,62500\n")
+
+
+def _panel(c, db, dbm, rows, period="2026-07"):
+    from app.orders_io import import_io_export
+    import_io_export(db, (_MONEY_HEAD + rows).encode(), period=period)
+    rep = dbm.Report(batch_id=1, filename="l.pdf", period=period, client="Lemmata",
+                     market="BU", review_state="new", account_ids="49813")
+    db.add(rep); db.commit()
+    return c.get(f"/report/{rep.id}/orders?frag=1").text
+
+
+def test_a_line_selling_two_products_is_not_flagged_as_misread(client):
+    """"CTV + Video Ads" is one buy and two rows, so a raw name mapping to more
+    than one product says nothing. Comparing the stored product against the
+    whole list put "reads as CTV, Video today" on a row correctly stored as
+    CTV - a warning about nothing, on the row it was warning about."""
+    c, (db, dbm, _) = client
+    db.query(dbm.OrderLine).delete(); db.commit()
+    assert "reads as" not in _panel(c, db, dbm, _TWO_PRODUCT_LINE)
+
+
+def test_the_panel_names_the_product_on_every_row(client):
+    """A ditto mark saved a little ink and cost the one thing the column is
+    for: half the rows did not say what product they were."""
+    c, (db, dbm, _) = client
+    db.query(dbm.OrderLine).delete(); db.commit()
+    html = _panel(c, db, dbm, _TWO_PRODUCT_LINE)
+    assert "&#8221;" not in html and "”" not in html
+    assert html.count(">CTV<") >= 2, "the repeat row still has to name itself"
+
+
+def test_the_panel_totals_count_a_two_product_buy_once(client):
+    """Its money sits against the first of the two products and nothing
+    against the second, so 117304's 66,666 counts once, not twice."""
+    c, (db, dbm, _) = client
+    db.query(dbm.OrderLine).delete(); db.commit()
+    html = _panel(c, db, dbm, _TWO_PRODUCT_LINE)
+    assert "129,166" in html          # 66,666 + 62,500, not 195,832
+    assert "line items" in html and "1 order" in html

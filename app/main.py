@@ -175,8 +175,35 @@ def _working_days(h):
     return working_days(h)
 
 
+def _sum_orders(rows) -> dict:
+    """The totals row under the order lines.
+
+    Safe to add up, which is the whole reason it can exist: one line item
+    selling two products carries its money against the FIRST of them and
+    nothing against the second, so "CTV + Video Ads" counts once here rather
+    than twice. None stays out of the sum - "the order does not say" is not a
+    figure of nothing.
+    """
+    out = {"orders": 0, "ran": 0, "impressions": 0.0, "budget": 0.0,
+           "total_impressions": 0.0, "total_budget": 0.0}
+    orders = set()
+    for r in rows:
+        for oid in str(r.get("order") or "").split(","):
+            if oid.strip():
+                orders.add(oid.strip())
+        if r.get("ran"):
+            out["ran"] += 1
+        for key in ("impressions", "budget", "total_impressions", "total_budget"):
+            v = r.get(key)
+            if v:
+                out[key] += float(v)
+    out["orders"] = len(orders)
+    return out
+
+
 templates.env.filters["humanhours"] = _human_hours
 templates.env.filters["workingdays"] = _working_days
+templates.env.filters["sum_orders"] = _sum_orders
 # Chrome that every page needs and no view should have to remember to pass.
 # ---------------------------------------------------------------- who is here
 #
@@ -2645,12 +2672,26 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
     rows = []
     for l in sorted(lines, key=lambda x: (x.product or "", x.account_ids or "")):
         product = l.product or "(unmapped)"
-        # What TODAY's code would map the raw name to. When this differs from
-        # the stored product, the row was written by an older import and that
-        # is the whole answer.
-        would_be = ", ".join(map_order_products(l.campaign or "")) or "(nothing)"
+
+        def stale(raw: str) -> str:
+            """What today's code would map this raw name to, IF IT DISAGREES.
+
+            One line item can sell two products - "CTV + Video Ads" is one buy
+            and two rows - so a raw name mapping to more than one product is
+            normal and says nothing. Comparing the stored product against the
+            whole list flagged every single one of those rows: order 49813 had
+            "reads as CTV, Video today" pinned to a row correctly stored as
+            CTV, which is a warning about nothing on the row it is warning
+            about. The question is whether the stored product is still ONE OF
+            the answers, not whether it is the only one.
+            """
+            now = map_order_products(raw or "")
+            if product in now:
+                return ""
+            return ", ".join(now) or "(nothing)"
+
         base = {
-            "product": product, "raw": l.campaign or "", "would_be": would_be,
+            "product": product, "raw": l.campaign or "",
             # WHAT THE MONTH WAS BOUGHT TO DO. The panel exists to answer
             # "what is this finding actually judging", and the goal is half of
             # every pacing answer - it was the one column not on the table.
@@ -2665,10 +2706,16 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
         # December, when 48135 finished on 28 February. Merged dates cannot say
         # which order they came from, so here the line items are unpacked.
         for d in (getattr(l, "detail", None) or []):
+            raw = d.get("raw") or base["raw"]
             rows.append({
                 **base, "merged": False,
                 "order": d.get("order") or "", "line": d.get("line") or "",
-                "raw": d.get("raw") or base["raw"],
+                # JUDGED ON THIS LINE ITEM'S OWN RAW NAME, not the merged
+                # row's. The merged row keeps whichever name was read first,
+                # so a line item selling "Connected TV Ads" was being told it
+                # reads as something else today because a DIFFERENT line item
+                # on the same order says "CTV + Video Ads".
+                "raw": raw, "would_be": stale(raw),
                 "starts": d.get("starts"), "ends": d.get("ends"),
                 "order_starts": d.get("order_starts"),
                 "order_ends": d.get("order_ends"),
@@ -2686,7 +2733,7 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
             # No line items kept - a row loaded before they were. Show the
             # merged answer rather than nothing, and say which it is.
             rows.append({
-                **base, "merged": True,
+                **base, "merged": True, "would_be": stale(l.campaign or ""),
                 "order": l.account_ids or "", "line": l.line_ids or "",
                 "starts": l.starts_on, "ends": l.ends_on,
                 "order_starts": getattr(l, "order_starts_on", None),

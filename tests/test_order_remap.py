@@ -1203,3 +1203,4 @@ def test_products_bought_by_the_month_are_not_paced(db):
                         "SEO": {"impressions": None, "budget": None},
                         "Social Mirror": {"impressions": 100, "budget": None}})
     assert [r["product"] for r in rows if not r.get("total")] == ["Social Mirror"]
+

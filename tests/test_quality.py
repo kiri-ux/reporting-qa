@@ -1110,3 +1110,32 @@ def test_a_ga_summary_strip_is_not_a_site_clicking_too_much():
     with no CTR column anywhere on it."""
     from app.checks.quality import check_site_ctr
     assert check_site_ctr({"text": _SITES_THEN_GA, "page_of": lambda _o: 1}) == []
+
+
+def test_a_wrapped_name_line_can_split_into_cells():
+    """Only single-cell lines counted as the tail of a wrapped name, so
+    "... Behavioral Social Mirror    reachv2" was thrown away and the name came
+    out as "Lemmata Chiropractic - Chiropractic - 35-64/Back". No product word
+    in it, and the report was FAILED for a line that names its product fine."""
+    from app.checks.quality import check_strategy_categorized, line_item_names
+    text = ("Line Item Performance\n\n"
+            " Line Item Name                                    Impressions"
+            "      Clicks       CTR    X the National Avg (.07%)\n\n"
+            " Lemmata Chiropractic - Chiropractic - 35-64/Back        15,058"
+            "          14     0.09%                       1.33\n"
+            " Pain/Neck Pain Behavioral Social Mirror     reachv2\n\n"
+            " Lemmata Chiropractic - AI CTV REACH                     30,472"
+            "           2     0.01%                       0.09\n")
+    names = [n for n, _at in line_item_names(text)]
+    assert names[0].endswith("Behavioral Social Mirror reachv2")
+    assert check_strategy_categorized({"text": text, "page_of": lambda _o: 2}) == []
+
+
+def test_a_two_column_total_line_is_still_not_a_name():
+    """A NUMBER in the extra cells means a data row, not a wrapped name."""
+    from app.checks.quality import line_item_names
+    text = ("Line Item Performance\n\n"
+            " Line Item Name             Impressions      Clicks       CTR\n\n"
+            " Acme - Keyword PPC              15,058          14     0.09%\n"
+            " Total                           15,058\n")
+    assert [n for n, _at in line_item_names(text)] == ["Acme - Keyword PPC"]

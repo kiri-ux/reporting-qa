@@ -208,8 +208,20 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
         # a DOOH publisher list as twenty badly named strategies.
         if _title_of_next_widget(lines, i):
             break
-        if len(cells) == 1:
-            c = _clean_cell(t)
+        # A WRAPPED NAME LINE CAN STILL SPLIT INTO MORE THAN ONE CELL.
+        #
+        # Only single-cell lines were taken as the tail of a name, and anything
+        # else was dropped. Lemmata Chiropractic has a line item called
+        # "... Behavioral Social Mirror    reachv2", and that gap makes its
+        # second line two cells - so the tail was thrown away and the name came
+        # out as "Lemmata Chiropractic - Chiropractic - 35-64/Back". No product
+        # word in it, and the report was FAILED for a strategy line that names
+        # its product perfectly well.
+        #
+        # A NUMBER in the extra cells still means a data row, not a name, so a
+        # two-column total line is dropped exactly as it was.
+        if len(cells) < min_cells and not any(NUMERIC.match(c) for c in cells[1:]):
+            c = _clean_cell(" ".join(cells))
             if c:
                 pending.append(c)
         elif cur is not None and len(cells) >= min_cells:

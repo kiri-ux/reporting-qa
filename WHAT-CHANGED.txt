@@ -1,90 +1,72 @@
-build 2026.08.26-89
+build 2026.08.26-90
 Changed files only.
 
-app/checks/parser.py
 app/checks/quality.py
-app/checks/rules.py
 app/main.py
-app/templates/viewer.html
+app/templates/report_orders_body.html
 app/version.py
 tests/test_manual_upload.py
+tests/test_order_remap.py
 tests/test_quality.py
-tests/test_rules.py
 
-617 tests pass.
+622 tests pass.
 
-The checks changed, so every report re-checks itself on deploy. The bad
-findings clear themselves - nothing to press.
+The checks changed again, so every report re-checks itself on deploy.
 
 
-THE GA PAGES WERE BEING READ AS A CTR TABLE
-==============================================
-Both of those are one bug.
+"1 STRATEGY LINE NOT CATEGORIZED TO A PRODUCT"
+=================================================
+A false fail, and the name in the finding is the evidence:
 
-A table ran until it hit the next line carrying three metric labels. A grid
-ran until it hit a section banner or something that looked like the next
-widget's title. Neither of those is on a Google Analytics page: the GA4 titles
-are centered, and an indented line reads as the tail of a wrapped row name
-rather than a title, and not one report in the fixtures prints a section
-banner at all.
+  Lemmata Chiropractic - Chiropractic - 35-64/Back
 
-So the GA pages were not skipped. They were read as MORE ROWS of a table
-several pages earlier, with their numbers matched to that table's columns by
-where they sit on the line:
+That is the first line of a two-line name. The second line is
 
-  Eastern p19, GA4 by Geo    Sessions -> impressions, Views -> clicks,
-                             Engagement rate -> CTR. Five "Row CTR does not
-                             match its own numbers", every one of them
-                             "204/204 = 100.000%" against a printed 1.47%.
+  Pain/Neck Pain Behavioral Social Mirror     reachv2
 
-  Dominion p13, GA4 summary  733 read as clicks, 391 as impressions. FAILED
-                             for "1 site clicking above 5%" - 187.47% - on a
-                             page with no CTR column anywhere on it.
+and that gap makes it TWO cells, not one. Only single-cell lines counted as
+the tail of a wrapped name, so it was thrown away, the name lost the half
+carrying "Social Mirror", and the report was failed for a line item that names
+its product perfectly well.
 
-A widget lives on a page. The report header block prints at the top of every
-page and nowhere else, so that is the boundary now, in both the table parser
-and the grid reader. A widget that carries on over the page repeats its own
-title and starts again there, which is what it already did.
-
-This was quietly costing accuracy elsewhere too. "minefun.io" was stored as
-"minefun.io Chats: Number of people that started", "6471 County Hwy-625" as
-"6471 County Hwy-625 Device", and four fixtures had a site named
-"radio-en-vivo.mx Powered by TCPDF (www.tcpdf.org)". All gone.
+Any line with fewer cells than a data row and no NUMBER in them is name text
+now. A two-column total line still gets dropped, because a number in the extra
+cells is what makes something a data row rather than a name.
 
 
-3 PREVIEWS THAT DID NOT RENDER, ON A TABLE WITH 2
-====================================================
-It counted every "Thumbnail not available" in the whole document and then
-pinned the total to wherever the first one happened to be. Eastern's Social
-Mirror table has two; the third was in a different widget on a different page.
+"READS AS CTV, VIDEO TODAY"
+=============================
+That badge means "the stored product disagrees with what today's code reads
+the raw name as", which is worth knowing - it is the whole reason a product
+finding can be wrong. It was firing on rows nothing was wrong with, for two
+reasons:
 
-Counted against the table it names, it read as plainly wrong - and a number
-you cannot check against the page in front of you is worse than no number.
+  * One line item can sell two products. "CTV + Video Ads" is one buy and two
+    rows, so the raw name mapping to CTV AND Video is normal. It was compared
+    against the whole list, so a row correctly stored as CTV read as
+    disagreeing with itself. The test is now whether the stored product is
+    still ONE OF today's answers.
 
-One finding per widget now, each counting only its own. Accepting one no
-longer hides another.
+  * It was computed from the MERGED row's raw name, not the line item's own,
+    so line 132111 - "Connected TV Ads" - was told it reads as something else
+    because a different line item on the same order says "CTV + Video Ads".
+
+When it does fire it now says both halves - "stored as X, reads as Y today" -
+with a hover explaining that any product finding on that row is being judged
+against a stale answer until the orders are re-read.
 
 
-WHERE PACING WENT
-====================
-It has been dead since build 82, on every report, not just these.
+EVERY ROW NAMES ITS PRODUCT
+==============================
+The ditto mark saved a little ink and cost the column the one thing it is for.
+Repeats are just set lighter now.
 
-  from .roster import client_flight, ordered_for
 
-client_flight is in ingest.py. roster has never had it. So every report raised
-ImportError on that line, and the panel is wrapped in a bare "except Exception"
-- a pacing panel is never worth a 500 - which turned that into an empty panel.
-Nothing said so, because a panel that fails looks exactly like a panel with
-nothing to say.
+TOTALS
+=========
+A total row under both tables: line items, orders, how many ran in the month,
+and the two money columns.
 
-Fixed, and the swallow is no longer silent: the exception is logged, and the
-page now says why the panel is empty instead of vanishing. Four things stop it
-and each needs a different thing done about it:
-
-  no order line matches this client
-  none of this client's N order lines ran in 2026-07
-  every line item on this client's orders is paused or cancelled
-  the orders carry no monthly budget and no impression goal
-
-and, if it ever breaks again, "the pacing panel could not be built
-(ImportError)" rather than silence.
+Safe to add up, which is why it can exist at all: a line item selling two
+products carries its money against the FIRST of them and nothing against the
+second, so a "CTV + Video Ads" buy counts once rather than twice.

@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-89"
-BUILD_NOTES = ("Tables and grids stop at the page they are on, so the Google "
-               "Analytics pages stop being read as CTR. Pacing was dead and "
-               "is back.")
+BUILD = "2026.08.26-90"
+BUILD_NOTES = ("A wrapped line item name that ends in a second column is no "
+               "longer thrown away, and the order panel names every product "
+               "and adds itself up.")
 
 # ---------------------------------------------------------------------------
 
