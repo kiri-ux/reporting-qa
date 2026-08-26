@@ -416,7 +416,7 @@ def test_a_remainder_worth_a_look_but_not_a_failure_is_a_warning():
     out = check_line_items({"text": text, "imps": 162089.0, "clicks": 3050.0})
     f = next(x for x in out if "clicks" in x["code"])
     assert f["severity"] == "warn"
-    assert "all but 50" in f["detail"]
+    assert "leaves 50" in f["detail"]
 
 
 def test_a_remainder_under_one_percent_of_the_tile_says_nothing():

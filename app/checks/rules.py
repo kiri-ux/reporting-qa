@@ -357,20 +357,17 @@ def check_line_items(ctx) -> list[dict]:
                       f"{abs(unexplained):,.0f} click"
                       f"{'s' if abs(unexplained) != 1 else ''} unaccounted for",
                       f"Line items total {sc:,.0f} clicks against a stated "
-                      f"{clicks:,.0f}. The CTV and OTT line items carry {excl:,.0f}, "
-                      f"which that tile excludes - that explains all but "
-                      f"{abs(unexplained):,.0f} of the "
-                      f"{abs(gap):,.0f} difference. Small enough not to hold the "
-                      f"report up, but it is not nothing. Investigate lists the "
-                      f"lines that were taken out.", ctrace))
+                      f"{clicks:,.0f}. The CTV and OTT lines carry {excl:,.0f}, "
+                      f"which that tile excludes - that leaves "
+                      f"{abs(unexplained):,.0f} of the {abs(gap):,.0f} "
+                      f"difference.", ctrace))
     else:
         out.append(_f("line_items_clicks", "fail",
                       "Line item clicks do not sum to the top line",
                       f"Line items total {sc:,.0f} clicks against a stated "
-                      f"{clicks:,.0f} ({gap:+,.0f}). The CTV and OTT line items carry "
-                      f"{excl:,.0f}, which that tile can exclude - that still "
-                      f"leaves {abs(unexplained):,.0f} "
-                      f"clicks unaccounted for.", ctrace))
+                      f"{clicks:,.0f} ({gap:+,.0f}). The CTV and OTT lines carry "
+                      f"{excl:,.0f}, which that tile can exclude. "
+                      f"{abs(unexplained):,.0f} clicks unaccounted for.", ctrace))
     return out
 
 
@@ -720,11 +717,8 @@ def check_pacing(ctx) -> list[dict]:
         way = "under" if ratio < 1 else "over"
         out.append(_f("pacing", "warn",
                       f"{product} spend is {abs(1 - ratio) * 100:.0f}% {way} budget",
-                      f"The report shows ${got:,.2f} against a monthly budget of "
-                      f"${budget:,.2f}. Half a month's budget adrift is usually a "
-                      f"reporting fault rather than a media one - a wrong date "
-                      f"range, a line item missing from the pull, or two flights "
-                      f"added together.",
+                      f"${got:,.2f} spent against a monthly budget of "
+                      f"${budget:,.2f}.",
                       [("Spend on the report", f"${got:,.2f}"),
                        ("Monthly budget on the order", f"${budget:,.2f}"),
                        ("That is", f"{ratio * 100:.0f}% of budget"),
@@ -773,11 +767,8 @@ def check_lifetime_goal(ctx) -> list[dict]:
                           f"{want['impressions']:,.0f}"))
     return [_f("lifetime_short_of_goal", "warn",
                f"Campaign finished {short / goal * 100:.0f}% under its goal",
-               f"The report shows {got:,.0f} impressions against "
-               f"{goal:,.0f} sold"
-               + (f" ({basis})" if basis else "")
-               + ". Worth knowing before this goes to the client - a campaign "
-                 "that under-delivered is usually a make-good conversation.",
+               f"{got:,.0f} impressions served against {goal:,.0f} sold"
+               + (f" ({basis})" if basis else "") + ".",
                trace=trace)]
 
 
@@ -823,9 +814,7 @@ def check_impression_pacing(ctx) -> list[dict]:
                       f"{fmt(row['served'])} served against {fmt(row['ordered'])} "
                       f"ordered"
                       + (f" ({row['basis']})" if row.get("basis") else "")
-                      + f". More than {PACE_BAND:.0f}% either way is worth a look "
-                        f"before this goes out - either the order attached is "
-                        f"the wrong one, or the campaign needs a conversation.",
+                      + ".",
                       trace=trace))
     return out
 
@@ -950,11 +939,9 @@ def check_client_data(ctx) -> list[dict]:
     biggest = max(rows, key=lambda r: r[1])[0]
     return [_f("wrong_client", "fail",
                "The data on this report is for a different client",
-               f"This is {ctx.get('client')}'s report, but "
                f"{(1 - mine / total) * 100:.0f}% of the impressions sit on line "
                f"items named for somebody else - \"{_short_name(biggest, 60)}\" "
-               f"for one. Check which client was picked in TapClicks before "
-               f"this goes anywhere.",
+               f"for one.",
                trace=[("Report is for", ctx.get("client") or "?"),
                       ("Line items name", ", ".join(k for k, _ in top[:3])),
                       ("Impressions on this client",
@@ -998,11 +985,9 @@ def check_client_matches_order(ctx) -> list[dict]:
         return []
     return [_f("wrong_client_file", "fail",
                "This is a different client's report",
-               f"It arrived as {ctx['filed_as']}'s report and the cover page "
-               f"says {ctx['client']}. Everything else checked here - the "
-               f"products owed, the order it paced against, the dates - was "
-               f"worked out from {ctx['filed_as']}, so the rest of this page is "
-               f"about the wrong campaign. Re-pull it in TapClicks.",
+               f"It arrived as {ctx['filed_as']}'s report. The cover page says "
+               f"{ctx['client']}. Everything else on this page was checked "
+               f"against {ctx['filed_as']}'s order.",
                trace=[("Filed as", ctx.get("filed_as") or "?"),
                       ("Cover page says", ctx.get("client") or "?")])]
 

@@ -297,3 +297,28 @@ def test_the_way_back_from_a_report_survives_the_page_reloading_itself():
     assert 'BACK_COOKIE = "qa_back"' in src
     assert "target or _back_cookie(request)" in src
     assert 'resp.set_cookie(BACK_COOKIE' in src
+
+
+def test_the_logo_panel_shows_even_when_no_fingerprint_was_taken():
+    """It was hidden on a report whose hash came back empty - which is exactly
+    the report somebody is trying to mark, because a corner the tool could not
+    read is usually the one carrying the tool's own mark."""
+    html = (TPL / "viewer.html").read_text()
+    assert "{% if has_file %}" in html
+    assert "{% if has_file and not logo_hash %}" in html
+    assert "Read the logo again" in html
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert '@app.post("/report/{report_id}/logo/refresh")' in src
+
+
+def test_the_findings_state_the_fact_and_stop():
+    """"More than 50% either way is worth a look before this goes out - either
+    the order attached is the wrong one, or the campaign needs a conversation"
+    is commentary on a number the reader can already see."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "checks" / "rules.py").read_text()
+    for phrase in ("worth a look before this goes out",
+                   "needs a conversation",
+                   "usually a make-good conversation",
+                   "Check which client was picked in TapClicks",
+                   "it is not nothing"):
+        assert phrase not in src, phrase

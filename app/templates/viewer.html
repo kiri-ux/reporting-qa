@@ -300,8 +300,26 @@
       <button class="mini" type="submit" title="Re-runs every check. Accepted findings and the sign-off reset, since they described the old file. Your note is kept.">Upload the corrected PDF</button>
     </form>
 
-    {% if logo_hash %}
+    {# THE PANEL SHOWS WHENEVER THERE IS A FILE, not only when a fingerprint
+       was taken. It was hidden on a report whose hash came back empty - which
+       is exactly the report somebody is trying to mark, because a corner the
+       tool could not read is usually the one carrying the tool's own mark.
+       Now it says so, with a button to take the fingerprint again. #}
+    {% if has_file %}
       <h2 id="logo" style="margin-top:22px">Page-one logo</h2>
+    {% endif %}
+    {% if has_file and not logo_hash %}
+      <div class="logobox">
+        <img src="/report/{{ rep.id }}/logo.png?v={{ file_v }}"
+             alt="The top-left corner of page one">
+        <form method="post" action="/report/{{ rep.id }}/logo/refresh">
+          <p class="sub">No fingerprint was taken from this corner, so there is
+            nothing to mark yet.</p>
+          <button class="mini" type="submit">Read the logo again</button>
+        </form>
+      </div>
+    {% endif %}
+    {% if logo_hash %}
       {# The picture, not the fingerprint. Marking a logo is a decision about
          what it looks like, and this is the exact crop the check compares. #}
       <div class="logobox">

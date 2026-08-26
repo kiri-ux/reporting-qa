@@ -908,6 +908,26 @@ def report_logo(report_id: int, db: Session = Depends(get_db)):
                     headers={"Cache-Control": "public, max-age=86400, immutable"})
 
 
+@app.post("/report/{report_id}/logo/refresh")
+def report_logo_refresh(report_id: int, request: Request,
+                        db: Session = Depends(get_db)):
+    """Take the page-one fingerprint again.
+
+    A re-check reuses the stored hash rather than re-taking it - pdftoppm on
+    every report in an 838-deep queue is what put Render's health check over.
+    So a report whose fingerprint came back empty the first time stayed empty
+    for good, and its logo could never be marked. This is the way out, one
+    report at a time.
+    """
+    from .checks.logo import header_logo_hash
+    rep = db.get(Report, report_id)
+    if not rep or not rep.stored_path or not Path(rep.stored_path).exists():
+        raise HTTPException(404)
+    rep.logo_hash = header_logo_hash(rep.stored_path)
+    db.commit()
+    return RedirectResponse(f"/report/{report_id}/view#logo", status_code=303)
+
+
 @app.post("/logo/{logo}/mark")
 def mark_logo(logo: str, request: Request, kind: str = Form("generic"),
               db: Session = Depends(get_db)):
@@ -1776,6 +1796,10 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                        # The page-one logo, so it can be
                                        # judged by somebody looking at it.
                                        "logo_hash": rep.logo_hash or "",
+                                       # The logo panel needs a FILE, not a
+                                       # fingerprint - see viewer.html.
+                                       "has_file": bool(rep.stored_path)
+                                       and Path(rep.stored_path).exists(),
                                        "logo_generic": _logo_is_generic(db, rep),
                                        # Who else carries it. A mark is a
                                        # statement about all of them, so they
