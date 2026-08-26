@@ -16,7 +16,11 @@
        belongs where you can copy it without opening the PDF. #}
     <span class="oid" title="Order id">{{ rep.account_ids }}</span>
   {% endif %}
-  {% if rep.is_lifetime %}<span class="pill p-info">lifetime</span>{% endif %}
+  {# BOTH KINDS SAY SO. Only the lifetime pill was printed, so a monthly was
+     "a report with no lifetime pill" - which you can only read if you already
+     know the pill exists and are looking for its absence. #}
+  {% if rep.is_lifetime %}<span class="pill p-info">lifetime</span>
+  {% else %}<span class="pill p-month">monthly</span>{% endif %}
   <span class="pill p-{{ rep.board_state }}">{{ rep.board_state|replace('_',' ')|title }}</span>
   <a class="btn" href="/report/{{ rep.id }}/file?v={{ file_v }}" download="{{ rep.filename }}">Download</a>
 </div>

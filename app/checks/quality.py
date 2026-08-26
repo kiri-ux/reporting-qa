@@ -33,9 +33,16 @@ def _clean_cell(s: str) -> str:
 
 # The wording a widget title tends to end in. On its own this is not enough to
 # end a grid - see _title_of_next_widget.
+#
+# "per Line Item" earns its place: Reliance Bank prints Line Item Performance
+# on one page and PPC Cost per Line Item on the next, listing the same line.
+# With no boundary between them the grid ran straight on and counted that line
+# twice - 17,380 impressions and 3,748 clicks against 8,690 and 1,874 on the
+# report, and two fails on a report with nothing wrong with it.
 NEXT_WIDGET = re.compile(
     r"^\s*\S.*(?:Performance|Breakout|Publishers|Screenshots|Details|"
-    r"Conversions|by Strategy|by Day|by Creative|by Ad Size)\s*$")
+    r"Conversions|per Line Item|by Strategy|by Day|by Creative|by Ad Size|"
+    r"by Age|by Gender|by Device|by Placement)\s*$")
 
 
 def _is_chrome(line: str) -> bool:
@@ -295,7 +302,15 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
     that breakdown exists in the text.
     """
     out = []
+    # ONE LINE ITEM, COUNTED ONCE. A line item name is unique on a report, so
+    # the same name reaching this twice means two widgets listed it - Line Item
+    # Performance and PPC Cost per Line Item both carry Reliance Bank's single
+    # PPC line - and adding both doubles a campaign that is perfectly correct.
+    seen: set[str] = set()
     for name, at in line_item_names(text):
+        key = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+        if key and key in seen:
+            continue
         eol = text.find("\n", at)
         line = text[at:eol if eol > 0 else len(text)]
         cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
@@ -307,8 +322,10 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
                 except ValueError:
                     pass
         if len(vals) >= 2:
+            seen.add(key)
             out.append((name, vals[0], vals[1]))
         elif len(vals) == 1:
+            seen.add(key)
             # DOOH counts in "DOOH Ads Served" and has no clicks column, so its
             # rows carry one number. Skipping them left the line item sum
             # 36,666 short of a top line that plainly included them - exactly
@@ -362,6 +379,17 @@ def check_truncated_text(ctx) -> list[dict]:
         if _is_chrome(line):
             continue
         for m in ELLIPSIS.finditer(line):
+            # AN ELLIPSIS WITH MORE WORDS AFTER IT IS PUNCTUATION.
+            #
+            # Shy Beaver names its creative "The lake is calling... are you
+            # ready to answer" and got failed for two labels cut off. Text
+            # that ran out of room has no more words after it - that is what
+            # running out of room means. A figure can still follow, because a
+            # donut prints "Category Tar...: 77.78%", so it is letters that
+            # decide, not emptiness.
+            tail = re.split(r"\s{2,}", line[m.end():], 1)[0]
+            if re.search(r"[A-Za-z]", tail):
+                continue
             frag = line[max(0, m.start() - 40):m.end() + 8].strip()
             if frag not in cut:
                 cut.append(frag)

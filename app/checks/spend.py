@@ -67,8 +67,74 @@ def tile_value(text: str, label: str) -> float | None:
     return None
 
 
+# "<Product> Cost per Line Item" - the grid, for reports that print no tile.
+COST_GRID = re.compile(r"^[ \t]*(.+?)\s+Cost per Line Item[ \t]*$", re.M)
+
+# The grid says so itself when it is a top-N list, and a partial total is worse
+# than none: it paces a full month as short.
+TRUNCATED = "Grid contains more rows"
+
+
+def grid_spend(text: str) -> dict[str, float]:
+    """Spend read off the cost grid, for reports with no Spend Overview tile.
+
+    Reliance Bank is twelve pages of PPC with no tile anywhere - its only cost
+    is the 1,824.25 in PPC Cost per Line Item - so pacing printed a dash where
+    the month's spend belongs and said "no comparison" about a number that is
+    on the report.
+
+    The Cost column is found by its own header rather than by position: the
+    grid also carries Impressions, Clicks, CTR and Avg. CPC, and taking the
+    money-looking one gives the cost-per-click as often as the cost.
+    """
+    out: dict[str, float] = {}
+    names = {p.lower(): p for _l, p in SPEND_TILES if p}
+    lines = text.split("\n")
+    for m in COST_GRID.finditer(text):
+        product = names.get(m.group(1).strip().lower())
+        if not product:
+            continue
+        i = text.count("\n", 0, m.start()) + 1
+        col, total, rows = None, 0.0, 0
+        for line in lines[i:i + 60]:
+            t = line.strip()
+            if not t:
+                continue
+            if TRUNCATED in line:
+                col, rows = None, 0
+                break
+            cells = [c for c in re.split(r"\s{2,}", t) if c]
+            if col is None:
+                if "Cost" in cells:
+                    col = cells.index("Cost")
+                continue
+            if _ends_the_grid(line, cells):
+                break
+            if len(cells) <= col:
+                continue
+            try:
+                total += float(cells[col].replace(",", "").lstrip("$"))
+                rows += 1
+            except ValueError:
+                continue
+        if col is not None and rows:
+            out[product] = total
+    return out
+
+
+def _ends_the_grid(line: str, cells: list[str]) -> bool:
+    """The next widget's heading: one cell, and not a number."""
+    if COST_GRID.match(line):
+        return True
+    return len(cells) == 1 and not re.fullmatch(r"[\d,.$%-]+", cells[0])
+
+
 def report_spend(text: str) -> dict[str, float]:
-    """Every product whose spend this report prints."""
+    """Every product whose spend this report prints.
+
+    The tile wins where there is one: it is the whole month, and the grid can
+    be a top-N list. The grid fills in for a report that prints no tile at all.
+    """
     out: dict[str, float] = {}
     for label, product in SPEND_TILES:
         if not product:
@@ -76,4 +142,6 @@ def report_spend(text: str) -> dict[str, float]:
         got = tile_value(text, label)
         if got is not None:
             out[product] = got
+    for product, got in grid_spend(text).items():
+        out.setdefault(product, got)
     return out

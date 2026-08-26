@@ -949,3 +949,41 @@ def test_a_small_placement_at_46_percent_is_still_a_finding():
             "Slicing Hero: Sword Master     783   365   46.62%\n")
     out = q.check_site_ctr({"text": text})
     assert len(out) == 1 and "Slicing Hero" in out[0]["detail"]
+
+
+# ------------------------------------------- build 73: false positives, fixed
+def test_a_creative_named_with_an_ellipsis_is_not_a_cut_off_label():
+    """Shy Beaver's creative is called "The lake is calling... are you ready to
+    answer". Two of those on one report, two fails, nothing wrong."""
+    text = ("Social Mirror Creative Performance\n"
+            " Preview Image   Creative Name   Impressions   Clicks\n"
+            "   Shy Beaver Boat Center_SM_7.31.26_The lake is calling..."
+            " are you ready to answer   3,174   33\n")
+    assert q.check_truncated_text({"text": text}) == []
+
+
+def test_a_donut_label_cut_off_before_its_value_is_still_found():
+    """The figure after the ellipsis is not another word - the label really did
+    run out of room."""
+    text = ("Line Item Performance\nName   Impressions\n"
+            "Category Tar...: 77.78%\n")
+    out = q.check_truncated_text({"text": text})
+    assert any("Category Tar..." in f["detail"] for f in out)
+
+
+def test_one_line_item_listed_by_two_widgets_is_counted_once():
+    """Reliance Bank's single PPC line appears in Line Item Performance and
+    again in PPC Cost per Line Item. Added twice it read as 17,380 impressions
+    and 3,748 clicks against 8,690 and 1,874 on the report."""
+    text = ("  RELIANCE BANK - PAGE 3\n"
+            "  Line Item Performance\n"
+            "     Line Item Name              Impressions   Clicks     CTR\n"
+            "     Reliance Bank - Keyword PPC       8,690    1,874  21.57%\n"
+            "\n"
+            "  RELIANCE BANK - PAGE 4\n"
+            "  PPC Cost per Line Item\n"
+            "     Ad Group                    Impressions   Clicks     CTR"
+            "        Cost   Avg. CPC\n"
+            "     Reliance Bank - Keyword PPC       8,690    1,874  21.57%"
+            "    1,824.25       0.97\n")
+    assert q.line_item_totals(text) == [("Reliance Bank - Keyword PPC", 8690.0, 1874.0)]

@@ -212,3 +212,18 @@ def test_every_view_of_the_stored_file_carries_a_version_token():
     html = (TPL / "viewer.html").read_text()
     for m in re.finditer(r'"(/report/\{\{ rep\.id \}\}/(?:file|logo\.png))([^"]*)"', html):
         assert "v={{ file_v }}" in m.group(2), m.group(0)
+
+
+def test_the_report_page_says_which_kind_of_report_it_is():
+    """Only the lifetime pill was printed, so a monthly was "a report with no
+    lifetime pill" - readable only if you knew the pill existed."""
+    html = (TPL / "viewer.html").read_text()
+    assert '<span class="pill p-info">lifetime</span>' in html
+    assert '<span class="pill p-month">monthly</span>' in html
+    assert ".p-month{" in (TPL / "base.html").read_text()
+
+
+def test_upload_and_done_sit_on_one_line():
+    html = (TPL / "cycle.html").read_text()
+    assert '<div class="rowacts">' in html
+    assert ".rowacts{display:flex" in html

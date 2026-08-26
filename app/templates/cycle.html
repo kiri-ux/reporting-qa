@@ -481,6 +481,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
           {% endif %}</td>
         <td class="nw">
           {% if not e.report %}
+           <div class="rowacts">
             {# Some reports never come through the feed - pulled by hand, sent
                to the wrong address, rebuilt after a fix. Without this the row
                sat at "Not received" while the PDF was on somebody's desktop. #}
@@ -513,6 +514,7 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
                         title="Handled this month with no PDF - next month it is back asking for a report">Done, no report</button>
               {% endif %}
             </form>
+           </div>
           {% elif e.report %}
           {# View PDF lives with sign-off, not with the findings: opening the
              report and judging it are the same action. #}
@@ -655,6 +657,9 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
 .secbar .tabs form{margin:0;display:inline-flex}
 .gfoot form{display:inline}
 .upform{margin:0}
+/* Upload and Done side by side: stacked, they doubled the height of every
+   unreceived row and pushed the table past a screen. */
+.rowacts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .uplabel{display:inline-flex;align-items:center;font-family:'GT Walsheim Pro',sans-serif;
  font-size:11.5px;font-weight:700;padding:4px 11px;border-radius:13px;cursor:pointer;
  border:1px dashed var(--line);color:var(--ink-2);background:var(--surface)}

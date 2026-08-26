@@ -139,9 +139,17 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
                      "basis": want.get("basis") or "",
                      "pace": pacing_pct(got, want.get("impressions"))})
 
+    # NOTHING WAS BOUGHT ON IMPRESSIONS, SO THERE IS NOTHING TO PACE ON THEM.
+    #
+    # A PPC-only order still serves impressions and the report still prints
+    # them, but they are not what the month was sold on. "17,380/- no
+    # comparison" sat above the spend row, putting the number nobody paces
+    # where the eye lands first and making it look like a missing order figure.
+    bought_impressions = any(r["unit"] != "money" for r in rows)
+
     want_total = sum(v["impressions"] for p, v in ordered.items()
                      if p not in SPEND_PRODUCTS and v.get("impressions") is not None)
-    if want_total or served["total"]:
+    if bought_impressions and (want_total or served["total"]):
         rows.append({"product": "All impressions", "unit": "impressions",
                      "served": served["total"] or None,
                      "ordered": want_total or None,

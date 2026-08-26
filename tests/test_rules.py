@@ -2136,3 +2136,123 @@ def test_dropbox_delivers_a_folder_of_pdfs_not_a_zip():
     # And the link it hands over is view-only.
     link = inspect.getsource(delivery._dropbox_link)
     assert "RequestedLinkAccessLevel" in link and "viewer" in link
+
+
+# --------------------------------------------- build 73: false errors, fixed
+def test_a_donut_device_widget_with_a_glossary_under_it_flags_nothing():
+    """Reliance Bank draws Device Performance as a donut. Under it TapClicks
+    prints its click-type glossary - seven sentences, read as seven
+    unrecognized devices."""
+    from app.checks.rules import check_devices_known
+    text = ("   RELIANCE BANK - PAGE 8\n"
+            "   Click Type Performance                  Device Performance\n"
+            "   URL_CLICKS: 97.33%                      MOBILE: 57.15%\n"
+            "   CALLS: 2.67%                            DESKTOP: 39.86%\n"
+            "   URL Click: When users click on the final URL in an ad.\n"
+            "   Headline Click: Clicks on the ad's main headline.\n"
+            "   Location Expansion: Clicks on ads shown to users near you.\n")
+    assert check_devices_known({"text": text}) == []
+
+
+def test_a_real_device_table_still_catches_what_is_not_a_device():
+    from app.checks.rules import check_devices_known
+    text = ("   Device Performance\n"
+            "   Device Name       Impressions     Clicks\n"
+            "   Mobile                 12,000        300\n"
+            "   Tubi                    4,000        100\n")
+    out = check_devices_known({"text": text})
+    assert len(out) == 1 and "Tubi" in out[0]["detail"]
+
+
+def test_a_misspelled_client_on_the_order_is_not_a_different_client():
+    """The order was booked "Jiffy Lube Jonhstown". Every line item on the
+    report reads "Jiffy Lube Johnstown", and the whole report failed for it."""
+    from app.checks.rules import check_client_data
+    text = ("Line Item Performance\n"
+            " Line Item Name   Impressions   Clicks   CTR\n"
+            " Jiffy Lube Johnstown - AI Social Mirror   42,896   60   0.14%\n"
+            " Jiffy Lube Johnstown - AI Video   19,110   26   0.14%\n")
+    out = check_client_data({"client": "Jiffy Lube Jonhstown", "text": text})
+    assert [f["severity"] for f in out] == ["info"]
+    assert out[0]["code"] == "client_name_typo"
+
+
+def test_a_genuinely_different_client_still_fails():
+    from app.checks.rules import check_client_data
+    text = ("Line Item Performance\n"
+            " Line Item Name   Impressions   Clicks   CTR\n"
+            " Honda of State College - AI Social Mirror   42,896   60   0.14%\n"
+            " Honda of State College - AI Video   19,110   26   0.14%\n")
+    out = check_client_data({"client": "Jiffy Lube Johnstown", "text": text})
+    assert [f["code"] for f in out] == ["wrong_client"]
+
+
+def test_a_lifetime_that_starts_before_the_campaign_is_not_flagged():
+    """Allegheny Orthodontic's lifetime printed May 04, 2025 to Aug 04, 2026
+    against an order running May 04, 2026 to Aug 04, 2026 - a year of empty
+    calendar on the front, which is where TapClicks starts a lifetime pull.
+    Nothing is missing, and it was flagged as starting AFTER the campaign."""
+    import datetime as dt
+    from app.checks.rules import check_date_range
+    out = check_date_range({
+        "is_lifetime": True,
+        "date_range": (dt.date(2025, 5, 4), dt.date(2026, 8, 4)),
+        "flight": (dt.date(2026, 5, 4), dt.date(2026, 8, 4)),
+        "flight_lines": []})
+    assert out == []
+
+
+def test_delivery_more_than_half_off_the_order_is_a_finding():
+    """568,121 served against 180,000 ordered was a number in a panel nobody
+    had to read."""
+    from app.checks.rules import check_impression_pacing
+    text = ("Line Item Performance\n"
+            " Line Item Name   Impressions   Clicks   CTR\n"
+            " Allegheny Orthodontic Associates - Parents Premium Facebook"
+            "   568,121   7,915   1.39%\n")
+    out = check_impression_pacing({
+        "text": text,
+        "ordered": {"Meta": {"impressions": 180000.0, "budget": None,
+                             "basis": "3 months at the monthly figure"}}})
+    assert len(out) == 1 and "over" in out[0]["title"]
+
+
+def test_delivery_close_to_the_order_says_nothing():
+    from app.checks.rules import check_impression_pacing
+    text = ("Line Item Performance\n"
+            " Line Item Name   Impressions   Clicks   CTR\n"
+            " Acme - Parents Premium Facebook   190,000   1,000   0.53%\n")
+    assert check_impression_pacing({
+        "text": text,
+        "ordered": {"Meta": {"impressions": 180000.0, "budget": None}}}) == []
+
+
+def test_a_report_pulled_entirely_on_the_wrong_client_is_caught():
+    """St. Francis AMT Program's July slot held six pages of Everett Railroad
+    Co - cover page, line items, every widget. The file agreed with itself
+    perfectly, so check_client_data had nothing to say, and the only finding on
+    the board was a TikTok line missing from a report that was never St.
+    Francis's."""
+    from app.checks.rules import check_client_matches_order
+    out = check_client_matches_order({"filed_as": "St. Francis AMT Program",
+                                      "client": "Everett Railroad Co"})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert "Everett Railroad Co" in out[0]["detail"]
+
+
+def test_a_client_written_two_ways_is_not_the_wrong_client():
+    from app.checks.rules import check_client_matches_order
+    assert check_client_matches_order({
+        "filed_as": "The Home Store",
+        "client": "River Valley Builders/The Home Store"}) == []
+    assert check_client_matches_order({
+        "filed_as": "Jiffy Lube Jonhstown", "client": "Jiffy Lube Johnstown"}) == []
+
+
+def test_a_hand_saved_file_names_nobody_so_nothing_is_claimed():
+    """"Digital Marketing Report.pdf" is what TapClicks calls every file you
+    download by hand."""
+    from app.checks.rules import _filed_client
+    assert _filed_client("Digital Marketing Report.pdf") == ""
+    assert _filed_client("Lifetime_St. Francis AMT Program 55160.pdf") \
+        == "St. Francis AMT Program"

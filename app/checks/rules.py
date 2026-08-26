@@ -769,6 +769,55 @@ def check_lifetime_goal(ctx) -> list[dict]:
                trace=trace)]
 
 
+# Anything further off the order than this gets a finding of its own rather
+# than only a number in the pacing panel.
+PACE_BAND = 50.0
+
+
+def check_impression_pacing(ctx) -> list[dict]:
+    """Impressions more than 50% off the order, either way.
+
+    Spend has its own check above. This is the other half - and the half that
+    covers a lifetime, where the campaign is finished and the number is final.
+
+    The pacing panel has always shown the percentage. A number in a panel is
+    something you have to go and read; a finding is something that finds you -
+    and 568,121 served against 180,000 ordered is not a rounding difference,
+    it is either the wrong order attached or a campaign nobody is watching.
+    """
+    ordered = ctx.get("ordered") or {}
+    if not ordered:
+        return []
+    from .served import pacing_rows
+
+    out = []
+    for row in pacing_rows(ctx.get("text") or "", ordered):
+        pace = row.get("pace")
+        if pace is None or abs(pace) < PACE_BAND or row.get("total"):
+            continue
+        if row["unit"] == "money":
+            continue                        # check_pacing already has the money
+
+        def fmt(v):
+            return f"{v:,.0f}"
+        word = "over" if pace > 0 else "short"
+        trace = [("Served on the report", fmt(row["served"])),
+                 ("Ordered", fmt(row["ordered"])),
+                 ("Difference", f"{pace:+.0f}%")]
+        if row.get("basis"):
+            trace.append(("Order figure is", row["basis"]))
+        out.append(_f("pacing_off", "warn",
+                      f"{row['product']} is {abs(pace):.0f}% {word}",
+                      f"{fmt(row['served'])} served against {fmt(row['ordered'])} "
+                      f"ordered"
+                      + (f" ({row['basis']})" if row.get("basis") else "")
+                      + f". More than {PACE_BAND:.0f}% either way is worth a look "
+                        f"before this goes out - either the order attached is "
+                        f"the wrong one, or the campaign needs a conversation.",
+                      trace=trace))
+    return out
+
+
 def check_market_logo(ctx) -> list[dict]:
     """The corner of page one must not carry the reporting tool's own mark.
 
@@ -793,6 +842,27 @@ def _client_of(line_item: str) -> str:
     """
     head = (line_item or "").split(" - ")[0]
     return re.sub(r"[^a-z0-9]", "", head.lower())
+
+
+# How close two spellings of a client have to be to be the same client. A
+# transposition inside a name this long scores about .89; two different
+# companies whose names both start "Jiffy Lube" score well under .8, because
+# what follows is what tells them apart and that is where the difference is.
+NAME_MATCH = 0.85
+
+
+def _client_head(rows) -> str:
+    """The client name as the line items write it, unflattened."""
+    biggest = max(rows, key=lambda r: r[1])[0] if rows else ""
+    return (biggest or "").split(" - ")[0].strip() or "?"
+
+
+def near(a: str, b: str) -> bool:
+    """One name misspelled, rather than two different names."""
+    from difflib import SequenceMatcher
+    if min(len(a), len(b)) < 8:
+        return False                      # too short for a typo to be obvious
+    return SequenceMatcher(None, a, b).ratio() >= NAME_MATCH
 
 
 def check_client_data(ctx) -> list[dict]:
@@ -832,11 +902,30 @@ def check_client_data(ctx) -> list[dict]:
 
     # "The Home Store" and "River Valley Builders/The Home Store" are one
     # client written two ways, so containment counts as a match.
+    #
+    # SO DOES A TYPO. The order for Jiffy Lube Johnstown was booked as "Jiffy
+    # Lube Jonhstown", two letters transposed, and against line items reading
+    # "Jiffy Lube Johnstown - AI Video" that came out as 100% of the
+    # impressions belonging to somebody else. A misspelled order is a
+    # misspelled order; it is not a report pulled on the wrong client.
     def same(a: str, b: str) -> bool:
-        return a == b or (len(a) >= 6 and len(b) >= 6 and (a in b or b in a))
+        if a == b or (len(a) >= 6 and len(b) >= 6 and (a in b or b in a)):
+            return True
+        return near(a, b)
 
     mine = sum(v for k, v in hits.items() if same(k, named))
     if mine / total >= 0.5:
+        # Right client, spelled two ways. Not a report problem, but somebody
+        # has to fix the order before it turns up on an invoice.
+        typo = [k for k, v in sorted(hits.items(), key=lambda kv: -kv[1])
+                if same(k, named) and k != named and k not in named
+                and named not in k]
+        if typo:
+            return [_f("client_name_typo", "info",
+                       "The order spells this client's name differently",
+                       f"The order says \"{ctx.get('client')}\". The report's "
+                       f"line items say \"{_client_head(rows)}\". Same client - "
+                       f"the order has the typo.")]
         return []
 
     top = sorted(hits.items(), key=lambda kv: -kv[1])
@@ -858,6 +947,52 @@ def check_client_data(ctx) -> list[dict]:
                       ("Line items name", ", ".join(k for k, _ in top[:3])),
                       ("Impressions on this client",
                        f"{mine:,.0f} of {total:,.0f}")])]
+
+
+def _flat_name(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _same_client(a: str, b: str) -> bool:
+    """One client written two ways, or misspelled once."""
+    if not a or not b:
+        return False
+    if a == b or (len(a) >= 6 and len(b) >= 6 and (a in b or b in a)):
+        return True
+    return near(a, b)
+
+
+def check_client_matches_order(ctx) -> list[dict]:
+    """The report has to be for the client whose slot it arrived in.
+
+    THIS IS THE ONE THAT CATCHES A WHOLE REPORT PULLED ON THE WRONG CLIENT.
+
+    check_client_data compares the report against itself - cover page against
+    line items - and a report pulled entirely on the wrong client agrees with
+    itself perfectly. St. Francis AMT Program's July slot held six pages of
+    Everett Railroad Co: cover page, line items, every widget. Nothing in the
+    file disagreed with anything else in it, so nothing was said, and the only
+    finding on the board was a TikTok line missing from a report that was never
+    St. Francis's to begin with.
+
+    The name the file arrived under is the other half of the comparison, and it
+    matters more than it looks: every other check on this report - the products
+    owed, the order it paces against, the flight its dates are judged on - was
+    built from that name.
+    """
+    filed = _flat_name(ctx.get("filed_as") or "")
+    cover = _flat_name(ctx.get("client") or "")
+    if len(filed) < 5 or len(cover) < 5 or _same_client(filed, cover):
+        return []
+    return [_f("wrong_client_file", "fail",
+               "This is a different client's report",
+               f"It arrived as {ctx['filed_as']}'s report and the cover page "
+               f"says {ctx['client']}. Everything else checked here - the "
+               f"products owed, the order it paced against, the dates - was "
+               f"worked out from {ctx['filed_as']}, so the rest of this page is "
+               f"about the wrong campaign. Re-pull it in TapClicks.",
+               trace=[("Filed as", ctx.get("filed_as") or "?"),
+                      ("Cover page says", ctx.get("client") or "?")])]
 
 
 def check_date_range(ctx) -> list[dict]:
@@ -913,16 +1048,18 @@ def check_date_range(ctx) -> list[dict]:
                 "lifetime_cut", "fail", "Lifetime report stops before the campaign ends",
                 f"Printed {printed}, but the latest order runs to {w_end.strftime(fmt)}.",
                 trace=trace))
-        # AND THE OTHER DIRECTION. A range that reaches past the campaign is not
-        # missing data, but it is not what the order says either - a lifetime
-        # printed to the end of the month on a campaign that stopped on the 9th
-        # tells the client it ran three weeks it did not.
-        if (w_start - start).days > 3:
-            out.append(_f(
-                "lifetime_late_start", "warn", "Lifetime report starts after the campaign did",
-                f"Printed {printed}, but the earliest order starts "
-                f"{w_start.strftime(fmt)}. Either the range is wrong or an order "
-                f"is missing from the pull.", trace=trace))
+        # A RANGE THAT STARTS BEFORE THE CAMPAIGN IS NOT A FINDING.
+        #
+        # Allegheny Orthodontic's lifetime printed May 04, 2025 to Aug 04, 2026
+        # against an order running May 04, 2026 to Aug 04, 2026 - a year of
+        # empty calendar on the front, because that is where TapClicks starts a
+        # lifetime pull. Nothing is missing and no number changes. It was
+        # flagged, and worse, flagged as starting AFTER the campaign, which is
+        # the opposite of what the dates said.
+        #
+        # The end is different and still warns: a lifetime printed to the end
+        # of the month on a campaign that stopped on the 9th tells the client
+        # it ran three weeks it did not.
         if w_end and (end - w_end).days > 3:
             out.append(_f(
                 "lifetime_overrun", "warn", "Lifetime report runs past the campaign end",
@@ -1052,11 +1189,35 @@ def check_devices_known(ctx) -> list[dict]:
         return []
     block = _widget_block(text, i + len("Device Performance"), 3000)
 
-    odd = []
-    for line in block.split("\n"):
-        if not line.strip() or line.startswith((" ", "\t")):
+    # THE COLUMN HEADER SETS WHERE A ROW STARTS, AND WHETHER THERE IS A TABLE.
+    #
+    # Reliance Bank draws this widget as a donut, with no table under it at all
+    # - just TapClicks' click-type glossary, "URL Click: When users click on
+    # the final URL in an ad." and six more, which came out as seven
+    # unrecognized devices. No header, no table, nothing to check.
+    #
+    # And where there is a table, a device's description wraps onto the next
+    # line with the row's figures printed beside the wrapped half, so "content
+    # directly on the TV.  14,999  24  0.16%" looks exactly like a row until
+    # you notice it starts fifteen columns further in than the header does.
+    lines = [ln for ln in block.split("\n") if ln.strip()]
+    edge = None
+    for ln in lines:
+        cells = re.split(r"\s{2,}", ln.strip())
+        if len(cells) < 2 or any(as_number(c) is not None for c in cells):
             continue
-        cells = re.split(r"\s{2,}", line.strip())
+        if cells[0].strip().lower() in ("device name", "device") or \
+                any(c.strip().lower() == "impressions" for c in cells):
+            edge = len(ln) - len(ln.lstrip())
+            break
+    if edge is None:
+        return []
+
+    odd = []
+    for ln in lines:
+        if abs((len(ln) - len(ln.lstrip())) - edge) > 1:
+            continue
+        cells = re.split(r"\s{2,}", ln.strip())
         name = cells[0].strip()
         if not name or name.lower() in ("device name", "device", "description"):
             continue
@@ -1249,8 +1410,12 @@ CHECKS: list[tuple] = [
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
     (check_client_data,    "The data on the report belongs to the client it names"),
+    (check_client_matches_order,
+     "The report is for the client whose slot it arrived in"),
     (check_market_logo,    "Page one carries the partner's logo, not a generic one"),
     (check_pacing,         "A full month's spend is close to a full month's budget"),
+    (check_impression_pacing,
+     "Delivery is within 50% of what the order asked for"),
     (check_lifetime_goal,  "A finished campaign delivered what it was sold"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
@@ -1276,6 +1441,8 @@ SKIP_WHY = {
     "check_products": "no order list loaded for this client, or the loaded one "
                       "was read by older import code",
     "check_date_range": "the report prints no date range",
+    "check_client_matches_order": "the file it arrived as carries no client name",
+    "check_impression_pacing": "no order figures loaded for this client",
     "check_headline_ctr": "no top-line impressions or clicks on the report",
     "check_line_items": "no grids on the report",
     "check_creative": "no grids on the report",
@@ -1325,11 +1492,17 @@ def _rule_applies(rule, ctx) -> bool:
                 and ctx.get("orders_current", True))
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
+    if name == "check_client_matches_order":
+        # Needs a NAMED file. A report saved by hand is called "Digital
+        # Marketing Report.pdf" and says nothing about who it is for.
+        return bool(ctx.get("filed_as")) and bool(ctx.get("client"))
     if name == "check_client_data":
         # Needs a client to compare against and line items that name one.
         return bool(ctx.get("client")) and bool(ctx.get("text"))
     if name == "check_lifetime_goal":
         return bool(ctx.get("is_lifetime")) and bool(ctx.get("ordered"))
+    if name == "check_impression_pacing":
+        return bool(ctx.get("ordered"))
     if name == "check_pacing":
         # Needs a budget on the order AND a spend on the report. Most products
         # print no spend at all, and most orders have no budget loaded yet.
@@ -1450,6 +1623,12 @@ def _client_named(text: str, filename: str) -> str:
     return from_name.get("client", "") if from_name.get("named") else ""
 
 
+def _filed_client(filename: str) -> str:
+    """The client the FILE is named for, or "" when it carries no name."""
+    got = meta_from_filename(filename or "")
+    return got.get("client", "") if got.get("named") else ""
+
+
 def run_all(path: Path, filename: str | None = None,
             expected_products: set[str] | None = None,
             flight: tuple | None = None, flight_lines: list | None = None,
@@ -1533,6 +1712,11 @@ def run_all(path: Path, filename: str | None = None,
         # else being a client named Digital Marketing Report. The cover page
         # says who it is for; the filename only says so when it was named.
         "client": _client_named(text, filename or path.name),
+        # WHO THE FILE SAID IT WAS FOR, before anything opened it. The whole
+        # check suite is built from this name - the products, the order, the
+        # flight - so when it disagrees with the cover page, every other
+        # finding on the report is being made against the wrong campaign.
+        "filed_as": _filed_client(filename or path.name),
     }
     findings: list[dict] = []
     checks: list[dict] = []
