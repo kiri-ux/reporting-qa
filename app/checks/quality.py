@@ -253,6 +253,30 @@ def _where(ctx, offset: int, widget: str = "") -> str:
     return " · ".join(bits)
 
 
+# The same wording as NEXT_WIDGET, scanned over a whole document rather than
+# matched against one line - NEXT_WIDGET has no re.M because every other caller
+# hands it a single line.
+WIDGET_TITLE = re.compile(NEXT_WIDGET.pattern, re.M)
+
+
+def widget_at(text: str, offset: int) -> str:
+    """The title of the widget this offset sits inside, or "".
+
+    A page number narrows a forty-page report to one page; the widget name
+    narrows it to one table on it. Between them a finding says where to look
+    without anybody scanning for the number it quoted.
+    """
+    if offset is None or offset < 0:
+        return ""
+    best = ""
+    for m in WIDGET_TITLE.finditer(text, 0, offset):
+        line = m.group(0).strip()
+        # A data row can end in a widget word; a title never carries numbers.
+        if not _looks_like_row(line):
+            best = line
+    return best[:60]
+
+
 def _sample(items: list[str], n: int = 8) -> str:
     """The first n, then a count. A finding somebody has to act on gets a
     bigger n - a list of names to fix is useless truncated at eight."""
@@ -539,7 +563,7 @@ def check_blank_screenshots(ctx) -> list[dict]:
     pages = ctx.get("page_words") or page_words(path)
     ctx["page_words"] = pages
 
-    blank = []
+    blank, first_page = [], 0
     for n, page in enumerate(pages, start=1):
         if not any(w[4] == "Screenshots" for w in page["words"]):
             continue
@@ -549,13 +573,15 @@ def check_blank_screenshots(ctx) -> list[dict]:
         for name, empty in _empty_cells(path, n, top, bottom, cells, page):
             if empty:
                 blank.append(f"page {n}: {name}")
+                first_page = first_page or n
     if not blank:
         return []
     return [_f("blank_screenshot", "fail",
                f"{len(blank)} ad screenshot did not render"
                if len(blank) == 1 else
                f"{len(blank)} ad screenshots did not render",
-               "Named, but no image in the cell: " + _sample(blank))]
+               "Named, but no image in the cell: " + _sample(blank),
+               where=f"p{first_page} · Ad Screenshots" if first_page else "")]
 
 
 def is_blank(crop) -> bool:
@@ -620,23 +646,28 @@ def check_conversion_names(ctx) -> list[dict]:
     """Conversions have to be named for what the user did."""
     text = ctx.get("text") or ""
     blank, retg = [], []
+    blank_at = retg_at = -1
     for m in CONVERSION_HEADER.finditer(text):
         where = section_at(text, m.start())
-        for name, _at in grid_rows(text, m.end()):
+        for name, at in grid_rows(text, m.end()):
             if unnamed(name):
                 blank.append(where)
+                blank_at = at if blank_at < 0 else blank_at
             elif RETARGETING.search(name) and name not in retg:
                 retg.append(name)
+                retg_at = at if retg_at < 0 else retg_at
     out = []
     if blank:
         out.append(_f("conversion_name_blank", "fail",
                       f"{len(blank)} conversion{'s' if len(blank) > 1 else ''} with no name",
-                      "Numbers but no label, on " + _sample(blank)))
+                      "Numbers but no label, on " + _sample(blank),
+                      where=_where(ctx, blank_at, widget_at(text, blank_at))))
     if retg:
         out.append(_f("conversion_name_retargeting", "fail",
                       f"{len(retg)} conversion{'s' if len(retg) > 1 else ''} named "
                f"after a targeting strategy",
-                      "Named for how they were reached, not what they did: " + _sample(retg)))
+                      "Named for how they were reached, not what they did: " + _sample(retg),
+                      where=_where(ctx, retg_at, widget_at(text, retg_at))))
     return out
 
 
@@ -689,18 +720,20 @@ def check_social_mirror_sizes(ctx) -> list[dict]:
     if any(x in market.lower() for x in SIZE_EXEMPT):
         return []
     text = ctx.get("text") or ""
-    bad = []
-    for title, name, _at in creative_rows(text):
+    bad, at_of = [], {}
+    for title, name, at in creative_rows(text):
         if not SOCIAL_MIRROR_GRID.search(title):
             continue
         if AD_SIZE.search(name) and name not in bad:
             bad.append(name)
+            at_of[name] = (at, title)
     if not bad:
         return []
     return [_f("social_mirror_ad_size", "fail",
                f"{len(bad)} Social Mirror creative"
                f"{'s' if len(bad) > 1 else ''} named with an ad size",
-               _sample(bad))]
+               _sample(bad),
+               where=_where(ctx, *at_of[bad[0]]))]
 
 
 # ------------------------------------------------- 7. widgets that errored
@@ -885,6 +918,7 @@ def check_social_placement_totals(ctx) -> list[dict]:
     m = PLACEMENT_GRID.search(text)
     if not m:
         return []
+    spot = _where(ctx, m.start(), m.group(0).strip()[:60])
 
     sums: dict[str, list[float]] = {}
     for name, imps, clicks in _placement_rows(text, m.end()):
@@ -908,7 +942,7 @@ def check_social_placement_totals(ctx) -> list[dict]:
                           f"own numbers",
                           f"{clicks:,.0f} clicks on {imps:,.0f} impressions is "
                           f"{clicks / imps * 100:.2f}%, but the tile prints "
-                          f"{ctr:.2f}%."))
+                          f"{ctr:.2f}%.", where=spot))
 
         got = sums.get(key)
         if not got:
@@ -929,7 +963,8 @@ def check_social_placement_totals(ctx) -> list[dict]:
                               f"{label} for {title.split(' Performance')[0]}, "
                               f"but the total beside it says {total:,.0f}. The "
                               f"grid is a subset of the total, so it cannot be "
-                              f"larger - a placement is being counted twice."))
+                              f"larger - a placement is being counted twice.",
+                              where=spot))
     return out
 
 
@@ -1087,6 +1122,17 @@ def section_bodies(text: str) -> dict[str, str]:
 WATCHED_PRODUCTS = ("Video", "CTV", "Social Mirror CTV", "Online Audio", "YouTube")
 
 
+def _section_at_offset(text: str, friendly: str) -> int:
+    """Where the section carrying this product's name begins, or -1."""
+    for banner, name in FRIENDLY_SECTION.items():
+        if name != friendly:
+            continue
+        i = text.find(banner)
+        if i >= 0:
+            return i
+    return -1
+
+
 def check_completion_present(ctx) -> list[dict]:
     """Every video and audio product has to report how much got watched."""
     text = ctx.get("text") or ""
@@ -1112,7 +1158,7 @@ def check_completion_present(ctx) -> list[dict]:
                f"{len(missing)} product{'s' if len(missing) > 1 else ''} with no "
                f"completion rate",
                "No completion figures anywhere in the section for: " + _sample(missing) + ".",
-               trace)]
+               trace, where=_where(ctx, _section_at_offset(text, missing[0])))]
 
 
 def _completion_without_sections(ctx, text: str) -> list[dict]:
@@ -1211,9 +1257,12 @@ def store_visits(text: str) -> dict | None:
 
 def check_store_visits(ctx) -> list[dict]:
     """The store visit figures have to agree with the table beneath them."""
-    got = store_visits(ctx.get("text") or "")
+    text = ctx.get("text") or ""
+    got = store_visits(text)
     if not got or got["clipped"] or not got["rows"]:
         return []
+    at = STORE_TABLE.search(text)
+    spot = _where(ctx, at.start() if at else -1, "Store Visits")
 
     out = []
     trace = [("Locations that tracked a visit", f"{got['locations']:,.0f}"
@@ -1230,7 +1279,8 @@ def check_store_visits(ctx) -> list[dict]:
                       f"The report says {got['locations']:,.0f} location"
                       f"{'s' if got['locations'] != 1 else ''} tracked a visit, "
                       f"and lists {len(got['rows'])}. The table is not clipped, "
-                      f"so they are counting different things.", trace))
+                      f"so they are counting different things.", trace,
+                      where=spot))
 
     if got["visits"] is not None and abs(sum(got["rows"]) - got["visits"]) > 0.5:
         out.append(_f("store_visits_mismatch", "fail",
@@ -1238,5 +1288,6 @@ def check_store_visits(ctx) -> list[dict]:
                       f"The Visits figure is {got['visits']:,.0f} and the store "
                       f"table adds up to {sum(got['rows']):,.0f} "
                       f"({sum(got['rows']) - got['visits']:+,.0f}). The table is "
-                      f"not clipped, so every visit should be in it.", trace))
+                      f"not clipped, so every visit should be in it.", trace,
+                      where=spot))
     return out

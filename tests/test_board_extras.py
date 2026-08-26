@@ -334,3 +334,38 @@ def test_every_pacing_caller_passes_the_flight_window():
         src = (root / f).read_text()
         for m in _re.finditer(r"ordered_for\(([^;]*?)\)\n", src):
             assert "window=" in m.group(1), f"{f}: {m.group(0)[:80]}"
+
+
+# Findings that are about the ORDER versus the whole report, not about a spot
+# on a page. A page number on these would be made up.
+NO_PLACE = {"product_missing", "product_rogue", "pacing", "pacing_off",
+            "rule_error", "completion_missing"}
+
+
+def test_every_finding_says_which_page_to_look_at():
+    """"Rate printed above 100%" on a forty-five page report is a scavenger
+    hunt. Made this note a lot."""
+    import ast
+    root = Path(__file__).resolve().parents[1] / "app" / "checks"
+    missing = []
+    for f in ("rules.py", "quality.py"):
+        for node in ast.walk(ast.parse((root / f).read_text())):
+            if not (isinstance(node, ast.Call)
+                    and getattr(node.func, "id", "") == "_f"):
+                continue
+            if "where" in {k.arg for k in node.keywords}:
+                continue
+            code = node.args[0].value if node.args else "?"
+            if code in NO_PLACE:
+                continue
+            missing.append(f"{f}:{node.lineno} {code}")
+    assert not missing, "findings with no page: " + "; ".join(missing)
+
+
+def test_the_rate_ceiling_finding_carries_its_page_and_widget():
+    from app.checks.rules import check_rate_ceiling
+    text = ("OVERVIEW - PAGE 1\nSocial Mirror Creative Performance\n"
+            " row   1   2\n"
+            "Completion Performance\n  Strategy   101.16%\n")
+    out = check_rate_ceiling({"text": text, "page_of": lambda _o: 12})
+    assert out[0]["where"] == "p12 · Completion Performance"

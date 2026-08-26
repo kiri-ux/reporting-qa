@@ -22,6 +22,7 @@ from .quality import (check_blank_screenshots, check_conversion_names,
                       check_social_placement_totals, COMPLETION_OWED,
                       section_bodies,
                       check_widget_errors, check_page_banners, SITE_GRID,
+                      widget_at,
                       line_item_names, creative_rows, PLACEMENT_GRID,
                       _where,
                       CONVERSION_HEADER, SOCIAL_MIRROR_GRID)
@@ -162,6 +163,23 @@ def _ctr_basis(ctx) -> tuple[float, float, float, float] | None:
     return sum(r[1] for r in keep), sum(r[2] for r in keep), all_i, all_c
 
 
+# EVERY FINDING SAYS WHERE TO LOOK.
+#
+# The three tiles and the date range are on page one of every report, so these
+# do not need finding in the text - they are simply where they always are.
+TILE_CTR = "p1 · Click-Through Rate"
+TILE_TOP = "p1 · Impressions and Clicks"
+COVER = "p1 · cover page"
+DATE_RANGE = "p1 · Date range"
+
+
+def _grid_spot(ctx, title: str = "Line Item Performance") -> str:
+    """Page and widget for the grid a top-line finding sends you to."""
+    text = ctx.get("text") or ""
+    at = text.find(title)
+    return _where(ctx, at, title) if at >= 0 else TILE_TOP
+
+
 def check_headline_ctr(ctx) -> list[dict]:
     imps, clicks, ctr = ctx["imps"], ctx["clicks"], ctx["ctr"]
     if not imps or clicks is None or ctr is None:
@@ -193,7 +211,7 @@ def check_headline_ctr(ctx) -> list[dict]:
                        f"OTT, YouTube and Performance Max out of both halves - "
                        f"{kept_c:,.0f} clicks over {kept_i:,.0f} impressions is "
                        f"{kept_c / kept_i * 100:.3f}%, which matches. The "
-                       f"report's own footnote says so. Expected.", trace)]
+                       f"report's own footnote says so. Expected.", trace, where=TILE_CTR)]
         # Guarded. Every line item on the report can be one the footnote
         # excludes - an Amazon CTV plus Amazon Video buy is exactly that - and
         # dividing by the empty remainder turned a check into a crash, which
@@ -205,7 +223,7 @@ def check_headline_ctr(ctx) -> list[dict]:
                    f"{imps:,.0f} impressions is {plain:.3f}%. Leaving out CTV, "
                    f"OTT, YouTube and Performance Max as the footnote says, "
                    f"{kept_c:,.0f} over {kept_i:,.0f} is {filtered}. "
-                   f"Neither is the stated rate.", trace)]
+                   f"Neither is the stated rate.", trace, where=TILE_CTR)]
 
     if excluded_here:
         # The products the footnote excludes are on this report, and the line
@@ -228,11 +246,11 @@ def check_headline_ctr(ctx) -> list[dict]:
                    f"tile leaves CTV, OTT, YouTube and Performance Max out of "
                    f"both halves and this report runs at least one of them, so "
                    f"the two are not comparable - and the line items left after "
-                   f"that do not give a rate either.", trace)]
+                   f"that do not give a rate either.", trace, where=TILE_CTR)]
 
     return [_f("headline_ctr", "fail", "Top-line CTR does not match its own numbers",
                f"Report states {ctr:.2f}%. {clicks:,.0f} clicks / {imps:,.0f} impressions "
-               f"= {plain:.3f}%.", trace)]
+               f"= {plain:.3f}%.", trace, where=TILE_CTR)]
 
 
 def check_line_items(ctx) -> list[dict]:
@@ -271,7 +289,8 @@ def check_line_items(ctx) -> list[dict]:
                        ("Difference", f"{si - imps:+,.0f} impressions"),
                        ("Largest line items",
                         "; ".join(f"{_short_name(n, 48)}: {i:,.0f}"
-                                  for n, i, _c in biggest))]))
+                                  for n, i, _c in biggest))],
+                      where=_grid_spot(ctx)))
 
     if clicks is None:
         return out
@@ -304,7 +323,8 @@ def check_line_items(ctx) -> list[dict]:
                        ("Line items counted", f"{len(rows)}"),
                        ("Their clicks", f"{sc:,.0f}"),
                        ("Names as read",
-                        "; ".join(_short_name(n, 70) for n, _i, _c in rows))]))
+                        "; ".join(_short_name(n, 70) for n, _i, _c in rows))],
+                      where=_grid_spot(ctx)))
         return out
 
     excl = sum(r[2] for r in excluded)
@@ -348,7 +368,7 @@ def check_line_items(ctx) -> list[dict]:
                       f"{clicks:,.0f}. The CTV and OTT line items carry {excl:,.0f} "
                       f"clicks, which that tile excludes and which accounts "
                       f"for all {abs(gap):,.0f} of the difference. Expected.",
-                      ctrace))
+                      ctrace, where=_grid_spot(ctx)))
     elif abs(unexplained) <= material:
         # Small, but not nothing. Saying "expected" would be a claim the
         # arithmetic does not support, and the remainder is worth a look even
@@ -360,14 +380,15 @@ def check_line_items(ctx) -> list[dict]:
                       f"{clicks:,.0f}. The CTV and OTT lines carry {excl:,.0f}, "
                       f"which that tile excludes - that leaves "
                       f"{abs(unexplained):,.0f} of the {abs(gap):,.0f} "
-                      f"difference.", ctrace))
+                      f"difference.", ctrace, where=_grid_spot(ctx)))
     else:
         out.append(_f("line_items_clicks", "fail",
                       "Line item clicks do not sum to the top line",
                       f"Line items total {sc:,.0f} clicks against a stated "
                       f"{clicks:,.0f} ({gap:+,.0f}). The CTV and OTT lines carry "
                       f"{excl:,.0f}, which that tile can exclude. "
-                      f"{abs(unexplained):,.0f} clicks unaccounted for.", ctrace))
+                      f"{abs(unexplained):,.0f} clicks unaccounted for.", ctrace,
+                      where=_grid_spot(ctx)))
     return out
 
 
@@ -378,15 +399,21 @@ def check_creative(ctx) -> list[dict]:
         return []
     si = sum(t.total("Impressions") for t in tables)
     if si > imps * 1.001:
+        spot = _where(ctx, ctx["text"].find(tables[0].title or ""),
+                      tables[0].title or "Creative Performance")
         return [_f("creative_over_top", "fail",
                    "Creative table claims more than the campaign delivered",
                    f"Creative tables total {si:,.0f} impressions against a stated {imps:,.0f} "
-                   f"(+{si - imps:,.0f}). Usually a de-duplication problem upstream.")]
+                   f"(+{si - imps:,.0f}). Usually a de-duplication problem upstream.",
+                   where=spot)]
     if si < imps * 0.999:
+        spot = _where(ctx, ctx["text"].find(tables[0].title or ""),
+                      tables[0].title or "Creative Performance")
         return [_f("creative_under_top", "info",
                    "Creative tables cover part of the campaign",
                    f"Creative tables total {si:,.0f} against {imps:,.0f}. Normal when a channel "
-                   f"(CTV, Performance Max) reports completions or events rather than clicks.")]
+                   f"(CTV, Performance Max) reports completions or events rather than clicks.",
+                   where=spot)]
     return []
 
 
@@ -462,9 +489,11 @@ def check_row_math(ctx) -> list[dict]:
                 continue
             expected = clicks / imps * 100
             if abs(expected - ctr) > max(0.011, expected * 0.03):
+                at = ctx["text"].find(name[:40]) if name else -1
                 out.append(_f("row_ctr", "warn", "Row CTR does not match its own numbers",
                               f"{t.title or 'table'} / \"{name[:60]}\": shows {ctr:.2f}%, "
-                              f"{clicks:.0f}/{imps:.0f} = {expected:.3f}%."))
+                              f"{clicks:.0f}/{imps:.0f} = {expected:.3f}%.",
+                              where=_where(ctx, at, t.title or "")))
     return out[:5]
 
 
@@ -472,22 +501,32 @@ RATE_RE = re.compile(r"\b(\d{2,4}\.\d{2})%")
 
 
 def check_rate_ceiling(ctx) -> list[dict]:
-    bad = sorted({m for m in RATE_RE.findall(ctx["text"]) if float(m) > 100})
+    text = ctx["text"]
+    bad, first = set(), -1
+    for m in RATE_RE.finditer(text):
+        if float(m.group(1)) > 100:
+            bad.add(m.group(1))
+            if first < 0:
+                first = m.start()
     if not bad:
         return []
     return [_f("rate_over_100", "warn", "Rate printed above 100%",
-               "Values found: " + ", ".join(f"{b}%" for b in bad[:5]) +
-               ". Completion rates and CTR cannot exceed 100%.")]
+               "Values found: " + ", ".join(f"{b}%" for b in sorted(bad)[:5]) +
+               ". Completion rates and CTR cannot exceed 100%.",
+               where=_where(ctx, first, widget_at(text, first)))]
 
 
 # ---------------------------------------------------------------- previews
 def check_thumbnails(ctx) -> list[dict]:
-    n = ctx["text"].count("Thumbnail not available")
+    text = ctx["text"]
+    n = text.count("Thumbnail not available")
     if not n:
         return []
+    at = text.find("Thumbnail not available")
     return [_f("missing_thumbnail", "warn",
                f"{n} creative preview{'s' if n > 1 else ''} did not render",
-               'The report prints "Thumbnail not available" in place of the preview image.')]
+               'The report prints "Thumbnail not available" in place of the preview image.',
+               where=_where(ctx, at, widget_at(text, at)))]
 
 
 # ---------------------------------------------------------------- empty widgets
@@ -515,7 +554,7 @@ def check_blank_pages(ctx) -> list[dict]:
     detail = "; ".join(f"page {p} of {pages}: {t}" for p, t in hits[:4])
     return [_f("blank_widget_page", "warn",
                f"{len(hits)} page{'s' if len(hits) > 1 else ''} with a widget but no data",
-               detail)]
+               detail, where=f"p{hits[0][0]}")]
 
 
 # ---------------------------------------------------------------- geo-fencing
@@ -558,7 +597,9 @@ def check_geofence_names(ctx) -> list[dict]:
     return [_f("geofence_no_business_name", "info",
                "Geo-fence rows have no business name",
                f"{len(blank)} of {len(rows)} rows show an address with no business name, "
-               f"latitude or longitude. Expected if the fence was built from an address list.")]
+               f"latitude or longitude. Expected if the fence was built from an address list.",
+               where=_where(ctx, ctx["text"].find("Geo-Fencing Performance"),
+                            "Geo-Fencing Performance"))]
 
 
 GEOFENCE_LINE = re.compile(r"\bgeo[- ]?fenc", re.I)
@@ -827,7 +868,7 @@ def check_lifetime_goal(ctx) -> list[dict]:
                f"Campaign finished {short / goal * 100:.0f}% under its goal",
                f"{got:,.0f} impressions served against {goal:,.0f} sold"
                + (f" ({basis})" if basis else "") + ".",
-               trace=trace)]
+               trace=trace, where=COVER)]
 
 
 # Anything further off the order than this gets a finding of its own rather
@@ -1005,7 +1046,7 @@ def check_client_data(ctx) -> list[dict]:
                        "The order spells this client's name differently",
                        f"The order says \"{ctx.get('client')}\". The report's "
                        f"line items say \"{_client_head(rows)}\". Same client - "
-                       f"the order has the typo.")]
+                       f"the order has the typo.", where=COVER)]
         return []
 
     top = sorted(hits.items(), key=lambda kv: -kv[1])
@@ -1024,7 +1065,7 @@ def check_client_data(ctx) -> list[dict]:
                trace=[("Report is for", ctx.get("client") or "?"),
                       ("Line items name", ", ".join(k for k, _ in top[:3])),
                       ("Impressions on this client",
-                       f"{mine:,.0f} of {total:,.0f}")])]
+                       f"{mine:,.0f} of {total:,.0f}")], where=COVER)]
 
 
 def _flat_name(s: str) -> str:
@@ -1068,7 +1109,7 @@ def check_client_matches_order(ctx) -> list[dict]:
                f"{ctx['client']}. Everything else on this page was checked "
                f"against {ctx['filed_as']}'s order.",
                trace=[("Filed as", ctx.get("filed_as") or "?"),
-                      ("Cover page says", ctx.get("client") or "?")])]
+                      ("Cover page says", ctx.get("client") or "?")], where=COVER)]
 
 
 def check_date_range(ctx) -> list[dict]:
@@ -1088,7 +1129,8 @@ def check_date_range(ctx) -> list[dict]:
     if not got:
         return [_f("date_range_missing", "warn", "No date range printed on the report",
                    "Page one usually carries \"Date range ... to ...\". Without it "
-                   "there is no way to tell which period this covers.")]
+                   "there is no way to tell which period this covers.",
+                   where=DATE_RANGE)]
     start, end = got
     fmt = "%b %d, %Y"
     printed = f"{start.strftime(fmt)} to {end.strftime(fmt)}"
@@ -1118,12 +1160,12 @@ def check_date_range(ctx) -> list[dict]:
                 "lifetime_short", "fail", "Lifetime report does not go back to the campaign start",
                 f"Printed {printed}, but this client's earliest order starts "
                 f"{w_start.strftime(fmt)}. Re-pull with the range set to the full flight.",
-                trace=trace))
+                trace=trace, where=DATE_RANGE))
         if w_end and (end - w_end).days < -3:
             out.append(_f(
                 "lifetime_cut", "fail", "Lifetime report stops before the campaign ends",
                 f"Printed {printed}, but the latest order runs to {w_end.strftime(fmt)}.",
-                trace=trace))
+                trace=trace, where=DATE_RANGE))
         # A RANGE THAT STARTS BEFORE THE CAMPAIGN IS NOT A FINDING.
         #
         # Allegheny Orthodontic's lifetime printed May 04, 2025 to Aug 04, 2026
@@ -1142,7 +1184,7 @@ def check_date_range(ctx) -> list[dict]:
                 f"Printed {printed}, but the last order ends {w_end.strftime(fmt)}. "
                 f"Check the range against the order - and if the order list is "
                 f"the one that is out of date, the trace below says which line "
-                f"item supplied that end date.", trace=trace))
+                f"item supplied that end date.", trace=trace, where=DATE_RANGE))
         return out
 
     period = ctx.get("period")              # "2026-07"
@@ -1155,7 +1197,8 @@ def check_date_range(ctx) -> list[dict]:
         return []
     return [_f("date_range_wrong", "fail", "Date range is not the report month",
                f"Printed {printed}. This is the {first.strftime('%B %Y')} report, "
-               f"so it should read {first.strftime(fmt)} to {last.strftime(fmt)}.")]
+               f"so it should read {first.strftime(fmt)} to {last.strftime(fmt)}.",
+               where=DATE_RANGE)]
 
 
 
@@ -1407,6 +1450,18 @@ def check_required_widgets(ctx) -> list[dict]:
     heads = _heading_counts(text)
     out = []
 
+    def _section_spot(ctx, why: str) -> str:
+        """The page a product's section starts on, or "" when there are none."""
+        text = ctx.get("text") or ""
+        for word in re.split(r"[,/]| and ", why):
+            word = word.strip()
+            if len(word) < 4:
+                continue
+            i = text.upper().find(word.upper() + " - PAGE")
+            if i >= 0:
+                return _where(ctx, i, word)
+        return ""
+
     def owed(title: str, n: int, why: str):
         have = heads.get(title, 0)
         if have >= n:
@@ -1417,9 +1472,12 @@ def check_required_widgets(ctx) -> list[dict]:
         else:
             detail = (f"This report runs {why}, which should carry a {title} "
                       f"widget. It is not on the report.")
+        # WHERE THE PRODUCT'S OWN SECTION IS, when the report prints section
+        # banners. A missing widget is looked for inside its product's pages,
+        # and "somewhere in forty pages" is the same as nothing.
         out.append(_f("widget_missing", "fail", f"No {title} widget"
                       if not have else f"Only {have} of {n} {title} widgets",
-                      detail))
+                      detail, where=_section_spot(ctx, why)))
 
     # AMAZON'S CTV HAS ITS OWN PUBLISHER WIDGET.
     #
