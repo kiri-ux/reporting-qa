@@ -331,3 +331,33 @@ def test_a_product_that_has_not_started_says_when_it_will():
     s.commit()
     rows = dict(expected_why(s, "W&L Subaru", "14885", period="2026-07"))
     assert rows["DOOH · order 14885"].startswith("starts 2026-08-01")
+
+
+def test_a_lifetime_paces_against_its_own_campaign_only(monkeypatch):
+    """Field Of Dreams' lifetime covers Mobile Conquesting, 17 Dec to 13 Jul.
+    A Display order starting 28 Jul - after that campaign finished - was
+    counted into the same goal, so the panel asked a six-page report about
+    750,000 impressions it was never going to carry and called the whole thing
+    41% short."""
+    import datetime as dt
+
+    from app import roster as R
+
+    class L:
+        def __init__(self, product, s, e, imps):
+            self.product, self.starts_on, self.ends_on = product, s, e
+            self.impressions, self.budget = imps, None
+            self.total_impressions = self.total_budget = None
+            self.order_starts_on, self.order_ends_on = s, e
+            self.sold_with, self.live, self.flights = "", True, None
+
+    lines = [L("Mobile Conquesting", dt.date(2025, 12, 17), dt.date(2026, 7, 13), 166666),
+             L("Display", dt.date(2026, 7, 28), dt.date(2026, 10, 14), 250000)]
+    monkeypatch.setattr(R, "client_lines", lambda *a, **k: lines)
+
+    both = R.ordered_for(None, "Field Of Dreams", "51118", "2026-07", lifetime=True)
+    assert set(both) == {"Mobile Conquesting", "Display"}
+
+    own = R.ordered_for(None, "Field Of Dreams", "51118", "2026-07", lifetime=True,
+                        window=(dt.date(2025, 12, 17), dt.date(2026, 7, 13)))
+    assert set(own) == {"Mobile Conquesting"}

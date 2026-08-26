@@ -156,7 +156,7 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
-                          lifetime=bool(rep.is_lifetime))
+                          lifetime=bool(rep.is_lifetime), window=flight)
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,

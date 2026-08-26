@@ -295,8 +295,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                                period=batch.period, lifetime=life_guess)
         budgets = budgets_for(db, meta_guess["client"], meta_guess["account_ids"],
                               period=batch.period)
-        ordered = ordered_for(db, meta_guess["client"], meta_guess["account_ids"],
-                              batch.period, lifetime=life_guess)
+
         from .recheck import _orders_current
         orders_ok = _orders_current(db)
         # The corner of page one, and which other markets print the same
@@ -315,6 +314,10 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         flight = client_flight(db, meta_guess["client"], meta_guess["account_ids"],
                                cutoff=cut)
         flines = flight_lines(db, meta_guess["client"], meta_guess["account_ids"])
+        # AFTER the flight is known: a lifetime is paced against the campaign
+        # it reports on, not against every order the client has.
+        ordered = ordered_for(db, meta_guess["client"], meta_guess["account_ids"],
+                              batch.period, lifetime=life_guess, window=flight)
         # Only the products this campaign actually ran. A lifetime covering
         # Dec to July is not owed a Display line that starts on 28 July.
         exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"],

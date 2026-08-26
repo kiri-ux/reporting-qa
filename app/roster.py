@@ -331,7 +331,8 @@ def budgets_for(db: Session, client: str, account_ids: str,
 
 
 def ordered_for(db: Session, client: str, account_ids: str,
-                period: str | None = None, lifetime: bool = False) -> dict:
+                period: str | None = None, lifetime: bool = False,
+                window: tuple | None = None) -> dict:
     """What each product was bought to do - this month, or in total.
 
     {product: {"budget": float|None, "impressions": float|None}}, summed over
@@ -347,6 +348,15 @@ def ordered_for(db: Session, client: str, account_ids: str,
     hit = client_lines(db, client, account_ids) or []
     if period and not lifetime:
         hit = [l for l in hit if _ran_during(l, period)]
+    # A LIFETIME REPORTS ON ONE CAMPAIGN, NOT ON EVERY ORDER THE CLIENT HAS.
+    #
+    # Field Of Dreams' lifetime covers Mobile Conquesting, 17 Dec to 13 Jul.
+    # A Display order starting 28 Jul - after that campaign finished - was
+    # counted into the same goal, so the panel asked a six-page report about
+    # 750,000 impressions it was never going to carry and called the whole
+    # thing 41% short.
+    if window and window[0]:
+        hit = [l for l in hit if _overlaps(l, window[0], window[1])]
     out: dict[str, dict] = {}
     for l in hit:
         if not l.product:

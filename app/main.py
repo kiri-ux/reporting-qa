@@ -1449,7 +1449,8 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                                    if is_lifetime and period else None))
     exp = expected_products(db, client, account_ids, period=period,
                             lifetime=is_lifetime, window=flight)
-    ordered = ordered_for(db, client, account_ids, period, lifetime=is_lifetime)
+    ordered = ordered_for(db, client, account_ids, period,
+                          lifetime=is_lifetime, window=flight)
     why = expected_why(db, client, account_ids, period=period)
     any_of = expected_any(db, client, account_ids, period=period)
     quiet = quiet_products(db, client, account_ids, period=period,
@@ -1572,7 +1573,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
-                          lifetime=bool(rep.is_lifetime))
+                          lifetime=bool(rep.is_lifetime), window=flight)
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
@@ -1685,7 +1686,7 @@ async def replace_report(report_id: int, request: Request,
     exp = expected_products(db, rep.client, rep.account_ids, period=rep.period,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
-                          lifetime=bool(rep.is_lifetime))
+                          lifetime=bool(rep.is_lifetime), window=flight)
     why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
@@ -1756,13 +1757,24 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
         if rep.stored_path and Path(rep.stored_path).exists():
             from .checks.parser import pdf_text
             from .checks.served import pacing_rows
-            from .roster import ordered_for
+            from .cycle import cycle_for as _cyc
+            from .roster import client_flight, ordered_for
             # A LIFETIME PACES AGAINST THE WHOLE CAMPAIGN, a monthly against
             # the month. Same panel, different question - and comparing a
             # nine-month report to one month's budget is how a perfectly normal
             # lifetime reads as 800% over.
+            #
+            # AND AGAINST THAT CAMPAIGN ONLY. Field Of Dreams' lifetime covers
+            # Mobile Conquesting to 13 Jul; a Display order starting 28 Jul was
+            # counted into the same goal and made the report 41% short of
+            # 750,000 impressions it was never going to carry.
+            life_flight = client_flight(
+                db, rep.client, rep.account_ids,
+                cutoff=(_cyc(rep.period).lifetime_cutoff
+                        if rep.is_lifetime and rep.period else None))
             ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
-                                  lifetime=bool(rep.is_lifetime))
+                                  lifetime=bool(rep.is_lifetime),
+                                  window=life_flight)
             if ordered:
                 pacing = pacing_rows(pdf_text(Path(rep.stored_path)), ordered)
     except Exception:                       # a pacing panel is never worth a 500

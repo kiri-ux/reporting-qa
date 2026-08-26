@@ -322,3 +322,15 @@ def test_the_findings_state_the_fact_and_stop():
                    "Check which client was picked in TapClicks",
                    "it is not nothing"):
         assert phrase not in src, phrase
+
+
+def test_every_pacing_caller_passes_the_flight_window():
+    """A lifetime paces against the campaign it reports on. Miss the window on
+    one caller and that page silently goes back to counting every order the
+    client has."""
+    import re as _re
+    root = Path(__file__).resolve().parents[1] / "app"
+    for f in ("main.py", "recheck.py", "ingest.py"):
+        src = (root / f).read_text()
+        for m in _re.finditer(r"ordered_for\(([^;]*?)\)\n", src):
+            assert "window=" in m.group(1), f"{f}: {m.group(0)[:80]}"
