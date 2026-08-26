@@ -1134,7 +1134,9 @@ def mark_row_done(request: Request, period: str = Form(...),
 
 
 @app.post("/cycle/{period}/deliver")
-def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
+def deliver_group(request: Request, period: str, group: str = Form(...),
+                  force: str = Form(""), tag: str = Form(""),
+                  back_to: str = Form(""),
                   db: Session = Depends(get_db)):
     # IT RUNS IN THE BACKGROUND NOW.
     #
@@ -1144,7 +1146,14 @@ def deliver_group(period: str, group: str = Form(...), force: str = Form(""),
     # one. The card shows "12 of 30" while it works and the link appears on it
     # when it finishes.
     from .delivery import start_delivery
-    start_delivery(db, period, group, force=bool(force))
+    # A TAG MAKES A SECOND LINK, beside the partner's own one rather than
+    # instead of it. Kept to what will read as a folder name six months from
+    # now, because that is what it becomes.
+    tag = re.sub(r"[^A-Za-z0-9 _-]", "", tag).strip()[:40]
+    start_delivery(db, period, group, force=bool(force), tag=tag)
+    # PACKAGING LIVES ON THE LINKS PAGE NOW, so that is where it goes back to.
+    if back_to == "links":
+        return RedirectResponse(f"/cycle/links?period={period}", status_code=303)
     back = f"/cycle?period={period}"
     if group:
         back += f"&group={quote(group)}"
@@ -1271,11 +1280,88 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
         should = want.get(l["group"], "")
         l["should"] = should
         l["mismatch"] = bool(should and l["target"] and should != l["target"])
+    # PACKAGING MOVED HERE FROM THE CARD. The card is where you judge reports;
+    # this is where you hand links over, and re-packaging belongs beside the
+    # link it replaces rather than three screens away from it.
+    from .delivery import delivery_key, tagged_deliveries
+    from .db import DeliveryJob
+    ready_now = {g.group for g in groups if g.ready}
+    running = {}
+    for j in db.scalars(select(DeliveryJob).where(
+            DeliveryJob.period == period, DeliveryJob.state == "running")).all():
+        if not j.stalled:
+            running[j.partner_group] = {"done": j.done, "total": j.total,
+                                        "note": j.note}
+    extra = tagged_deliveries(db, period)
+    # WHICH DRIVE FOLDER EACH MARKET IS FILED IN, and the chance to say.
+    #
+    # The folder is matched by name against a drive organized by hand over ten
+    # years. That works until somebody fixes a folder - pulls one out of
+    # another, renames it, merges two - and then a best guess is not good
+    # enough against work somebody did on purpose.
+    from .db import Partner
+    from .delivery import _key_market
+    pinned = {_key_market(p.partner): (getattr(p, "drive_folder_id", "") or "")
+              for p in db.scalars(select(Partner)).all()}
+    markets_of = {}
+    for g in groups:
+        seen_m = []
+        for e in g.expected:
+            if e.market and e.market not in seen_m:
+                seen_m.append(e.market)
+        markets_of[g.group] = [
+            {"market": m, "pin": pinned.get(_key_market(m), "")}
+            for m in sorted(seen_m)]
+    for l in delivered["links"]:
+        l["ready"] = l["group"] in ready_now
+        l["running"] = running.get(l["group"])
+        l["extra"] = [{"tag": d.tag, "url": d.share_url or "",
+                       "archive": d.archive_url or "", "reports": d.reports or 0}
+                      for d in extra.get(l["group"], [])]
+        l["markets"] = markets_of.get(l["group"], [])
+    # And partners that are ready but have never been packaged - the button for
+    # those was on the card too.
+    packaged = {l["group"] for l in delivered["links"]}
+    waiting = sorted(g.group for g in groups
+                     if g.ready and g.group not in packaged)
     return templates.TemplateResponse(request, "links.html", {
         "nav": "links", "cycle": cycle_for(period), "period": period,
         "periods": periods, "delivered": delivered, "new": new,
+        "waiting": waiting, "running": running,
         "configured": settings.delivery_configured,
     })
+
+
+DRIVE_FOLDER_ID = re.compile(r"(?:folders/|[?&]id=)([A-Za-z0-9_-]{10,})")
+
+
+@app.post("/cycle/pin-folder")
+def pin_drive_folder(period: str = Form(""), market: str = Form(...),
+                     folder: str = Form(""), db: Session = Depends(get_db)):
+    """Say which Drive folder a market's reports are filed in.
+
+    Matching a folder by name works until somebody fixes one by hand. Pasting
+    the folder's own address settles it, and takes the guess out of the loop
+    entirely for that market.
+    """
+    from .db import Partner
+    from .delivery import _key_market
+
+    want = _key_market(market)
+    row = None
+    for p in db.scalars(select(Partner)).all():
+        if _key_market(p.partner) == want:
+            row = p
+            break
+    if row is None:
+        raise HTTPException(404, f"{market} is not on the roster.")
+    # A URL OR A BARE ID. Nobody has the id to hand; everybody has the address
+    # bar, and pasting that is one action instead of three.
+    txt = (folder or "").strip()
+    m = DRIVE_FOLDER_ID.search(txt)
+    row.drive_folder_id = (m.group(1) if m else txt)[:128]
+    db.commit()
+    return RedirectResponse(f"/cycle/links?period={period}", status_code=303)
 
 
 @app.get("/delivery/{delivery_id}/file")

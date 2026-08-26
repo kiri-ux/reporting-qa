@@ -128,6 +128,22 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .links.wide li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;
  background:var(--surface)}
 .links.wide .lname{min-width:260px}
+/* ---- packaging, beside the link it replaces ---- */
+.repack{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+ padding-top:8px;margin-top:2px;border-top:1px solid var(--line)}
+.repack form{display:flex;align-items:center;gap:6px;margin:0}
+.repack input[type=text]{font:inherit;font-size:12px;padding:4px 10px;
+ border-radius:14px;border:1px solid var(--line);background:var(--bg);
+ color:var(--ink)}
+.repack.extra{border-top:0;padding-top:4px;padding-left:14px}
+.repack.extra .lname{min-width:0;font-size:13px;color:var(--muted)}
+.pinbox{flex-basis:100%;font-size:13px;margin-top:2px}
+.pinbox summary{cursor:pointer;color:var(--muted);font-size:12px}
+.pinrow{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
+.pinrow .lname{min-width:220px;font-weight:500;font-size:13px}
+.pinrow input[type=text]{font:inherit;font-size:12px;padding:4px 10px;
+ border-radius:14px;border:1px solid var(--line);background:var(--bg);
+ color:var(--ink)}
 /* ---- what this cycle does not owe ---- */
 .notowed{margin-top:12px;font-size:13px}
 .notowed summary{cursor:pointer;color:var(--muted)}

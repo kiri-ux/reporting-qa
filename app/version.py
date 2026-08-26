@@ -12,11 +12,11 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-75"
-BUILD_NOTES = ("A cancelled or complete campaign only closes out in the month "
-               "it last delivered, per the serving file - it was dumping years "
-               "of finished campaigns into one cycle. Overrides both ways, with "
-               "a note. \"July 2026\" works in the period box.")
+BUILD = "2026.08.26-77"
+BUILD_NOTES = ("Packaging moved to the links page, with a tagged second link "
+               "beside the partner's own one. Drive folders can be pinned by "
+               "id instead of matched by name. And the import keeps a lot less "
+               "in memory, which is what was restarting the service.")
 
 # ---------------------------------------------------------------------------
 

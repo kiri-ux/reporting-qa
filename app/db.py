@@ -127,6 +127,15 @@ class Report(Base):
     # order id came out of a folder somebody assembled by hand, and the same
     # folder is where the next one will come from.
     renamed_from: Mapped[str] = mapped_column(String(512), default="")
+    # WHAT THIS REPORT WAS LAST FILED AS, in the partner's folder.
+    #
+    # A report's name is built from the client, the month and every order id
+    # touching it, so a re-read that adds an order id renames it. Re-packaging
+    # then uploads the new name and leaves the old file sitting beside it, and
+    # the partner opens a folder holding the same report twice. This is the
+    # only safe way to remove the stale one: it names a file this tool put
+    # there itself, for this report, so nothing else in the folder is at risk.
+    delivered_as: Mapped[str] = mapped_column(String(255), default="")
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
 
@@ -270,6 +279,13 @@ class Delivery(Base):
     archive_url: Mapped[str] = mapped_column(Text, default="")
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     message: Mapped[str] = mapped_column(Text, default="")
+    # A SECOND LINK FOR THE SAME MONTH, on purpose.
+    #
+    # Blank is the partner's one link, which never moves. A tag makes a
+    # separate folder beside it - "corrected", "without Meta", whatever the
+    # reason was - with its own link to hand to somebody, and leaves the
+    # original exactly as the partner already has it.
+    tag: Mapped[str] = mapped_column(String(64), default="", index=True)
 
 
 class Partner(Base):
@@ -302,6 +318,14 @@ class Partner(Base):
     group: Mapped[str] = mapped_column("partner_group", String(255), default="", index=True)
     # Where that group's zip goes. Blank uses the default target.
     delivery_target: Mapped[str] = mapped_column(String(32), default="")
+    # PIN THE DRIVE FOLDER, rather than matching it by name.
+    #
+    # The drive's folders were named by hand over ten years and do not match
+    # the roster - "Results Media Solutions Chico" lives in "Results Radio
+    # Chico" - so the match is a best guess that refuses rather than guesses
+    # wrong. When somebody has fixed a folder by hand, a guess is not good
+    # enough: this is the folder, by id, and no matching runs.
+    drive_folder_id: Mapped[str] = mapped_column(String(128), default="")
 
     @property
     def recipients(self) -> list[str]:
@@ -652,6 +676,9 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "total_budget", "DOUBLE PRECISION"),
     ("order_lines", "sold_with", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("reports", "renamed_from", "VARCHAR(512) DEFAULT '' NOT NULL"),
+    ("reports", "delivered_as", "VARCHAR(255) DEFAULT '' NOT NULL"),
+    ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
+    ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
 ]
 
 

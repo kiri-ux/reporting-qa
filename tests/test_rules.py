@@ -1671,11 +1671,14 @@ def test_folder_matching_never_mismatches_the_real_roster():
             f"{p!r} matched {got!r} ({why}) - not a known rename")
 
 
-def test_a_month_already_delivered_goes_into_a_v2_folder(monkeypatch, tmp_path):
-    """July already went out. Corrected reports must not overwrite what the
-    partner has already seen, so a revision lands in its own subfolder and the
-    original stays intact. A month that has never been delivered just uses the
-    cycle folder."""
+def test_re_delivering_a_month_keeps_the_same_link(monkeypatch, tmp_path):
+    """THE LINK IS THE THING THAT MUST NOT MOVE.
+
+    This used to send a re-delivery into a "v2 updates" subfolder and share
+    that instead - so the partner already had a link to a folder that was now
+    out of date, and the new link held only the reports that had changed. A
+    link that stops being the current month is worse than a file being
+    replaced under it."""
     import importlib
     from app import delivery as dmod
     importlib.reload(dmod)
@@ -1743,23 +1746,101 @@ def test_a_month_already_delivered_goes_into_a_v2_folder(monkeypatch, tmp_path):
     july = folders[("MKT", "2026-07 July")]
     assert n == 1 and shared == [july]
     assert "Awaken Bakery.pdf" in files[july]
-    assert ("MKT", "v2 updates") not in folders, "made a v2 on a fresh month"
 
-    # --- re-deliver: July already holds files, so this is a revision
+    # --- re-deliver: same folder, same link, corrected file over the top
     shared.clear()
-    url2, msg2, _ = dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
-    v2 = folders[(july, "v2 updates")]
-    assert shared == [v2], "the shared link should point at the revision folder"
-    assert "Awaken Bakery.pdf" in files[v2]
-    assert files[july] == {"Awaken Bakery.pdf"}, "the original was disturbed"
-    assert url2.endswith(v2)
+    url2, _msg2, _ = dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
+    assert url2 == url, "the link moved"
+    assert shared == [july]
+    assert files[july] == {"Awaken Bakery.pdf"}
+    assert not any(n.endswith("updates") for (_p, n) in folders)
 
-    # --- and again: v2 now has files too, so v3
+    # --- and a third time, for the same reason
     shared.clear()
+    url3, _msg3, _ = dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
+    assert url3 == url and shared == [july]
+
+
+def test_a_renamed_report_does_not_leave_a_second_copy(monkeypatch, tmp_path):
+    """A report's name carries every order id touching it, so a re-read that
+    picks up another one renames the file. Uploading the new name into a folder
+    that still holds the old one hands the partner the same report twice."""
+    import importlib
+    from app import delivery as dmod
+    importlib.reload(dmod)
+    from app import board as bmod, db as db_mod
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
+
+    folders = {("PARENT", "7 Mountains KY"): "MKT"}
+    files: dict[str, set] = {}
+    trashed, counter = [], {"n": 0}
+
+    class FakeFiles:
+        def list(self, q="", **kw):
+            self._q = q; return self
+
+        def create(self, body=None, media_body=None, **kw):
+            counter["n"] += 1
+            new_id = f"ID{counter['n']}"
+            parent = body["parents"][0]
+            if body.get("mimeType", "").endswith("folder"):
+                folders[(parent, body["name"])] = new_id
+            else:
+                files.setdefault(parent, set()).add(body["name"])
+            self._r = {"id": new_id}; return self
+
+        def update(self, fileId=None, body=None, **kw):
+            if body and body.get("trashed"):
+                trashed.append(fileId)
+                for names in files.values():
+                    names.discard(fileId)
+            self._r = {"id": fileId}; return self
+
+        def execute(self):
+            if hasattr(self, "_r"):
+                r = self._r; del self._r; return r
+            q, parent = self._q, self._q.split("'")[1]
+            if "!=" in q:
+                return {"files": [{"id": "f"}] if files.get(parent) else []}
+            if "folder" in q:
+                return {"files": [{"id": i, "name": n}
+                                  for (p, n), i in folders.items() if p == parent]}
+            # The id IS the name here, so trashing one can remove it above.
+            return {"files": [{"id": n, "name": n}
+                              for n in files.get(parent, set())]}
+
+    class FakePerms:
+        def create(self, fileId=None, **kw): return self
+        def execute(self): return {}
+
+    class FakeSvc:
+        def files(self): return FakeFiles()
+        def permissions(self): return FakePerms()
+
+    monkeypatch.setattr(dmod, "_drive_credentials", lambda: object())
+    import googleapiclient.discovery as disc, googleapiclient.http as ghttp
+    monkeypatch.setattr(disc, "build", lambda *a, **k: FakeSvc())
+    monkeypatch.setattr(ghttp, "MediaFileUpload", lambda *a, **k: object())
+    monkeypatch.setattr(dmod.settings, "drive_parent_folder_id", "PARENT")
+
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+    rep = Report(severity="pass", review_state="reviewed", findings=[],
+                 stored_path=str(pdf), filename="July 2026_Awaken Bakery 53130.pdf")
+    group = GroupRow("7 Mountains KY", "drive", [
+        Expected(market="7 Mountains KY", group="7 Mountains KY",
+                 client="Awaken Bakery", kind="monthly", report=rep)])
+
     dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
-    v3 = folders[(july, "v3 updates")]
-    assert shared == [v3]
-    assert "Awaken Bakery.pdf" in files[v3]
+    july = folders[("MKT", "2026-07 July")]
+    assert files[july] == {"July 2026_Awaken Bakery 53130.pdf"}
+    # It records what it filed, which is the only safe way to find it again.
+    assert rep.delivered_as == "July 2026_Awaken Bakery 53130.pdf"
+
+    # A re-read picks up a second order id and the report is renamed.
+    rep.filename = "July 2026_Awaken Bakery 53130 54001.pdf"
+    dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
+    assert files[july] == {"July 2026_Awaken Bakery 53130 54001.pdf"}
+    assert trashed == ["July 2026_Awaken Bakery 53130.pdf"]
 
 
 def test_drive_reuses_a_folder_named_differently(monkeypatch, tmp_path):
@@ -2152,6 +2233,74 @@ def test_dropbox_delivers_a_folder_of_pdfs_not_a_zip():
     assert "RequestedLinkAccessLevel" in link and "viewer" in link
 
 
+def test_the_dropbox_link_survives_a_re_delivery(monkeypatch, tmp_path):
+    """THE LINK IS THE THING THAT MUST NOT MOVE. A partner has it in an email
+    from the 7th; sending a corrected report on the 9th cannot invalidate it.
+
+    Same folder path, files replaced over the top, and Dropbox hands back the
+    link it already minted for that path rather than a new one."""
+    import sys, types
+    from app import board as bmod, db as db_mod, delivery as dmod
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
+
+    put: dict[str, bytes] = {}
+    gone, minted = [], {"n": 0}
+
+    class Dbx:
+        def __init__(self, **kw): pass
+        def files_upload(self, data, path, **kw): put[path] = data
+        def files_delete_v2(self, path):
+            if path not in put:
+                raise RuntimeError("not_found")
+            del put[path]; gone.append(path)
+        def sharing_create_shared_link_with_settings(self, path, settings):
+            # Dropbox refuses a second link for a path it has already shared.
+            minted["n"] += 1
+            if minted["n"] > 1:
+                raise RuntimeError("shared_link_already_exists")
+            return types.SimpleNamespace(url="https://www.dropbox.com/scl/fo/AAA")
+        def sharing_list_shared_links(self, path=None, direct_only=False):
+            return types.SimpleNamespace(links=[types.SimpleNamespace(
+                url="https://www.dropbox.com/scl/fo/AAA")])
+
+    fake = types.ModuleType("dropbox")
+    fake.Dropbox = Dbx
+    fake.files = types.ModuleType("dropbox.files")
+    fake.files.WriteMode = lambda mode: mode
+    fake.sharing = types.ModuleType("dropbox.sharing")
+    fake.sharing.RequestedVisibility = types.SimpleNamespace(public="public")
+    fake.sharing.SharedLinkSettings = lambda **kw: kw
+    fake.sharing.RequestedLinkAccessLevel = types.SimpleNamespace(viewer="viewer")
+    for name, mod in (("dropbox", fake), ("dropbox.files", fake.files),
+                      ("dropbox.sharing", fake.sharing)):
+        monkeypatch.setitem(sys.modules, name, mod)
+    for k in ("dropbox_app_key", "dropbox_app_secret", "dropbox_refresh_token"):
+        monkeypatch.setattr(dmod.settings, k, "x")
+    monkeypatch.setattr(dmod.settings, "dropbox_folder", "/Reports")
+
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+    rep = Report(severity="pass", review_state="reviewed", findings=[],
+                 stored_path=str(pdf), filename="July 2026_Awaken Bakery 53130.pdf")
+    group = GroupRow("7 Mountains KY", "dropbox", [
+        Expected(market="7 Mountains KY", group="7 Mountains KY",
+                 client="Awaken Bakery", kind="monthly", report=rep)])
+
+    url, _msg, n = dmod.upload_dropbox_folder(group, "2026-07", "2026-07 July")
+    folder = "/Reports/7 Mountains KY July 2026 Reports"
+    assert n == 1 and list(put) == [f"{folder}/July 2026_Awaken Bakery 53130.pdf"]
+
+    # Re-deliver after a fix: same link, file replaced under it.
+    url2, _m, _n = dmod.upload_dropbox_folder(group, "2026-07", "2026-07 July")
+    assert url2 == url
+
+    # And a rename does not leave the same report in the folder twice.
+    rep.filename = "July 2026_Awaken Bakery 53130 54001.pdf"
+    url3, _m, _n = dmod.upload_dropbox_folder(group, "2026-07", "2026-07 July")
+    assert url3 == url
+    assert list(put) == [f"{folder}/July 2026_Awaken Bakery 53130 54001.pdf"]
+    assert gone == [f"{folder}/July 2026_Awaken Bakery 53130.pdf"]
+
+
 # --------------------------------------------- build 73: false errors, fixed
 def test_a_donut_device_widget_with_a_glossary_under_it_flags_nothing():
     """Reliance Bank draws Device Performance as a donut. Under it TapClicks
@@ -2426,3 +2575,149 @@ def test_every_run_all_caller_says_which_client_the_report_is_for():
         src = (root / f).read_text()
         for m in _re.finditer(r"run_all\((.{0,400}?)\)\n", src, _re.S):
             assert "for_client=" in m.group(1), f"{f}: {m.group(0)[:70]}"
+
+
+def test_a_pinned_drive_folder_beats_matching_by_name(monkeypatch, tmp_path):
+    """PA STROUDSBURG WAS A FOLDER INSIDE A FOLDER and somebody fixed it by
+    hand. Name matching happened to still find it, which is luck - a pin is
+    the folder, by id, and no matching runs at all."""
+    import importlib
+    from app import delivery as dmod
+    importlib.reload(dmod)
+    from app import board as bmod, db as db_mod
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
+
+    folders = {("PARENT", "7 Mountains PA Stroudsburg"): "WRONG"}
+    files: dict[str, set] = {}
+    listed, counter = [], {"n": 0}
+
+    class FakeFiles:
+        def list(self, q="", **kw):
+            self._q = q; listed.append(q); return self
+
+        def create(self, body=None, media_body=None, **kw):
+            counter["n"] += 1
+            new_id = f"ID{counter['n']}"
+            parent = body["parents"][0]
+            if body.get("mimeType", "").endswith("folder"):
+                folders[(parent, body["name"])] = new_id
+            else:
+                files.setdefault(parent, set()).add(body["name"])
+            self._r = {"id": new_id}; return self
+
+        def update(self, fileId=None, **kw):
+            self._r = {"id": fileId}; return self
+
+        def execute(self):
+            if hasattr(self, "_r"):
+                r = self._r; del self._r; return r
+            q, parent = self._q, self._q.split("'")[1]
+            if "folder" in q:
+                return {"files": [{"id": i, "name": n}
+                                  for (p, n), i in folders.items() if p == parent]}
+            return {"files": [{"id": n, "name": n}
+                              for n in files.get(parent, set())]}
+
+    class FakePerms:
+        def create(self, fileId=None, **kw): return self
+        def execute(self): return {}
+
+    class FakeSvc:
+        def files(self): return FakeFiles()
+        def permissions(self): return FakePerms()
+
+    monkeypatch.setattr(dmod, "_drive_credentials", lambda: object())
+    import googleapiclient.discovery as disc, googleapiclient.http as ghttp
+    monkeypatch.setattr(disc, "build", lambda *a, **k: FakeSvc())
+    monkeypatch.setattr(ghttp, "MediaFileUpload", lambda *a, **k: object())
+    monkeypatch.setattr(dmod.settings, "drive_parent_folder_id", "PARENT")
+
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+    group = GroupRow("7 Mountains", "drive", [
+        Expected(market="7 Mountains PA Stroudsburg", group="7 Mountains",
+                 client="Awaken Bakery", kind="monthly",
+                 report=Report(severity="pass", review_state="reviewed",
+                               findings=[], stored_path=str(pdf)))])
+
+    url, _msg, _n = dmod.upload_drive_folder(
+        group, "2026-07", "2026-07 July",
+        pins={"7mountainspastroudsburg": "MINE"})
+    # The cycle folder was made under the pinned folder, not the matched one.
+    assert ("MINE", "2026-07 July") in folders
+    assert ("WRONG", "2026-07 July") not in folders
+    assert url.endswith(folders[("MINE", "2026-07 July")])
+
+
+def test_a_tagged_delivery_is_a_second_folder_not_a_replacement(monkeypatch, tmp_path):
+    """The partner's own link has to keep pointing at the month. A tagged copy
+    goes beside it with its own link, and does not touch what was already
+    filed."""
+    import importlib
+    from app import delivery as dmod
+    importlib.reload(dmod)
+    from app import board as bmod, db as db_mod
+    Expected, GroupRow, Report = bmod.Expected, bmod.GroupRow, db_mod.Report
+
+    folders = {("PARENT", "7 Mountains KY"): "MKT"}
+    files: dict[str, set] = {}
+    counter = {"n": 0}
+
+    class FakeFiles:
+        def list(self, q="", **kw):
+            self._q = q; return self
+
+        def create(self, body=None, media_body=None, **kw):
+            counter["n"] += 1
+            new_id = f"ID{counter['n']}"
+            parent = body["parents"][0]
+            if body.get("mimeType", "").endswith("folder"):
+                folders[(parent, body["name"])] = new_id
+            else:
+                files.setdefault(parent, set()).add(body["name"])
+            self._r = {"id": new_id}; return self
+
+        def update(self, fileId=None, **kw):
+            self._r = {"id": fileId}; return self
+
+        def execute(self):
+            if hasattr(self, "_r"):
+                r = self._r; del self._r; return r
+            q, parent = self._q, self._q.split("'")[1]
+            if "folder" in q:
+                return {"files": [{"id": i, "name": n}
+                                  for (p, n), i in folders.items() if p == parent]}
+            return {"files": [{"id": n, "name": n}
+                              for n in files.get(parent, set())]}
+
+    class FakePerms:
+        def create(self, fileId=None, **kw): return self
+        def execute(self): return {}
+
+    class FakeSvc:
+        def files(self): return FakeFiles()
+        def permissions(self): return FakePerms()
+
+    monkeypatch.setattr(dmod, "_drive_credentials", lambda: object())
+    import googleapiclient.discovery as disc, googleapiclient.http as ghttp
+    monkeypatch.setattr(disc, "build", lambda *a, **k: FakeSvc())
+    monkeypatch.setattr(ghttp, "MediaFileUpload", lambda *a, **k: object())
+    monkeypatch.setattr(dmod.settings, "drive_parent_folder_id", "PARENT")
+
+    pdf = tmp_path / "r.pdf"; pdf.write_bytes(b"%PDF-1.4\n")
+    rep = Report(severity="pass", review_state="reviewed", findings=[],
+                 stored_path=str(pdf), filename="July 2026_Awaken Bakery.pdf")
+    group = GroupRow("7 Mountains KY", "drive", [
+        Expected(market="7 Mountains KY", group="7 Mountains KY",
+                 client="Awaken Bakery", kind="monthly", report=rep)])
+
+    url, _m, _n = dmod.upload_drive_folder(group, "2026-07", "2026-07 July")
+    july = folders[("MKT", "2026-07 July")]
+
+    tagged, _m2, _n2 = dmod.upload_drive_folder(group, "2026-07", "2026-07 July",
+                                                tag="corrected")
+    side = folders[("MKT", "2026-07 July - corrected")]
+    assert tagged != url and tagged.endswith(side)
+    assert files[july] == {"July 2026_Awaken Bakery.pdf"}
+    assert files[side] == {"July 2026_Awaken Bakery.pdf"}
+    # And a side copy does not become what the partner's own folder holds.
+    assert rep.delivered_as == "July 2026_Awaken Bakery.pdf"

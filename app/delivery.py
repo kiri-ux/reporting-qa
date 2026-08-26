@@ -150,6 +150,24 @@ def _drive_credentials():
         "service account keys, GOOGLE_SERVICE_ACCOUNT_JSON).")
 
 
+def _key_market(s: str) -> str:
+    import re as _re
+    return _re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def drive_pins(db) -> dict[str, str]:
+    """Market key -> the Drive folder id somebody pinned for it."""
+    from sqlalchemy import select as _select
+
+    from .db import Partner
+    out = {}
+    for p in db.scalars(_select(Partner)).all():
+        fid = (getattr(p, "drive_folder_id", "") or "").strip()
+        if fid:
+            out[_key_market(p.partner)] = fid
+    return out
+
+
 def _list_folders(svc, parent: str) -> dict[str, str]:
     """Every folder under `parent`, name -> id."""
     q = (f"'{parent}' in parents and mimeType = "
@@ -168,15 +186,6 @@ def _list_folders(svc, parent: str) -> dict[str, str]:
         if not token:
             break
     return out
-
-
-def _has_files(svc, folder_id: str) -> bool:
-    q = (f"'{folder_id}' in parents and trashed = false and "
-         f"mimeType != 'application/vnd.google-apps.folder'")
-    return bool(svc.files().list(q=q, fields="files(id)", pageSize=1,
-                                 supportsAllDrives=True,
-                                 includeItemsFromAllDrives=True,
-                                 corpora="allDrives").execute().get("files"))
 
 
 def _drive_folder(svc, name: str, parent: str) -> str:
@@ -217,7 +226,8 @@ def _drive_folder(svc, name: str, parent: str) -> str:
 
 
 def upload_drive_folder(group, period: str, cycle_label: str,
-                        progress=None) -> tuple[str, str, int]:
+                        progress=None, tag: str = "",
+                        pins: dict | None = None) -> tuple[str, str, int]:
     """Put this market's reports where the team already keeps them.
 
     The shared drive is already organized as
@@ -264,35 +274,41 @@ def upload_drive_folder(group, period: str, cycle_label: str,
             # in "Results Radio Chico". Matching refuses rather than guesses,
             # so an unmatched partner gets a new folder under its own name
             # instead of its reports landing in a sibling's.
-            if parent_folders is None:
-                parent_folders = _list_folders(svc, parent)
-            existing = parent_folders
-            hit, why = pick_folder(e.market, existing)
-            log.info("drive: %s -> %s", e.market, why)
-            market_folders[e.market] = (existing[hit] if hit
-                                        else _drive_folder(svc, e.market, parent))
+            # A PIN BEATS A MATCH. When somebody has fixed a folder by hand -
+            # pulled a folder out of a folder, renamed one, merged two - the
+            # name is no longer a safe way to find it, and a best guess is not
+            # good enough against work somebody did deliberately.
+            pinned = (pins or {}).get(_key_market(e.market), "")
+            if pinned:
+                market_folders[e.market] = pinned
+                log.info("drive: %s -> pinned folder %s", e.market, pinned)
+            else:
+                if parent_folders is None:
+                    parent_folders = _list_folders(svc, parent)
+                existing = parent_folders
+                hit, why = pick_folder(e.market, existing)
+                log.info("drive: %s -> %s", e.market, why)
+                market_folders[e.market] = (existing[hit] if hit
+                                            else _drive_folder(svc, e.market, parent))
 
-            # A cycle folder that already holds files means this month has
-            # already gone out. Re-sending corrected reports into it would
-            # overwrite what the partner has already seen, so revisions go in
-            # their own subfolder and the original stays intact.
-            cyc_id = _drive_folder(svc, cycle_label, market_folders[e.market])
-            if _has_files(svc, cyc_id):
-                inner = _list_folders(svc, cyc_id)
-                n = 2
-                while True:
-                    name = f"v{n} updates"
-                    fid = inner.get(name)
-                    if fid is None:
-                        cyc_id = _drive_folder(svc, name, cyc_id)
-                        break
-                    if not _has_files(svc, fid):
-                        cyc_id = fid
-                        break
-                    n += 1
-                log.info("drive: %s %s already delivered, using v%d", e.market,
-                         cycle_label, n)
-            cycle_folders[e.market] = cyc_id
+            # ONE FOLDER PER CYCLE, AND THE LINK NEVER MOVES.
+            #
+            # This used to send a re-delivery into a "v2 updates" subfolder and
+            # share that instead, so the partner already had a link to a folder
+            # that was now out of date and the new link held only the reports
+            # that changed. A link that stops being the current month is worse
+            # than a file being replaced under it - the whole point of handing
+            # over a folder is that it stays right.
+            #
+            # So corrections are filed over the top, in the same folder, under
+            # the same link. Drive keeps the previous version of a replaced
+            # file in its own revision history if anybody needs it back.
+            # A TAG MAKES A SECOND FOLDER BESIDE THE MONTH, not instead of it.
+            # The partner's own link keeps pointing at the untagged folder and
+            # keeps being right.
+            label = f"{cycle_label} - {tag}" if tag else cycle_label
+            cycle_folders[e.market] = _drive_folder(
+                svc, label, market_folders[e.market])
         name = report_filename(e)
         dest = cycle_folders[e.market]
 
@@ -306,6 +322,22 @@ def upload_drive_folder(group, period: str, cycle_label: str,
                     fields="files(id,name)", pageSize=1000,
                     supportsAllDrives=True, includeItemsFromAllDrives=True,
                     corpora="allDrives").execute().get("files", [])}
+        # AND A RENAME LEAVES NO SECOND COPY BEHIND.
+        #
+        # A report's name carries every order id touching it, so a re-read that
+        # picks up another one renames the file. Uploading the new name into a
+        # folder that still holds the old one hands the partner the same report
+        # twice. Only the name THIS report was last filed as is touched, so
+        # nothing else in the folder is at risk.
+        was = "" if tag else (getattr(r, "delivered_as", "") or "").strip()
+        if was and was != name and was in dest_files[dest]:
+            try:
+                svc.files().update(fileId=dest_files[dest].pop(was),
+                                   body={"trashed": True},
+                                   supportsAllDrives=True).execute()
+                log.info("drive: replaced %s with %s", was, name)
+            except Exception:                            # noqa: BLE001
+                log.warning("drive: could not remove the old %s", was)
         old_id = dest_files[dest].get(name)
         media = MediaFileUpload(r.stored_path, mimetype="application/pdf",
                                 resumable=True)
@@ -317,6 +349,11 @@ def upload_drive_folder(group, period: str, cycle_label: str,
                                      media_body=media, fields="id",
                                      supportsAllDrives=True).execute()
             dest_files[dest][name] = new["id"]
+        if not tag:
+            # Only the partner's own folder is tracked. A tagged copy is a side
+            # folder somebody asked for; recording it here would make the next
+            # real delivery hunt for a stale name in the wrong place.
+            r.delivered_as = name[:255]
         n += 1
         if progress:
             progress(n, f"filing {e.client} in Drive")
@@ -337,7 +374,7 @@ def upload_drive_folder(group, period: str, cycle_label: str,
 
 # ---------------------------------------------------------------- Dropbox
 def upload_dropbox_folder(group, period: str, cycle_label: str,
-                          progress=None) -> tuple[str, str, int]:
+                          progress=None, tag: str = "") -> tuple[str, str, int]:
     """The month's PDFs in a shared Dropbox folder, view only.
 
     NOT A ZIP. It used to build one and share the file, so the partner
@@ -368,6 +405,10 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         base = "/" + base
     month = dt.date.fromisoformat(period + "-01").strftime("%B %Y")
     folder = f"{base}/{_safe(group.group)} {month} Reports"
+    # A TAG MAKES A SECOND FOLDER BESIDE THE MONTH, not instead of it. The
+    # partner's own link keeps pointing at the untagged folder.
+    if tag:
+        folder += f" - {_safe(tag)}"
 
     n = 0
     for e in group.expected:
@@ -385,8 +426,22 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         if len(data) > 140 * 1024 * 1024:
             raise RuntimeError(f"{src.name} is {len(data) / 1048576:.0f} MB, far "
                                f"larger than a report should ever be.")
-        dbx.files_upload(data, f"{folder}/{report_filename(e)}",
+        name = report_filename(e)
+        # A RENAME LEAVES NO SECOND COPY BEHIND. The folder path and the link
+        # never change, so a report filed last week under an older name is
+        # still sitting there beside the new one unless it is taken out. Only
+        # the name THIS report was last filed as is removed.
+        was = "" if tag else (getattr(r, "delivered_as", "") or "").strip()
+        if was and was != name:
+            try:
+                dbx.files_delete_v2(f"{folder}/{was}")
+                log.info("dropbox: replaced %s with %s", was, name)
+            except Exception:                            # noqa: BLE001
+                pass          # it was never there, which is the normal case
+        dbx.files_upload(data, f"{folder}/{name}",
                          mode=WriteMode("overwrite"))
+        if not tag:
+            r.delivered_as = name[:255]
         n += 1
         if progress:
             progress(n, f"sending {e.client} to Dropbox")
@@ -432,7 +487,7 @@ def _dropbox_link(dbx, path: str, SharedLinkSettings, RequestedVisibility) -> st
 
 # ---------------------------------------------------------------- orchestration
 def deliver(db: Session, period: str, group_name: str, *,
-            force: bool = False, progress=None) -> Delivery:
+            force: bool = False, progress=None, tag: str = "") -> Delivery:
     """Package one group and push it wherever that partner takes delivery."""
     groups = {g.group: g for g in by_group(db, period)}
     group = groups.get(group_name)
@@ -463,14 +518,15 @@ def deliver(db: Session, period: str, group_name: str, *,
     def fail(msg: str) -> Delivery:
         db.rollback()
         rec = Delivery(period=period, group=group_name, target=share_to,
-                       ok=False, message=msg, archive_url=archive_url)
+                       ok=False, message=msg, archive_url=archive_url, tag=tag)
         db.add(rec); db.commit()
         return rec
 
     if settings.delivery_configured["drive"]:
         try:
-            archive_url, drive_msg, n = upload_drive_folder(group, period, label,
-                                                            progress=progress)
+            archive_url, drive_msg, n = upload_drive_folder(
+                group, period, label, progress=progress, tag=tag,
+                pins=drive_pins(db))
         except ModuleNotFoundError as exc:
             return fail(f"The Google library is not installed on this deploy "
                         f"({exc.name}). Redeploy so requirements.txt is picked up.")
@@ -481,8 +537,8 @@ def deliver(db: Session, period: str, group_name: str, *,
 
     if share_to == "dropbox":
         try:
-            share_url, dbx_msg, n2 = upload_dropbox_folder(group, period, label,
-                                                           progress=progress)
+            share_url, dbx_msg, n2 = upload_dropbox_folder(
+                group, period, label, progress=progress, tag=tag)
             n = n or n2
         except ModuleNotFoundError as exc:
             return fail(f"Reports are filed in Drive, but the Dropbox library is "
@@ -498,7 +554,7 @@ def deliver(db: Session, period: str, group_name: str, *,
     if share_url:
         rec = Delivery(period=period, group=group_name, target=share_to, reports=n,
                        share_url=share_url, archive_url=archive_url, ok=True,
-                       message=message)
+                       message=message, tag=tag)
         db.add(rec); db.commit()
         return rec
 
@@ -519,11 +575,34 @@ def deliver(db: Session, period: str, group_name: str, *,
 
 
 def latest_deliveries(db: Session, period: str) -> dict[str, Delivery]:
+    """The partner's OWN link, per group - the one that never moves.
+
+    Tagged deliveries are deliberately not in here. A tagged copy is a second
+    folder somebody made for a reason, and letting it become "the link" for the
+    partner is exactly the thing the stable link is for.
+    """
     from sqlalchemy import select as _select
     out: dict[str, Delivery] = {}
     for d in db.scalars(_select(Delivery).where(Delivery.period == period)
                         .order_by(Delivery.id)).all():
+        if (getattr(d, "tag", "") or ""):
+            continue
         out[d.group] = d              # last one per group wins
+    return out
+
+
+def tagged_deliveries(db: Session, period: str) -> dict[str, list]:
+    """{group: [the extra links somebody made, newest last]}."""
+    from sqlalchemy import select as _select
+    out: dict[str, list] = {}
+    seen: dict[tuple, Delivery] = {}
+    for d in db.scalars(_select(Delivery).where(Delivery.period == period)
+                        .order_by(Delivery.id)).all():
+        if not (getattr(d, "tag", "") or "") or not d.ok:
+            continue
+        seen[(d.group, d.tag)] = d          # last run of that tag wins
+    for (grp, _tag), d in seen.items():
+        out.setdefault(grp, []).append(d)
     return out
 
 
@@ -543,7 +622,7 @@ def delivery_key(period: str, group: str) -> str:
 
 
 def start_delivery(db: Session, period: str, group_name: str, *,
-                   force: bool = False) -> dict:
+                   force: bool = False, tag: str = "") -> dict:
     """Kick a packaging run off and come straight back."""
     import threading
 
@@ -551,7 +630,7 @@ def start_delivery(db: Session, period: str, group_name: str, *,
 
     from .db import DeliveryJob, SessionLocal
 
-    key = delivery_key(period, group_name)
+    key = delivery_key(period, group_name) + (f":{tag}" if tag else "")
     row = db.scalar(_select(DeliveryJob).where(DeliveryJob.key == key))
     if row is not None and row.state == "running" and not row.stalled:
         return {"done": row.done, "total": row.total}
@@ -584,7 +663,7 @@ def start_delivery(db: Session, period: str, group_name: str, *,
 
         try:
             with background():          # a page load still comes first
-                rec = deliver(own, period, group_name, force=force,
+                rec = deliver(own, period, group_name, force=force, tag=tag,
                               progress=lambda n, note: touch(n, note))
                 touch(rec.reports or total,
                       (rec.message or "")[:255],

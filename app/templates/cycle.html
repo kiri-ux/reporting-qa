@@ -374,17 +374,12 @@ Reports arrive in bursts, so this is the shortest window with enough arrivals in
               <a href="{{ d.archive_url }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
             <span class="acct">{{ d.reports }} file{{ 's' if d.reports != 1 }}</span>
-            {# PACKAGE AGAIN. Once a partner had a link there was no way to make
-               another one, so a delivery that went to the wrong place - or one
-               made before a report was corrected - could only be fixed by hand
-               in Drive. This uploads over the same files and mints the link
-               again, to wherever the roster now says this partner delivers. #}
-            <form method="post" action="/cycle/{{ period }}/deliver" style="display:inline">
-              <input type="hidden" name="group" value="{{ g.group }}">
-              <input type="hidden" name="force" value="1">
-              <button class="mini" type="submit"
-                      title="Package this partner again, to {{ (g.target or 'drive')|capitalize }}. The files are replaced in place and a new link is made.">Package again</button>
-            </form>
+            {# PACKAGE AGAIN LIVES ON THE LINKS PAGE. This card is where a
+               partner's reports get judged; handing links over is a different
+               job on a different page, and re-packaging belongs beside the
+               link it replaces. #}
+            <a class="mini" href="/cycle/links?period={{ period }}"
+               title="Package again, or make a second link, on the links page">Package again</a>
           {% elif d and d.ok %}
             <a class="btn gold" href="/delivery/{{ d.id }}/file">Download zip</a>
             <span class="acct">{{ d.reports }} files · {{ (d.bytes / 1048576)|round(1) }} MB</span>

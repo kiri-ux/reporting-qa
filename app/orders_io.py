@@ -274,7 +274,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
     def skip(reason):
         skipped[reason] = skipped.get(reason, 0) + 1
 
-    seen: set[tuple] = set()
+    seen: set[str] = set()
     kept: dict[tuple[str, str], dict] = {}
     # Line items kept on their own status while their order header disagreed.
     # Worth counting: a handful is housekeeping, a hundred is a process problem.
@@ -306,8 +306,14 @@ def import_io_export(db: Session, sources, period: str | None = None,
             #
             # The daily grain still has to collapse, so the key is the flight:
             # same order, same line item, same dates.
-            key = (order_id, line_id, str(r.get("start_date") or "")[:10],
-                   str(r.get("end_date") or "")[:10])
+            # ONE STRING, NOT A TUPLE OF FOUR. This set holds a member per
+            # line-item flight across a couple of million rows, and a 4-tuple
+            # is five objects where one will do. It is the largest thing this
+            # import keeps in memory, and the service was being restarted for
+            # exceeding its memory limit.
+            key = (order_id + "\x00" + line_id + "\x00"
+                   + str(r.get("start_date") or "")[:10] + "\x00"
+                   + str(r.get("end_date") or "")[:10])
             if key in seen:              # daily grain, and exports may overlap
                 dupes += 1
                 continue

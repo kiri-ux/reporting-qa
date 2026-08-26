@@ -1,68 +1,85 @@
-build 2026.08.26-75
+build 2026.08.26-77
 Changed files only. Drop these over your copy, keeping the paths.
 
+Dockerfile
 app/version.py
-app/board.py
-app/serving.py
+app/db.py
+app/delivery.py
 app/main.py
+app/orders_io.py
+app/templates/base.html
 app/templates/cycle.html
-app/templates/orders.html
-tests/test_serving.py
+app/templates/links.html
+tests/test_rules.py
 
-561 tests pass.
-
-
-1. WHY THERE ARE STILL EXTRA REPORTS - AND IT IS THE SAME BUG AS LAST TIME
----------------------------------------------------------------------------
-"Cancelled" and "IO Complete" say a campaign is OVER. Neither says WHICH MONTH
-it ended in, and its end date on the export still reads whatever it was sold to
-run to. So closing out on the flag alone closes out every campaign that has
-ever finished, all into this one cycle.
-
-Build 90 narrowed it to "every line on the client has stopped", which took out
-26 rows and left the rest, because the rest are real finished campaigns - just
-finished in March, or last November.
-
-The serving file dates them. A campaign that delivered this month is one that
-finished this month. One that last delivered in March finished in March and is
-not this cycle's work. So a cancelled or complete campaign now only earns a
-lifetime if the serving file shows it delivering in the data month.
-
-With no serving file loaded for a month, nothing changes - the flag stands on
-its own, as before.
+565 tests pass.
 
 
-2. OVERRIDES, BOTH WAYS, WITH A NOTE
+1. DRIVE LINKS ARE FOLDERS, NOT ZIPS
 -------------------------------------
-On a row with no PDF:
+Always have been. The link is
+drive.google.com/drive/folders/<id> - the partner opens it and sees the client
+names, takes the one they want, or copies the whole thing into their own drive.
 
-  [note] [Done, no report] [Not needed]
-
-On the "not owed this cycle" list, every row now has:
-
-  [why] [Needs a report]
-
-"Needs a report" puts it back on the board and it survives every rule - short
-month, serving file, overlapping order, lifetime already delivered, all of it.
-The row shows "kept on by hand" with your note on hover, so it never reads as
-something the board asked for on its own.
-
-All three are this cycle only. Next month the rules decide again, which is
-what you want - the override is about this July, not about this client.
+A zip only appears when NEITHER Drive nor Dropbox is configured, as a last
+resort so a delivery is not lost. On the links page that shows as "Download
+zip" instead of "Open", so you can always tell which one you got.
 
 
-3. "JULY 2026" IN THE PERIOD BOX
----------------------------------
-That is what made the first load say "0 clients across no month, 16,574 rows
-read". It is a text field and it wanted 2026-07, so every row was filtered out
-and the message read like the file was broken. "July 2026", "2026-7" and
-"7/2026" all work now, and a period that matches nothing in the file refuses
-the load and names the months the file actually holds instead of quietly
-importing zero.
+2. STROUDSBURG - IT USED YOURS BECAUSE THE NAME STILL MATCHED
+--------------------------------------------------------------
+Which is luck, not a guarantee. The market folder is found by matching the
+partner's name against the folders under the parent, so your fixed folder was
+found because it is still called what the roster calls it. Rename it, merge it,
+or move it and the match either finds something else or makes a new folder.
+
+So folders can now be pinned. On the links page, under each partner: "Drive
+folders (n)". Paste the folder's address from your browser - the whole URL, the
+id is pulled out of it - and that market files there, with no matching at all.
+Blank goes back to matching by name.
 
 
-4. THE UNMATCHED COUNT IS THE REAL NUMBER
-------------------------------------------
-It said "40+" because the sample was capped at 40 and the count came off the
-sample. That is the one number that says whether the serving file can be
-trusted to take rows off the board, so it is now the actual count.
+3. PACKAGING MOVED TO THE LINKS PAGE
+-------------------------------------
+"Package again" is off the partner card. The card is where reports get judged;
+handing links over is a different job, and re-packaging belongs beside the link
+it replaces rather than three screens away. The card now links across.
+
+Partners that are ready but never packaged are on the links page too, under
+"Ready, not packaged", so "Package & share" is in the same place as everything
+else about links.
+
+
+4. A SECOND LINK, ON PURPOSE
+-----------------------------
+Next to "Package again" there is a tag box and "New link".
+
+  Package again    same folder, same link, files replaced under it
+  New link         a separate folder with its own link
+
+The tag becomes the folder name - "2026-07 July - corrected" in Drive,
+"7 Mountains July 2026 Reports - corrected" in Dropbox - so six months from now
+it still says what it was for. The tagged links are listed under the partner's
+own one, and the partner's own link is never touched by making one.
+
+A tagged copy also does not count as "what this report was last filed as", so
+it cannot confuse the duplicate cleanup in the real folder.
+
+
+5. THE MEMORY RESTART
+----------------------
+Standard 2 GB is the right call - keep it, and do not drop the worker count,
+which is where speed would go.
+
+Two changes so 2 GB is comfortable rather than just bigger:
+
+  The order import kept one four-part tuple per line-item flight while it read
+  a couple of million rows. That is five objects where one will do, and it was
+  the largest thing the import held. It is one string now.
+
+  gunicorn recycles a worker every ~800 requests, staggered so the two never
+  recycle together. A slow leak now never reaches the ceiling; one worker cold
+  starts while the other keeps serving, so nothing gets slower.
+
+If it happens again, it will be during an order sync, and the next thing to
+change is to run the sync in its own process rather than inside a web worker.

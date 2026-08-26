@@ -12,4 +12,8 @@ COPY . .
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 10000
-CMD ["gunicorn","app.main:app","-k","uvicorn.workers.UvicornWorker","-b","0.0.0.0:10000","--timeout","300","--workers","2"]
+# --max-requests recycles a worker after a while, so a slow leak never reaches
+# the instance's memory ceiling and takes the service down with it. The jitter
+# staggers the two workers so they never recycle together, and a recycle costs
+# one cold start on one worker while the other keeps serving.
+CMD ["gunicorn","app.main:app","-k","uvicorn.workers.UvicornWorker","-b","0.0.0.0:10000","--timeout","300","--workers","2","--max-requests","800","--max-requests-jitter","200"]

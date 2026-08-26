@@ -71,6 +71,77 @@
             {% elif l.target %}
               <span class="acct">{{ l.target|capitalize }}</span>
             {% endif %}
+
+            {# PACKAGING LIVES HERE NOW, beside the link it replaces. It used
+               to be on the partner card, which is where you judge reports -
+               three screens away from the moment you actually want it. #}
+            <div class="repack">
+              {% if l.running %}
+                <meta http-equiv="refresh" content="8">
+                <span class="mini busy"><span class="spin"></span><b
+                  >{{ l.running.done }} of {{ l.running.total or '?' }}</b> packaging</span>
+                {% if l.running.note %}<span class="acct">{{ l.running.note }}</span>{% endif %}
+              {% else %}
+                <form method="post" action="/cycle/{{ period }}/deliver">
+                  <input type="hidden" name="group" value="{{ l.group }}">
+                  <input type="hidden" name="force" value="1">
+                  <input type="hidden" name="back_to" value="links">
+                  <button class="mini" type="submit"
+                          title="Send the current reports again. Same folder, same link - the files are replaced under it.">Package again</button>
+                </form>
+                {# A SECOND LINK, ON PURPOSE. Same month, its own folder, its
+                   own link to hand to somebody - and the partner's own link
+                   above is left exactly as they already have it. #}
+                <form method="post" action="/cycle/{{ period }}/deliver">
+                  <input type="hidden" name="group" value="{{ l.group }}">
+                  <input type="hidden" name="force" value="1">
+                  <input type="hidden" name="back_to" value="links">
+                  <input type="text" name="tag" size="14" required
+                         placeholder="corrected"
+                         title="What this copy is - it becomes the folder name">
+                  <button class="mini" type="submit"
+                          title="Package into a separate folder with its own link, leaving the link above untouched">New link</button>
+                </form>
+              {% endif %}
+            </div>
+            {% if l.markets %}
+              {# WHERE THIS PARTNER'S REPORTS ARE FILED IN DRIVE. The folder is
+                 matched by name against a drive organized by hand over ten
+                 years - fine until somebody fixes a folder, and then a best
+                 guess is not good enough against work done on purpose. #}
+              <details class="pinbox">
+                <summary>Drive folders ({{ l.markets|length }})</summary>
+                {% for m in l.markets %}
+                  <form method="post" action="/cycle/pin-folder" class="pinrow">
+                    <input type="hidden" name="period" value="{{ period }}">
+                    <input type="hidden" name="market" value="{{ m.market }}">
+                    <span class="lname">{{ m.market }}</span>
+                    <input type="text" name="folder" size="34"
+                           value="{{ m.pin }}"
+                           placeholder="Paste the folder's address, or leave blank to match by name">
+                    <button class="mini" type="submit">{{ 'Change' if m.pin else 'Pin' }}</button>
+                    {% if m.pin %}<span class="acct">pinned</span>{% endif %}
+                  </form>
+                {% endfor %}
+                <p class="sub" style="font-size:12px;margin:6px 0 0">
+                  Blank means the folder is found by name, which is what has been
+                  happening and is why a folder you fixed by hand kept being
+                  used - the name still matched. Paste a folder's address here
+                  and no matching runs for that market at all.</p>
+              </details>
+            {% endif %}
+            {% for x in l.extra %}
+              <div class="repack extra">
+                <span class="lname">{{ x.tag }}</span>
+                {% if x.url %}
+                  <a class="btn gold" href="{{ x.url }}" target="_blank" rel="noopener">Open</a>
+                  <button type="button" class="copy" data-copy="{{ x.url }}"
+                          title="Copy the link"><span>Copy</span></button>
+                  <code class="rawlink">{{ x.url }}</code>
+                {% endif %}
+                <span class="acct">{{ x.reports }} file{{ 's' if x.reports != 1 }}</span>
+              </div>
+            {% endfor %}
           </li>
         {% endfor %}
       </ul>
@@ -79,6 +150,29 @@
     <p class="empty">No partner has been packaged for {{ cycle.label }} yet.
       They appear here as they are sent.
       <a href="/cycle?period={{ period }}">Back to the cycle</a>.</p>
+  {% endif %}
+  {% if waiting %}
+    <h2 style="margin-top:22px">Ready, not packaged ({{ waiting|length }})</h2>
+    <div class="links wide">
+      <ul>
+        {% for g in waiting %}
+          <li><span class="lname">{{ g }}</span>
+            {% if running.get(g) %}
+              <meta http-equiv="refresh" content="8">
+              <span class="mini busy"><span class="spin"></span><b
+                >{{ running[g].done }} of {{ running[g].total or '?' }}</b> packaging</span>
+            {% else %}
+              <form method="post" action="/cycle/{{ period }}/deliver"
+                    style="display:inline">
+                <input type="hidden" name="group" value="{{ g }}">
+                <input type="hidden" name="back_to" value="links">
+                <button class="btn gold" type="submit">Package &amp; share</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
   {% endif %}
   {% if delivered.failed %}
     <p class="sub" style="margin-top:12px">
