@@ -2723,7 +2723,7 @@ def pull_range_rows(db: Session, today: dt.date | None = None) -> list[tuple]:
     # which is the last date anything was actually bought to deliver. A live
     # row is judged on the order's end as before, because an open-ended one
     # genuinely has no end yet.
-    from sqlalchemy import and_ as _and, or_ as _or
+    from sqlalchemy import and_ as _and, case, or_ as _or
     order_end = func.coalesce(OrderLine.order_ends_on, OrderLine.ends_on)
     running = _and(OrderLine.canceled.is_(False), OrderLine.complete.is_(False))
     keep = _or(
@@ -2731,11 +2731,35 @@ def pull_range_rows(db: Session, today: dt.date | None = None) -> list[tuple]:
         _and(_or(running == False, running.is_(None)),   # noqa: E712
              OrderLine.ends_on.isnot(None), OrderLine.ends_on >= keep_from),
     )
+    # HOW FAR BACK THIS ORDER REACHES, when its two date pairs disagree.
+    #
+    # The order header is the right thing to ask - a lifetime covers the whole
+    # order, and line items that finished years ago are dropped at import, so
+    # the header is the only surviving trace of how far back the order goes.
+    # The trouble is that this export's headers are not always describing their
+    # own order:
+    #
+    #   4701   header 2018-11-01 -> 2026-12-31, line 2018-11-01 -> 2021-07-31
+    #          agrees, and the header is what reaches the old complete lines
+    #   36184  header 2024-02-07 -> 2026-12-31, line 2018-01-01 -> 2023-04-20
+    #          header starts SIX YEARS AFTER its own line item
+    #   55987  header 2018-03-21 -> 2018-05-18, line 2026-06-29 -> 2026-07-31
+    #          header does not overlap its line item at all, and that 2018 is
+    #          what put Manning Media on this list asking for a six-year pull
+    #
+    # 55987's line item is the one the IO tool shows, so the header is simply
+    # wrong there. What separates it from 4701 is that its header ENDS before
+    # its own line item does - a header that cannot contain its line item is
+    # not describing it. So the header is used only when it could contain the
+    # line, and then only if it reaches further back.
+    line_start = func.coalesce(OrderLine.starts_on, OrderLine.order_starts_on)
+    head_start = func.coalesce(OrderLine.order_starts_on, OrderLine.starts_on)
+    head_ok = _or(OrderLine.order_ends_on.is_(None), OrderLine.ends_on.is_(None),
+                  OrderLine.order_ends_on >= OrderLine.ends_on)
+    reach = case((_and(head_ok, head_start < line_start), head_start),
+                 else_=line_start)
     rows = db.execute(
-        select(OrderLine.market,
-               func.min(func.coalesce(OrderLine.order_starts_on,
-                                      OrderLine.starts_on)),
-               func.count(OrderLine.id))
+        select(OrderLine.market, func.min(reach), func.count(OrderLine.id))
         .where(keep)
         .group_by(OrderLine.market)).all()
     return sorted(((m_, e, n) for m_, e, n in rows),
@@ -2773,7 +2797,6 @@ def pull_range_why(db: Session, market: str, today: dt.date | None = None) -> li
     keep_from = dt.date(y, m, 1)
     out = []
     for l in db.scalars(select(OrderLine).where(OrderLine.market == market)).all():
-        starts = l.order_starts_on or l.starts_on
         oend = l.order_ends_on or l.ends_on
         running = not (getattr(l, "canceled", False) or getattr(l, "complete", False))
         if running:
@@ -2784,9 +2807,20 @@ def pull_range_why(db: Session, market: str, today: dt.date | None = None) -> li
             why = ("finished recently enough to still owe a report" if kept
                    else "nothing on it has been running since "
                         + keep_from.isoformat())
+        # BOTH WINDOWS, because they disagree and the disagreement is the story.
+        # A header that ENDS before its own line item cannot be describing it,
+        # and that is the test the pull date uses - so the panel marks exactly
+        # the rows where the header was set aside.
+        head = (l.order_starts_on, l.order_ends_on)
+        odd = bool(head[1] and l.ends_on and head[1] < l.ends_on)
+        reach = l.starts_on or l.order_starts_on
+        if not odd and head[0] and reach and head[0] < reach:
+            reach = head[0]           # the header reaches further and is credible
         out.append({"orders": l.account_ids or "", "lines": l.line_ids or "",
                     "product": l.product or "", "client": l.client or "",
-                    "starts": starts, "ends": oend, "kept": kept,
+                    "starts": reach,
+                    "ends": l.ends_on or l.order_ends_on, "kept": kept,
+                    "order_starts": head[0], "order_ends": head[1], "odd": odd,
                     "status": getattr(l, "status", "") or "", "why": why})
     out.sort(key=lambda r: (not r["kept"], r["starts"] or dt.date.max))
     return out

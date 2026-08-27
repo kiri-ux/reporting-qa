@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.27-101"
-BUILD_NOTES = ("Fixes the NameError that crashed the sync, and every "
-               "straggler on the pull list now shows the line item that put "
-               "it there.")
+BUILD = "2026.08.27-102"
+BUILD_NOTES = ("An order header that cannot contain its own line item is set "
+               "aside - which is what put Manning Media on the pull list "
+               "asking for 2018.")
 
 # ---------------------------------------------------------------------------
 

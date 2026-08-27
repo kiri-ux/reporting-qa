@@ -1,74 +1,60 @@
-build 2026.08.27-101
+build 2026.08.27-102
 Changed files only.
 
 app/main.py
-app/orders_s3.py
 app/templates/orders.html
-requirements.txt
-tests/test_board_extras.py
-tests/test_order_status.py
 app/version.py
+tests/test_order_remap.py
 
-657 tests pass.
-
-
-THE CRASH WAS MINE
-=====================
-"NameError: name 'log' is not defined". I added a logging line to the sweep in
-build 100 and orders_s3 has no logger. It ran on the first press, failed, and
-on the second press the sweep had already been skipped so the import went
-through - which is why it worked the second time and why the sweep did not
-actually run.
-
-One line to fix. The reason it reached you at all is worth more than the fix:
-that code path only executes with real S3 credentials, so no test ran it, and
-Python does not notice an undefined name until it executes one.
-
-So there is now a test that reads every module in app/ and fails on any name
-that does not exist. It catches exactly this - checked against the real bug.
-pyflakes is in requirements.txt for it; nothing at runtime uses it.
+658 tests pass.
 
 
-WHY IS MANNING THERE, AND WHAT IS KEEPING WHITFIELD
-======================================================
-Both are questions about one particular order, and neither of us can answer
-them by reasoning about the rule - only by looking at the row. So the page
-shows it now.
+THE MANNING DATES CAME FROM THE ORDER HEADER, AND IT IS WRONG
+================================================================
+Order 55987, line item 136061. Two date pairs on that row, and they do not
+agree:
 
-Every partner in "then one pull each" has a "why" beside it. Open it and you
-get the line items that put it there: order id, line item id, client, product,
-the status in its own words, its dates, and which rule kept it -
+  the order header    2018-03-21 -> 2018-05-18
+  the line item       2026-06-29 -> 2026-07-31   (what the IO tool shows)
 
-  still running
-  finished recently enough to still owe a report
+They do not overlap at all. The pull list was reading the header, so Manning
+asked for a range back to March 2018 on the strength of a campaign that ran
+for five weeks this summer.
 
-and a count of the ones on that partner that were NOT counted, so a partner
-held there by a single stale row is obvious.
+Why the header was being read at all, rather than the line item: a lifetime
+covers the whole ORDER, and line items that finished years ago are dropped at
+import - so on ReThink's 4701 the header is the only surviving trace of how
+far back that order goes, and using the live line item instead was the bug
+fixed a few builds ago. That reasoning still holds. The header's DATES are
+what turned out not to.
 
-My guess on Whitfield, to be confirmed by that panel rather than by me: build
-96 drops a row that is cancelled or complete and stopped before the cutoff. A
-row that is PAUSED or PENDING LAUNCH is neither, so if Whitfield has one of
-those dated into the future it still counts as running. If that is what the
-panel says, tell me and I will decide what a paused line item four years old
-should mean - but I would rather see it than guess again.
+The same export has it the other way up too: order 36184's header starts
+2024-02-07 with a line item starting 2018-01-01.
 
-Manning is new because the data is new, not because a rule changed. The old
-whole-board export was pulled over a date range; these per-partner files carry
-the partner's whole history, so orders that were never in the file before are
-in it now. That is the pull list doing its job: it is telling you Manning has
-something live that started in 2018 and the bulk window does not reach it.
+WHAT SEPARATES A GOOD HEADER FROM A BAD ONE. 55987's header ENDS before its
+own line item does. A header that cannot contain its line item is not
+describing it. So the header is used only when it could contain the line, and
+then only if it reaches further back than the line does:
+
+  4701    header 2018-11-01 -> 2026-12-31, line 2021-08-11 -> 2026-12-31
+          header could contain it and reaches further   -> 2018-11-01
+  36184   header 2024-02-07 -> 2026-12-31, line 2018-01-01 -> 2026-12-31
+          header could contain it but starts later      -> 2018-01-01
+  55987   header 2018-03-21 -> 2018-05-18, line 2026-06-29 -> 2026-07-31
+          header ends before its own line, set aside    -> 2026-06-29
+
+Manning's pull date becomes 2026-06-29, which is inside the bulk window - so
+Manning comes off the "one pull each" list entirely.
 
 
-HOW TO VERIFY THE NEW UPLOAD
-===============================
-Two panels on the orders page, both from the last two builds:
+AND THE PANEL SHOWS BOTH
+===========================
+The why panel prints the line item's window, and underneath it in red "header
+says 2018-03-21 -> 2018-05-18" on exactly the rows where the header was set
+aside. Hovering says why.
 
-  1. "N partners on the roster have no order lines loaded at all" - the red
-     panel. If the list is only partners that genuinely have nothing running,
-     every file landed. A live partner on that list means its file did not.
-
-  2. The disk panel, past 75% full.
-
-And the sync line itself: it says how many order lines came out. 3,140 now
-against 3,121 before, which is the same board plus a little - not a board with
-files missing from it.
+That is the thing to look at for Whitfield too. If its row is marked, the
+header was the problem and this build already fixed it. If it is not marked
+and says "still running", the export says that order is genuinely live and the
+disagreement is between the export and the IO tool - which is worth raising
+with whoever produces the file rather than working around here.

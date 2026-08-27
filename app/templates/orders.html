@@ -170,7 +170,11 @@
                               <td>{{ w.client }}</td>
                               <td>{{ w.product }}</td>
                               <td class="nw">{{ w.status or 'no status' }}</td>
-                              <td class="mono nw">{{ w.starts or '?' }} &rarr; {{ w.ends or 'open' }}</td>
+                              <td class="mono nw">{{ w.starts or '?' }} &rarr; {{ w.ends or 'open' }}
+                                {%- if w.odd %}<br><span class="oddhead"
+                                  title="The order header says this order ran {{ w.order_starts or '?' }} to {{ w.order_ends or 'open' }}, which does not contain its own line item. The line item's dates are what the IO tool shows, so those are the ones used.">header says
+                                  {{ w.order_starts or '?' }} &rarr; {{ w.order_ends or 'open' }}</span>{% endif %}
+                              </td>
                               <td>{{ w.why }}</td>
                             </tr>
                           {% endfor %}
@@ -212,6 +216,7 @@
        box-shadow:none}
       .whyt td{padding:3px 10px 3px 0;border-bottom:1px solid var(--line-2);
        vertical-align:top}
+      .oddhead{font-size:11px;color:var(--crit);cursor:help}
       </style>
       {% set heavy = plan|selectattr('pulls','greaterthan',1)|list %}
       <p class="sub" style="font-size:13.5px;margin:0 0 10px">

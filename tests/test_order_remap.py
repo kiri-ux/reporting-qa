@@ -1244,3 +1244,48 @@ def test_a_wholly_cancelled_product_is_not_paced_at_all(db):
     # Every line cancelled means the row itself is not live, and a product
     # nobody is running has no goal to be short of.
     assert ordered_for(db, "Acme", "700", "2026-07") == {}
+
+
+def test_an_order_header_that_cannot_contain_its_line_item_is_set_aside(db):
+    """MANNING MEDIA, order 55987, line item 136061. The IO tool shows that
+    line running 29 June to 31 July 2026. The export's order header says the
+    order ran 21 March to 18 May 2018 - six years before its own line item and
+    not overlapping it at all - and that 2018 was what put Manning on the pull
+    list asking for a six-year range.
+
+    What separates it from ReThink's 4701, where the header IS the thing that
+    reaches the old complete line items, is that 55987's header ENDS before its
+    own line item does. A header that cannot contain its line is not describing
+    it.
+    """
+    import datetime as _d
+    D = _d.date
+    from app.main import pull_range_rows, pull_range_why
+    db.add_all([
+        # The header agrees and reaches further back: it is used.
+        OrderLine(market="ReThink Media Group", client="Memorial Hospital",
+                  account_ids="4701", live=True, product="Native Display",
+                  starts_on=D(2021, 8, 11), ends_on=D(2026, 12, 31),
+                  order_starts_on=D(2018, 11, 1), order_ends_on=D(2026, 12, 31)),
+        # The header starts AFTER its own line item: the line item wins.
+        OrderLine(market="Hilbing", client="H", account_ids="36184", live=True,
+                  product="Display", starts_on=D(2018, 1, 1), ends_on=D(2026, 12, 31),
+                  order_starts_on=D(2024, 2, 7), order_ends_on=D(2026, 12, 31)),
+        # The header does not overlap its line item: set aside.
+        OrderLine(market="Manning Media", client="Transit of Frederick",
+                  account_ids="55987", line_ids="136061", product="Social Mirror",
+                  canceled=True, live=False, status="Cancelled",
+                  starts_on=D(2026, 6, 29), ends_on=D(2026, 7, 31),
+                  order_starts_on=D(2018, 3, 21), order_ends_on=D(2018, 5, 18)),
+    ])
+    db.commit()
+
+    got = dict((m, e) for m, e, _n in pull_range_rows(db, today=D(2026, 8, 26)))
+    assert got["ReThink Media Group"] == D(2018, 11, 1), "the header still counts"
+    assert got["Hilbing"] == D(2018, 1, 1), "the line item reaches further"
+    assert got["Manning Media"] == D(2026, 6, 29), "not 2018-03-21"
+
+    # And the panel marks the row whose header was set aside, with both windows.
+    row = pull_range_why(db, "Manning Media", today=D(2026, 8, 26))[0]
+    assert row["odd"] is True
+    assert row["starts"] == D(2026, 6, 29) and row["order_starts"] == D(2018, 3, 21)
