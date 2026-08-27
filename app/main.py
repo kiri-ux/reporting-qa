@@ -744,7 +744,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         # say so - which is why finding one running looked like the tool
         # deciding to do something on its own.
         "triggers": _sync_triggers(),
-        "strategy": pull_strategy(db),
+        "strategy": _strategy_with_reasons(db),
         "s3_uri": f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
                   if settings.s3_configured else ""})
 
@@ -2740,6 +2740,22 @@ def pull_range_rows(db: Session, today: dt.date | None = None) -> list[tuple]:
         .group_by(OrderLine.market)).all()
     return sorted(((m_, e, n) for m_, e, n in rows),
                   key=lambda r: (r[1] or dt.date.max, r[0] or ""))
+
+
+def _strategy_with_reasons(db: Session) -> dict:
+    """The pull plan, with the line items behind each straggler's date.
+
+    "Manning Media, 2018-03-21" and "Whitfield Media, 2020-03-23" are claims
+    about particular orders, and the only way to judge one is to see it. There
+    are never more than a handful of stragglers, so the reasons come with them
+    rather than being a download somebody has to know exists.
+    """
+    st = pull_strategy(db)
+    for s in st.get("stragglers", []):
+        rows = pull_range_why(db, s.get("market") or "")
+        s["why"] = [r for r in rows if r["kept"]]
+        s["dropped"] = sum(1 for r in rows if not r["kept"])
+    return st
 
 
 def pull_range_why(db: Session, market: str, today: dt.date | None = None) -> list:

@@ -1116,3 +1116,37 @@ def client_orders_db(tmp_path, monkeypatch):
     db.close()
     monkeypatch.undo()
     importlib.reload(cfg); importlib.reload(dbm); importlib.reload(mmod)
+
+
+def test_each_straggler_carries_the_line_item_that_set_its_date():
+    """"Manning Media, 2018-03-21" and "Whitfield Media, 2020-03-23" are claims
+    about particular orders, and the only way to judge one is to see it."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.main import _strategy_with_reasons
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    D = dt.date.fromisoformat
+    db.add(OrderLine(market="Manning Media", client="An Old Client",
+                     account_ids="900", line_ids="9000", product="Display",
+                     status="IO Live", starts_on=D("2018-03-21"),
+                     ends_on=D("2027-12-31"), order_starts_on=D("2018-03-21"),
+                     order_ends_on=D("2027-12-31"), live=True))
+    # And one on the same partner that is NOT what put it there.
+    db.add(OrderLine(market="Manning Media", client="Gone", account_ids="901",
+                     product="Display", status="Cancelled", canceled=True,
+                     live=False, starts_on=D("2019-01-01"), ends_on=D("2019-06-30"),
+                     order_starts_on=D("2019-01-01"), order_ends_on=D("2027-12-31")))
+    db.commit()
+
+    st = _strategy_with_reasons(db)
+    mine = [s for s in st["stragglers"] if s["market"] == "Manning Media"]
+    assert mine, "the old order should still need its own pull"
+    why = mine[0]["why"]
+    assert [w["orders"] for w in why] == ["900"]
+    assert why[0]["why"] == "still running"
+    assert mine[0]["dropped"] == 1, "the cancelled one is named as not counted"
+    db.close(); eng.dispose()

@@ -1,64 +1,74 @@
-build 2026.08.27-100
+build 2026.08.27-101
 Changed files only.
 
-app/ingest.py
 app/main.py
 app/orders_s3.py
 app/templates/orders.html
-app/version.py
+requirements.txt
+tests/test_board_extras.py
 tests/test_order_status.py
+app/version.py
 
-655 tests pass.
-
-
-DELETING THE S3 FILES WILL NOT HELP
-======================================
-Different disk. The S3 bucket is Amazon's; /data is Render's, attached to the
-service. Nothing you delete in one frees a byte in the other.
-
-/data holds three things: the report PDFs, the packaged zips, and the order
-downloads. It is the third one that did this.
+657 tests pass.
 
 
-WHAT FILLED IT
-=================
-The sync downloads the export to a temp directory under /data and removes it
-afterwards - on the success path and on the failure path. Neither of those
-runs if the PROCESS is killed. A deploy, a restart, the OOM killer: any of
-them mid-sync leaves the whole download on the disk, forever, and the next
-sync makes a fresh one beside it.
+THE CRASH WAS MINE
+=====================
+"NameError: name 'log' is not defined". I added a logging line to the sweep in
+build 100 and orders_s3 has no logger. It ran on the first press, failed, and
+on the second press the sweep had already been skipped so the import went
+through - which is why it worked the second time and why the sweep did not
+actually run.
 
-That is a leak that only shows up as somebody else's error. "Downloaded but
-could not import: OSError [Errno 28]" is not about the file - the file is
-fine. It is the disk being full, reported by whatever happened to be writing
-when it ran out.
+One line to fix. The reason it reached you at all is worth more than the fix:
+that code path only executes with real S3 credentials, so no test ran it, and
+Python does not notice an undefined name until it executes one.
 
-Three things now:
-
-  * EVERY SYNC SWEEPS ABANDONED DOWNLOADS FIRST. Anything named orders-* and
-    older than half an hour goes. Half an hour so a sync running right now in
-    the other worker keeps its own files.
-
-  * THE PRUNE TAKES THE OLD PACKAGED ZIPS TOO. One is built per partner per
-    package, and "sync reports" builds another - so a cycle re-packaged a few
-    times leaves several copies of every partner's reports on the disk, on top
-    of the reports themselves. Past the retention window they are two copies
-    of a copy. Deleted with the PDFs of the same month.
-
-  * THE ERROR SAYS IT IS THE DISK when it is the disk, with the free space,
-    instead of sending somebody to look at a file that parses perfectly well.
-
-And the orders page carries a red panel past 75% full, saying how much is
-left and that the S3 bucket is a different disk.
+So there is now a test that reads every module in app/ and fails on any name
+that does not exist. It catches exactly this - checked against the real bug.
+pyflakes is in requirements.txt for it; nothing at runtime uses it.
 
 
-WHAT TO DO NOW
-=================
-Deploy this and press Sync from S3. The sweep runs first, so if abandoned
-downloads are what filled it, the sync that clears them is the same one that
-then succeeds.
+WHY IS MANNING THERE, AND WHAT IS KEEPING WHITFIELD
+======================================================
+Both are questions about one particular order, and neither of us can answer
+them by reasoning about the rule - only by looking at the row. So the page
+shows it now.
 
-If it is still tight afterwards, the orders page will say so, and the next
-thing to look at is KEEP_PDF_MONTHS - the report PDFs are the bulk of the
-rest, roughly 1.6 GB a cycle, and the archive in the shared drive is the copy
-that matters by then.
+Every partner in "then one pull each" has a "why" beside it. Open it and you
+get the line items that put it there: order id, line item id, client, product,
+the status in its own words, its dates, and which rule kept it -
+
+  still running
+  finished recently enough to still owe a report
+
+and a count of the ones on that partner that were NOT counted, so a partner
+held there by a single stale row is obvious.
+
+My guess on Whitfield, to be confirmed by that panel rather than by me: build
+96 drops a row that is cancelled or complete and stopped before the cutoff. A
+row that is PAUSED or PENDING LAUNCH is neither, so if Whitfield has one of
+those dated into the future it still counts as running. If that is what the
+panel says, tell me and I will decide what a paused line item four years old
+should mean - but I would rather see it than guess again.
+
+Manning is new because the data is new, not because a rule changed. The old
+whole-board export was pulled over a date range; these per-partner files carry
+the partner's whole history, so orders that were never in the file before are
+in it now. That is the pull list doing its job: it is telling you Manning has
+something live that started in 2018 and the bulk window does not reach it.
+
+
+HOW TO VERIFY THE NEW UPLOAD
+===============================
+Two panels on the orders page, both from the last two builds:
+
+  1. "N partners on the roster have no order lines loaded at all" - the red
+     panel. If the list is only partners that genuinely have nothing running,
+     every file landed. A live partner on that list means its file did not.
+
+  2. The disk panel, past 75% full.
+
+And the sync line itself: it says how many order lines came out. 3,140 now
+against 3,121 before, which is the same board plus a little - not a board with
+files missing from it.

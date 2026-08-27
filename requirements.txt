@@ -17,3 +17,9 @@ openpyxl==3.1.5
 google-api-python-client==2.149.0
 google-auth==2.35.0
 dropbox==12.0.2
+
+# NOT USED AT RUNTIME. It backs one test: "no module refers to a name that
+# does not exist". A sync crashed on NameError: name 'log' is not defined,
+# from a logging line added to a code path that only real S3 credentials
+# reach - so no test ran it and nothing caught a typo the compiler cannot.
+pyflakes==3.2.0

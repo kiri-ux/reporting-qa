@@ -157,6 +157,33 @@
                 {% for s in strategy.stragglers %}
                   <li>{{ s.market }} &mdash;
                     {% for a, b in s.windows %}{{ a }} &rarr; {{ b }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {# WHY THIS ONE, AND WHICH ORDER SAYS SO. A date reaching
+                       back six years is a claim about a particular line item,
+                       and the only way to judge it is to see it. #}
+                    {% if s.why %}
+                      <details class="whypull"><summary>why</summary>
+                        <table class="whyt"><tbody>
+                          {% for w in s.why %}
+                            <tr>
+                              <td class="mono nw">{{ w.orders or '-' }}</td>
+                              <td class="mono nw">{{ w.lines or '-' }}</td>
+                              <td>{{ w.client }}</td>
+                              <td>{{ w.product }}</td>
+                              <td class="nw">{{ w.status or 'no status' }}</td>
+                              <td class="mono nw">{{ w.starts or '?' }} &rarr; {{ w.ends or 'open' }}</td>
+                              <td>{{ w.why }}</td>
+                            </tr>
+                          {% endfor %}
+                        </tbody></table>
+                        {% if s.dropped %}
+                          <p class="sub" style="font-size:12px;margin:6px 0 0">
+                            {{ s.dropped }} more line item{{ 's' if s.dropped != 1 }} on this
+                            partner {{ 'were' if s.dropped != 1 else 'was' }} not counted -
+                            nothing on {{ 'them' if s.dropped != 1 else 'it' }} has been
+                            running since the cutoff.</p>
+                        {% endif %}
+                      </details>
+                    {% endif %}
                   </li>
                 {% endfor %}
               </ul>
@@ -177,6 +204,15 @@
         </p>
       </div>
 
+      <style>
+      .whypull{margin:4px 0 8px}
+      .whypull > summary{cursor:pointer;font-size:12px;color:var(--velocity);
+       display:inline-block}
+      .whyt{width:auto;font-size:12px;margin-top:5px;background:transparent;
+       box-shadow:none}
+      .whyt td{padding:3px 10px 3px 0;border-bottom:1px solid var(--line-2);
+       vertical-align:top}
+      </style>
       {% set heavy = plan|selectattr('pulls','greaterthan',1)|list %}
       <p class="sub" style="font-size:13.5px;margin:0 0 10px">
         {{ plan|length }} partner{{ 's' if plan|length != 1 }} with something

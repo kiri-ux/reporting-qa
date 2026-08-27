@@ -297,3 +297,23 @@ def test_the_disk_is_reported_before_it_bites():
             / "orders.html").read_text()
     assert "The disk is {{ disk.pct }}% full" in html
     assert "Deleting files in the S3 bucket does not" in html
+
+
+def test_no_module_refers_to_a_name_that_does_not_exist():
+    """A sync crashed on "NameError: name 'log' is not defined" - a logging
+    line added to a code path only real S3 credentials reach, so no test ran
+    it and nothing caught a typo Python cannot see until it executes.
+
+    Undefined names only. Unused imports and shadowed locals are style.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+    pytest.importorskip("pyflakes")
+    root = Path(__file__).resolve().parents[1]
+    files = sorted(str(p) for p in (root / "app").rglob("*.py"))
+    out = subprocess.run([sys.executable, "-m", "pyflakes", *files],
+                         capture_output=True, text=True).stdout
+    bad = [ln for ln in out.splitlines()
+           if "undefined name" in ln or "may be undefined" in ln]
+    assert not bad, "\n".join(bad)

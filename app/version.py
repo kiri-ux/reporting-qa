@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.27-100"
-BUILD_NOTES = ("Abandoned order downloads and old packaged zips are swept, "
-               "and the orders page says how full the disk is.")
+BUILD = "2026.08.27-101"
+BUILD_NOTES = ("Fixes the NameError that crashed the sync, and every "
+               "straggler on the pull list now shows the line item that put "
+               "it there.")
 
 # ---------------------------------------------------------------------------
 

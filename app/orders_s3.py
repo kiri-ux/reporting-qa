@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import logging
 import os
 import shutil
 import tempfile
@@ -18,6 +19,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import OrderSync
+
+log = logging.getLogger("report-qa")
 from .roster import import_orders
 from .version import product_map_version
 
