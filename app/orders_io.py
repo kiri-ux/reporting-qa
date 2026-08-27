@@ -302,6 +302,12 @@ def import_io_export(db: Session, sources, period: str | None = None,
     rows_read = 0
     date_min = date_max = None        # kept as raw strings, compared lexically
     order_start_min = None
+    # EVERY DISTINCT ORDER END DATE IN THE FILE, and every distinct order id,
+    # up to a handful of each. See the sweep after the read loop.
+    seen_order_ends: set = set()
+    seen_order_ids: set = set()
+    # The earliest line-item start on each order, across every row read.
+    order_first_start: dict = {}
 
     for src in sources:
         for r in _open_source(src):
@@ -360,6 +366,24 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 skip("RFP"); continue
 
             order_end = _date(r.get("orders_end_date"))
+            if order_end is not None and len(seen_order_ends) < 4:
+                seen_order_ends.add(order_end)
+            if order_id and len(seen_order_ids) < 4:
+                seen_order_ids.add(order_id)
+
+            # HOW FAR BACK THIS ORDER ACTUALLY GOES, taken from its line items
+            # rather than from its header, and taken HERE - before the skips -
+            # because the line items that reach furthest back are exactly the
+            # ones that finished years ago and are about to be dropped.
+            #
+            # That is what the header was being used for, and the header cannot
+            # be trusted: see the sweep after this loop. This is the same fact
+            # from the rows themselves.
+            _ls = _date(r.get("start_date"))
+            if order_id and _ls is not None:
+                cur = order_first_start.get(order_id)
+                if cur is None or _ls < cur:
+                    order_first_start[order_id] = _ls
             # The line item's own end, and only if it has one. Falling back to
             # the order header keeps a finished line item alive for the rest of
             # the order - which is how a Social Mirror that stopped in June was
@@ -578,6 +602,40 @@ def import_io_export(db: Session, sources, period: str | None = None,
         return {"kept": 0, "clients": 0, "skipped": {}, "guidance": {},
                 "rows_read": 0, "duplicate_rows": 0, "files": len(sources)}
 
+    # AN "ORDER END DATE" THAT IS THE SAME ON EVERY ORDER IS NOT A DATE.
+    #
+    # In the orders-db export orders_end_date reads 2026-12-31 on every row of
+    # every file - 1,404 rows across four partners, five orders, one value. It
+    # is the end of the range the export was pulled over, not the end of
+    # anybody's campaign.
+    #
+    # Believed, it says every campaign in the business finishes on the same day
+    # at the end of next year: no campaign ever ends in the month being
+    # reported, so no lifetime is ever owed, and every row on the board reads
+    # as running to 2026-12-31. Manning Media's pull date came out of the same
+    # pair of columns and matched nothing on the order in the IO tool.
+    #
+    # Detected rather than hard-coded, because the day it starts carrying real
+    # dates this should start using them: one distinct value across several
+    # orders is a window bound; several values are dates.
+    window_end = (len(seen_order_ends) == 1 and len(seen_order_ids) > 1)
+    if window_end:
+        for v in kept.values():
+            v["order_ends"] = None
+            # AND ITS PARTNER COLUMN GOES WITH IT. They are the same pair from
+            # the same place, so one of them being a window bound is not a
+            # reason to believe the other. Manning Media's order 55987 came
+            # through headed 2018-03-21 to 2018-05-18 against a line item that
+            # ran 29 June to 31 July 2026, and there is no 2018 anywhere on
+            # that order in the IO tool - not in its dates and not in its edit
+            # history.
+            #
+            # Replaced with the earliest start among the order's OWN line
+            # items, which is the fact the header was standing in for.
+            firsts = [order_first_start[o] for o in (v["orders"] or ())
+                      if o in order_first_start]
+            v["order_starts"] = min(firsts) if firsts else v["starts_on"]
+
     # What the old list said, before it is thrown away. A report's product
     # check is an answer about the ORDERS as much as about the PDF, so a client
     # whose product set just changed is carrying a stale verdict - and nothing
@@ -634,6 +692,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
 
     guidance = _export_guidance(_date(date_min), _date(date_max), order_start_min)
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
+            "order_end_is_a_window": window_end,
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,
             "header_overruled": header_overruled, "restamped": restamped,

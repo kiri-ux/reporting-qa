@@ -317,3 +317,97 @@ def test_no_module_refers_to_a_name_that_does_not_exist():
     bad = [ln for ln in out.splitlines()
            if "undefined name" in ln or "may be undefined" in ln]
     assert not bad, "\n".join(bad)
+
+
+# ------------- an order end that is the same on every order is not a date
+_HDR = ("client_business_unit,orders_status,client,orders_id,product,id,status,"
+        "orders_type,orders_start_date,start_date,end_date,orders_end_date,"
+        "monthly_campaign_impressions\n")
+
+
+def _win_row(order, line, product, start, end, o_start, o_end, status="IO Live"):
+    return (f"BU,IO Live,Acme,{order},{product},{line},{status},Insertion Order,"
+            f"{o_start},{start},{end},{o_end},100000\n")
+
+
+def test_one_order_end_date_across_every_order_is_a_window_not_a_date():
+    """In the orders-db export orders_end_date reads 2026-12-31 on every row of
+    every file - 1,404 rows, four partners, five orders, one value. It is the
+    range the export was pulled over, not the end of anybody's campaign.
+
+    Believed, it says every campaign in the business finishes on the same day
+    at the end of next year: no campaign ever ends in the month being reported,
+    so no lifetime is ever owed.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    rows = (_win_row(101, 1, "Display Ads", "2019-06-10", "2026-12-31",
+                 "2019-06-10", "2026-12-31")
+            + _win_row(102, 2, "Social Mirror Ads", "2021-02-11", "2026-12-31",
+                   "2021-02-11", "2026-12-31"))
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    res = import_io_export(db, (_HDR + rows).encode(), period="2026-07")
+    assert res["order_end_is_a_window"] is True
+    assert all(l.order_ends_on is None for l in db.query(OrderLine).all())
+    db.close(); eng.dispose()
+
+
+def test_real_order_end_dates_are_left_alone():
+    """Detected rather than hard-coded, because the day the export starts
+    carrying real dates this should start using them."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    rows = (_win_row(101, 1, "Display Ads", "2019-06-10", "2026-10-31",
+                 "2019-06-10", "2026-10-31")
+            + _win_row(102, 2, "Social Mirror Ads", "2021-02-11", "2026-11-30",
+                   "2021-02-11", "2026-11-30"))
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    res = import_io_export(db, (_HDR + rows).encode(), period="2026-07")
+    assert res["order_end_is_a_window"] is False
+    assert all(l.order_ends_on is not None for l in db.query(OrderLine).all())
+    db.close(); eng.dispose()
+
+
+def test_the_orders_reach_comes_from_its_own_line_items():
+    """The header was standing in for "how far back does this order go",
+    because the line items that reach furthest back are exactly the ones
+    dropped at import for having finished years ago. With the header set aside
+    that fact is taken from the rows themselves - collected BEFORE the skip.
+
+    Manning Media's 55987 came through headed 2018-03-21 to 2018-05-18 against
+    a line item that ran 29 June to 31 July 2026, and there is no 2018 anywhere
+    on that order in the IO tool.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    rows = (
+        # One order, one live line and one that finished in 2019 and is dropped.
+        _win_row(300, 1, "Display Ads", "2021-02-11", "2026-12-31",
+             "2018-03-21", "2026-12-31")
+        + _win_row(300, 2, "Display Ads", "2019-01-05", "2019-06-30",
+               "2018-03-21", "2026-12-31", status="IO Complete")
+        + _win_row(301, 3, "Social Mirror Ads", "2026-06-29", "2026-12-31",
+               "2018-03-21", "2026-12-31"))
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    import_io_export(db, (_HDR + rows).encode(), period="2026-07")
+    by = {l.product: l for l in db.query(OrderLine).all()}
+    # Order 300 reaches back to the dropped line item, not to the header's 2018.
+    assert by["Display"].order_starts_on.isoformat() == "2019-01-05"
+    # Order 301 has one line item and does not inherit anybody's 2018.
+    assert by["Social Mirror"].order_starts_on.isoformat() == "2026-06-29"
+    db.close(); eng.dispose()

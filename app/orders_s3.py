@@ -376,6 +376,15 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
             # only sign that somebody's order headers are out of date.
             msg += (f", {result['header_overruled']:,} line item(s) kept on "
                     f"their own status against an order header that disagreed")
+        if result.get("order_end_is_a_window"):
+            # Worth saying every time. It is the difference between "no
+            # campaign ever ends" and a working lifetime list, and if the
+            # export starts carrying real dates this line disappears on its
+            # own - which is the sign to look for.
+            msg += (". Every order in this export carries the same order end "
+                    "date, so it is the range the export was pulled over "
+                    "rather than any campaign's end - both order header dates "
+                    "were set aside and the line items used instead")
     if remap:
         msg += ", re-read because the product mapping changed"
     rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],

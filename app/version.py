@@ -12,10 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.27-102"
-BUILD_NOTES = ("An order header that cannot contain its own line item is set "
-               "aside - which is what put Manning Media on the pull list "
-               "asking for 2018.")
+BUILD = "2026.08.27-103"
+BUILD_NOTES = ("The export's order header dates are the range it was pulled "
+               "over, not any campaign's - both are set aside and the line "
+               "items used instead.")
 
 # ---------------------------------------------------------------------------
 
