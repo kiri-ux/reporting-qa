@@ -121,6 +121,23 @@ def _key(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+# THE ORDER TOOL PUTS THE PRODUCT IN THE CLIENT NAME. The serving file says
+# "A-1 Appliance"; the IO tool has that same client as "A-1 Appliance -
+# Display", because one client running two products is two client records
+# there. Keyed strictly they are two different clients, and A-1 came back as a
+# client that served for thirty days with no order behind it.
+PRODUCT_SUFFIX = re.compile(
+    r"\s[-\u2013]\s(?:display|video|ctv|connected tv|social mirror(?: ctv)?|"
+    r"meta|ppc|pay-per-click|performance max|pmax|native(?: display)?|"
+    r"online audio|audio|youtube|tiktok|linkedin|dooh|seo|live chat|"
+    r"mobile conquesting|amazon)\s*$", re.I)
+
+
+def _base_key(s: str) -> str:
+    """The key with a trailing product name taken off, when there is one."""
+    return _key(PRODUCT_SUFFIX.sub("", s or ""))
+
+
 MONTHS = ("january", "february", "march", "april", "may", "june", "july",
           "august", "september", "october", "november", "december")
 
@@ -330,15 +347,28 @@ def served_but_no_order(db: Session, period: str,
         ServedDays.period == period)).all()
     if not rows:
         return []
-    have = {(_key(m), _key(c)) for m, c in db.execute(
-        select(OrderLine.market, OrderLine.client).distinct()).all()}
+    pairs = db.execute(select(OrderLine.market, OrderLine.client).distinct()).all()
+    have = set()
+    partners = set()
+    for m, c in pairs:
+        have.add((_key(m), _key(c)))
+        have.add((_key(m), _base_key(c)))     # "A-1 Appliance - Display"
+        partners.add(_key(m))
     out = []
     for r in rows:
         if (r.market_key, r.client_key) in have:
             continue
         if (r.days or 0) < 2:
             continue
-        out.append((r.market, r.client, r.days or 0))
+        # WHICH OF THE TWO THINGS IT IS. A partner with no orders at all is a
+        # file that did not land; a partner with orders but not this client is
+        # one client missing from a file that did - or a name the two tools
+        # spell differently, which is worth knowing before anybody goes looking
+        # for a file that is already there.
+        why = ("no orders loaded for this partner at all"
+               if r.market_key not in partners
+               else "this partner has orders, but not this client")
+        out.append((r.market, r.client, r.days or 0, why))
     out.sort(key=lambda x: (-x[2], x[0] or "", x[1] or ""))
     return out[:limit]
 

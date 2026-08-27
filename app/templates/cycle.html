@@ -66,27 +66,28 @@
        {% if filter_group or filter_state %}data-narrowed="1"{% endif %}>
     <div><b data-tile="total">{{ summary.total }}</b><span>Expected<span
       data-tile-life>{% if summary.lifetimes %} · {{ summary.lifetimes }} lifetime{% endif %}</span></span></div>
-    <div class="c-fail"><b data-tile="missing">{{ summary.missing }}</b><span>Not received</span>
-      {# The rate, the windows and the arithmetic all live in the hover now.
-         Five lines of working under a headline number is four more than
-         anybody reads, and it pushed the tiles into two rows. #}
-      <div data-tile-pace>
+    {# THE PULL STATE SITS WITH THE NUMBER IT IS ABOUT. Under it, it read as a
+       third line of small print on a tile that already has two; beside the
+       figure it is the one thing on the tile the eye lands on after the
+       number. #}
+    <div class="c-fail tilerow"><span class="fig"><b data-tile="missing">{{ summary.missing }}</b>
+      <span data-tile-pace class="pacemark">
       {% if pace.stalled %}
         {# THE FEED HAS STOPPED. A cycle arrives in a flood and then it stops,
            and what is left is the lifetimes, pulled by hand one at a time.
            Projecting "about 25 hours to go" off a trickle reads as a schedule
            when it is really a note that nothing is coming on its own. #}
         <span class="pulse stopped" data-tip="The automatic pull has stopped.&#10;{{ '%.0f'|format(pace.windows[1].per_hour) }} an hour over the last 3 hours, against {{ '%.0f'|format(pace.peak) }} in the busiest hour this cycle has had.&#10;It comes in a flood and then stops. What is left is almost all lifetimes, which somebody has to pull by hand.&#10;Last one arrived {{ pace.last|et('%b %-d, %-I:%M %p') }}." aria-label="The automatic pull has stopped">
-          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
             <rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/>
           </svg></span>
       {% elif pace.hours %}
         <span class="pulse running" data-tip="{% if pace.rate %}The pull is running - about {{ pace.hours|humanhours }} to go.&#10;{{ '%.0f'|format(pace.rate) if pace.rate >= 1 else '%.1f'|format(pace.rate) }} an hour over {{ pace.basis }}{% if pace.hours|workingdays %} · {{ pace.hours|workingdays }}{% endif %}.&#10;{% for w in pace.windows %}{{ w.label|capitalize }}: {{ w.count }} report{{ 's' if w.count != 1 }} ({{ '%.1f'|format(w.per_hour) }} an hour)&#10;{% endfor %}Last one arrived {{ pace.last|et('%b %-d, %-I:%M %p') }}. At that rate the last one lands {{ pace.eta|et('%a %b %-d, %-I:%M %p') }}.&#10;Reports arrive in bursts, so this is the shortest window with enough arrivals in it to mean anything - not a measurement.{% endif %}" aria-label="The pull is running, about {{ pace.hours|humanhours }} to go">
-          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
             <circle cx="8" cy="8" r="4" fill="currentColor"/>
           </svg></span>
       {% endif %}
-      </div>
+      </span></span><span>Not received</span>
       {# Shown instead of the projection once a filter is on. The rate is the
          whole cycle's arrival rate; applying it to a subset would be a number
          with no meaning behind it. #}
@@ -98,14 +99,17 @@
     <div class="c-ok"><b data-tile="ready">{{ summary.ready }}</b><span>Good to go</span></div>
     {# Reports, reports, reports - and then the question the cycle is actually
        judged on, which is how many partners are finished and sent. #}
-    <div class="c-ok"><b data-tile="sent">{{ delivered.count }}</b><span>Partners delivered</span>
-      {% if delivered.groups %}
-        <p class="pacenote">of <span data-tile="groups">{{ delivered.groups }}</span>{% if delivered.ready %} ·
-          {{ delivered.ready }} ready to package{% endif %}</p>
-      {% endif %}
-      {% if delivered.count %}
-        <p class="pacenote"><a href="/cycle/links?period={{ period }}">Packaged links</a></p>
-      {% endif %}
+    {# THREE STACKED LINES UNDER A NUMBER, IN A TILE THAT IS MOSTLY EMPTY TO ITS
+       RIGHT. The count and the total belong together - "19 of 145" is one
+       fact, not two - and the rest goes on the line under it. #}
+    <div class="c-ok tilerow"><span class="fig"><b data-tile="sent">{{ delivered.count }}</b>
+      {% if delivered.groups %}<span class="ofall">of <span data-tile="groups">{{ delivered.groups }}</span></span>{% endif %}
+      </span><span>Partners delivered</span>
+      <p class="pacenote">
+        {%- if delivered.ready %}{{ delivered.ready }} ready to package{% endif %}
+        {%- if delivered.ready and delivered.count %} · {% endif %}
+        {%- if delivered.count %}<a href="/cycle/links?period={{ period }}">Packaged links</a>{% endif %}
+      </p>
     </div>
   </div>
 
@@ -249,7 +253,7 @@
     {# The filters have been in the address bar since build 39. This is the
        button that says so - nobody thinks to select a URL they did not type. #}
     <button type="button" class="copy" data-copy-url title="Copy a link to this view">
-      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
         <path d="M10 14a4 4 0 006 .5l3-3a4 4 0 00-5.5-5.5L12 7.5"
               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         <path d="M14 10a4 4 0 00-6-.5l-3 3A4 4 0 0010.5 18L12 16.5"
@@ -391,7 +395,7 @@
               Client link</a>
             <button type="button" class="copy" data-copy="{{ d.share_url }}"
                     title="Copy the link">
-              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
                 <rect x="9" y="9" width="11" height="11" rx="2" fill="none"
                       stroke="currentColor" stroke-width="2"/>
                 <path d="M5 15V6a2 2 0 012-2h9" fill="none" stroke="currentColor"
@@ -899,12 +903,19 @@
 /* WHAT THE ORDER SAYS, ON THE ORDER IT SAYS IT ABOUT. Green live, orange
    paused, red cancelled, blue complete - and the words themselves on hover,
    because a colour is a reminder and not a label. */
+/* A tile whose headline is a number plus one more mark, side by side. */
+.cards .tilerow .fig{display:flex;align-items:center;gap:9px}
+.cards .tilerow .fig b{display:inline-block;margin:0}
+.cards .ofall{font-family:Agdasima,sans-serif;font-size:20px;font-weight:700;
+ color:var(--ink-50);letter-spacing:.02em;white-space:nowrap}
+.pacemark{display:inline-flex;align-items:center}
+
 /* IS THE PULL STILL RUNNING. It was a sentence on a tile - "auto-pull has
    stopped", "about 25 hours to go" - which is a lot of words for one bit, in
    the one place on the page with no room for words. A green dot beats and a
    red square does not; the sentence is on the hover. */
 .pulse{display:inline-flex;align-items:center;justify-content:center;
- width:20px;height:20px;border-radius:50%;cursor:help;margin-top:2px}
+ width:30px;height:30px;border-radius:50%;cursor:help}
 .pulse.running{color:var(--ok);background:var(--ok-bg);
  animation:pulsebeat 2.4s ease-in-out infinite}
 .pulse.stopped{color:var(--crit);background:var(--crit-bg)}

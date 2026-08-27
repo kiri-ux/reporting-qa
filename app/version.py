@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.27-104"
-BUILD_NOTES = ("The tiles stopped being added up from one page of cards, and "
-               "the missing-orders check is against the serving file now.")
+BUILD = "2026.08.27-105"
+BUILD_NOTES = ("A-1 Appliance is not missing - the order tool calls it "
+               "\"A-1 Appliance - Display\". The client match handles that "
+               "now.")
 
 # ---------------------------------------------------------------------------
 

@@ -1114,6 +1114,28 @@ def test_a_client_that_served_with_no_order_line_is_named(client_orders_db):
     assert "No File Landed" in panel and "Beta" in panel
     assert "Alpha" not in panel, "it has an order line"
     assert "Gamma" not in panel, "one day is not a campaign"
+    assert "no orders loaded for this partner at all" in panel
+
+
+def test_the_order_tool_puts_the_product_in_the_client_name(client_orders_db):
+    """The serving file says "A-1 Appliance"; the IO tool has that same client
+    as "A-1 Appliance - Display", because one client running two products is
+    two client records there. Keyed strictly they are two different clients,
+    and A-1 came back as a client that served for thirty days with no order
+    behind it - on a partner whose file had landed perfectly well."""
+    c, db, dbm = client_orders_db
+    db.add(dbm.OrderLine(market="Results Media Solutions Yuba-Marysville",
+                         client="A-1 Appliance - Display", account_ids="52201",
+                         product="Display", starts_on=dt.date(2026, 2, 10),
+                         ends_on=dt.date(2026, 12, 31)))
+    db.add(dbm.ServedDays(period="2026-07",
+                          market_key="resultsmediasolutionsyubamarysville",
+                          client_key="a1appliance",
+                          market="Results Media Solutions Yuba-Marysville",
+                          client="A-1 Appliance", days=30))
+    db.commit()
+    html = c.get("/orders").text
+    assert "delivered impressions in 2026-07" not in html
 
 
 @pytest.fixture()

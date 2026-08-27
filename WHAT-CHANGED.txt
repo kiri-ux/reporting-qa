@@ -1,70 +1,60 @@
-build 2026.08.27-104
+build 2026.08.27-105
 Changed files only.
 
-app/main.py
 app/serving.py
-app/templates/base.html
 app/templates/cycle.html
 app/templates/orders.html
 app/version.py
 tests/test_board_extras.py
 
-663 tests pass.
+664 tests pass.
 
 
-137 EXPECTED. THAT IS THE SUM OF ONE PAGE OF CARDS
-=====================================================
-Not a filter. Twenty cards are on screen out of a hundred and forty-five, and
-the tiles were being added up from the cards in the DOM - so "Expected" read
-the twenty partners this page happens to show.
+A-1 APPLIANCE IS NOT MISSING
+===============================
+You are right that it makes no sense, and the answer is on the screenshot you
+sent of it. The order's client is
 
-The server has always sent the real figures, over the whole cycle and over
-whatever filter is on it. The re-total exists so that picking a buyer moves
-the tiles instantly, from before the filters went server-side. On a PAGED
-board it can only ever be wrong, so it now stands aside and the server's
-numbers stay.
+  A-1 Appliance - Display
 
-Nothing about filtering changes: narrow to one partner and the tiles still
-narrow with it, because the server does that part.
+and the serving file calls the same client
 
+  A-1 Appliance
 
-RUNNING OR STOPPED, AS AN ICON
-=================================
-"auto-pull has stopped" and "about 25 hours to go" were a lot of words for one
-bit, in the one place on the page with no room for words.
+The order tool puts the PRODUCT in the client name, because one client running
+two products is two client records there. Keyed strictly those are two
+different clients, so a client with thirty days of delivery and a live order
+starting 10 February came back as having no order behind it - on a partner
+whose file had landed perfectly well.
 
-A green dot that beats, or a red square. The words are on the hover, with the
-rate, the windows and when the last one arrived - the same detail as before.
-It still says which to a screen reader, and it does not blink at anybody who
-has asked things not to.
+The match now tries the client name with a trailing product taken off, for the
+products the order tool actually names: Display, Video, CTV, Social Mirror,
+Social Mirror CTV, Meta, PPC, Performance Max, Native, Online Audio, YouTube,
+TikTok, LinkedIn, DOOH, SEO, Live Chat, Mobile Conquesting, Amazon. Only a
+trailing one, and only those words - "River Valley Builders/The Home Store"
+stays exactly as it is.
 
+AND THE PANEL SAYS WHICH OF TWO THINGS IT IS, on every row it still lists:
 
-"125 PARTNERS HAVE NO ORDER LINES" WAS CRYING WOLF
-=====================================================
-You are right that it means nothing - most of a hundred and fifty-eight
-partners simply have nothing running, and no roster comparison can tell that
-apart from a file that did not land.
+  no orders loaded for this partner at all
+      the partner's export did not land
 
-THE SERVING FILE CAN. A client that DELIVERED impressions this month and has
-no order line at all cannot be a campaign that went dark, and cannot be a
-spelling the two tools disagree on: something was running and the order list
-has nothing to judge it against. That is precisely what a partner's export
-failing to land looks like.
+  this partner has orders, but not this client
+      one client missing from a file that DID land - or a name the two tools
+      spell differently, which is worth ruling out before anybody goes looking
+      for a file that is already there
 
-So the panel is that now: "N clients delivered impressions in 2026-07 but have
-no order line loaded", with the partner, the client and the days each of them
-served. Clients with a single day are left out - one day is as likely to be a
-stray row as a campaign.
-
-If that panel is empty, every partner that served this month has orders
-loaded, and the old whole-board export has nothing left to give.
+That column is the difference between a five-minute check and an afternoon.
+Expect the list to be a good deal shorter, and what is left of it to say what
+to do about itself.
 
 
-THE PULL LIST'S "WHY" HAS COLUMN HEADERS
-===========================================
-Order, line items, client, product, status, line item dates, counted because.
+THE PULL MARK, AND THE DELIVERED TILE
+========================================
+The dot moved up beside the number it is about, and got half again bigger.
+Underneath it was a third line of small print on a tile that already had two.
 
-And to answer it directly: the dates in that table are the LINE ITEM's own,
-which is what TapClicks filters the export on. The order header's dates are
-printed underneath in red only on the rows where they disagree with their own
-line item - those are the ones set aside, for the reason in build 103.
+And "19 / Partners delivered / of 145 / Packaged links" was four stacked lines
+in a tile that is mostly empty to its right. "19 of 145" is one fact, not two,
+so it reads across the top now, with "ready to package" and the links on one
+line under it.

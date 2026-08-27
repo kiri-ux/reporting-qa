@@ -425,10 +425,11 @@
           <th style="text-align:left">Partner</th>
           <th style="text-align:left">Client</th>
           <th style="text-align:left">Days served</th>
+          <th style="text-align:left">What is missing</th>
         </tr></thead><tbody>
-          {% for market, client, days in missing_orders %}
+          {% for market, client, days, why in missing_orders %}
             <tr><td>{{ market or '(no partner)' }}</td><td>{{ client }}</td>
-              <td class="mono">{{ days }}</td></tr>
+              <td class="mono">{{ days }}</td><td>{{ why }}</td></tr>
           {% endfor %}
         </tbody></table></details></div>
   {% endif %}
