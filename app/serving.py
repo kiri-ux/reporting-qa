@@ -373,6 +373,42 @@ def served_but_no_order(db: Session, period: str,
     return out[:limit]
 
 
+def matched_on_base_name(db: Session, period: str,
+                         limit: int = 200) -> list[tuple[str, str, str]]:
+    """Clients the two tools spell differently: (partner, serving name, order name).
+
+    Only where the difference is a trailing product - "A-1 Appliance" against
+    "A-1 Appliance - Display". Those match, and the report checks were never
+    affected because a report is matched on the ORDER ID off its filename and
+    only falls back to the name. But it is worth being able to see the list:
+    if the IO tool has BOTH names as separate client records, that is a real
+    split rather than a spelling, and it is the kind of thing that only ever
+    gets noticed by looking.
+    """
+    from .db import OrderLine
+
+    rows = db.scalars(select(ServedDays).where(
+        ServedDays.period == period)).all()
+    if not rows:
+        return []
+    exact, base = set(), {}
+    for m, c in db.execute(
+            select(OrderLine.market, OrderLine.client).distinct()).all():
+        exact.add((_key(m), _key(c)))
+        bk = _base_key(c)
+        if bk != _key(c):
+            base[(_key(m), bk)] = c
+    out = []
+    for r in rows:
+        if (r.market_key, r.client_key) in exact:
+            continue
+        hit = base.get((r.market_key, r.client_key))
+        if hit:
+            out.append((r.market, r.client, hit))
+    out.sort()
+    return out[:limit]
+
+
 def coverage_end(db: Session, period: str):
     """The last day the loaded file actually has data for, in that month.
 

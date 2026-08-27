@@ -1,60 +1,36 @@
-build 2026.08.27-105
+build 2026.08.27-106
 Changed files only.
 
+app/main.py
 app/serving.py
-app/templates/cycle.html
 app/templates/orders.html
 app/version.py
 tests/test_board_extras.py
 
-664 tests pass.
 
+TWO NAMES FOR ONE CLIENT IS NOW AN ALERT
+===========================================
+You confirmed it, so the panel says it.
 
-A-1 APPLIANCE IS NOT MISSING
-===============================
-You are right that it makes no sense, and the answer is on the screenshot you
-sent of it. The order's client is
+Build 105 taught the match to take a trailing product off the client name, so
+"A-1 Appliance" and "A-1 Appliance - Display" stopped being two clients. That
+fixed the false "no order behind it" flag, but it was worded as a note in
+passing: matching works, worth ruling out the other thing.
 
-  A-1 Appliance - Display
+The other thing is what it turned out to be. The delivery data was on the plain
+record and the order was on the product one. So the panel is a warning now, in
+gold, and it says what to go and check rather than what to rule out:
 
-and the serving file calls the same client
+  Check N clients: the delivery data may be linked to the wrong client record.
 
-  A-1 Appliance
+The list opens by itself instead of hiding behind "Show the N", with the three
+columns as before - partner, what the serving file calls it, what the order tool
+calls it. It stays quiet when the two tools agree, which is the whole point: a
+flag that is always on gets ignored.
 
-The order tool puts the PRODUCT in the client name, because one client running
-two products is two client records there. Keyed strictly those are two
-different clients, so a client with thirty days of delivery and a live order
-starting 10 February came back as having no order behind it - on a partner
-whose file had landed perfectly well.
+It fires on the shape, not on proof, so some of these will be fine. The wording
+says "may be" for that reason. But every one of them is a client where the two
+systems hold two different names for the same business, and that is worth thirty
+seconds each.
 
-The match now tries the client name with a trailing product taken off, for the
-products the order tool actually names: Display, Video, CTV, Social Mirror,
-Social Mirror CTV, Meta, PPC, Performance Max, Native, Online Audio, YouTube,
-TikTok, LinkedIn, DOOH, SEO, Live Chat, Mobile Conquesting, Amazon. Only a
-trailing one, and only those words - "River Valley Builders/The Home Store"
-stays exactly as it is.
-
-AND THE PANEL SAYS WHICH OF TWO THINGS IT IS, on every row it still lists:
-
-  no orders loaded for this partner at all
-      the partner's export did not land
-
-  this partner has orders, but not this client
-      one client missing from a file that DID land - or a name the two tools
-      spell differently, which is worth ruling out before anybody goes looking
-      for a file that is already there
-
-That column is the difference between a five-minute check and an afternoon.
-Expect the list to be a good deal shorter, and what is left of it to say what
-to do about itself.
-
-
-THE PULL MARK, AND THE DELIVERED TILE
-========================================
-The dot moved up beside the number it is about, and got half again bigger.
-Underneath it was a third line of small print on a tile that already had two.
-
-And "19 / Partners delivered / of 145 / Packaged links" was four stacked lines
-in a tile that is mostly empty to its right. "19 of 145" is one fact, not two,
-so it reads across the top now, with "ready to package" and the links on one
-line under it.
+666 tests pass.

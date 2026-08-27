@@ -403,6 +403,39 @@
         <p style="margin:6px 0 0;font-size:13px">{{ no_roster|join(', ') }}</p></details></div>
   {% endif %}
 
+  {# THE TWO TOOLS SPELL SOME CLIENTS DIFFERENTLY, AND THAT IS USUALLY A
+     MIS-LINK. This started as a mild note. Then the first one that came up -
+     A-1 Appliance - turned out to be exactly what the note said to rule out:
+     the delivery data was attached to the wrong client record. So it is a
+     warning now, worded as something to go and fix. #}
+  {% if name_split %}
+    <div class="note" style="border-left-color:var(--gold);background:var(--warn-bg);
+         margin-bottom:14px">
+      <b>Check {{ name_split|length }} client{{ 's' if name_split|length != 1 else '' }}:
+      the delivery data may be linked to the wrong client record.</b>
+      The serving file and the order tool spell
+      {{ 'these clients' if name_split|length != 1 else 'this client' }} differently,
+      and the difference is a product on the end - "A-1 Appliance" against
+      "A-1 Appliance - Display". The board matches them anyway and the report checks
+      were never affected, since a report is matched on the order id from its filename
+      first. But the reason the two names exist is usually that the client in TapClicks
+      is pointed at the plain record while the order sits on the product one, so the
+      delivery lands in one place and the order in another. Open each one and confirm
+      which record the data is on.
+      <details style="margin-top:8px" open><summary style="font-size:13px">Show the
+        {{ name_split|length }}</summary>
+        <table class="whyt" style="margin-top:8px"><thead><tr>
+          <th style="text-align:left">Partner</th>
+          <th style="text-align:left">Serving file calls it</th>
+          <th style="text-align:left">Order tool calls it</th>
+        </tr></thead><tbody>
+          {% for market, served_as, ordered_as in name_split %}
+            <tr><td>{{ market }}</td><td>{{ served_as }}</td>
+              <td>{{ ordered_as }}</td></tr>
+          {% endfor %}
+        </tbody></table></details></div>
+  {% endif %}
+
   {# WHETHER EVERY PARTNER'S EXPORT LANDED.
      "A partner with no orders" was the first attempt and it cried wolf at 125
      of 158, because most of them simply have nothing running. The serving file

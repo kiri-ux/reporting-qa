@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.27-105"
-BUILD_NOTES = ("A-1 Appliance is not missing - the order tool calls it "
-               "\"A-1 Appliance - Display\". The client match handles that "
-               "now.")
+BUILD = "2026.08.27-106"
+BUILD_NOTES = ("Two names for one client now warns: it usually means the "
+               "delivery data is linked to the wrong client record.")
 
 # ---------------------------------------------------------------------------
 

@@ -711,6 +711,8 @@ def orders_view(request: Request, view: str = Query("clients"),
     # land looks like, said by name.
     from .serving import served_but_no_order
     missing_orders = served_but_no_order(db, _p)
+    from .serving import matched_on_base_name
+    name_split = matched_on_base_name(db, _p)
     _days = served_days(db, _p)
     if _days:
         from .serving import unmatched as _unmatched
@@ -744,7 +746,8 @@ def orders_view(request: Request, view: str = Query("clients"),
         "served": served, "min_days": MIN_DAYS_IN_MONTH, "serve_log": serve_log,
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster, "disk": disk,
-        "missing_orders": missing_orders, "period": _p,
+        "missing_orders": missing_orders, "name_split": name_split,
+        "period": _p,
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
         # Three different things can start a sync, and none of them used to

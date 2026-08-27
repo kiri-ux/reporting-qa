@@ -1220,3 +1220,50 @@ def test_the_pull_state_is_an_icon_with_the_words_on_hover():
     # who asked things not to.
     assert 'aria-label="The automatic pull has stopped"' in cycle
     assert "@media (prefers-reduced-motion:reduce){ .pulse.running{animation:none} }" in cycle
+
+
+def test_the_two_tools_spelling_a_client_differently_is_an_alert(client_orders_db):
+    """This started as a mild note saying "worth ruling out". The first one it
+    found - A-1 Appliance - was exactly the thing it said to rule out: the
+    delivery data was attached to the plain client record and the order to the
+    "- Display" one. So it warns, and it says what to go and check."""
+    c, db, dbm = client_orders_db
+    db.add(dbm.OrderLine(market="Results Media Solutions Yuba-Marysville",
+                         client="A-1 Appliance - Display", account_ids="52201",
+                         product="Display", starts_on=dt.date(2026, 2, 10),
+                         ends_on=dt.date(2026, 12, 31)))
+    db.add(dbm.ServedDays(period="2026-07",
+                          market_key="resultsmediasolutionsyubamarysville",
+                          client_key="a1appliance",
+                          market="Results Media Solutions Yuba-Marysville",
+                          client="A-1 Appliance", days=30))
+    db.commit()
+    html = c.get("/orders").text
+    assert "linked to the wrong client record" in html
+    assert "A-1 Appliance - Display" in html
+    # It reads as a warning, not as a note in passing.
+    assert "border-left-color:var(--gold)" in html
+    # And it is NOT in the missing panel, because it is not missing.
+    assert "delivered impressions in 2026-07" not in html
+
+
+def test_a_client_the_two_tools_agree_on_is_not_flagged():
+    """The alert has to stay quiet on the ordinary case, or it is the "125
+    partners have no orders" panel again."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine, ServedDays
+    from app.serving import matched_on_base_name
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderLine(market="Partner", client="A-1 Appliance", account_ids="1",
+                     product="Display", starts_on=dt.date(2026, 1, 1),
+                     ends_on=dt.date(2026, 12, 31)))
+    db.add(ServedDays(period="2026-07", market_key="partner",
+                      client_key="a1appliance", market="Partner",
+                      client="A-1 Appliance", days=30))
+    db.commit()
+    assert matched_on_base_name(db, "2026-07") == []
+    db.close(); eng.dispose()
