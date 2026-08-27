@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-98"
-BUILD_NOTES = ("The money is back: budget_combined and total_budget_combined "
-               "read as the monthly and campaign budgets.")
+BUILD = "2026.08.26-99"
+BUILD_NOTES = ("The orders page names any partner on the roster with no "
+               "order lines at all - the check before deleting the old "
+               "whole-board export.")
 
 # ---------------------------------------------------------------------------
 

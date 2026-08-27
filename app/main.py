@@ -687,6 +687,18 @@ def orders_view(request: Request, view: str = Query("clients"),
     # trainer and no fallback owner, which is worth seeing rather than reading
     # as an empty cell.
     no_roster = sorted({c["partner"] for c in clients if not c["in_roster"] and c["partner"]})
+    # AND THE OTHER WAY ROUND: A PARTNER ON THE ROSTER WITH NO ORDERS AT ALL.
+    #
+    # The export used to be one file for the whole board, so "did every partner
+    # come through" was not a question. It is one file per partner now, and a
+    # file that did not land is invisible: the partner simply has no orders, no
+    # expected reports, and nothing on the board saying so. This is the check
+    # that says which - and it is what to look at before deleting the old
+    # whole-board export.
+    from .partners import _key as _pkey, all_partners
+    have = {_pkey(m) for m in db.scalars(select(OrderLine.market).distinct()).all() if m}
+    no_orders = sorted({p.partner for p in all_partners(db)
+                        if p.partner and _pkey(p.partner) not in have})
     # What the serving file says about the cycle being worked, if one is loaded.
     from .board import MIN_DAYS_IN_MONTH
     from .cycle import current_period
@@ -718,6 +730,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         "served": served, "min_days": MIN_DAYS_IN_MONTH, "serve_log": serve_log,
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster,
+        "no_orders": no_orders,
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
         # Three different things can start a sync, and none of them used to
@@ -2692,17 +2705,68 @@ def pull_range_rows(db: Session, today: dt.date | None = None) -> list[tuple]:
     # WHEN THE ORDER FINISHES, falling back to the line's own end where the
     # export did not carry the order's. One OR per column let a line with no
     # end date of its own through on an order that closed in 2012.
-    from sqlalchemy import or_ as _or
+    # A CANCELLED ORDER'S END DATE IS NOT WHEN IT STOPPED.
+    #
+    # Nothing on the export says when somebody hit cancel, so a campaign called
+    # off in 2021 can still be dated to 2027 - and "ends after the cutoff" kept
+    # it on this list forever. Whitefield Media has no live order at all and
+    # was asking for a pull back to 23 March 2020 on the strength of one.
+    #
+    # So a row nobody is running any more is judged on the LINE ITEM's own end,
+    # which is the last date anything was actually bought to deliver. A live
+    # row is judged on the order's end as before, because an open-ended one
+    # genuinely has no end yet.
+    from sqlalchemy import and_ as _and, or_ as _or
     order_end = func.coalesce(OrderLine.order_ends_on, OrderLine.ends_on)
+    running = _and(OrderLine.canceled.is_(False), OrderLine.complete.is_(False))
+    keep = _or(
+        _and(running, _or(order_end.is_(None), order_end >= keep_from)),
+        _and(_or(running == False, running.is_(None)),   # noqa: E712
+             OrderLine.ends_on.isnot(None), OrderLine.ends_on >= keep_from),
+    )
     rows = db.execute(
         select(OrderLine.market,
                func.min(func.coalesce(OrderLine.order_starts_on,
                                       OrderLine.starts_on)),
                func.count(OrderLine.id))
-        .where(_or(order_end.is_(None), order_end >= keep_from))
+        .where(keep)
         .group_by(OrderLine.market)).all()
     return sorted(((m_, e, n) for m_, e, n in rows),
                   key=lambda r: (r[1] or dt.date.max, r[0] or ""))
+
+
+def pull_range_why(db: Session, market: str, today: dt.date | None = None) -> list:
+    """The line items that set a partner's pull date, oldest first.
+
+    "Whitefield Media, 23 March 2020" is a claim about an order somebody has to
+    be able to find. This is that order - and the way to audit the whole list
+    without asking me which ones are wrong.
+    """
+    today = today or dt.date.today()
+    y, m = today.year, today.month - 2
+    while m < 1:
+        m += 12
+        y -= 1
+    keep_from = dt.date(y, m, 1)
+    out = []
+    for l in db.scalars(select(OrderLine).where(OrderLine.market == market)).all():
+        starts = l.order_starts_on or l.starts_on
+        oend = l.order_ends_on or l.ends_on
+        running = not (getattr(l, "canceled", False) or getattr(l, "complete", False))
+        if running:
+            kept = oend is None or oend >= keep_from
+            why = "still running" if kept else "the order ended before the window"
+        else:
+            kept = bool(l.ends_on and l.ends_on >= keep_from)
+            why = ("finished recently enough to still owe a report" if kept
+                   else "nothing on it has been running since "
+                        + keep_from.isoformat())
+        out.append({"orders": l.account_ids or "", "lines": l.line_ids or "",
+                    "product": l.product or "", "client": l.client or "",
+                    "starts": starts, "ends": oend, "kept": kept,
+                    "status": getattr(l, "status", "") or "", "why": why})
+    out.sort(key=lambda r: (not r["kept"], r["starts"] or dt.date.max))
+    return out
 
 
 class _OneFlight:
@@ -2896,6 +2960,34 @@ def pull_range_csv(db: Session = Depends(get_db)):
     return Response(content=buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition":
                              'attachment; filename="pull-range-by-partner.csv"'})
+
+
+@app.get("/orders/pull-range-why.csv")
+def pull_range_why_csv(db: Session = Depends(get_db)):
+    """Every partner's pull date, with the line items that set it.
+
+    "Whitefield Media, 23 March 2020" is a claim about an order somebody has to
+    be able to find, and one wrong row is worth knowing about because it means
+    a pull reaching back six years for nothing. This is the whole list with its
+    reasons, so it can be audited without anyone guessing which ones are wrong.
+    """
+    import csv as _csv
+    import io as _io
+
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(["Partner", "Pull from", "Counted", "Client", "Product",
+                "Orders", "Line items", "Status", "Starts", "Ends", "Why"])
+    for market, earliest, _n in pull_range_rows(db):
+        for r in pull_range_why(db, market or ""):
+            w.writerow([market, earliest.isoformat() if earliest else "",
+                        "yes" if r["kept"] else "no", r["client"], r["product"],
+                        r["orders"], r["lines"], r["status"],
+                        r["starts"].isoformat() if r["starts"] else "",
+                        r["ends"].isoformat() if r["ends"] else "", r["why"]])
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition":
+                             'attachment; filename="pull-range-why.csv"'})
 
 
 @app.post("/orders/budgets")

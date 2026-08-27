@@ -1023,3 +1023,96 @@ def test_one_order_with_two_statuses_takes_the_living_one():
     assert _status_rank("IO Live") < _status_rank("IO Complete")
     assert _status_rank("IO Paused") < _status_rank("IO Complete")
     assert _status_rank("") > _status_rank("Cancelled")
+
+
+def test_a_cancelled_order_dated_to_the_future_is_off_the_pull_list():
+    """Nothing on the export says when somebody hit cancel, so a campaign
+    called off in 2021 can still be dated to 2027 - and "ends after the cutoff"
+    kept it on the list forever. Whitefield Media has no live order at all and
+    was asking for a pull back to 23 March 2020 on the strength of one."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.main import pull_range_rows, pull_range_why
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    D = dt.date.fromisoformat
+    db.add(OrderLine(market="Whitefield Media", client="Old Client",
+                     account_ids="1", line_ids="10", product="Display",
+                     starts_on=D("2020-03-23"), ends_on=D("2021-06-30"),
+                     order_starts_on=D("2020-03-23"), order_ends_on=D("2027-12-31"),
+                     canceled=True, live=False, status="Cancelled"))
+    db.commit()
+
+    assert [m for m, _e, _n in pull_range_rows(db, today=D("2026-08-26"))] == []
+    # And the list says why, so the whole thing can be audited.
+    why = pull_range_why(db, "Whitefield Media", today=D("2026-08-26"))
+    assert len(why) == 1 and why[0]["kept"] is False
+    assert "has been running since" in why[0]["why"]
+    db.close(); eng.dispose()
+
+
+def test_a_cancelled_order_that_stopped_last_month_still_needs_its_pull():
+    """It finished recently enough to still owe a lifetime, and that report
+    covers the whole campaign."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.main import pull_range_rows
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    D = dt.date.fromisoformat
+    db.add(OrderLine(market="Recently Stopped", client="C", account_ids="2",
+                     product="Display", starts_on=D("2019-01-01"),
+                     ends_on=D("2026-07-20"), order_starts_on=D("2019-01-01"),
+                     order_ends_on=D("2027-12-31"), canceled=True, live=False))
+    db.commit()
+    got = pull_range_rows(db, today=D("2026-08-26"))
+    assert got and got[0][0] == "Recently Stopped"
+    assert got[0][1] == D("2019-01-01")
+    db.close(); eng.dispose()
+
+
+def test_a_partner_with_no_orders_at_all_is_named(client_orders_db):
+    """The export used to be one file for the whole board, so "did every
+    partner come through" was not a question. It is one file per partner now,
+    and a file that did not land is invisible: the partner simply has no
+    orders, no expected reports, and nothing anywhere saying so."""
+    c, db, dbm = client_orders_db
+    db.add(dbm.Partner(partner="Has Orders", buyer="B"))
+    db.add(dbm.Partner(partner="No File Landed", buyer="B"))
+    db.add(dbm.OrderLine(market="Has Orders", client="A", account_ids="1",
+                         product="Display", starts_on=dt.date(2026, 1, 1),
+                         ends_on=dt.date(2026, 12, 31)))
+    db.commit()
+    from app import partners as pmod
+    pmod.forget_partners()
+
+    html = c.get("/orders").text
+    assert "no order lines loaded at all" in html
+    assert "No File Landed" in html
+
+
+@pytest.fixture()
+def client_orders_db(tmp_path, monkeypatch):
+    import importlib
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'o.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    from app import config as cfg
+    importlib.reload(cfg)
+    from app import db as dbm
+    importlib.reload(dbm)
+    dbm.init_db()
+    from app import main as mmod
+    importlib.reload(mmod)
+    db = dbm.SessionLocal()
+    yield TestClient(mmod.app), db, dbm
+    db.close()
+    monkeypatch.undo()
+    importlib.reload(cfg); importlib.reload(dbm); importlib.reload(mmod)

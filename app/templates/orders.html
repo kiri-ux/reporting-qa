@@ -224,7 +224,7 @@
         that finished in 2011 does not need to be in the pull and no longer
         sets anybody's date. "To" is today for everybody, because a campaign
         that launched this morning has to be in the file.
-        <a href="/orders/pull-range.csv">Download it</a> if you would rather.
+        <a href="/orders/pull-range.csv">Download it</a> if you would rather, or <a href="/orders/pull-range-why.csv">the same list with its reasons</a> - every line item behind each date, and whether it counted, for checking a partner that looks like it should not be here.
       </p>
     {% else %}
       <p class="sub" style="font-size:13.5px;margin:0">
@@ -349,6 +349,25 @@
       <details style="margin-top:8px"><summary style="font-size:13px">Show the
         {{ no_roster|length }}</summary>
         <p style="margin:6px 0 0;font-size:13px">{{ no_roster|join(', ') }}</p></details></div>
+  {% endif %}
+
+  {# THE OTHER WAY ROUND, AND IT MATTERS MORE NOW.
+     The export used to be one file for the whole board, so "did every partner
+     come through" was not a question. It is one file per partner now, and a
+     file that did not land is invisible: the partner simply has no orders, no
+     expected reports, and nothing anywhere saying so. #}
+  {% if no_orders %}
+    <div class="note" style="border-left-color:var(--crit);background:var(--crit-bg);
+         margin-bottom:14px">
+      <b>{{ no_orders|length }} partner{{ 's' if no_orders|length != 1 else '' }} on the roster
+      {{ 'have' if no_orders|length != 1 else 'has' }} no order lines loaded at all.</b>
+      Either {{ 'they have' if no_orders|length != 1 else 'it has' }} nothing running, or
+      {{ 'their' if no_orders|length != 1 else 'its' }} export did not land - the orders arrive
+      as one file per partner, and a missing one looks exactly like a partner with no orders.
+      This is the list to check before deleting the old whole-board export.
+      <details style="margin-top:8px"><summary style="font-size:13px">Show the
+        {{ no_orders|length }}</summary>
+        <p style="margin:6px 0 0;font-size:13px">{{ no_orders|join(', ') }}</p></details></div>
   {% endif %}
 
   {% if not lines %}
