@@ -695,15 +695,22 @@ def orders_view(request: Request, view: str = Query("clients"),
     # expected reports, and nothing on the board saying so. This is the check
     # that says which - and it is what to look at before deleting the old
     # whole-board export.
-    from .partners import _key as _pkey, all_partners
-    have = {_pkey(m) for m in db.scalars(select(OrderLine.market).distinct()).all() if m}
-    no_orders = sorted({p.partner for p in all_partners(db)
-                        if p.partner and _pkey(p.partner) not in have})
     # What the serving file says about the cycle being worked, if one is loaded.
     from .board import MIN_DAYS_IN_MONTH
     from .cycle import current_period
     from .serving import served_days
     _p = settings.default_period or current_period()
+    # A PARTNER WITH NO ORDERS IS NOT EVIDENCE OF ANYTHING. 125 of 158 came
+    # back on the first look, and most of them simply have nothing running -
+    # so the panel was crying wolf at a number nobody could act on.
+    #
+    # THE SERVING FILE IS THE EVIDENCE. A client that DELIVERED impressions
+    # this month and has no order line at all cannot be a campaign that went
+    # dark or a spelling the two tools disagree on: something was running and
+    # there is nothing here to judge it against. That is what a file failing to
+    # land looks like, said by name.
+    from .serving import served_but_no_order
+    missing_orders = served_but_no_order(db, _p)
     _days = served_days(db, _p)
     if _days:
         from .serving import unmatched as _unmatched
@@ -737,7 +744,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         "served": served, "min_days": MIN_DAYS_IN_MONTH, "serve_log": serve_log,
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster, "disk": disk,
-        "no_orders": no_orders,
+        "missing_orders": missing_orders, "period": _p,
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
         # Three different things can start a sync, and none of them used to

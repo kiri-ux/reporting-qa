@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.27-103"
-BUILD_NOTES = ("The export's order header dates are the range it was pulled "
-               "over, not any campaign's - both are set aside and the line "
-               "items used instead.")
+BUILD = "2026.08.27-104"
+BUILD_NOTES = ("The tiles stopped being added up from one page of cards, and "
+               "the missing-orders check is against the serving file now.")
 
 # ---------------------------------------------------------------------------
 

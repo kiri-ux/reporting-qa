@@ -162,7 +162,11 @@
                        and the only way to judge it is to see it. #}
                     {% if s.why %}
                       <details class="whypull"><summary>why</summary>
-                        <table class="whyt"><tbody>
+                        <table class="whyt"><thead><tr>
+                          <th>Order</th><th>Line items</th><th>Client</th>
+                          <th>Product</th><th>Status</th>
+                          <th>Line item dates</th><th>Counted because</th>
+                        </tr></thead><tbody>
                           {% for w in s.why %}
                             <tr>
                               <td class="mono nw">{{ w.orders or '-' }}</td>
@@ -194,7 +198,11 @@
               <span class="sub" style="font-size:12.5px;display:block;margin-top:6px">
                 Only the part before the cutoff - the bulk pull already has the
                 rest of them, so each of these is a narrow slice of one
-                partner's history rather than another copy of the board.</span>
+                partner's history rather than another copy of the board.
+                The dates under "why" are the LINE ITEM's own, which is what
+                TapClicks filters the export on. The order header's dates are
+                shown too, in red, on the rows where they disagree with their
+                own line item - those are set aside.</span>
             </li>
           {% endif %}
         </ol>
@@ -216,6 +224,9 @@
        box-shadow:none}
       .whyt td{padding:3px 10px 3px 0;border-bottom:1px solid var(--line-2);
        vertical-align:top}
+      .whyt th{background:transparent;color:var(--muted);font-size:11px;
+       letter-spacing:.06em;padding:0 10px 3px 0;white-space:nowrap;
+       border-bottom:1px solid var(--line)}
       .oddhead{font-size:11px;color:var(--crit);cursor:help}
       </style>
       {% set heavy = plan|selectattr('pulls','greaterthan',1)|list %}
@@ -392,14 +403,36 @@
         <p style="margin:6px 0 0;font-size:13px">{{ no_roster|join(', ') }}</p></details></div>
   {% endif %}
 
-  {# THE OTHER WAY ROUND, AND IT MATTERS MORE NOW.
-     The export used to be one file for the whole board, so "did every partner
-     come through" was not a question. It is one file per partner now, and a
-     file that did not land is invisible: the partner simply has no orders, no
-     expected reports, and nothing anywhere saying so. #}
-  {# A FULL DISK DOES NOT ANNOUNCE ITSELF. It comes back as an unrelated write
-     failing somewhere else - "Downloaded but could not import: OSError
-     [Errno 28]" on a file that parses perfectly well. #}
+  {# WHETHER EVERY PARTNER'S EXPORT LANDED.
+     "A partner with no orders" was the first attempt and it cried wolf at 125
+     of 158, because most of them simply have nothing running. The serving file
+     is the evidence: a client that DELIVERED this month and has no order line
+     at all cannot be a campaign that went dark or a spelling the two tools
+     disagree on. Something was running and there is nothing here to judge it
+     against. #}
+  {% if missing_orders %}
+    <div class="note" style="border-left-color:var(--crit);background:var(--crit-bg);
+         margin-bottom:14px">
+      <b>{{ missing_orders|length }} client{{ 's' if missing_orders|length != 1 else '' }}
+      delivered impressions in {{ period }} but {{ 'have' if missing_orders|length != 1
+      else 'has' }} no order line loaded.</b>
+      The serving file says {{ 'they were' if missing_orders|length != 1 else 'it was' }}
+      running; the order list has nothing to judge {{ 'them' if missing_orders|length != 1
+      else 'it' }} against. That is what a partner's export failing to land looks like.
+      <details style="margin-top:8px"><summary style="font-size:13px">Show the
+        {{ missing_orders|length }}</summary>
+        <table class="whyt" style="margin-top:8px"><thead><tr>
+          <th style="text-align:left">Partner</th>
+          <th style="text-align:left">Client</th>
+          <th style="text-align:left">Days served</th>
+        </tr></thead><tbody>
+          {% for market, client, days in missing_orders %}
+            <tr><td>{{ market or '(no partner)' }}</td><td>{{ client }}</td>
+              <td class="mono">{{ days }}</td></tr>
+          {% endfor %}
+        </tbody></table></details></div>
+  {% endif %}
+
   {% if disk.total and disk.pct >= 75 %}
     <div class="note" style="border-left-color:var(--crit);background:var(--crit-bg);
          margin-bottom:14px">
@@ -410,20 +443,6 @@
       help - that is a different disk. This one holds the report PDFs, the packaged zips
       and the order downloads.
     </div>
-  {% endif %}
-
-  {% if no_orders %}
-    <div class="note" style="border-left-color:var(--crit);background:var(--crit-bg);
-         margin-bottom:14px">
-      <b>{{ no_orders|length }} partner{{ 's' if no_orders|length != 1 else '' }} on the roster
-      {{ 'have' if no_orders|length != 1 else 'has' }} no order lines loaded at all.</b>
-      Either {{ 'they have' if no_orders|length != 1 else 'it has' }} nothing running, or
-      {{ 'their' if no_orders|length != 1 else 'its' }} export did not land - the orders arrive
-      as one file per partner, and a missing one looks exactly like a partner with no orders.
-      This is the list to check before deleting the old whole-board export.
-      <details style="margin-top:8px"><summary style="font-size:13px">Show the
-        {{ no_orders|length }}</summary>
-        <p style="margin:6px 0 0;font-size:13px">{{ no_orders|join(', ') }}</p></details></div>
   {% endif %}
 
   {% if not lines %}

@@ -306,6 +306,43 @@ def unmatched(db: Session, period: str, limit: int = 40) -> list[str]:
     return sorted(out)[:limit]
 
 
+def served_but_no_order(db: Session, period: str,
+                        limit: int = 200) -> list[tuple[str, str, int]]:
+    """Clients that DELIVERED in the month but have no order line loaded.
+
+    The other direction from unmatched(), and the sharper of the two. A client
+    the order list does not name can be a campaign that went dark or a spelling
+    the two tools disagree on. A client that served impressions and has no
+    order at all cannot be either of those: something was running and the tool
+    has nothing to judge it against.
+
+    Which makes it the check for "did every partner's export land". The orders
+    arrive as one file per partner now, and a file that did not land looks
+    exactly like a partner with nothing running - unless the serving file says
+    that partner delivered. Then it is missing, and this says so by name.
+
+    Only clients with real delivery behind them: a single day is as likely to
+    be a stray row as a campaign.
+    """
+    from .db import OrderLine
+
+    rows = db.scalars(select(ServedDays).where(
+        ServedDays.period == period)).all()
+    if not rows:
+        return []
+    have = {(_key(m), _key(c)) for m, c in db.execute(
+        select(OrderLine.market, OrderLine.client).distinct()).all()}
+    out = []
+    for r in rows:
+        if (r.market_key, r.client_key) in have:
+            continue
+        if (r.days or 0) < 2:
+            continue
+        out.append((r.market, r.client, r.days or 0))
+    out.sort(key=lambda x: (-x[2], x[0] or "", x[1] or ""))
+    return out[:limit]
+
+
 def coverage_end(db: Session, period: str):
     """The last day the loaded file actually has data for, in that month.
 

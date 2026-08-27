@@ -55,7 +55,14 @@
    Without it the tiles compare what is on screen against what the
    server sent, sees no difference, and leaves the whole-cycle
    projection up beside one partner's six outstanding reports. #}
+  {# data-paged says THE CARDS ARE ONE PAGE OF MANY, so the tiles must not be
+     added up from them. They were: with twenty cards on screen out of a
+     hundred and forty-five, "Expected" read 137 of a cycle that has over a
+     thousand - the sum of the page rather than the number the server sent.
+     The server's figures already cover the whole cycle and every filter
+     applied to it, so on a paged board the tiles simply stand. #}
   <div class="cards" data-tiles="glist"
+       {% if card_pages > 1 %}data-paged="1"{% endif %}
        {% if filter_group or filter_state %}data-narrowed="1"{% endif %}>
     <div><b data-tile="total">{{ summary.total }}</b><span>Expected<span
       data-tile-life>{% if summary.lifetimes %} · {{ summary.lifetimes }} lifetime{% endif %}</span></span></div>
@@ -69,9 +76,15 @@
            and what is left is the lifetimes, pulled by hand one at a time.
            Projecting "about 25 hours to go" off a trickle reads as a schedule
            when it is really a note that nothing is coming on its own. #}
-        <p class="eta stalled" data-tip="{{ '%.0f'|format(pace.windows[1].per_hour) }} an hour over the last 3 hours, against {{ '%.0f'|format(pace.peak) }} in the busiest hour this cycle has had.&#10;The automatic pull comes in a flood and then stops. What is left is almost all lifetimes, which somebody has to pull by hand.&#10;Last one arrived {{ pace.last|et('%b %-d, %-I:%M %p') }}.">auto-pull has stopped</p>
+        <span class="pulse stopped" data-tip="The automatic pull has stopped.&#10;{{ '%.0f'|format(pace.windows[1].per_hour) }} an hour over the last 3 hours, against {{ '%.0f'|format(pace.peak) }} in the busiest hour this cycle has had.&#10;It comes in a flood and then stops. What is left is almost all lifetimes, which somebody has to pull by hand.&#10;Last one arrived {{ pace.last|et('%b %-d, %-I:%M %p') }}." aria-label="The automatic pull has stopped">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/>
+          </svg></span>
       {% elif pace.hours %}
-        <p class="eta" data-tip="{% if pace.rate %}{{ '%.0f'|format(pace.rate) if pace.rate >= 1 else '%.1f'|format(pace.rate) }} an hour over {{ pace.basis }}{% if pace.hours|workingdays %} · {{ pace.hours|workingdays }}{% endif %}.&#10;{% for w in pace.windows %}{{ w.label|capitalize }}: {{ w.count }} report{{ 's' if w.count != 1 }} ({{ '%.1f'|format(w.per_hour) }} an hour)&#10;{% endfor %}Last one arrived {{ pace.last|et('%b %-d, %-I:%M %p') }}. At that rate the last one lands {{ pace.eta|et('%a %b %-d, %-I:%M %p') }}.&#10;Reports arrive in bursts, so this is the shortest window with enough arrivals in it to mean anything - not a measurement.{% endif %}">{{ pace.hours|humanhours }} to go</p>
+        <span class="pulse running" data-tip="{% if pace.rate %}The pull is running - about {{ pace.hours|humanhours }} to go.&#10;{{ '%.0f'|format(pace.rate) if pace.rate >= 1 else '%.1f'|format(pace.rate) }} an hour over {{ pace.basis }}{% if pace.hours|workingdays %} · {{ pace.hours|workingdays }}{% endif %}.&#10;{% for w in pace.windows %}{{ w.label|capitalize }}: {{ w.count }} report{{ 's' if w.count != 1 }} ({{ '%.1f'|format(w.per_hour) }} an hour)&#10;{% endfor %}Last one arrived {{ pace.last|et('%b %-d, %-I:%M %p') }}. At that rate the last one lands {{ pace.eta|et('%a %b %-d, %-I:%M %p') }}.&#10;Reports arrive in bursts, so this is the shortest window with enough arrivals in it to mean anything - not a measurement.{% endif %}" aria-label="The pull is running, about {{ pace.hours|humanhours }} to go">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <circle cx="8" cy="8" r="4" fill="currentColor"/>
+          </svg></span>
       {% endif %}
       </div>
       {# Shown instead of the projection once a filter is on. The rate is the
@@ -886,6 +899,17 @@
 /* WHAT THE ORDER SAYS, ON THE ORDER IT SAYS IT ABOUT. Green live, orange
    paused, red cancelled, blue complete - and the words themselves on hover,
    because a colour is a reminder and not a label. */
+/* IS THE PULL STILL RUNNING. It was a sentence on a tile - "auto-pull has
+   stopped", "about 25 hours to go" - which is a lot of words for one bit, in
+   the one place on the page with no room for words. A green dot beats and a
+   red square does not; the sentence is on the hover. */
+.pulse{display:inline-flex;align-items:center;justify-content:center;
+ width:20px;height:20px;border-radius:50%;cursor:help;margin-top:2px}
+.pulse.running{color:var(--ok);background:var(--ok-bg);
+ animation:pulsebeat 2.4s ease-in-out infinite}
+.pulse.stopped{color:var(--crit);background:var(--crit-bg)}
+@keyframes pulsebeat{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){ .pulse.running{animation:none} }
 .oids{display:inline-flex;flex-wrap:wrap;gap:4px;margin-top:3px}
 .oidp{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;
  padding:1px 7px;border-radius:20px;text-decoration:none;white-space:nowrap;

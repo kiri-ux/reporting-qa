@@ -1077,24 +1077,43 @@ def test_a_cancelled_order_that_stopped_last_month_still_needs_its_pull():
     db.close(); eng.dispose()
 
 
-def test_a_partner_with_no_orders_at_all_is_named(client_orders_db):
-    """The export used to be one file for the whole board, so "did every
-    partner come through" was not a question. It is one file per partner now,
-    and a file that did not land is invisible: the partner simply has no
-    orders, no expected reports, and nothing anywhere saying so."""
+def test_a_client_that_served_with_no_order_line_is_named(client_orders_db):
+    """"A partner with no orders" was the first attempt and it cried wolf at
+    125 of 158, because most of them simply have nothing running.
+
+    The serving file is the evidence. A client that DELIVERED this month and
+    has no order line at all cannot be a campaign that went dark or a spelling
+    the two tools disagree on - something was running and there is nothing here
+    to judge it against. That is what a partner's export failing to land looks
+    like.
+    """
     c, db, dbm = client_orders_db
-    db.add(dbm.Partner(partner="Has Orders", buyer="B"))
-    db.add(dbm.Partner(partner="No File Landed", buyer="B"))
-    db.add(dbm.OrderLine(market="Has Orders", client="A", account_ids="1",
+    db.add(dbm.OrderLine(market="Has Orders", client="Alpha", account_ids="1",
                          product="Display", starts_on=dt.date(2026, 1, 1),
                          ends_on=dt.date(2026, 12, 31)))
+    # Delivered, and the order list knows about it.
+    db.add(dbm.ServedDays(period="2026-07", market_key="hasorders",
+                          client_key="alpha", market="Has Orders",
+                          client="Alpha", days=31))
+    # Delivered, and the order list has never heard of it.
+    db.add(dbm.ServedDays(period="2026-07", market_key="nofilelanded",
+                          client_key="beta", market="No File Landed",
+                          client="Beta", days=28))
+    # Delivered once, which is as likely to be a stray row as a campaign.
+    db.add(dbm.ServedDays(period="2026-07", market_key="oneday",
+                          client_key="gamma", market="One Day",
+                          client="Gamma", days=1))
     db.commit()
-    from app import partners as pmod
-    pmod.forget_partners()
 
     html = c.get("/orders").text
-    assert "no order lines loaded at all" in html
-    assert "No File Landed" in html
+    assert "delivered impressions in 2026-07" in html
+    # The panel names only the one with nothing to judge it against. Alpha and
+    # Gamma appear elsewhere on the page, so the panel itself is what is read.
+    panel = html[html.index("delivered impressions in 2026-07"):]
+    panel = panel[:panel.index("</div>")]
+    assert "No File Landed" in panel and "Beta" in panel
+    assert "Alpha" not in panel, "it has an order line"
+    assert "Gamma" not in panel, "one day is not a campaign"
 
 
 @pytest.fixture()
@@ -1150,3 +1169,32 @@ def test_each_straggler_carries_the_line_item_that_set_its_date():
     assert why[0]["why"] == "still running"
     assert mine[0]["dropped"] == 1, "the cancelled one is named as not counted"
     db.close(); eng.dispose()
+
+
+def test_the_tiles_are_not_added_up_from_one_page_of_cards():
+    """Twenty cards on screen out of a hundred and forty-five made "Expected"
+    read 137 against a cycle of over a thousand - the sum of the page rather
+    than the number the server sent. The server's figures already cover the
+    whole cycle and whatever filter is on it."""
+    cycle = (TPL / "cycle.html").read_text()
+    base = (TPL / "base.html").read_text()
+    assert '{% if card_pages > 1 %}data-paged="1"{% endif %}' in cycle
+    assert "if ('paged' in tiles.dataset) return;" in base
+    # And it is the first thing retotal does, before any summing.
+    i = base.index("var retotal = function")
+    j = base.index("if ('paged' in tiles.dataset) return;")
+    k = base.index("var sum = {", i)
+    assert i < j < k
+
+
+def test_the_pull_state_is_an_icon_with_the_words_on_hover():
+    """"auto-pull has stopped" and "about 25 hours to go" are a lot of words
+    for one bit, in the one place on the page with no room for words."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert 'class="pulse stopped"' in cycle and 'class="pulse running"' in cycle
+    assert "The automatic pull has stopped." in cycle
+    assert "The pull is running - about" in cycle
+    # It still says so to a screen reader, and it does not blink at somebody
+    # who asked things not to.
+    assert 'aria-label="The automatic pull has stopped"' in cycle
+    assert "@media (prefers-reduced-motion:reduce){ .pulse.running{animation:none} }" in cycle

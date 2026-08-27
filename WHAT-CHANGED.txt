@@ -1,73 +1,70 @@
-build 2026.08.27-103
+build 2026.08.27-104
 Changed files only.
 
-app/orders_io.py
-app/orders_s3.py
+app/main.py
+app/serving.py
+app/templates/base.html
+app/templates/cycle.html
+app/templates/orders.html
 app/version.py
-tests/test_order_status.py
+tests/test_board_extras.py
 
-661 tests pass. The import changed, so the orders re-read themselves on deploy.
-
-
-THE 2018 CAME FROM A COLUMN THAT IS NOT A DATE
-=================================================
-You were right that there is no 2018 on that order. It is not on it, and the
-tool was not reading the order - it was reading two columns that do not hold
-what their names say.
-
-Here is the evidence, from your four sample files. orders_end_date, every row:
-
-  ordersdbrethink           665 rows    2026-12-31
-  ordersdbstephensmedford   212 rows    2026-12-31
-  ordersdb7moupa            444 rows    2026-12-31
-  ordersdbanne               83 rows    2026-12-31
-
-1,404 rows, four partners, five orders, ONE value. That is the end of the
-range the export was pulled over. It is not any campaign's end date.
-
-And its partner column is no better. Order 36184's header says the order
-started 2024-02-07 while its own line item started 2018-01-01 - six years
-before the order it belongs to. Manning's 55987 came through headed
-2018-03-21 to 2018-05-18 against a line item that ran 29 June to 31 July 2026.
-Neither of those is a date about that order.
-
-WHAT BELIEVING THEM COST, beyond the pull list. An order end of 2026-12-31 on
-every campaign in the business means no campaign ever finishes in the month
-being reported - so no lifetime is ever owed by that path, and every row reads
-as running to the end of next year. That has been quietly true since the new
-export went in.
-
-BOTH COLUMNS ARE NOW SET ASIDE. Detected, not hard-coded: one distinct order
-end date across several orders is a window bound; several values are dates. If
-the export starts carrying real ones this starts using them again, and the
-line in the sync message saying it happened disappears on its own.
+663 tests pass.
 
 
-WHAT REPLACED THEM
-=====================
-The header was standing in for one thing: how far back does this ORDER reach.
-It matters because a lifetime covers the whole order, and the line items that
-reach furthest back are exactly the ones dropped at import for having finished
-years ago - so their start was lost and the header was the only trace left.
+137 EXPECTED. THAT IS THE SUM OF ONE PAGE OF CARDS
+=====================================================
+Not a filter. Twenty cards are on screen out of a hundred and forty-five, and
+the tiles were being added up from the cards in the DOM - so "Expected" read
+the twenty partners this page happens to show.
 
-That fact is now taken from the rows themselves, collected BEFORE the skip:
-the earliest start among the order's own line items, whether or not they
-survive the import.
+The server has always sent the real figures, over the whole cycle and over
+whatever filter is on it. The re-total exists so that picking a buyer moves
+the tiles instantly, from before the filters went server-side. On a PAGED
+board it can only ever be wrong, so it now stands aside and the server's
+numbers stay.
 
-  ReThink 4701      one line item, 2018-11-01     -> 2018-11-01, unchanged
-  Hilbing 36184     lines 2018-01-01, 2020, 2021  -> 2018-01-01, was 2024-02-07
-  Manning 55987     one line item, 2026-06-29     -> 2026-06-29, was 2018-03-21
-  W&L 14885         lines 2020-08-10 and 2021     -> 2020-08-10 on both rows
-
-The last one is the case the header existed for, now working off real rows: the
-Social Mirror line starts in February 2021, and the pull still reaches back to
-August 2020 because another line item on that order does.
-
-The sync message says when it happens, and the orders page shows it.
+Nothing about filtering changes: narrow to one partner and the tiles still
+narrow with it, because the server does that part.
 
 
-WHITFIELD
-============
-Noted - it belongs there, and this build does not touch it. It stays on the
-list for the same reason it did: something on it is still running and started
-before the cutoff.
+RUNNING OR STOPPED, AS AN ICON
+=================================
+"auto-pull has stopped" and "about 25 hours to go" were a lot of words for one
+bit, in the one place on the page with no room for words.
+
+A green dot that beats, or a red square. The words are on the hover, with the
+rate, the windows and when the last one arrived - the same detail as before.
+It still says which to a screen reader, and it does not blink at anybody who
+has asked things not to.
+
+
+"125 PARTNERS HAVE NO ORDER LINES" WAS CRYING WOLF
+=====================================================
+You are right that it means nothing - most of a hundred and fifty-eight
+partners simply have nothing running, and no roster comparison can tell that
+apart from a file that did not land.
+
+THE SERVING FILE CAN. A client that DELIVERED impressions this month and has
+no order line at all cannot be a campaign that went dark, and cannot be a
+spelling the two tools disagree on: something was running and the order list
+has nothing to judge it against. That is precisely what a partner's export
+failing to land looks like.
+
+So the panel is that now: "N clients delivered impressions in 2026-07 but have
+no order line loaded", with the partner, the client and the days each of them
+served. Clients with a single day are left out - one day is as likely to be a
+stray row as a campaign.
+
+If that panel is empty, every partner that served this month has orders
+loaded, and the old whole-board export has nothing left to give.
+
+
+THE PULL LIST'S "WHY" HAS COLUMN HEADERS
+===========================================
+Order, line items, client, product, status, line item dates, counted because.
+
+And to answer it directly: the dates in that table are the LINE ITEM's own,
+which is what TapClicks filters the export on. The order header's dates are
+printed underneath in red only on the rows where they disagree with their own
+line item - those are the ones set aside, for the reason in build 103.

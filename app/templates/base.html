@@ -1012,6 +1012,11 @@ body.fit .pdfwrap object{height:100%}
 
     var retotal = function (visible, filtered) {
       if (!tiles) return;
+      // ONE PAGE OF CARDS CANNOT SPEAK FOR THE CYCLE. Twenty of a hundred and
+      // forty-five on screen made "Expected" read 137 against a cycle of over
+      // a thousand. The server's figures already cover the whole cycle and
+      // whatever filter is on it, so when the board is paged they stand.
+      if ('paged' in tiles.dataset) return;
       var sum = { total: 0, life: 0, missing: 0, review: 0, fail: 0, ready: 0, sent: 0 };
       visible.forEach(function (c) {
         for (var k in sum) sum[k] += parseInt(c.d['n' + k.charAt(0).toUpperCase() + k.slice(1)] || 0, 10);
