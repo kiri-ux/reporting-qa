@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import shutil
 import logging
 import re
 import uuid
@@ -546,6 +547,33 @@ def prune_old_pdfs(db: Session) -> dict:
                 d.rmdir()
         except OSError:
             pass
+
+    # AND THE PACKAGED ZIPS. One is built per partner per package, and "sync
+    # reports" builds another - so a cycle that gets re-packaged a few times
+    # leaves several copies of every partner's reports on the disk, on top of
+    # the reports themselves. They are a download of something that has already
+    # gone to the partner's folder; past the retention window they are two
+    # copies of a copy.
+    zips = settings.data_dir / "deliveries"
+    if zips.is_dir():
+        for d in sorted(zips.iterdir()):
+            if not d.is_dir() or d.name >= cutoff:
+                continue
+            for f in d.rglob("*"):
+                try:
+                    if f.is_file():
+                        freed += f.stat().st_size
+                        files += 1
+                except OSError:
+                    continue
+            shutil.rmtree(d, ignore_errors=True)
+
+    # Anything an interrupted order sync left behind - see orders_s3.
+    try:
+        from .orders_s3 import sweep_leftovers
+        freed += sweep_leftovers()
+    except Exception:                     # noqa: BLE001
+        pass
     return {"freed": freed, "files": files, "cutoff": cutoff}
 
 

@@ -721,6 +721,13 @@ def orders_view(request: Request, view: str = Query("clients"),
     # log with the order export, and a serving file that would not parse was
     # reporting itself up in the S3 box as "last sync failed" - about a sync
     # nobody ran.
+    # HOW MUCH ROOM IS LEFT. A full disk does not announce itself: it comes back
+    # as an unrelated write failing somewhere else, which is how "Downloaded but
+    # could not import: OSError [Errno 28]" happened on a file that was fine.
+    from .orders_s3 import disk_free
+    _free, _total = disk_free()
+    disk = {"free": _free, "total": _total,
+            "pct": round((_total - _free) / _total * 100) if _total else 0}
     serve_log = db.scalars(
         select(OrderSync).where(OrderSync.source.like("serving upload:%"))
         .order_by(OrderSync.id.desc()).limit(1)).first()
@@ -729,7 +736,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         "s3": settings.s3_configured,
         "served": served, "min_days": MIN_DAYS_IN_MONTH, "serve_log": serve_log,
         "nav": "orders", "view": view, "legend": legend,
-        "clients": clients, "no_roster": no_roster,
+        "clients": clients, "no_roster": no_roster, "disk": disk,
         "no_orders": no_orders,
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,

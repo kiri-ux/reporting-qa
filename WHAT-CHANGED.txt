@@ -1,54 +1,64 @@
-build 2026.08.26-99
+build 2026.08.27-100
 Changed files only.
 
+app/ingest.py
 app/main.py
+app/orders_s3.py
 app/templates/orders.html
 app/version.py
-tests/test_board_extras.py
+tests/test_order_status.py
 
-653 tests pass.
+655 tests pass.
 
 
-NOTHING IS MISSING FROM THE COLUMNS
+DELETING THE S3 FILES WILL NOT HELP
 ======================================
-Every column the import reads is present in both new files and populated on
-every row:
+Different disk. The S3 bucket is Amazon's; /data is Render's, attached to the
+service. Nothing you delete in one frees a byte in the other.
 
-  orders_id  id  orders_status  status  orders_type  client  product
-  client_business_unit  orders_start_date  orders_end_date  start_date
-  end_date  date  campaign_manager  monthly_campaign_budget
-  monthly_campaign_impressions  total_campaign_budget
-  total_campaign_impressions
-
-The last four arrive under the new names and are mapped in build 98.
-
-Eight are present and blank on all 877 rows: monthly and total ad spend for
-Meta, PPC, LinkedIn and Performance Max. Two of those four products do not
-appear in any sample, so blank proves nothing about them - but Meta DOES
-appear, in two of the four files, and monthly_meta_ad_spend is empty on every
-one of its rows while budget_combined carries 1500. Worth one look.
-
-campaign_manager is blank on 379 of ReThink's 665 rows - all of them Hilbing
-Autobody. That is not a file fault: the roster supplies the partner's buyer
-when a line item has no manager on it, which is what that fallback is for.
+/data holds three things: the report PDFs, the packaged zips, and the order
+downloads. It is the third one that did this.
 
 
-THE THING TO CHECK BEFORE DELETING THE OLD EXPORT
-====================================================
-It is not the columns. It is whether a file landed for EVERY partner.
+WHAT FILLED IT
+=================
+The sync downloads the export to a temp directory under /data and removes it
+afterwards - on the success path and on the failure path. Neither of those
+runs if the PROCESS is killed. A deploy, a restart, the OOM killer: any of
+them mid-sync leaves the whole download on the disk, forever, and the next
+sync makes a fresh one beside it.
 
-The old export was one file for the whole board, so "did every partner come
-through" was not a question anybody had to ask. One file per partner makes it
-a real one, and a file that did not land is invisible: the partner has no
-orders, no expected reports, and nothing anywhere saying so. It reads exactly
-like a partner with nothing running.
+That is a leak that only shows up as somebody else's error. "Downloaded but
+could not import: OSError [Errno 28]" is not about the file - the file is
+fine. It is the disk being full, reported by whatever happened to be writing
+when it ran out.
 
-So the orders page now names them. A red panel, the other way round from the
-"not in the roster" one already there:
+Three things now:
 
-  N partners on the roster have no order lines loaded at all.
+  * EVERY SYNC SWEEPS ABANDONED DOWNLOADS FIRST. Anything named orders-* and
+    older than half an hour goes. Half an hour so a sync running right now in
+    the other worker keeps its own files.
 
-Open it, and if the list is only partners that genuinely have nothing running,
-the old export has nothing left to give. If a live partner is on it, its file
-did not land - and that is what would otherwise have gone unnoticed until
-somebody asked where their reports went.
+  * THE PRUNE TAKES THE OLD PACKAGED ZIPS TOO. One is built per partner per
+    package, and "sync reports" builds another - so a cycle re-packaged a few
+    times leaves several copies of every partner's reports on the disk, on top
+    of the reports themselves. Past the retention window they are two copies
+    of a copy. Deleted with the PDFs of the same month.
+
+  * THE ERROR SAYS IT IS THE DISK when it is the disk, with the free space,
+    instead of sending somebody to look at a file that parses perfectly well.
+
+And the orders page carries a red panel past 75% full, saying how much is
+left and that the S3 bucket is a different disk.
+
+
+WHAT TO DO NOW
+=================
+Deploy this and press Sync from S3. The sweep runs first, so if abandoned
+downloads are what filled it, the sync that clears them is the same one that
+then succeeds.
+
+If it is still tight afterwards, the orders page will say so, and the next
+thing to look at is KEEP_PDF_MONTHS - the report PDFs are the bulk of the
+rest, roughly 1.6 GB a cycle, and the archive in the shared drive is the copy
+that matters by then.

@@ -356,6 +356,21 @@
      come through" was not a question. It is one file per partner now, and a
      file that did not land is invisible: the partner simply has no orders, no
      expected reports, and nothing anywhere saying so. #}
+  {# A FULL DISK DOES NOT ANNOUNCE ITSELF. It comes back as an unrelated write
+     failing somewhere else - "Downloaded but could not import: OSError
+     [Errno 28]" on a file that parses perfectly well. #}
+  {% if disk.total and disk.pct >= 75 %}
+    <div class="note" style="border-left-color:var(--crit);background:var(--crit-bg);
+         margin-bottom:14px">
+      <b>The disk is {{ disk.pct }}% full</b> - {{ '%.1f'|format(disk.free / 1073741824) }} GB
+      free of {{ '%.0f'|format(disk.total / 1073741824) }} GB. Past about 90% the sync
+      starts failing with "no space left on device", on whatever happens to be writing at
+      the time rather than on whatever filled it. Deleting files in the S3 bucket does not
+      help - that is a different disk. This one holds the report PDFs, the packaged zips
+      and the order downloads.
+    </div>
+  {% endif %}
+
   {% if no_orders %}
     <div class="note" style="border-left-color:var(--crit);background:var(--crit-bg);
          margin-bottom:14px">

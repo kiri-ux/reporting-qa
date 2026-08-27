@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.26-99"
-BUILD_NOTES = ("The orders page names any partner on the roster with no "
-               "order lines at all - the check before deleting the old "
-               "whole-board export.")
+BUILD = "2026.08.27-100"
+BUILD_NOTES = ("Abandoned order downloads and old packaged zips are swept, "
+               "and the orders page says how full the disk is.")
 
 # ---------------------------------------------------------------------------
 

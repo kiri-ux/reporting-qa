@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -132,6 +133,50 @@ def _name_matches(key: str) -> bool:
     name = key.rsplit("/", 1)[-1].lower()
     flat = "".join(ch for ch in name if ch.isalnum())
     return flat.startswith("".join(ch for ch in want.lower() if ch.isalnum()))
+
+
+def sweep_leftovers(older_than_minutes: int = 30) -> int:
+    """Delete order downloads a previous sync abandoned. Returns bytes freed.
+
+    Only ones older than half an hour, so a sync running right now in the other
+    worker keeps its own files.
+    """
+    import time
+    root = Path(settings.data_dir)
+    cutoff = time.time() - older_than_minutes * 60
+    freed = 0
+    try:
+        candidates = list(root.glob("orders-*"))
+    except OSError:
+        return 0
+    for d in candidates:
+        try:
+            if not d.is_dir() or d.stat().st_mtime > cutoff:
+                continue
+            for f in d.rglob("*"):
+                if f.is_file():
+                    freed += f.stat().st_size
+            shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            continue
+    return freed
+
+
+def disk_free() -> tuple[int, int]:
+    """(bytes free, bytes total) on the data disk, or (0, 0)."""
+    try:
+        st = os.statvfs(str(settings.data_dir))
+        return st.f_bavail * st.f_frsize, st.f_blocks * st.f_frsize
+    except OSError:
+        return 0, 0
+
+
+def disk_note() -> str:
+    free, total = disk_free()
+    if not total:
+        return "size unknown"
+    return (f"{free / 1073741824:.1f} GB free of {total / 1073741824:.0f} GB "
+            f"({(total - free) / total * 100:.0f}% used)")
 
 
 def _resolve_keys(client) -> list[str]:
@@ -275,6 +320,20 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
         db.commit()
         return prev
 
+    # ANY DOWNLOAD A PREVIOUS SYNC LEFT BEHIND.
+    #
+    # The tempdir is removed on both the success and the failure path, and
+    # neither runs if the process is killed - a deploy, a restart, the OOM
+    # killer - which is exactly when a sync is most likely to be halfway
+    # through. Every one of those leaves the whole export on the disk forever.
+    #
+    # It filled a 20 GB disk to 85.9%, and a full disk does not announce
+    # itself: it comes back as "Downloaded but could not import: OSError
+    # [Errno 28]" on the one thing that was still trying to write.
+    freed = sweep_leftovers()
+    if freed:
+        log.info("cleared %.0f MB of abandoned order downloads", freed / 1048576)
+
     tmpdir = None
     try:
         client = _client()
@@ -293,8 +352,15 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     except Exception as exc:
         if tmpdir:
             shutil.rmtree(tmpdir, ignore_errors=True)
+        # SAY IT IS THE DISK, when it is the disk. "Could not import" sends
+        # somebody to look at the file, and the file is fine.
+        extra = ""
+        if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
+            extra = (f" The disk is full - {disk_note()}. Nothing here can be "
+                     f"read or written until there is room.")
         return _fail(db, source, f"Downloaded but could not import: "
-                                 f"{type(exc).__name__}: {exc}", prev, etag, lm)
+                                 f"{type(exc).__name__}: {exc}.{extra}",
+                     prev, etag, lm)
 
     n = result["kept"] if isinstance(result, dict) else result
     msg = f"Imported {n} order lines"

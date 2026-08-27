@@ -256,3 +256,44 @@ def test_the_orders_db_export_loads_end_to_end():
     assert line.impressions == 100000.0
     assert line.starts_on.isoformat() == "2019-06-10"
     db.close(); eng.dispose()
+
+
+# ------------------------------------------------- the disk, which fills up
+def test_an_abandoned_order_download_is_swept(tmp_path, monkeypatch):
+    """The tempdir is removed on both the success and the failure path, and
+    neither runs if the process is killed - a deploy, a restart, the OOM killer
+    - which is exactly when a sync is most likely to be halfway through. Every
+    one of those leaves the whole export on the disk forever."""
+    import os
+    import time
+    from app import orders_s3 as s3
+    monkeypatch.setattr(s3.settings, "data_dir", tmp_path)
+
+    old = tmp_path / "orders-abandoned"
+    old.mkdir()
+    (old / "000-export.csv").write_bytes(b"x" * 5000)
+    long_ago = time.time() - 7200
+    os.utime(old, (long_ago, long_ago))
+
+    # A sync running right now in the other worker keeps its own files.
+    live = tmp_path / "orders-running-now"
+    live.mkdir()
+    (live / "000-export.csv").write_bytes(b"y" * 100)
+
+    assert s3.sweep_leftovers() == 5000
+    assert not old.exists()
+    assert live.exists(), "a download in progress is not somebody else's mess"
+
+
+def test_the_disk_is_reported_before_it_bites():
+    """A full disk does not announce itself: it comes back as an unrelated
+    write failing somewhere else."""
+    from pathlib import Path
+    from app.orders_s3 import disk_free, disk_note
+    free, total = disk_free()
+    assert total > 0 and 0 < free <= total
+    assert "GB free of" in disk_note()
+    html = (Path(__file__).resolve().parents[1] / "app" / "templates"
+            / "orders.html").read_text()
+    assert "The disk is {{ disk.pct }}% full" in html
+    assert "Deleting files in the S3 bucket does not" in html
