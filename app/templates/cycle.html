@@ -507,7 +507,12 @@
               {%- set st = e.order_status.get(oid, '') %}
               <a class="oidp io-{{ st|iokind }}" href="{{ io_order_url }}{{ oid }}"
                  target="_blank" rel="noopener"
-                 data-tip="Order {{ oid }}{% if st %} - {{ st }}{% else %} - the order does not say{% endif %}. Opens in the IO tool.">{{ oid }}</a>
+                 {# GREY MEANS THE EXPORT LEFT THE STATUS BLANK, and naming
+                    the export is the point. Worded as the ORDER being silent
+                    it read as the tool being coy about something it knew.
+                    The pill is grey because there is nothing to colour it
+                    with. #}
+                 data-tip="Order {{ oid }}{% if st %} - {{ st }}{% else %} - no status on it in the order export{% endif %}. Opens in the IO tool.">{{ oid }}</a>
             {%- endfor %}</span>{% endif %}</td>
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
           <span class="chip" data-name="{{ p.name }}" tabindex="0"
@@ -663,7 +668,11 @@
               <svg aria-hidden="true"><use href="#ic-done"/></svg>
               <span class="sr">Reviewed</span></button>
             <button class="iconbtn warn" name="state" value="needs_fix"
-                    data-tip="Needs fix - send it back to be re-pulled"
+                    {# IT DOES NOT SEND ANYTHING. "send it back to be
+                       re-pulled" read as the tool doing the re-pulling. All
+                       this does is mark the row, so the next person knows and
+                       the partner cannot be packaged with it. #}
+                    data-tip="Needs fix - marks it as wrong and keeps it out of the partner's folder. Re-pulling it is still on you."
                     {% if e.report.review_state == 'needs_fix' %}disabled{% endif %}>
               <svg aria-hidden="true"><use href="#ic-needsfix"/></svg>
               <span class="sr">Needs fix</span></button>

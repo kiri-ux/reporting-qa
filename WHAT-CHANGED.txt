@@ -1,74 +1,53 @@
-build 2026.08.28-107
+build 2026.08.28-108
 Changed files only.
 
-app/board.py
-app/cycle.py
-app/main.py
-app/notify.py
-app/roster.py
-app/serving.py
-app/templates/batch.html
 app/templates/cycle.html
-app/templates/dashboard.html
-app/templates/lifetimes.html
-app/templates/links.html
-app/templates/orders.html
-app/templates/report_orders_body.html
-app/templates/rules_body.html
 app/templates/viewer.html
 app/version.py
 tests/test_board_extras.py
-tests/test_expected_products.py
-tests/test_manual_upload.py
 
 
-"JULY 2026", NOT "2026-07"
-=============================
-The period is stored as "2026-07" because it sorts and compares, and that is
-the right way to keep it. It was also being printed straight at people in a
-dozen places, on the same screens as a board heading reading "July 2026
-reports" - the same month under two names, one page.
+"THE ORDER DOES NOT SAY" - WHAT IT WAS
+=========================================
+The order pills are coloured off the STATUS on that order's line items in the
+export: green live, orange paused, red cancelled, blue complete. Grey means
+none of the line items behind that order carried a status at all, so there was
+nothing to colour it with.
 
-One filter now, used everywhere a person reads a month:
+That is all it ever meant. But "the order does not say" reads as the tool being
+coy about something it knows, or as the order itself being odd, when the plain
+fact is that the export's status column came through empty for order 51903. It
+now says:
 
-  the cycle dropdown, top right of the board and the links page
-  the report viewer's head line, "Bloom Heating · July 2026"
-  the order panel, "delivered impressions in July 2026"
-  a report's own order list - the column head, the "ran in", the fold
-  the batch page, the dashboard, the lifetimes table
-  "lifetime already delivered in May 2026" on the not-owed panel
-  "not running in July 2026" on a product finding's trace
-  the batch digest
+  Order 51903 - no status on it in the order export. Opens in the IO tool.
 
-Anything that is not a period comes through untouched, so it is safe on a
-column that might be blank or hold "Lifetime". URLs and form values keep the
-hyphenated form, which is what they need.
-
-Two tests hold it: one on the filter, one that reads the templates and fails
-if a period is printed at a person without it.
+Nothing about the pill changed - the wording did. If you open 51903 in the IO
+tool and it plainly says IO Live, then the export is the thing to look at, not
+the order.
 
 
-TWO RULES THAT WERE TOO SHORT TO READ
-========================================
-Both said the right thing in too few words.
+NEEDS FIX DOES NOT SEND ANYTHING
+===================================
+You are right, and it was the tooltip that was wrong rather than the button.
 
-  One product meeting that is enough for the client's report.
+  Needs fix - send it back to be re-pulled
 
-is now
+promised a re-pull. Pressing it does exactly two things: it marks the row, and
+it keeps that report out of the partner's folder until somebody deals with it.
+Nothing is sent, nothing is requested, and no re-pull happens on its own. Now:
 
-  One product is enough. The report covers the whole client, so if any one of
-  its products hits 7 days, the client is owed a report - the others do not
-  have to.
+  Needs fix - marks it as wrong and keeps it out of the partner's folder.
+  Re-pulling it is still on you.
 
-and
+The same button on the report viewer had no tooltip at all and now carries the
+same sentence.
 
-  Short runs are not exempt. An order that ended on the 2nd owes one.
 
-is now
+VIEW ORDER LINES
+===================
+Was a sentence with a link buried in it, in small grey print, under a panel of
+more small grey print. It is a button now, in the same style as "Check this
+file again", and it still opens in the side sheet over the report rather than
+taking you off the page. Middle-click still gives you the full page.
 
-  How long it ran does not matter. An order that ended on the 2nd still owes
-  a lifetime.
-
-Same rules. No behavior changed.
-
-668 tests pass.
+671 tests pass.

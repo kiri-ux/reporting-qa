@@ -12,9 +12,10 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-107"
-BUILD_NOTES = ("Every month on screen now reads \"July 2026\", not "
-               "\"2026-07\". Two rules on the rules sheet reworded.")
+BUILD = "2026.08.28-108"
+BUILD_NOTES = ("Needs fix no longer sounds like it re-pulls anything, a grey "
+               "order pill says the export left the status blank, and the "
+               "order lines are a button.")
 
 # ---------------------------------------------------------------------------
 

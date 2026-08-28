@@ -194,10 +194,16 @@
        finding means reading the finding and the order rows together, and
        leaving the page to do it meant going back and forth. The href still
        works - middle-click, or no JS, and it is the full page. #}
-    <p class="sub" style="font-size:12.5px;margin-top:14px">
-      <a href="/report/{{ rep.id }}/orders" data-sheet="/report/{{ rep.id }}/orders?frag=1"
-         data-sheet-title="Order lines as stored">Order lines as stored</a> - what a
-      product finding is actually being judged against.
+    {# A BUTTON, NOT A SENTENCE WITH A LINK IN IT. It sat under a panel of
+       small grey print and read as another footnote, so the one control that
+       answers "what is this finding actually looking at" looked like an
+       aside. #}
+    <p style="margin-top:14px">
+      <a class="mini" style="display:inline-block;text-decoration:none"
+         href="/report/{{ rep.id }}/orders"
+         data-sheet="/report/{{ rep.id }}/orders?frag=1"
+         data-sheet-title="Order lines as stored"
+         data-tip="Every order line this report is judged against - what a product or date finding is comparing to.">View order lines</a>
     </p>
 
     <h2 style="margin-top:22px">Sign-off</h2>
@@ -218,6 +224,7 @@
         <button class="mini ok" name="state" value="reviewed"
                 {% if rep.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
         <button class="mini warn" name="state" value="needs_fix"
+                data-tip="Marks it as wrong and keeps it out of the partner's folder. Nothing is re-pulled for you."
                 {% if rep.review_state == 'needs_fix' %}disabled{% endif %}>Needs fix</button>
         {% if rep.effective_severity == 'fail' %}
           <button class="mini" name="state" value="waived"

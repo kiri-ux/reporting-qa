@@ -1302,3 +1302,38 @@ def test_the_hyphenated_period_is_not_printed_at_a_person():
             before = html[max(0, m.start() - 40):m.start()]
             assert ("period=" in before or "/cycle/" in before
                     or 'value="' in before), f"{name}: {frag} is shown raw"
+
+
+def test_needs_fix_does_not_promise_to_re_pull_anything():
+    """"Needs fix - send it back to be re-pulled" read as the tool doing the
+    re-pulling. It does not send anything anywhere. All it does is mark the
+    row, which is what keeps the partner from being packaged with it."""
+    for name in ("cycle.html", "viewer.html"):
+        html = (TPL / name).read_text()
+        assert "send it back to be re-pulled" not in html
+    cycle = (TPL / "cycle.html").read_text()
+    assert "Re-pulling it is still on you." in cycle
+    assert "Nothing is re-pulled for you." in (TPL / "viewer.html").read_text()
+
+
+def test_a_blank_order_status_says_the_export_left_it_blank():
+    """"Order 51903 - the order does not say" reads as the tool being coy
+    about something it knows. The order tool is not what is silent - the
+    export's status column is empty for that order."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert "the order does not say" not in cycle
+    assert "no status on it in the order export" in cycle
+
+
+def test_the_order_lines_link_is_a_button():
+    """It sat under a panel of small grey print as a sentence with a link in
+    it, so the one control that answers "what is this finding looking at" read
+    as a footnote. It still opens in the side sheet, and the href still works
+    for a middle-click."""
+    v = (TPL / "viewer.html").read_text()
+    assert ">View order lines</a>" in v
+    assert "Order lines as stored</a> - what a" not in v
+    i = v.index(">View order lines</a>")
+    tag = v[v.rindex("<a ", 0, i):i]
+    assert 'class="mini"' in tag
+    assert "data-sheet=" in tag and 'href="/report/{{ rep.id }}/orders"' in tag
