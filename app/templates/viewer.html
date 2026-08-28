@@ -224,7 +224,7 @@
         <button class="mini ok" name="state" value="reviewed"
                 {% if rep.review_state == 'reviewed' %}disabled{% endif %}>Reviewed</button>
         <button class="mini warn" name="state" value="needs_fix"
-                data-tip="Marks it as wrong and keeps it out of the partner's folder. Nothing is re-pulled for you."
+                data-tip="Marks it as wrong and keeps it out of the partner's folder. It needs to be re-pulled and uploaded."
                 {% if rep.review_state == 'needs_fix' %}disabled{% endif %}>Needs fix</button>
         {% if rep.effective_severity == 'fail' %}
           <button class="mini" name="state" value="waived"

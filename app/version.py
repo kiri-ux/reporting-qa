@@ -12,10 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-108"
-BUILD_NOTES = ("Needs fix no longer sounds like it re-pulls anything, a grey "
-               "order pill says the export left the status blank, and the "
-               "order lines are a button.")
+BUILD = "2026.08.28-109"
+BUILD_NOTES = ("You were right - the export has the status. The board was "
+               "never reading it, so every order pill was grey.")
 
 # ---------------------------------------------------------------------------
 

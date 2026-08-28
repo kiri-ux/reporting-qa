@@ -1,53 +1,51 @@
-build 2026.08.28-108
+build 2026.08.28-109
 Changed files only.
 
+app/board.py
 app/templates/cycle.html
 app/templates/viewer.html
 app/version.py
 tests/test_board_extras.py
 
 
-"THE ORDER DOES NOT SAY" - WHAT IT WAS
-=========================================
-The order pills are coloured off the STATUS on that order's line items in the
-export: green live, orange paused, red cancelled, blue complete. Grey means
-none of the line items behind that order carried a status at all, so there was
-nothing to colour it with.
+YOU WERE RIGHT. THE EXPORT HAS THE STATUS.
+=============================================
+I checked the four order files you sent: 1,404 rows, and not one of them has a
+blank status. Both columns are filled on every row, so "no status on it in the
+order export" was wrong about your export, and build 108 was wrong to say it.
 
-That is all it ever meant. But "the order does not say" reads as the tool being
-coy about something it knows, or as the order itself being odd, when the plain
-fact is that the export's status column came through empty for order 51903. It
-now says:
+The board was not reading the status at all.
 
-  Order 51903 - no status on it in the order export. Opens in the IO tool.
+The order lines come out of the database column by column - market, client,
+order ids, dates, product, and so on - a named list, for speed. The line items
+underneath were not on that list. The code that colours the pills reads them,
+found nothing every single time, and carried on, because reading a field that
+is not there is not an error in Python. It just comes back empty.
 
-Nothing about the pill changed - the wording did. If you open 51903 in the IO
-tool and it plainly says IO Live, then the export is the thing to look at, not
-the order.
+So EVERY order pill on the board has been grey since the colours shipped, on
+every partner, and the tooltip has been blaming the export for it. Green,
+orange, red and blue were never once drawn.
+
+The line items are on the list now. The pills should come up coloured on the
+next load - no re-sync, no re-check, nothing to press.
+
+There was a second, smaller thing behind it, and it is fixed too: an order that
+has finished but overlaps a campaign still gets its id onto that row, because
+the row is about the whole campaign. The status was only being read for orders
+that earn a row of their own, so those particular pills would have stayed grey
+even with the field present. They are read for every order on the client now.
+
+If a pill is still grey after this, the export really is missing that status,
+and the tooltip says so.
 
 
-NEEDS FIX DOES NOT SEND ANYTHING
-===================================
-You are right, and it was the tooltip that was wrong rather than the button.
-
-  Needs fix - send it back to be re-pulled
-
-promised a re-pull. Pressing it does exactly two things: it marks the row, and
-it keeps that report out of the partner's folder until somebody deals with it.
-Nothing is sent, nothing is requested, and no re-pull happens on its own. Now:
+NEEDS FIX
+============
+Your wording:
 
   Needs fix - marks it as wrong and keeps it out of the partner's folder.
-  Re-pulling it is still on you.
+  It needs to be re-pulled and uploaded.
 
-The same button on the report viewer had no tooltip at all and now carries the
-same sentence.
+On the board's icon and on the viewer's button.
 
-
-VIEW ORDER LINES
-===================
-Was a sentence with a link buried in it, in small grey print, under a panel of
-more small grey print. It is a button now, in the same style as "Check this
-file again", and it still opens in the side sheet over the report rather than
-taking you off the page. Middle-click still gives you the full page.
-
-671 tests pass.
+672 tests pass.

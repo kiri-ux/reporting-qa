@@ -1312,8 +1312,8 @@ def test_needs_fix_does_not_promise_to_re_pull_anything():
         html = (TPL / name).read_text()
         assert "send it back to be re-pulled" not in html
     cycle = (TPL / "cycle.html").read_text()
-    assert "Re-pulling it is still on you." in cycle
-    assert "Nothing is re-pulled for you." in (TPL / "viewer.html").read_text()
+    assert "It needs to be re-pulled and uploaded." in cycle
+    assert "It needs to be re-pulled and uploaded." in (TPL / "viewer.html").read_text()
 
 
 def test_a_blank_order_status_says_the_export_left_it_blank():
@@ -1337,3 +1337,59 @@ def test_the_order_lines_link_is_a_button():
     tag = v[v.rindex("<a ", 0, i):i]
     assert 'class="mini"' in tag
     assert "data-sheet=" in tag and 'href="/report/{{ rep.id }}/orders"' in tag
+
+
+def test_a_finished_order_on_a_live_row_still_gets_its_colour():
+    """Order 51903 came up grey, tooltipped "no status on it in the order
+    export" - on an export that carries a status on every row it ships.
+
+    The status was read inside the loop that builds the expected rows, and
+    that loop skips a line which is neither live nor owed a lifetime. But a
+    finished order overlapping the campaign still gets its id onto the row,
+    because the row is about the whole campaign. Pill present, status absent.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.board import expected_for
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    D = dt.date.fromisoformat
+
+    def line(order, product, start, end, status, live, canceled=False,
+             complete=False):
+        return OrderLine(
+            market="Digital Marketing LLC", client="ASI Insulation & Abatement",
+            account_ids=order, line_ids=order + "1", product=product,
+            status=status, live=live, canceled=canceled, complete=complete,
+            starts_on=D(start), ends_on=D(end),
+            order_starts_on=D(start), order_ends_on=D(end),
+            detail=[{"order": order, "line": order + "1", "status": status,
+                     "starts": start, "ends": end, "live": live,
+                     "canceled": canceled, "complete": complete}])
+
+    # Still running, so this is the line that earns the row.
+    db.add(line("51999", "Display", "2026-01-01", "2026-12-31", "IO Live", True))
+    # Finished in the spring. Overlaps the campaign, so its id lands on the
+    # row - and it is exactly the line the expected-row loop skips.
+    db.add(line("51903", "Video", "2025-06-01", "2026-04-30", "IO Complete",
+                False, complete=True))
+    db.commit()
+
+    rows = [e for e in expected_for(db, "2026-07")
+            if e.client == "ASI Insulation & Abatement"]
+    assert rows, "the live order should still put this client on the board"
+    for e in rows:
+        # Every pill the row prints has a colour behind it.
+        for oid in e.account_ids.split():
+            assert e.order_status.get(oid), f"{oid} came back grey"
+        assert e.order_status["51999"] == "IO Live"
+        if "51903" in e.account_ids:
+            assert e.order_status["51903"] == "IO Complete"
+    life = [e for e in rows if e.kind == "lifetime"]
+    if life:
+        assert "51903" in life[0].account_ids, \
+            "the finished order belongs on the campaign's row"
+    db.close(); eng.dispose()

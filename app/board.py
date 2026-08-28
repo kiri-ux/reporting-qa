@@ -239,7 +239,16 @@ def expected_for(db: Session, period: str,
         OrderLine.line_ids, OrderLine.buyer, OrderLine.product,
         OrderLine.starts_on, OrderLine.ends_on,
         OrderLine.order_starts_on, OrderLine.order_ends_on,
-        OrderLine.canceled, OrderLine.complete, OrderLine.status).where(
+        OrderLine.canceled, OrderLine.complete, OrderLine.status,
+        # THE LINE ITEMS THEMSELVES, which is where the per-order status lives.
+        #
+        # Leaving this out of the select is why every order pill on the board
+        # was grey. The code that colours them reads `l.detail`, and on a row
+        # selected column by column that attribute simply does not exist - so
+        # it read None on every line, said nothing, and never once failed. The
+        # tooltip then blamed the export for a status the board had not asked
+        # for.
+        OrderLine.detail).where(
             # The ORDER's end counts as well as the line item's: a lifetime is
             # owed on an order that finishes this cycle even when the line item
             # behind it stopped in May.
@@ -303,6 +312,10 @@ def expected_for(db: Session, period: str,
     # the ones still running.
     life_order: dict[tuple[str, str, str], str] = {}
     windows: dict[tuple[str, str], list[tuple]] = {}
+    # And what every one of the client's orders says it is, whether or not that
+    # order earns a row of its own this cycle. The pills name the whole
+    # campaign, so the colours have to come from the whole campaign too.
+    order_status_all: dict[tuple[str, str], dict[str, str]] = {}
 
     # WHEN DID IT STOP? The export never says.
     #
@@ -366,6 +379,25 @@ def expected_for(db: Session, period: str,
         windows.setdefault((_key(l.market), _key(l.client)), []).append(
             (l.account_ids or "", l.order_starts_on or l.starts_on,
              l.order_ends_on or l.ends_on, l.product or ""))
+        # EVERY ORDER'S STATUS, OFF EVERY LINE, BEFORE ANYTHING IS FILTERED.
+        #
+        # This was being read further down, inside the loop that builds the
+        # expected rows - and that loop skips any line which is neither live
+        # nor owed a lifetime. But a finished order that overlaps the campaign
+        # still gets its id onto the row, because the row is about the whole
+        # campaign, not about one order. So the pill was there and its status
+        # was not, and a grey pill said the export had no status on order 51903
+        # when the export has one on every row it ships.
+        for d in (getattr(l, "detail", None) or []):
+            if not isinstance(d, dict):
+                continue
+            oid, st = str(d.get("order") or ""), (d.get("status") or "").strip()
+            if not oid or not st:
+                continue
+            seen = order_status_all.setdefault(
+                (_key(l.market), _key(l.client)), {})
+            if _status_rank(st) < _status_rank(seen.get(oid, "")):
+                seen[oid] = st
         # A CANCELLED BUY OWES A LIFETIME, NOT A MONTHLY.
         #
         # Cancelling does not mean it never ran - it ran and was stopped - so
@@ -551,6 +583,18 @@ def expected_for(db: Session, period: str,
                     if oid and oid not in have:
                         have.append(oid)
             e.account_ids = " ".join(have)
+
+    # AND EVERY PILL GETS ITS COLOUR.
+    #
+    # Last, because the order ids on a row are not settled until here: the
+    # window test above adds orders that never went through the loop which
+    # reads statuses, and a monthly row picks up orders the same way. Anything
+    # still without one is genuinely not in the export.
+    for (mk, ck, _kind), e in rows.items():
+        known = order_status_all.get((mk, ck), {})
+        for oid in e.account_ids.split():
+            if not e.order_status.get(oid) and known.get(oid):
+                e.order_status[oid] = known[oid]
 
     # AND WHERE A CAMPAIGN ACTUALLY STOPPED, for the ones that were cancelled.
     from .serving import last_served
