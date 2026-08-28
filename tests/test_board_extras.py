@@ -1407,3 +1407,96 @@ def test_the_logo_buttons_say_what_they_do_to_the_logo():
     assert "Logo being used on the report." in v
     assert ("Flagging as a different status will force all other reports using"
             in v)
+
+
+def test_the_sync_flag_says_why_not_just_how_many():
+    """"26 reports changed since this was packaged", on a partner whose 26
+    reports were all signed off days ago, reads as the tool having lost track -
+    and a list of 26 client names does not settle it. There are only three
+    reasons a report is not what the folder has, and which one it is decides
+    whether you press sync or go and look."""
+    from app.delivery import send_reason, out_of_sync_why
+
+    class R:
+        stored_path = __file__          # a real file, so it has a stamp
+        delivered_as = ""
+        delivered_stamp = ""
+        filename = "July 2026_Benton Rodeo 53915.pdf"
+        period = None                   # keeps canonical_name off the filename
+        client = "Benton Rodeo"
+
+    class E:
+        client = "Benton Rodeo"
+        ready = True
+        def __init__(self, r): self.report = r
+
+    r = R(); e = E(r)
+    assert send_reason(e) == "never sent"
+
+    r.delivered_as = "July 2026_Benton Rodeo 53915.pdf"
+    from app.delivery import file_stamp
+    r.delivered_stamp = file_stamp(r.stored_path)
+    assert send_reason(e) == "", "it is what the partner has"
+
+    r.delivered_as = "July 2026_Benton Rodeo 53915 50589.pdf"
+    assert send_reason(e) == "renamed", "the order ids moved under it"
+
+    r.delivered_as = "July 2026_Benton Rodeo 53915.pdf"
+    r.delivered_stamp = "1:1"
+    assert send_reason(e) == "new file", "the PDF itself was replaced"
+
+    class G:
+        expected = [e]
+    assert out_of_sync_why(G()) == {"new file": 1}
+    # A report nobody has touched is not counted at all.
+    r.delivered_stamp = file_stamp(r.stored_path)
+    assert out_of_sync_why(G()) == {}
+
+
+def test_the_sync_tooltip_carries_the_reasons():
+    cycle = (TPL / "cycle.html").read_text()
+    assert "changed since this was packaged" not in cycle
+    assert "not in the folder as" in cycle
+    assert "stale_why.get(g.group)" in cycle
+
+
+def test_a_report_with_a_newer_file_waiting_is_still_pending():
+    """Parking a newer file leaves the sign-off alone on purpose - the copy
+    that was signed off is still the copy the partner gets. But that put the
+    row in Completed, which is the bucket nobody reads, and took the amber
+    "newer file waiting" tag with it. A decision nobody can see is a decision
+    nobody makes."""
+    from app.board import Expected
+
+    class Rep:
+        def __init__(self, waiting):
+            self.pending_path = "/tmp/newer.pdf" if waiting else ""
+            self.pending_at = dt.datetime(2026, 8, 4, 12) if waiting else None
+            self.review_state = "reviewed"
+            self.severity = "pass"
+
+        @property
+        def has_pending(self):
+            return bool(self.pending_path and self.pending_at)
+
+        ready = True
+
+    signed = Expected(market="M", group="M", client="C", kind="monthly")
+    signed.report = Rep(False)
+    assert signed.ready and not signed.waiting
+    assert not signed.open_row, "nothing to do, so it is completed"
+
+    waiting = Expected(market="M", group="M", client="D", kind="monthly")
+    waiting.report = Rep(True)
+    assert waiting.ready, "the sign-off is not torn up"
+    assert waiting.waiting
+    assert waiting.open_row, "but the row is open, because there is a decision"
+
+
+def test_the_waiting_tag_goes_to_the_report():
+    cycle = (TPL / "cycle.html").read_text()
+    i = cycle.index("newer file waiting")
+    tag = cycle[cycle.rindex("<a ", 0, i):i]
+    assert 'href="/report/{{ e.report.id }}/view"' in tag
+    assert "pending_name" in tag, "it names the file that is waiting"
+    assert "stays open until somebody" in tag

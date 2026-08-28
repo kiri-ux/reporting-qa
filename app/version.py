@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-110"
-BUILD_NOTES = ("The logo panel says what it is and what flagging it reaches: "
-               "Flag as default logo, Flag as real logo.")
+BUILD = "2026.08.28-112"
+BUILD_NOTES = ("A report with a newer file waiting on it is back in Pending. "
+               "It was sitting in Completed with the tag nobody saw.")
 
 # ---------------------------------------------------------------------------
 

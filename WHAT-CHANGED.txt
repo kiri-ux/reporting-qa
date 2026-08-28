@@ -1,30 +1,45 @@
-build 2026.08.28-110
+build 2026.08.28-112
 Changed files only.
 
-app/templates/viewer.html
+app/board.py
+app/main.py
+app/templates/cycle.html
 app/version.py
 docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
-tests/test_manual_upload.py
 
 
-THE LOGO PANEL
-=================
-Your wording, both states.
+NO, IT DID NOT - AND IT SHOULD HAVE
+======================================
+Good catch. It was showing in Completed.
 
-  Logo being used on the report. Flagging as a different status will force all
-  other reports using this logo to be re-checked.
+Parking a newer file leaves the sign-off alone on purpose: the copy that was
+signed off is still the copy the partner gets, and tearing up somebody's
+sign-off because a file arrived would be worse. But "signed off" is what sends
+a row to the Completed bucket, so the row went there - and took its amber
+"newer file waiting" tag with it, into the one bucket nobody reads. A decision
+nobody can see is a decision nobody makes.
 
-  [ Flag as default logo ]        [ Flag as real logo ]
+The sign-off still stands. The row is open now, because there is something to
+do on it:
 
-The old line - "if this is the reporting tool's default rather than a station
-or client logo, say so once and every report carrying it will fail" - was an
-instruction addressed at whoever happened to be reading, and it described the
-consequence as though it were the thing itself. The consequence worth naming is
-the one that reaches other people's reports, which is now the second sentence.
+  Pending      not signed off, OR a newer file is waiting on it
+  Completed    signed off and nothing waiting
 
-When a logo is already flagged as the default, the panel still says so before
-that sentence, because that is a fact about the logo rather than about the
-button.
+So a parked file puts the row back in front of you, where the tag is on screen
+without anybody going to look for it.
 
-673 tests pass.
+The tag is also a link to the report now, which is where the decision is made -
+it was the only thing on the board that knew about a waiting file and it did
+not go anywhere. Its hover names the file and when it landed:
+
+  Digital Marketing Report.pdf arrived Aug 4 at 8:12 AM ET and is waiting for a
+  decision. This row stays open until somebody makes it, even though it is
+  signed off.
+
+WHAT DID NOT CHANGE: the partner's percentage, the Good to go tile, and
+packaging. The report is signed off and clear, and the file in the folder is
+the right one - it is the newer file that has not been accepted. Only the
+bucket and the tag moved.
+
+677 tests pass.

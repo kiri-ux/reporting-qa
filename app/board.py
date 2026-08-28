@@ -130,6 +130,27 @@ class Expected:
         return bool(self.done_by)
 
     @property
+    def waiting(self) -> bool:
+        """A newer file arrived and nobody has said yes or no to it yet.
+
+        THIS IS WORK, AND IT WAS FILED UNDER FINISHED. A parked file leaves the
+        sign-off alone - deliberately, because the copy that was signed off is
+        still the copy the partner gets - so the row stayed "Good to go" and
+        went to the Completed bucket, which is the one nobody reads. The amber
+        tag was on a row you would only find by going to look for it.
+
+        The sign-off stands. The row is open, because there is a decision on
+        it.
+        """
+        return bool(self.report is not None
+                    and getattr(self.report, "has_pending", False))
+
+    @property
+    def open_row(self) -> bool:
+        """Is there something to do on this row? The Pending bucket's test."""
+        return (not self.ready) or self.waiting
+
+    @property
     def done_only(self) -> bool:
         """Checked off with no PDF behind it."""
         return bool(self.done_by) and self.report is None

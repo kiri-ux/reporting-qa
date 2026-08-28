@@ -999,7 +999,8 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
     from .cycle import current_period, cycle_for, recent_periods
-    from .delivery import delivery_jobs, latest_deliveries, out_of_sync
+    from .delivery import (delivery_jobs, latest_deliveries, out_of_sync,
+                           out_of_sync_why)
     from .pace import pace
 
     show_all = rows_ == "all"
@@ -1092,12 +1093,17 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     bucket = done_ if done_ in {"pending", "completed", "all"} else (
         "all" if done_ in {"1", "yes"} else "pending")
     show_done = bucket in {"completed", "all"}
-    done_hidden = sum(1 for e in rows if e.ready)
+    # A ROW WITH A FILE WAITING ON IT IS OPEN, whatever its sign-off says.
+    # Parking a newer file deliberately leaves the sign-off alone - the copy
+    # that was signed off is still the copy the partner gets - so the row was
+    # landing in Completed, and its amber tag with it, in the bucket nobody
+    # reads.
+    done_hidden = sum(1 for e in rows if not e.open_row)
     open_count = len(rows) - done_hidden
     if bucket == "pending":
-        rows = [e for e in rows if not e.ready]
+        rows = [e for e in rows if e.open_row]
     elif bucket == "completed":
-        rows = [e for e in rows if e.ready]
+        rows = [e for e in rows if not e.open_row]
     # ARRIVED FIRST. Two thirds of a cycle has not been sent yet, so in market
     # order the reports there is something to DO about sit below a screenful of
     # "Not received". Stable, so market and client order is kept inside each
@@ -1147,6 +1153,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # sync, so a partner can be handing out a perfectly good link to last
         # Tuesday's work.
         "stale_pack": {g.group: out_of_sync(g) for g in groups},
+        # AND WHY EACH OF THEM IS BEHIND. Twenty-six client names
+        # said nothing about what happened to twenty-six reports.
+        "stale_why": {g.group: out_of_sync_why(g) for g in groups},
         # Packaging runs in the background, so the card has to say where it is.
         "packing": delivery_jobs(db),
         # The finished links, at the top. A partner that is done sorts in with

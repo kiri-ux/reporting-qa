@@ -421,7 +421,16 @@
                 <input type="hidden" name="force" value="1">
                 <input type="hidden" name="back_to" value="links">
                 <button class="pendtag" type="submit"
-                        data-tip="{{ behind|length }} report{{ 's' if behind|length != 1 }} changed since this was packaged: {{ behind[:4]|join(', ') }}{% if behind|length > 4 %} and {{ behind|length - 4 }} more{% endif %}. This starts the sync and takes you to it.">sync reports</button>
+                        {# WHY, BEFORE WHICH. "26 reports changed" on a partner
+                           whose 26 reports were signed off days ago reads as
+                           the tool having lost track, and a list of 26 client
+                           names does not settle it. The reason does: renamed
+                           is the order ids in the filename moving under them,
+                           new file is somebody replacing the PDF, never sent
+                           is a report that was signed off after the folder
+                           went up. #}
+                        {%- set why = stale_why.get(g.group) or {} %}
+                        data-tip="{{ behind|length }} report{{ 's' if behind|length != 1 }} not in the folder as {{ 'they are' if behind|length != 1 else 'it is' }} here now{% if why %} - {% for k, n in why.items() %}{{ n }} {{ k }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}: {{ behind[:4]|join(', ') }}{% if behind|length > 4 %} and {{ behind|length - 4 }} more{% endif %}. This starts the sync and takes you to it.">sync reports</button>
               </form>
             {% endif %}
             </span>
@@ -563,7 +572,13 @@
               <span class="notetag" title="{{ e.report.review_note }}">note</span>
             {% endif %}
             {% if e.report.has_pending %}<br>
-              <span class="pendtag" title="A newer file arrived and is waiting for a decision">newer file waiting</span>
+              {# A LINK, NOT A LABEL. The decision is on the report page and
+                 the tag was the only thing on the board that knew about it. #}
+              <a class="pendtag" href="/report/{{ e.report.id }}/view"
+                 data-tip="{{ e.report.pending_name or 'A newer file' }} arrived
+                   {%- if e.report.pending_at %} {{ e.report.pending_at|et }}{% endif %}
+                   and is waiting for a decision. This row stays open until somebody
+                   makes it, even though it is signed off.">newer file waiting</a>
             {% endif %}
           {% elif e.done_only %}
             {# "No report needed" and "checked off" both clear the row, and
