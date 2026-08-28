@@ -1500,3 +1500,48 @@ def test_the_waiting_tag_goes_to_the_report():
     assert 'href="/report/{{ e.report.id }}/view"' in tag
     assert "pending_name" in tag, "it names the file that is waiting"
     assert "stays open until somebody" in tag
+
+
+def test_every_check_is_in_the_catalogue():
+    """The rules sheet said what makes a report owed and nothing about what is
+    done to it once it arrives, so "what does this thing look for" could only
+    be answered by opening enough reports to have seen every finding fire.
+
+    This fails on a check that gets added without a line describing it, which
+    is the only way the list stays the whole list."""
+    from app.checks.catalog import described
+    from app.checks.rules import CHECKS
+
+    have = {fn.__name__ for fn, _label in CHECKS}
+    assert not (have - described()), "checks with nothing written about them"
+    assert not (described() - have), "described checks that no longer exist"
+
+
+def test_the_flags_tab_needs_no_javascript():
+    """The sheet injects this page as innerHTML, and a script tag put in that
+    way never runs. Tabs built on a click handler would work on the full page
+    and do nothing in the sheet, which is where it is actually read."""
+    body = (TPL / "rules_body.html").read_text()
+    assert "<script" not in body
+    assert 'type="radio" name="rulestab"' in body
+    assert '#rtab-flags:checked ~ .rp-flags' in (TPL / "base.html").read_text()
+
+
+def test_the_flags_tab_lists_them_all():
+    from app.checks.catalog import flags
+    from app.checks.rules import CHECKS
+
+    got = flags()
+    assert sum(len(g["checks"]) for g in got) == len(CHECKS)
+    # Every row says what going wrong looks like AND what passing claims, and
+    # they are not the same sentence.
+    for g in got:
+        assert g["group"]
+        for c in g["checks"]:
+            assert c["what"] and c["label"] and c["what"] != c["label"]
+
+
+def test_the_monthly_rule_does_not_open_with_a_headline():
+    body = (TPL / "rules_body.html").read_text()
+    assert "One product is enough." not in body
+    assert "The report covers the whole client" in body

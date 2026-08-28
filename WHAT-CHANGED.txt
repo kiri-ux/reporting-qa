@@ -1,45 +1,81 @@
-build 2026.08.28-112
+build 2026.08.28-113
 Changed files only.
 
-app/board.py
+app/checks/catalog.py     (new)
 app/main.py
-app/templates/cycle.html
+app/templates/base.html
+app/templates/rules_body.html
 app/version.py
 docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
 
 
-NO, IT DID NOT - AND IT SHOULD HAVE
-======================================
-Good catch. It was showing in Completed.
+REPORTING FLAGS
+==================
+The brain icon has two tabs now:
 
-Parking a newer file leaves the sign-off alone on purpose: the copy that was
-signed off is still the copy the partner gets, and tearing up somebody's
-sign-off because a file arrived would be worse. But "signed off" is what sends
-a row to the Completed bucket, so the row went there - and took its amber
-"newer file waiting" tag with it, into the one bucket nobody reads. A decision
-nobody can see is a decision nobody makes.
+  What is owed        the rules that were already there
+  Reporting flags     all 38 checks, grouped, with what each one catches
 
-The sign-off still stands. The row is open now, because there is something to
-do on it:
+The findings list on a report only ever shows what went wrong on THAT report,
+so "what does this thing actually look for" could only be answered by having
+opened enough reports to have seen every check fire. Now it is one list:
 
-  Pending      not signed off, OR a newer file is waiting on it
-  Completed    signed off and nothing waiting
+  The numbers agree with each other        9
+  What the client bought                   5
+  The right report for the right client    4
+  Widgets that should be there, and ones
+    that should not                        7
+  Creative                                 5
+  Completion rates                         3
+  Names and labels                         4
+  Sites                                    1
 
-So a parked file puts the row back in front of you, where the tag is on screen
-without anybody going to look for it.
+Two columns. The left says what a finding means - "A site clicking at a rate a
+person would not - the usual sign of bot traffic on a placement". The right is
+the same rule as the claim made about a report that passes it, which is how it
+reads on the report's own checklist.
 
-The tag is also a link to the report now, which is where the decision is made -
-it was the only thing on the board that knew about a waiting file and it did
-not go anywhere. Its hover names the file and when it landed:
+A test walks the checks and fails if one is added without a line describing it,
+so the list cannot quietly stop being the whole list.
 
-  Digital Marketing Report.pdf arrived Aug 4 at 8:12 AM ET and is waiting for a
-  decision. This row stays open until somebody makes it, even though it is
-  signed off.
+The tabs are radio buttons and a CSS sibling selector rather than a click
+handler, because the sheet injects that page as innerHTML and a script tag put
+in that way never runs - tabs built the usual way would have worked on the full
+page and done nothing in the sheet, which is where it is read.
 
-WHAT DID NOT CHANGE: the partner's percentage, the Good to go tile, and
-packaging. The report is signed off and clear, and the file in the folder is
-the right one - it is the newer file that has not been accepted. Only the
-bucket and the tag moved.
 
-677 tests pass.
+THE HIGHLIGHTED LINE IS GONE
+===============================
+"One product is enough." removed. The rule reads:
+
+  The report covers the whole client, so if any one of its products hits 7
+  days, the client is owed a report - the others do not have to.
+
+
+"XX checks" - WHAT THAT IS
+=============================
+That was my wording in the guide, and it was not clear. It is the amber button
+in the board toolbar, beside the "orders" button, and it carries a count - so
+on screen it says something like "40 checks". It means those reports were
+judged by older checking code. A background sweeper is already working through
+them; the button does them now. It skips anything signed off.
+
+The guide says that properly now, in both places it came up.
+
+
+TWO MORE SECTIONS IN THE GUIDE
+=================================
+Lifetimes delivered - has this campaign already had its closeout? Every
+lifetime that has gone out, with the cycle it went in. If it is on that page it
+went; if the board is asking again anyway, the order's end date moved after it
+was sent, so it really is owed again for the new ending.
+
+Batch history - did the report ever arrive? Every batch the tool has taken in.
+If the batch is not there, it never reached the tool, and no amount of waiting
+on the board will fix that. If the batch is there and the report is not on the
+board, it arrived under a name that did not join to anything.
+
+Both are also in the troubleshooting table and the nav list at the top.
+
+681 tests pass.

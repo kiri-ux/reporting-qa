@@ -1571,8 +1571,12 @@ def rules_view(request: Request):
     """
     from .board import MIN_DAYS_IN_MONTH, SHORT_CAMPAIGN_DAYS
     from .checks.rules import GOAL_BAND
+    # AND EVERY FLAG IT RAISES, on a second tab. The findings list on a report
+    # only ever shows what went wrong on that report, so "what does this thing
+    # actually look for" could only be answered by having seen enough reports.
+    from .checks.catalog import flags
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
-           "short_days": SHORT_CAMPAIGN_DAYS,
+           "short_days": SHORT_CAMPAIGN_DAYS, "flags": flags(),
            "goal_band": int(GOAL_BAND * 100)}
     if request.query_params.get("frag"):
         return templates.TemplateResponse(request, "rules_body.html", ctx)

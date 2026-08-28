@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-112"
-BUILD_NOTES = ("A report with a newer file waiting on it is back in Pending. "
-               "It was sitting in Completed with the tag nobody saw.")
+BUILD = "2026.08.28-113"
+BUILD_NOTES = ("The brain icon has a second tab: Reporting flags, all 38 "
+               "checks and what each one catches.")
 
 # ---------------------------------------------------------------------------
 

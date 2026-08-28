@@ -1,13 +1,28 @@
-{# The rules the board applies. Stated, not explained - the reasoning lives in
-   the code, and a rule somebody is checking against does not need it. #}
+{# The rules the board applies, and every flag it raises. Stated, not
+   explained - the reasoning lives in the code, and a rule somebody is checking
+   against does not need it.
 
+   TABS WITHOUT JAVASCRIPT. This fragment is injected into the side sheet with
+   innerHTML, and a script tag put in that way never runs. So the tabs are two
+   radio buttons and a sibling selector, which work the same in the sheet and
+   on the full page. #}
+<div class="rtabs">
+  <input type="radio" name="rulestab" id="rtab-owed" checked>
+  <input type="radio" name="rulestab" id="rtab-flags">
+  <div class="rtabbar">
+    <label for="rtab-owed">What is owed</label>
+    <label for="rtab-flags">Reporting flags
+      <span class="rcount">{{ flags|map(attribute='checks')|map('length')|sum }}</span></label>
+  </div>
+
+  <div class="rtabpane rp-owed">
 <h2 style="margin-top:6px">A monthly is owed</h2>
 <ul class="rules">
   <li>when a product delivered for <b>{{ min_days }} days or more</b> of the
     reporting month.</li>
-  <li>One product is enough. The report covers the whole client, so if any one
-    of its products hits {{ min_days }} days, the client is owed a report -
-    the others do not have to.</li>
+  <li>The report covers the whole client, so if any one of its products hits
+    {{ min_days }} days, the client is owed a report - the others do not have
+    to.</li>
   <li>Under {{ min_days }} days: not owed. It waits for next month.</li>
 </ul>
 
@@ -51,3 +66,36 @@
   <li>A sign-off is pulled when a re-check finds a failure that was not there
     when it was signed.</li>
 </ul>
+  </div>
+
+  {# EVERY CHECK, NOT THE ONES THAT FIRED. The findings list on a report only
+     ever shows what went wrong on that report, so "what does this thing look
+     for" could only be answered by opening enough reports to have seen them
+     all. There are 38 and this is all of them. #}
+  <div class="rtabpane rp-flags">
+    <p class="sub" style="margin:6px 0 16px">
+      Every report is put through all of these when it arrives, and again
+      whenever the rules change. A check with nothing to work with - no
+      completion column, no order loaded - is reported as skipped rather than
+      passed, with the reason, on the report itself.</p>
+
+    {% for g in flags %}
+      <h2 style="margin-top:{{ 6 if loop.first else 22 }}px">{{ g.group }}</h2>
+      <table class="flagt">
+        <tbody>
+          {% for c in g.checks %}
+            <tr>
+              <td class="fl-what">{{ c.what }}</td>
+              <td class="fl-pass">{{ c.label }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+
+    <p class="sub" style="margin-top:20px;font-size:12.5px">
+      The left column is what a finding means. The right is the same rule
+      written as the claim the tool makes about a report that passes it - which
+      is how it reads on the report's own checklist.</p>
+  </div>
+</div>

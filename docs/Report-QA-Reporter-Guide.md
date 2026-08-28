@@ -17,7 +17,7 @@ It does not email anyone. Nothing leaves the tool unless you press a button.
 
 **3. Find your partners.** On the board, open the **Filters** row, pick yourself under **Reporter**, then type a name in **Save these filters as...** and press **Save view**. That view is one click from then on. Views deliberately do not remember the period, so a view saved in July opens on whatever cycle you are looking at now.
 
-**Nav is the dark rail down the left side.** Icons only, hover for the label. The ones you will use: **Reporting Cycle** (the board), **Packaged Links**, **Check a list**, **Order list**. The brain icon at the top right opens **Reporting rules** - the written statement of every rule the board applies.
+**Nav is the dark rail down the left side.** Icons only, hover for the label. The ones you will use: **Reporting Cycle** (the board), **Packaged Links**, **Check a list**, **Lifetimes delivered**, **Batch history**, **Order list**. The brain icon at the top right opens **Reporting rules**, which has two tabs: **What is owed** (when a monthly or a lifetime is due) and **Reporting flags** (all 38 checks run on every report, and what each one catches).
 
 ---
 
@@ -107,7 +107,7 @@ For each finding you have one control - the **tick box on the left**:
 
 ### The rest of the panel
 
-- **24 of 27 checks passed** - opens the full list, including what was skipped and why.
+- **24 of 27 checks passed** - opens the full list, including what was skipped and why. The brain icon at the top right, on the **Reporting flags** tab, is the same checks written out with what each one catches.
 - **Pacing** - spend and impressions, served over ordered, for the month. If it cannot pace it says why instead of showing nothing.
 - **Order lines as stored** - what a product finding is actually being judged against. Open this first when you think the tool is wrong about products or dates.
 - **Page-one logo** - the exact crop the check compared. If it flags a real partner logo as the default, press **Flag as real logo** and every report carrying that logo gets re-checked.
@@ -144,7 +144,7 @@ It comes in by itself and replaces the old one - unless the old one was signed o
 
 ### Two things that will surprise you once
 
-**An amber `N checks` button on the toolbar is normal.** It means some reports were judged by older checking code. A background sweeper is already redoing them; the button just does it now. It skips anything signed off.
+**An amber re-check button in the board toolbar is normal.** It sits beside the `orders` button and shows a count of reports still to redo, so it reads as something like `40 checks`. It means those reports were judged by older checking code. A background sweeper is already working through them; pressing the button does them now. It skips anything signed off.
 
 **A report you signed off can come back to you.** If a re-check finds a failure that was not there when you signed it, the sign-off is pulled and the row reads **needs signing off again**. That is the point of it - it will not quietly ship something that now fails.
 
@@ -191,6 +191,24 @@ If a partner's link went to the wrong place you will see a red **went to Drive, 
 
 ---
 
+## Two pages worth knowing about
+
+### Lifetimes delivered
+
+**Has this campaign already had its closeout?** A lifetime is owed once, when the campaign ends, and the awkward cases are the ones where the end date moved or the campaign was re-flighted. This page is every lifetime that has gone out, with the client, the partner and the cycle it went in.
+
+Use it when the board is asking for a lifetime you think already went, or when somebody asks whether a finished campaign was ever closed out. If it is on this page, it went. If the board is asking again anyway, the order's end date moved after it was sent - which means it really is owed again, for the new ending.
+
+### Batch history
+
+**Did the report ever arrive?** Every batch the tool has taken in, newest first: the partner, the cycle, how many reports were in it, and how they came out. Open one and you get the reports in that batch.
+
+Use it when a report is sitting on **Not received** and somebody is sure it was sent. If the batch is not there, it never reached the tool - the pull did not run, or it went to the wrong address, and no amount of waiting on the board will fix it. If the batch is there but the report is not on the board, the file arrived under a name that did not join to anything, which is worth flagging.
+
+There is also **Check a batch by hand** at the bottom of that page: drop in PDFs or a zip of them and it runs the same checks as the email path, without touching anybody's cycle.
+
+---
+
 ## Step 7 - Check the board against the tracker
 
 **Check a list** (clipboard icon). The board is built from the order export; the reporting tracker is built from what people know. This page says where the two disagree.
@@ -215,7 +233,9 @@ Worth doing once a month before you start packaging.
 | A finding is clearly wrong about a number | open **Investigate** on the finding - it prints the rule's own figures |
 | "The stored PDF is gone" | PDFs are pruned after 4 months. Findings and sign-offs are kept. Upload it again if you need it. |
 | A partner has no reports at all | its order export may not have landed. Check the **Order list** page. |
-| Everything looks stale | press the **N checks** button in the board toolbar |
+| A report never showed up at all | check **Batch history** - if it is not there, it never reached the tool |
+| Not sure whether a lifetime already went out | check **Lifetimes delivered** |
+| Everything looks stale | press the amber re-check button in the board toolbar (it shows a count, like `40 checks`) |
 
 **Tooltips are the documentation.** Almost every icon button explains itself on hover. If you are not sure what something does, hover it before you press it.
 
