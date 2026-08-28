@@ -82,6 +82,11 @@ body{margin:0;background:var(--plane);color:var(--ink);
  height:30px;border-radius:9px;color:var(--atlas-50);text-decoration:none}
 .brain:hover{background:var(--velocity-10);color:var(--velocity)}
 .brain svg{width:19px;height:19px}
+.halfdep{max-width:1400px;margin:16px auto 0;padding:14px 18px;border-radius:10px;
+ background:#FDECEC;border:1px solid var(--crit);color:#5A1414;font-size:14px}
+.halfdep ul{margin:8px 0 0;padding-left:20px}
+.halfdep li{margin:3px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:12.5px}
 .rules{margin:8px 0 0;padding-left:20px;font-size:13.5px;color:var(--ink-2)}
 .rules li{margin:5px 0}
 /* THE RULES SHEET'S TABS, WITHOUT JAVASCRIPT. The sheet injects that page as
@@ -731,6 +736,22 @@ body.fit .pdfwrap object{height:100%}
     <span>{{ build_label }}</span>
   </span>
 </header>
+
+{# HALF OF ONE BUILD AND HALF OF ANOTHER.
+   A deploy here is a zip of the files that changed, copied over the tree, and
+   the day one of them is missed the box runs two builds at once. There is no
+   test for that - a test always has the whole tree - and the symptom is an
+   ImportError on whichever page happens to touch the missing file, which can
+   be hours later. This says so on every page, before anybody hits it. #}
+{% set _stale = half_deployed() %}
+{% if _stale %}
+  <div class="halfdep">
+    <b>This deploy is incomplete.</b> Some files on the server are from an
+    older build than the rest, so parts of the tool will fail as they are
+    opened. Copy the missing files up:
+    <ul>{% for line in _stale %}<li>{{ line }}</li>{% endfor %}</ul>
+  </div>
+{% endif %}
 
 <main>{% block body %}{% endblock %}</main>
 

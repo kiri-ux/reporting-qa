@@ -1590,3 +1590,68 @@ def test_the_flag_catalogue_does_not_force_a_re_check_of_the_board():
     here = Path(__file__).resolve().parents[1] / "app"
     assert (here / "flag_catalog.py").exists()
     assert not (here / "checks" / "catalog.py").exists()
+
+
+def test_the_tree_is_one_build():
+    """The check on the repo itself. If this fails here, a file was edited and
+    something that imports from it was not."""
+    from app.selfcheck import stale_imports
+    assert stale_imports() == []
+
+
+def test_a_half_deployed_box_says_so_instead_of_500ing(tmp_path, monkeypatch):
+    """A deploy is a zip of the files that changed, copied over the tree, and
+    the day one is missed the box runs half of one build and half of another.
+    No test catches that - a test always has the whole tree - and the symptom
+    was ImportError on the board, hours later, as three words in Times New
+    Roman.
+
+    This is the check the failure suggests: read every `from .x import a` in
+    the package and confirm x really has a. Most of them are inside functions,
+    so nothing runs them until somebody opens the page they are on.
+    """
+    import importlib
+    from pathlib import Path
+    from fastapi.testclient import TestClient
+
+    src = Path(__file__).resolve().parents[1] / "app" / "delivery.py"
+    original = src.read_text()
+    cut = original.index("def out_of_sync_why(group)")
+    to = original.index("def latest_deliveries")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'o.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    try:
+        # Put yesterday's delivery.py on the box.
+        src.write_text(original[:cut] + original[to:])
+        from app import config as cfg; importlib.reload(cfg)
+        from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+        # DROPPED, not reloaded. reload() runs the new source in the old
+        # module's namespace, so a function the new file no longer has is
+        # still sitting there - which is the one thing this test must not
+        # have.
+        import sys
+        sys.modules.pop("app.delivery", None)
+        from app import selfcheck as scmod; importlib.reload(scmod)
+        from app import main as mmod; importlib.reload(mmod)
+
+        found = scmod.check(force=True)
+        assert found, "a missing function has to be noticed"
+        assert "out_of_sync_why" in found[0]
+        assert "delivery.py" in found[0], "it names the file to go and copy"
+
+        c = TestClient(mmod.app)
+        html = c.get("/orders").text
+        assert "This deploy is incomplete" in html
+        assert "out_of_sync_why" in html
+        assert c.get("/healthz/deep").json()["ok"] is False
+    finally:
+        src.write_text(original)
+        monkeypatch.undo()
+        import sys
+        sys.modules.pop("app.delivery", None)
+        from app import config as cfg; importlib.reload(cfg)
+        from app import db as dbm; importlib.reload(dbm)
+        from app import selfcheck as scmod; importlib.reload(scmod)
+        scmod.check(force=True)
+        from app import main as mmod; importlib.reload(mmod)

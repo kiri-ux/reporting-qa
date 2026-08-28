@@ -1,60 +1,64 @@
-build 2026.08.28-114
-Changed files only.
+build 2026.08.28-115
 
-app/checks/catalog.py  ->  app/flag_catalog.py   (MOVED - delete the old one)
-app/main.py
-app/version.py
-tests/test_board_extras.py
+*** THIS ZIP IS CUMULATIVE. Unzip the whole thing over app/ and tests/. ***
 
+It contains every file that has changed since build 104, not just this build's,
+because the fault below was a missing file and I would rather not leave a
+second one behind.
 
-I CANNOT REPRODUCE IT, SO THE PAGE WILL TELL US
-==================================================
-I loaded your four order files into a fresh board and hit every page - cycle,
-orders, links, rules, lifetimes, batches, workload, partners. All 200. So
-whatever it is needs your data or your database, and I am not going to find it
-by reading code and guessing.
-
-"Internal Server Error" is three words in Times New Roman, and they are the
-same three words for every fault there is. A screenshot of it says nothing, and
-the only way to find out more was to go and read Render's logs.
-
-A 500 is now a page that says:
-
-  Something broke on this page.
-  Nothing was lost - this is the page failing to draw, not the data.
-  Build 2026.08.28-114, path /cycle.
-  Send this whole page and it can be fixed without guessing.
-
-  <the tool's own frames, and the line it actually raised on>
-
-Just this tool's frames, not the twenty of middleware above them - those are
-identical on every fault and push the one line that matters off the bottom of a
-screenshot. The whole traceback still goes to the Render log either way.
-
-DEPLOY THIS AND SEND ME THE PAGE. That is a fix in one round trip instead of
-five.
+DELETE app/checks/catalog.py if it is still there.
 
 
-AND ONE THING THAT MIGHT BE THE CAUSE
-========================================
-Build 113 put the flag catalogue in app/checks/. The rules fingerprint is a
-hash of every file in that folder, and a changed hash queues EVERY report on
-the board to be judged again - so deploying 113 started a re-check of the whole
-cycle, on a file that contains no rules at all. Seven hundred reports, two
-workers, each one re-reading a PDF.
+WHAT IT WAS
+==============
+Your error page said it exactly:
 
-That is bad on its own and I would move it regardless. It may also be what you
-are looking at: a box busy enough re-reading seven hundred PDFs is a box that
-can fail to draw a page.
+  ImportError: cannot import name 'out_of_sync_why' from 'app.delivery'
 
-The catalogue is now app/flag_catalog.py, outside that folder. DELETE
-app/checks/catalog.py when you deploy this - if both exist the fingerprint
-keeps the old value and the sweep starts again.
+app/main.py on the server was from build 114. app/delivery.py was from before
+111. `out_of_sync_why` was added to delivery.py in build 111, and that build's
+zip is the one that did not make it up - so the board asked for a function that
+was not there, on every load.
 
-There is one more sweep either way, because removing the file changes the hash
-back. It is the last one: after this, a wording fix in the catalogue costs
-nothing.
+Nothing was wrong with the code. The box was running half of one build and half
+of another.
 
-A test holds it there.
 
-683 tests pass.
+AND WHY NO TEST COULD HAVE CAUGHT IT
+=======================================
+Every test runs against a tree where all the files are present. A file missed
+on the way up is not a state the test suite can be in.
+
+So there is a check for it now, and it is the one the failure suggests: read
+every `from .x import a, b` in the app and confirm x really has a and b. Most
+of those imports are inside functions - deliberately, it keeps startup fast -
+which is exactly why a missing file sits there looking fine until somebody
+opens the page that touches it.
+
+It runs at startup, logs what it finds, and puts this at the top of EVERY page:
+
+  This deploy is incomplete. Some files on the server are from an older build
+  than the rest, so parts of the tool will fail as they are opened. Copy the
+  missing files up:
+
+    main.py line 1074 wants 'out_of_sync_why' from app.delivery, which does
+    not have it - delivery.py on this box is from an older build than main.py
+
+Which names the file to go and copy. /healthz/deep carries the same list and
+returns ok:false while it is not empty, so it can be checked without opening
+anything.
+
+Two tests hold it: one runs the check against the repo itself, and one takes a
+function out of delivery.py, boots the app, and fails unless the banner names
+it.
+
+
+ALSO IN HERE, FROM THE BUILDS YOU MAY HAVE MISSED
+====================================================
+  111  "sync reports" says WHY each report is behind - renamed, new file,
+       never sent
+  112  a report with a newer file waiting is back in Pending
+  113  the brain icon's Reporting flags tab - all 38 checks
+  114  a 500 says what broke, where, and on which build
+
+685 tests pass.

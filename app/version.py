@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-114"
-BUILD_NOTES = ("A 500 now says what broke, where and on which build, instead "
-               "of three words in Times New Roman.")
+BUILD = "2026.08.28-115"
+BUILD_NOTES = ("delivery.py was a build behind. Every page now says so when "
+               "the box is running two builds at once.")
 
 # ---------------------------------------------------------------------------
 

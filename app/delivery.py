@@ -667,6 +667,32 @@ def file_stamp(path: str) -> str:
         return ""
 
 
+def send_reason(e) -> str:
+    """WHY this report is not what the partner has, in a word or two.
+
+    "26 reports changed since this was packaged", on a partner whose 26 reports
+    were all signed off days ago, is not a believable sentence - and there was
+    no way to tell from it whether twenty-six files had really been re-pulled
+    or one thing had moved underneath all of them at once. Those are different
+    problems with different answers. Naming which is the difference between
+    pressing sync and going to look.
+
+    Returns "" when the report is already what is in the folder.
+    """
+    r = getattr(e, "report", None)
+    if not r or not getattr(r, "stored_path", ""):
+        return ""
+    filed = getattr(r, "delivered_as", "") or ""
+    if not filed:
+        return "never sent"
+    if filed != report_filename(e):
+        return "renamed"
+    stamp = getattr(r, "delivered_stamp", "") or ""
+    if stamp and stamp != file_stamp(r.stored_path):
+        return "new file"
+    return ""
+
+
 def needs_send(e) -> bool:
     """Is this report different from what is sitting in the partner's folder?
 
@@ -719,6 +745,23 @@ def out_of_sync(group) -> list[str]:
         was_filed = bool(getattr(e.report, "delivered_as", "") or "")
         if was_filed or e.ready:
             out.append(e.client or report_filename(e))
+    return out
+
+
+def out_of_sync_why(group) -> dict[str, int]:
+    """The same list, counted by reason: {"renamed": 24, "new file": 2}.
+
+    Reading a list of twenty-six client names tells you nothing about what
+    happened to them. The reasons do, and there are only ever three.
+    """
+    out: dict[str, int] = {}
+    for e in group.expected:
+        if not needs_send(e):
+            continue
+        if not (bool(getattr(e.report, "delivered_as", "") or "") or e.ready):
+            continue
+        why = send_reason(e) or "changed"
+        out[why] = out.get(why, 0) + 1
     return out
 
 

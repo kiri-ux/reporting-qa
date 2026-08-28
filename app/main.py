@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
-from . import brand, version
+from . import brand, selfcheck, version
 from .config import settings
 from .db import (Batch, Delivery, Inbound, KnownLogo, OrderLine, OrderSync,
                  Partner, Report, SessionLocal, init_db)
@@ -343,6 +343,11 @@ templates.env.globals.update(
     build_service=version.service(),
     whoami=whoami,
     nav="",
+    # IS THE CODE ON THIS BOX ONE BUILD? A deploy here is a zip of the files
+    # that changed, and the day one gets missed the box runs half of one build
+    # and half of another. That is not a state any test can catch, because a
+    # test always has the whole tree. It shows at the top of every page.
+    half_deployed=selfcheck.check,
 )
 
 
@@ -367,6 +372,10 @@ def get_db():
 @app.on_event("startup")
 def _startup():
     init_db()
+    # BEFORE ANYTHING ELSE: is this box running one build, or two halves of
+    # two? Nothing below this line can tell the difference, and the symptom is
+    # an ImportError on a page nobody has opened yet.
+    selfcheck.check()
     # The roster ships in the repo, so a fresh deploy has owners and
     # recipients without anyone importing anything.
     db = SessionLocal()
@@ -411,6 +420,10 @@ def healthz_deep():
     worth having on the liveness probe.
     """
     out = {"ok": True, **version.info(), "rules": version.rules_version()}
+    # AND WHETHER THIS BOX IS RUNNING ONE BUILD. Empty is the answer you want;
+    # anything in it names a file that was missed on the way up.
+    out["half_deployed"] = selfcheck.check()
+    out["ok"] = not out["half_deployed"]
     db = SessionLocal()
     try:
         from .recheck import stale_count
