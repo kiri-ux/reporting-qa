@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-113"
-BUILD_NOTES = ("The brain icon has a second tab: Reporting flags, all 38 "
-               "checks and what each one catches.")
+BUILD = "2026.08.28-114"
+BUILD_NOTES = ("A 500 now says what broke, where and on which build, instead "
+               "of three words in Times New Roman.")
 
 # ---------------------------------------------------------------------------
 

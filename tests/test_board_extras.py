@@ -1509,7 +1509,7 @@ def test_every_check_is_in_the_catalogue():
 
     This fails on a check that gets added without a line describing it, which
     is the only way the list stays the whole list."""
-    from app.checks.catalog import described
+    from app.flag_catalog import described
     from app.checks.rules import CHECKS
 
     have = {fn.__name__ for fn, _label in CHECKS}
@@ -1528,7 +1528,7 @@ def test_the_flags_tab_needs_no_javascript():
 
 
 def test_the_flags_tab_lists_them_all():
-    from app.checks.catalog import flags
+    from app.flag_catalog import flags
     from app.checks.rules import CHECKS
 
     got = flags()
@@ -1545,3 +1545,48 @@ def test_the_monthly_rule_does_not_open_with_a_headline():
     body = (TPL / "rules_body.html").read_text()
     assert "One product is enough." not in body
     assert "The report covers the whole client" in body
+
+
+def test_a_500_says_what_broke(tmp_path, monkeypatch):
+    """"Internal Server Error" in three words is the same three words for every
+    fault there is, so a screenshot of one says nothing and the only way to
+    find out was to go and read Render's logs. This is an internal tool behind
+    a password: the people who see this page are the people who need to know
+    what it says."""
+    import importlib
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'o.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+
+    @mmod.app.get("/boom-for-the-test")
+    def _boom():
+        raise ValueError("a distinctive thing went wrong")
+
+    c = TestClient(mmod.app, raise_server_exceptions=False)
+    r = c.get("/boom-for-the-test")
+    assert r.status_code == 500
+    # What broke, and on which build - the two things a screenshot has to carry.
+    assert "a distinctive thing went wrong" in r.text
+    assert mmod.version.BUILD in r.text
+    assert "/boom-for-the-test" in r.text
+    # And it is a page, not a wall of middleware.
+    assert "Something broke on this page" in r.text
+    assert "Back to the board" in r.text
+
+    monkeypatch.undo()
+    importlib.reload(cfg); importlib.reload(dbm); importlib.reload(mmod)
+
+
+def test_the_flag_catalogue_does_not_force_a_re_check_of_the_board():
+    """The rules fingerprint is a hash of every file in app/checks, and any
+    change to it queues every report on the board to be judged again. The
+    catalogue is prose ABOUT the rules - a wording fix in it should not cost
+    seven hundred reports a re-read, so it lives outside that folder."""
+    from pathlib import Path
+    here = Path(__file__).resolve().parents[1] / "app"
+    assert (here / "flag_catalog.py").exists()
+    assert not (here / "checks" / "catalog.py").exists()

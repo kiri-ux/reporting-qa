@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import re
 from pathlib import Path
 from urllib.parse import quote
@@ -31,6 +32,64 @@ app = FastAPI(title="Report QA")
 # next to building the page in the first place.
 from fastapi.middleware.gzip import GZipMiddleware      # noqa: E402
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+# ------------------------------------------------------------ when it breaks
+#
+# "INTERNAL SERVER ERROR" IN TIMES NEW ROMAN AND NOTHING ELSE.
+#
+# That is what a 500 looked like: three words, no build, no page, no reason. So
+# the only way to find out what had actually happened was to go and read
+# Render's logs, and the only way to report one was a screenshot of three words
+# that are the same three words for every fault there is.
+#
+# This is an internal tool behind a password. The people who see this page are
+# the people who need to know what it says, so it says it: what broke, where,
+# and which build it broke on - and it logs the whole traceback either way.
+@app.exception_handler(Exception)
+def _oops(request: Request, exc: Exception):
+    import logging
+    import traceback
+    logging.getLogger("report-qa").error("500 on %s", request.url.path,
+                                         exc_info=exc)
+    # THIS TOOL'S OWN FRAMES, not the twenty of middleware above them. Those
+    # are identical on every fault and push the one line that matters off the
+    # bottom of the screenshot.
+    frames = traceback.extract_tb(exc.__traceback__)
+    mine = [f for f in frames if f"{os.sep}app{os.sep}" in (f.filename or "")]
+    # And wherever it finally raised, which on a library call is not one of
+    # ours and is usually the line that names the problem.
+    if frames and (not mine or frames[-1] is not mine[-1]):
+        mine = mine + [frames[-1]]
+    if mine:
+        tail = ("".join(traceback.format_list(mine)).rstrip() + "\n"
+                + "".join(traceback.format_exception_only(type(exc), exc)).strip())
+    else:
+        tail = "".join(traceback.format_exception(
+            type(exc), exc, exc.__traceback__)[-6:]).strip()
+    from .version import BUILD
+    body = f"""<!doctype html><meta charset="utf-8">
+<title>Something broke - Report QA</title>
+<style>body{{font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+ margin:0;background:#0F2544;color:#E8EDF4}}
+ main{{max-width:900px;margin:0 auto;padding:48px 24px}}
+ h1{{font-size:26px;margin:0 0 6px}} p{{color:#A9B7CB;margin:0 0 20px}}
+ pre{{background:#0A1B33;border:1px solid #1E3A5F;border-radius:10px;padding:16px;
+ overflow:auto;font-size:12.5px;color:#D6E0EC;white-space:pre-wrap}}
+ a{{color:#F0B429}} code{{color:#F0B429}}</style>
+<main>
+<h1>Something broke on this page.</h1>
+<p>Nothing was lost - this is the page failing to draw, not the data.
+Build <code>{BUILD}</code>, path <code>{request.url.path}</code>.
+Send this whole page and it can be fixed without guessing.</p>
+<pre>{_esc(tail)}</pre>
+<p><a href="/cycle">Back to the board</a></p>
+</main>"""
+    return HTMLResponse(body, status_code=500)
+
+
+def _esc(s: str) -> str:
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 # ---------------------------------------------------------------- the door
 # ONE SHARED PASSWORD, OR NONE AT ALL.
@@ -1574,7 +1633,7 @@ def rules_view(request: Request):
     # AND EVERY FLAG IT RAISES, on a second tab. The findings list on a report
     # only ever shows what went wrong on that report, so "what does this thing
     # actually look for" could only be answered by having seen enough reports.
-    from .checks.catalog import flags
+    from .flag_catalog import flags
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
            "short_days": SHORT_CAMPAIGN_DAYS, "flags": flags(),
            "goal_band": int(GOAL_BAND * 100)}

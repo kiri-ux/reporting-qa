@@ -1,81 +1,60 @@
-build 2026.08.28-113
+build 2026.08.28-114
 Changed files only.
 
-app/checks/catalog.py     (new)
+app/checks/catalog.py  ->  app/flag_catalog.py   (MOVED - delete the old one)
 app/main.py
-app/templates/base.html
-app/templates/rules_body.html
 app/version.py
-docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
 
 
-REPORTING FLAGS
-==================
-The brain icon has two tabs now:
+I CANNOT REPRODUCE IT, SO THE PAGE WILL TELL US
+==================================================
+I loaded your four order files into a fresh board and hit every page - cycle,
+orders, links, rules, lifetimes, batches, workload, partners. All 200. So
+whatever it is needs your data or your database, and I am not going to find it
+by reading code and guessing.
 
-  What is owed        the rules that were already there
-  Reporting flags     all 38 checks, grouped, with what each one catches
+"Internal Server Error" is three words in Times New Roman, and they are the
+same three words for every fault there is. A screenshot of it says nothing, and
+the only way to find out more was to go and read Render's logs.
 
-The findings list on a report only ever shows what went wrong on THAT report,
-so "what does this thing actually look for" could only be answered by having
-opened enough reports to have seen every check fire. Now it is one list:
+A 500 is now a page that says:
 
-  The numbers agree with each other        9
-  What the client bought                   5
-  The right report for the right client    4
-  Widgets that should be there, and ones
-    that should not                        7
-  Creative                                 5
-  Completion rates                         3
-  Names and labels                         4
-  Sites                                    1
+  Something broke on this page.
+  Nothing was lost - this is the page failing to draw, not the data.
+  Build 2026.08.28-114, path /cycle.
+  Send this whole page and it can be fixed without guessing.
 
-Two columns. The left says what a finding means - "A site clicking at a rate a
-person would not - the usual sign of bot traffic on a placement". The right is
-the same rule as the claim made about a report that passes it, which is how it
-reads on the report's own checklist.
+  <the tool's own frames, and the line it actually raised on>
 
-A test walks the checks and fails if one is added without a line describing it,
-so the list cannot quietly stop being the whole list.
+Just this tool's frames, not the twenty of middleware above them - those are
+identical on every fault and push the one line that matters off the bottom of a
+screenshot. The whole traceback still goes to the Render log either way.
 
-The tabs are radio buttons and a CSS sibling selector rather than a click
-handler, because the sheet injects that page as innerHTML and a script tag put
-in that way never runs - tabs built the usual way would have worked on the full
-page and done nothing in the sheet, which is where it is read.
+DEPLOY THIS AND SEND ME THE PAGE. That is a fix in one round trip instead of
+five.
 
 
-THE HIGHLIGHTED LINE IS GONE
-===============================
-"One product is enough." removed. The rule reads:
+AND ONE THING THAT MIGHT BE THE CAUSE
+========================================
+Build 113 put the flag catalogue in app/checks/. The rules fingerprint is a
+hash of every file in that folder, and a changed hash queues EVERY report on
+the board to be judged again - so deploying 113 started a re-check of the whole
+cycle, on a file that contains no rules at all. Seven hundred reports, two
+workers, each one re-reading a PDF.
 
-  The report covers the whole client, so if any one of its products hits 7
-  days, the client is owed a report - the others do not have to.
+That is bad on its own and I would move it regardless. It may also be what you
+are looking at: a box busy enough re-reading seven hundred PDFs is a box that
+can fail to draw a page.
 
+The catalogue is now app/flag_catalog.py, outside that folder. DELETE
+app/checks/catalog.py when you deploy this - if both exist the fingerprint
+keeps the old value and the sweep starts again.
 
-"XX checks" - WHAT THAT IS
-=============================
-That was my wording in the guide, and it was not clear. It is the amber button
-in the board toolbar, beside the "orders" button, and it carries a count - so
-on screen it says something like "40 checks". It means those reports were
-judged by older checking code. A background sweeper is already working through
-them; the button does them now. It skips anything signed off.
+There is one more sweep either way, because removing the file changes the hash
+back. It is the last one: after this, a wording fix in the catalogue costs
+nothing.
 
-The guide says that properly now, in both places it came up.
+A test holds it there.
 
-
-TWO MORE SECTIONS IN THE GUIDE
-=================================
-Lifetimes delivered - has this campaign already had its closeout? Every
-lifetime that has gone out, with the cycle it went in. If it is on that page it
-went; if the board is asking again anyway, the order's end date moved after it
-was sent, so it really is owed again for the new ending.
-
-Batch history - did the report ever arrive? Every batch the tool has taken in.
-If the batch is not there, it never reached the tool, and no amount of waiting
-on the board will fix that. If the batch is there and the report is not on the
-board, it arrived under a name that did not join to anything.
-
-Both are also in the troubleshooting table and the nav list at the top.
-
-681 tests pass.
+683 tests pass.
