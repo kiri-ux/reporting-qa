@@ -658,7 +658,7 @@ def test_the_report_page_shows_the_actual_crop(client):
     rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
     page = c.get(f"/report/{rep.id}/view").text
     assert f"/report/{rep.id}/logo.png" in page
-    assert "This is the tool's default logo" in page
+    assert "Flag as default logo" in page
 
     png = c.get(f"/report/{rep.id}/logo.png")
     assert png.status_code == 200

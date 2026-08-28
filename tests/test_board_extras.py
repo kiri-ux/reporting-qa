@@ -1393,3 +1393,17 @@ def test_a_finished_order_on_a_live_row_still_gets_its_colour():
         assert "51903" in life[0].account_ids, \
             "the finished order belongs on the campaign's row"
     db.close(); eng.dispose()
+
+
+def test_the_logo_buttons_say_what_they_do_to_the_logo():
+    """"This is the tool's default logo" is a statement about the picture, and
+    the line above it was an instruction to whoever was reading. Both hid the
+    part that matters: the mark reaches every other report carrying it."""
+    v = (TPL / "viewer.html").read_text()
+    assert ">Flag as default logo</button>" in v
+    assert ">Flag as real logo</button>" in v
+    assert "This is the tool's default logo" not in v
+    assert "It is a real logo</button>" not in v
+    assert "Logo being used on the report." in v
+    assert ("Flagging as a different status will force all other reports using"
+            in v)

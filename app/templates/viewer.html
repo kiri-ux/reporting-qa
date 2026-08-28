@@ -343,16 +343,22 @@
            showed the wrong logo beside the right report. #}
         <img src="/report/{{ rep.id }}/logo.png?v={{ file_v }}"
              alt="The logo in the top-left corner of page one">
+        {# WHAT IT IS AND WHAT PRESSING THIS DOES, in that order. It used to
+           read as an instruction addressed at whoever was looking - "say so
+           once and every report carrying it will fail" - which describes the
+           consequence of pressing it as though it were the thing itself. The
+           consequence worth naming is the one that reaches other people's
+           reports. #}
         <form method="post" action="/logo/{{ logo_hash }}/mark">
+          <p class="sub">Logo being used on the report.{% if logo_generic %}
+            Flagged as the reporting tool's default, so every report carrying
+            it fails.{% endif %}
+            Flagging as a different status will force all other reports using
+            this logo to be re-checked.</p>
           {% if logo_generic %}
-            <p class="sub">Marked as the reporting tool's default, so every
-              report carrying it fails.</p>
-            <button class="mini" name="kind" value="clear">It is a real logo</button>
+            <button class="mini" name="kind" value="clear">Flag as real logo</button>
           {% else %}
-            <p class="sub">If this is the reporting tool's default rather than
-              a station or client logo, say so once and every report carrying
-              it will fail.</p>
-            <button class="mini warn" name="kind" value="generic">This is the tool's default logo</button>
+            <button class="mini warn" name="kind" value="generic">Flag as default logo</button>
           {% endif %}
         </form>
       </div>

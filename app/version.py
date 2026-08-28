@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-109"
-BUILD_NOTES = ("You were right - the export has the status. The board was "
-               "never reading it, so every order pill was grey.")
+BUILD = "2026.08.28-110"
+BUILD_NOTES = ("The logo panel says what it is and what flagging it reaches: "
+               "Flag as default logo, Flag as real logo.")
 
 # ---------------------------------------------------------------------------
 

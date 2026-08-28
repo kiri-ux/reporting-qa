@@ -1,51 +1,30 @@
-build 2026.08.28-109
+build 2026.08.28-110
 Changed files only.
 
-app/board.py
-app/templates/cycle.html
 app/templates/viewer.html
 app/version.py
+docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
+tests/test_manual_upload.py
 
 
-YOU WERE RIGHT. THE EXPORT HAS THE STATUS.
-=============================================
-I checked the four order files you sent: 1,404 rows, and not one of them has a
-blank status. Both columns are filled on every row, so "no status on it in the
-order export" was wrong about your export, and build 108 was wrong to say it.
+THE LOGO PANEL
+=================
+Your wording, both states.
 
-The board was not reading the status at all.
+  Logo being used on the report. Flagging as a different status will force all
+  other reports using this logo to be re-checked.
 
-The order lines come out of the database column by column - market, client,
-order ids, dates, product, and so on - a named list, for speed. The line items
-underneath were not on that list. The code that colours the pills reads them,
-found nothing every single time, and carried on, because reading a field that
-is not there is not an error in Python. It just comes back empty.
+  [ Flag as default logo ]        [ Flag as real logo ]
 
-So EVERY order pill on the board has been grey since the colours shipped, on
-every partner, and the tooltip has been blaming the export for it. Green,
-orange, red and blue were never once drawn.
+The old line - "if this is the reporting tool's default rather than a station
+or client logo, say so once and every report carrying it will fail" - was an
+instruction addressed at whoever happened to be reading, and it described the
+consequence as though it were the thing itself. The consequence worth naming is
+the one that reaches other people's reports, which is now the second sentence.
 
-The line items are on the list now. The pills should come up coloured on the
-next load - no re-sync, no re-check, nothing to press.
+When a logo is already flagged as the default, the panel still says so before
+that sentence, because that is a fact about the logo rather than about the
+button.
 
-There was a second, smaller thing behind it, and it is fixed too: an order that
-has finished but overlaps a campaign still gets its id onto that row, because
-the row is about the whole campaign. The status was only being read for orders
-that earn a row of their own, so those particular pills would have stayed grey
-even with the field present. They are read for every order on the client now.
-
-If a pill is still grey after this, the export really is missing that status,
-and the tooltip says so.
-
-
-NEEDS FIX
-============
-Your wording:
-
-  Needs fix - marks it as wrong and keeps it out of the partner's folder.
-  It needs to be re-pulled and uploaded.
-
-On the board's icon and on the viewer's button.
-
-672 tests pass.
+673 tests pass.
