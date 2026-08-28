@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import OrderLine, Report
+from .cycle import month_label
 
 COLUMN_ALIASES = {
     "market": {"market", "station", "partner"},
@@ -660,7 +661,8 @@ def expected_why(db: Session, client: str, account_ids: str,
         if covering:
             a, b = covering[0]
             extra = len(covering) - 1
-            return show(a, b) + (f" (+{extra} more covering {period})" if extra else "")
+            return show(a, b) + (f" (+{extra} more covering {month_label(period)})"
+                                if extra else "")
         # Nothing covers the month. The nearest end date is what somebody wants
         # to see - "it stopped in June" answers the question on its own.
         ended = [b for _a, b in wins if b]
@@ -676,7 +678,7 @@ def expected_why(db: Session, client: str, account_ids: str,
         if not getattr(l, "live", True):
             verdict = "paused, so not owed either way"
         elif period and not _ran_during(l, period):
-            verdict = f"not running in {period}"
+            verdict = f"not running in {month_label(period)}"
         else:
             verdict = "counted"
         rows.append((f"{l.product or 'unmapped'} · order {l.account_ids or '?'}",

@@ -760,7 +760,7 @@ def test_a_line_item_that_missed_the_month_sits_below_the_fold(client):
     db.add(rep); db.commit()
 
     html = c.get(f"/report/{rep.id}/orders?frag=1").text
-    head, _, tail = html.partition("did not run in 2026-07")
+    head, _, tail = html.partition("did not run in July 2026")
     assert tail, "the off-month section is missing"
     assert "7001" in head and "7002" not in head, "July's line item, and only it"
     assert "7002" in tail

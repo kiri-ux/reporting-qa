@@ -128,6 +128,28 @@ class Cycle:
         return True
 
 
+def month_label(value) -> str:
+    """"2026-07" as "July 2026", everywhere a person reads it.
+
+    The period is stored and compared as "2026-07" because it sorts, and it
+    leaked onto the screen in a dozen places - a viewer head reading
+    "Bloom Heating · 2026-07", a panel reading "delivered impressions in
+    2026-07", a cycle dropdown of nothing but hyphenated numbers - while the
+    board next to them said "July 2026 reports". Same month, two names, one
+    screen.
+
+    Anything that is not a period comes back untouched, so this is safe on a
+    value that might be blank or might hold something else entirely.
+    """
+    s = str(value or "")
+    if len(s) == 7 and s[4] == "-" and s[:4].isdigit() and s[5:].isdigit():
+        try:
+            return dt.date(int(s[:4]), int(s[5:]), 1).strftime("%B %Y")
+        except ValueError:
+            return s
+    return s
+
+
 def cycle_for(period: str) -> Cycle:
     start, end = period_bounds(period)
     y, m = next_month(period)

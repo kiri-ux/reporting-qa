@@ -1106,10 +1106,10 @@ def test_a_client_that_served_with_no_order_line_is_named(client_orders_db):
     db.commit()
 
     html = c.get("/orders").text
-    assert "delivered impressions in 2026-07" in html
+    assert "delivered impressions in July 2026" in html
     # The panel names only the one with nothing to judge it against. Alpha and
     # Gamma appear elsewhere on the page, so the panel itself is what is read.
-    panel = html[html.index("delivered impressions in 2026-07"):]
+    panel = html[html.index("delivered impressions in July 2026"):]
     panel = panel[:panel.index("</div>")]
     assert "No File Landed" in panel and "Beta" in panel
     assert "Alpha" not in panel, "it has an order line"
@@ -1135,7 +1135,7 @@ def test_the_order_tool_puts_the_product_in_the_client_name(client_orders_db):
                           client="A-1 Appliance", days=30))
     db.commit()
     html = c.get("/orders").text
-    assert "delivered impressions in 2026-07" not in html
+    assert "delivered impressions in July 2026" not in html
 
 
 @pytest.fixture()
@@ -1244,7 +1244,7 @@ def test_the_two_tools_spelling_a_client_differently_is_an_alert(client_orders_d
     # It reads as a warning, not as a note in passing.
     assert "border-left-color:var(--gold)" in html
     # And it is NOT in the missing panel, because it is not missing.
-    assert "delivered impressions in 2026-07" not in html
+    assert "delivered impressions in July 2026" not in html
 
 
 def test_a_client_the_two_tools_agree_on_is_not_flagged():
@@ -1267,3 +1267,38 @@ def test_a_client_the_two_tools_agree_on_is_not_flagged():
     db.commit()
     assert matched_on_base_name(db, "2026-07") == []
     db.close(); eng.dispose()
+
+
+def test_a_month_is_written_the_way_people_say_it():
+    """"2026-07" is how the period is stored, because it sorts. It is not how
+    anybody says it, and it was on the screen beside a board heading reading
+    "July 2026 reports" - the same month under two names, one page."""
+    from app.cycle import month_label
+    assert month_label("2026-07") == "July 2026"
+    assert month_label("2026-01") == "January 2026"
+    assert month_label("2026-12") == "December 2026"
+    # Anything that is not a period comes back untouched, so it is safe on a
+    # column that might be blank or hold something else.
+    assert month_label("") == ""
+    assert month_label(None) == ""
+    assert month_label("Lifetime") == "Lifetime"
+    assert month_label("2026-13") == "2026-13"
+    assert month_label("2026-7") == "2026-7"
+
+
+def test_the_hyphenated_period_is_not_printed_at_a_person():
+    """The places it leaked: the cycle dropdown, the viewer head, the order
+    panel, the report's own order list. A URL is not a person."""
+    import re as _re
+    for name in ("cycle.html", "links.html", "viewer.html", "orders.html",
+                 "report_orders_body.html", "batch.html", "dashboard.html",
+                 "lifetimes.html"):
+        html = (TPL / name).read_text()
+        for m in _re.finditer(r"\{\{[^}]*?\bperiod\b[^}]*?\}\}", html):
+            frag = m.group(0)
+            if "|month" in frag or "urlencode" in frag:
+                continue
+            # A period inside a URL or a form value is machinery, not writing.
+            before = html[max(0, m.start() - 40):m.start()]
+            assert ("period=" in before or "/cycle/" in before
+                    or 'value="' in before), f"{name}: {frag} is shown raw"

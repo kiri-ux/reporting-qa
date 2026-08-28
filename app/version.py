@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.27-106"
-BUILD_NOTES = ("Two names for one client now warns: it usually means the "
-               "delivery data is linked to the wrong client record.")
+BUILD = "2026.08.28-107"
+BUILD_NOTES = ("Every month on screen now reads \"July 2026\", not "
+               "\"2026-07\". Two rules on the rules sheet reworded.")
 
 # ---------------------------------------------------------------------------
 

@@ -28,7 +28,7 @@
       <tr>
         <td class="mono">{{ b.received_at|et('%Y-%m-%d %-I:%M %p') }}</td>
         <td>{{ b.market or '—' }}</td>
-        <td class="mono">{{ b.period }}</td>
+        <td>{{ b.period|month }}</td>
         <td class="acct">{{ b.source }}</td>
         <td class="n">{{ b.reports|length }}</td>
         <td class="n">{% if b.failed %}<span class="pill p-fail">{{ b.failed }}</span>{% else %}0{% endif %}</td>

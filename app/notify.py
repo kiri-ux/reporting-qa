@@ -7,6 +7,7 @@ from email.message import EmailMessage
 import httpx
 
 from .config import settings
+from .cycle import month_label
 
 log = logging.getLogger("reportqa.notify")
 
@@ -14,7 +15,7 @@ SEV_EMOJI = {"fail": ":red_circle:", "warn": ":large_orange_circle:", "pass": ":
 
 
 def _lines(batch, comp) -> list[str]:
-    out = [f"*{batch.market or 'Report batch'}* {batch.period} "
+    out = [f"*{batch.market or 'Report batch'}* {month_label(batch.period)} "
            f"— {len(batch.reports)} reports: "
            f"{batch.failed} failed, {batch.warned} warnings, {batch.clean} clean"]
     for r in sorted(batch.reports, key=lambda x: (x.severity != "fail", x.severity != "warn", x.client)):
@@ -74,7 +75,7 @@ def _html(batch, comp) -> str:
             f"<li>{m['client']} — campaign ended {m['ended']}</li>"
             for m in comp["lifetime_due"]) + "</ul>"
     return f"""<html><body style="font-family:Arial,Helvetica,sans-serif;color:#161D28">
-<h2 style="margin-bottom:4px">{batch.market or 'Report batch'} — {batch.period}</h2>
+<h2 style="margin-bottom:4px">{batch.market or 'Report batch'} — {month_label(batch.period)}</h2>
 <p style="color:#555;margin-top:0">{len(batch.reports)} reports checked ·
 <b style="color:#A9382A">{batch.failed} failed</b> ·
 <b style="color:#8A5F13">{batch.warned} warnings</b> ·
@@ -100,7 +101,7 @@ def send_digest(batch, comp=None, extra_to: list[str] | None = None) -> bool:
     if not to:
         return False
     msg = EmailMessage()
-    msg["Subject"] = (f"[Report QA] {batch.market or 'batch'} {batch.period} — "
+    msg["Subject"] = (f"[Report QA] {batch.market or 'batch'} {month_label(batch.period)} — "
                       f"{batch.failed} failed, {batch.warned} warnings")
     msg["From"] = settings.digest_from
     msg["To"] = ", ".join(to)

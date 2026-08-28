@@ -221,7 +221,7 @@ def test_the_finding_can_show_its_working():
     flat = " | ".join(f"{a} = {b}" for a, b in rows)
     assert "Live Chat · order 31171" in flat
     assert "Mobile Conquesting · order 31050" in flat
-    assert "not running in 2026-07" in flat
+    assert "not running in July 2026" in flat
     assert "counted" in flat
 
 
@@ -308,7 +308,7 @@ def test_the_trace_shows_the_flight_that_settles_it_not_all_of_them():
     rows = dict(expected_why(s, "W&L Subaru", "14885", period="2026-07"))
     line = rows["TikTok · order 14885"]
     assert line.startswith("2024-12-13 to 2026-12-31")
-    assert "+1 more covering 2026-07" in line
+    assert "+1 more covering July 2026" in line
     assert ";" not in line, "it is still listing every window"
 
 

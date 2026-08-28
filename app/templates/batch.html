@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ batch.market or "Batch" }} {{ batch.period }} · Report QA{% endblock %}
+{% block title %}{{ batch.market or "Batch" }} {{ batch.period|month }} · Report QA{% endblock %}
 {% block where %}<a href="/">Dashboard</a> / Batch {{ batch.id }}{% endblock %}
 {% block body %}
 <div>
-  <h1>{{ batch.market or 'Report batch' }} <span class="mono" style="font-size:20px;color:var(--muted)">{{ batch.period }}</span></h1>
+  <h1>{{ batch.market or 'Report batch' }} <span style="font-size:20px;color:var(--muted)">{{ batch.period|month }}</span></h1>
   <p class="sub">{{ batch.reports|length }} reports · received {{ batch.received_at|et('%b %-d, %Y at %-I:%M %p') }} via {{ batch.source }}
   {% if batch.email_from %} from {{ batch.email_from }}{% endif %}
   {% if batch.notified_at %} · digest sent{% endif %}</p>

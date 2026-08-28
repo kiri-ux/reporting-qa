@@ -31,7 +31,7 @@
             <td>{{ r.market or 'no market' }}</td>
             <td><b>{{ r.client }}</b></td>
             <td class="acct">{{ r.orders }}</td>
-            <td class="mono nw">{{ r.period }}</td>
+            <td class="nw">{{ r.period|month }}</td>
             <td>{{ r.state|replace('_', ' ') }}</td>
             <td><a href="/report/{{ r.id }}/view">Open</a></td>
           </tr>

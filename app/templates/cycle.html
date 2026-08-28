@@ -43,7 +43,7 @@
             style="font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--line);
                    border-radius:20px;background:var(--surface);color:var(--ink)">
       {% for p in periods %}
-        <option value="{{ p }}" {% if p == period %}selected{% endif %}>{{ p }}</option>
+        <option value="{{ p }}" {% if p == period %}selected{% endif %}>{{ p|month }}</option>
       {% endfor %}
     </select>
   </form>

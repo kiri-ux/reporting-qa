@@ -8,7 +8,7 @@
 {# One row, not a stacked title block. Every pixel here comes out of the PDF. #}
 <div class="pagehead">
   <h1>{{ rep.client }}</h1>
-  <span class="meta">{{ rep.market }} · {{ rep.period }}
+  <span class="meta">{{ rep.market }} · {{ rep.period|month }}
     {%- if rep.pages %} · {{ rep.pages }} pages{% endif %}
     {%- if rep.impressions %} · {{ '{:,}'.format(rep.impressions) }} impressions{% endif %}</span>
   {% if rep.account_ids %}
@@ -368,7 +368,7 @@
           <ul class="peerlist">
             {% for p in logo_peers %}
               <li><a href="/report/{{ p.id }}/view">{{ p.market or 'no market' }} · {{ p.client }}</a>
-                <span class="sub">{{ p.period }}{% if p.review_state in ('reviewed', 'waived') %} · signed off{% endif %}</span></li>
+                <span class="sub">{{ p.period|month }}{% if p.review_state in ('reviewed', 'waived') %} · signed off{% endif %}</span></li>
             {% endfor %}
           </ul>
         </details>

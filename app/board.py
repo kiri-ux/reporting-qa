@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .cycle import Cycle, cycle_for
+from .cycle import Cycle, cycle_for, month_label
 from .db import OrderLine, Partner, Report
 from .partners import is_seo
 
@@ -683,7 +683,7 @@ def expected_for(db: Session, period: str,
             if e.ends_on and when >= e.ends_on.strftime("%Y-%m"):
                 if skipped is not None:
                     skipped.append({"market": e.market, "client": e.client,
-                                    "why": f"lifetime already delivered in {when}",
+                                    "why": f"lifetime already delivered in {month_label(when)}",
                                     "kind": "lifetime", "days": 0,
                                     "starts": e.starts_on, "ends": e.ends_on})
                 del rows[k]

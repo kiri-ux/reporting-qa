@@ -30,6 +30,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .db import ServedDays
+from .cycle import month_label
 
 
 def _norm(h: str) -> str:
@@ -233,7 +234,7 @@ def import_serving(db: Session, rows, *, period: str | None = None,
     # misses; this handles the rest by naming what the file actually holds.
     if period and not days and found_months:
         raise ValueError(
-            f"Nothing in this file is dated {period}. It holds "
+            f"Nothing in this file is dated {month_label(period)}. It holds "
             + ", ".join(sorted(found_months))
             + ". Leave the period blank to load whatever is in the file.")
     if not days:

@@ -6,7 +6,7 @@
    because that is the question the checks ask. Read by a person it hides the
    thing they came here for: which order those dates belong to. #}
 <p class="sub">
-  Every line item {{ rep.client }}'s {{ rep.period }} report is judged against -
+  Every line item {{ rep.client }}'s {{ rep.period|month }} report is judged against -
   one row each, with its own order and its own dates. The checks see these
   merged into one row per product, which is why a date here can look narrower
   than the finding does.
@@ -44,7 +44,7 @@
   <div class="tw"><table class="olines">
     <thead><tr>
       <th>Order</th><th>Product</th><th>Status</th><th>Flight</th>
-      <th class="w1">In {{ rep.period }}</th>
+      <th class="w1">In {{ rep.period|month }}</th>
       <th style="text-align:right">This month</th>
       <th style="text-align:right">Campaign total</th>
     </tr></thead>
@@ -121,7 +121,7 @@
         <td class="acct">Total</td>
         <td class="acct">{{ rows|length }} line item{{ 's' if rows|length != 1 }}
           across {{ t.orders }} order{{ 's' if t.orders != 1 }}</td>
-        <td colspan="2" class="acct">{{ t.ran }} ran in {{ rep.period }}</td>
+        <td colspan="2" class="acct">{{ t.ran }} ran in {{ rep.period|month }}</td>
         <td></td>
         <td class="n">
           {% if t.impressions %}{{ '{:,.0f}'.format(t.impressions) }}<br>{% endif %}
@@ -141,7 +141,7 @@
 {% if rows %}
   {{ olines(rows) }}
 {% elif other %}
-  <p class="empty">Nothing this client bought was running in {{ rep.period }}.</p>
+  <p class="empty">Nothing this client bought was running in {{ rep.period|month }}.</p>
 {% else %}
   <p class="empty">No order lines match this client at all.</p>
 {% endif %}
@@ -153,7 +153,7 @@
      are here rather than gone. #}
   <details class="offmonth">
     <summary>{{ other|length }} more line item{{ 's' if other|length != 1 }}
-      that did not run in {{ rep.period }}</summary>
+      that did not run in {{ rep.period|month }}</summary>
     <p class="sub" style="margin:10px 0 0">
       Nothing on this report is judged against these - their flights end before
       the month or start after it. They are here because they are the same

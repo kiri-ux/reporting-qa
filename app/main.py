@@ -165,6 +165,11 @@ def _eastern(value, fmt: str = "%b %-d at %-I:%M %p"):
 templates.env.filters["et"] = _eastern
 
 
+from .cycle import month_label as _month_label      # noqa: E402
+
+templates.env.filters["month"] = _month_label
+
+
 def _human_hours(h):
     from .pace import humanise
     return humanise(h)

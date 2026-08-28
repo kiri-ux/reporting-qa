@@ -335,7 +335,7 @@
   <div class="panel">
     {% if served %}
       <p class="sub" style="margin-top:0">
-        <b>{{ served.clients }}</b> clients loaded for <b>{{ served.period }}</b>,
+        <b>{{ served.clients }}</b> clients loaded for <b>{{ served.period|month }}</b>,
         {{ served.ran }} of them served {{ min_days }}+ days.</p>
       {% if served.unmatched %}
         {# A client the file does not name is read as having served nothing,
@@ -447,7 +447,7 @@
     <div class="note" style="border-left-color:var(--crit);background:var(--crit-bg);
          margin-bottom:14px">
       <b>{{ missing_orders|length }} client{{ 's' if missing_orders|length != 1 else '' }}
-      delivered impressions in {{ period }} but {{ 'have' if missing_orders|length != 1
+      delivered impressions in {{ period|month }} but {{ 'have' if missing_orders|length != 1
       else 'has' }} no order line loaded.</b>
       The serving file says {{ 'they were' if missing_orders|length != 1 else 'it was' }}
       running; the order list has nothing to judge {{ 'them' if missing_orders|length != 1

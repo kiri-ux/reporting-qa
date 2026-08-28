@@ -1,36 +1,74 @@
-build 2026.08.27-106
+build 2026.08.28-107
 Changed files only.
 
+app/board.py
+app/cycle.py
 app/main.py
+app/notify.py
+app/roster.py
 app/serving.py
+app/templates/batch.html
+app/templates/cycle.html
+app/templates/dashboard.html
+app/templates/lifetimes.html
+app/templates/links.html
 app/templates/orders.html
+app/templates/report_orders_body.html
+app/templates/rules_body.html
+app/templates/viewer.html
 app/version.py
 tests/test_board_extras.py
+tests/test_expected_products.py
+tests/test_manual_upload.py
 
 
-TWO NAMES FOR ONE CLIENT IS NOW AN ALERT
-===========================================
-You confirmed it, so the panel says it.
+"JULY 2026", NOT "2026-07"
+=============================
+The period is stored as "2026-07" because it sorts and compares, and that is
+the right way to keep it. It was also being printed straight at people in a
+dozen places, on the same screens as a board heading reading "July 2026
+reports" - the same month under two names, one page.
 
-Build 105 taught the match to take a trailing product off the client name, so
-"A-1 Appliance" and "A-1 Appliance - Display" stopped being two clients. That
-fixed the false "no order behind it" flag, but it was worded as a note in
-passing: matching works, worth ruling out the other thing.
+One filter now, used everywhere a person reads a month:
 
-The other thing is what it turned out to be. The delivery data was on the plain
-record and the order was on the product one. So the panel is a warning now, in
-gold, and it says what to go and check rather than what to rule out:
+  the cycle dropdown, top right of the board and the links page
+  the report viewer's head line, "Bloom Heating · July 2026"
+  the order panel, "delivered impressions in July 2026"
+  a report's own order list - the column head, the "ran in", the fold
+  the batch page, the dashboard, the lifetimes table
+  "lifetime already delivered in May 2026" on the not-owed panel
+  "not running in July 2026" on a product finding's trace
+  the batch digest
 
-  Check N clients: the delivery data may be linked to the wrong client record.
+Anything that is not a period comes through untouched, so it is safe on a
+column that might be blank or hold "Lifetime". URLs and form values keep the
+hyphenated form, which is what they need.
 
-The list opens by itself instead of hiding behind "Show the N", with the three
-columns as before - partner, what the serving file calls it, what the order tool
-calls it. It stays quiet when the two tools agree, which is the whole point: a
-flag that is always on gets ignored.
+Two tests hold it: one on the filter, one that reads the templates and fails
+if a period is printed at a person without it.
 
-It fires on the shape, not on proof, so some of these will be fine. The wording
-says "may be" for that reason. But every one of them is a client where the two
-systems hold two different names for the same business, and that is worth thirty
-seconds each.
 
-666 tests pass.
+TWO RULES THAT WERE TOO SHORT TO READ
+========================================
+Both said the right thing in too few words.
+
+  One product meeting that is enough for the client's report.
+
+is now
+
+  One product is enough. The report covers the whole client, so if any one of
+  its products hits 7 days, the client is owed a report - the others do not
+  have to.
+
+and
+
+  Short runs are not exempt. An order that ended on the 2nd owes one.
+
+is now
+
+  How long it ran does not matter. An order that ended on the 2nd still owes
+  a lifetime.
+
+Same rules. No behavior changed.
+
+668 tests pass.
