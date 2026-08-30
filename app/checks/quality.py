@@ -778,6 +778,20 @@ PREVIEW_COLUMN = re.compile(
     r"|Thumbnail|Logo|Image)$", re.I)
 NO_THUMBNAIL = "Thumbnail not available"
 
+# AN HTML5 CREATIVE CANNOT HAVE A PREVIEW, AND ITS NAME SAYS SO.
+#
+# HTML5 ads ship as a zip of markup and assets. There is nothing to take a
+# picture of and no still frame to link to, so the preview cell is empty and
+# the preview link is missing on every one of them - correctly. Flagging that
+# is flagging the format, and the reporter can do nothing about it but tick the
+# box again next month.
+HTML5_CREATIVE = re.compile(r"\.zip\s*$", re.I)
+
+
+def is_html5(name: str) -> bool:
+    """A creative that ships as a zip - HTML5, so no preview exists."""
+    return bool(HTML5_CREATIVE.search((name or "").strip()))
+
 # What to call the things in that column, on the finding.
 IMAGE_NOUN = {"preview image": "creative preview", "ad preview": "creative preview",
               "preview": "creative preview", "thumbnail": "creative preview",
@@ -861,7 +875,8 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
                          and NUMERIC.match(w[4])})
             if len(ys) < 1:
                 continue
-            want.append((n, title, noun, cols[0][0], cols[1][0], ys, h[1]))
+            want.append((n, title, noun, cols[0][0], cols[1][0], ys, h[1],
+                         words, num_x0))
 
     out: list[tuple[int, str, str]] = []
     if not want:
@@ -870,7 +885,7 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
     sc = dpi / 72.0
     done: set = set()
     with tempfile.TemporaryDirectory() as tmp:
-        for n, title, noun, x0, x1, ys, head_y in want:
+        for n, title, noun, x0, x1, ys, head_y, words, name_x1 in want:
             stem = str(_P(tmp) / f"p{n}")
             _proc.run([_bin("pdftoppm"), "-f", str(n), "-l", str(n),
                        "-r", str(dpi), "-png", str(path), stem],
@@ -895,6 +910,16 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
                 box = (max(int(x0 * sc) - 4, 0), max(int(top * sc), 0),
                        int(x1 * sc) - 6, min(int(bottom * sc), im.height))
                 if box[2] - box[0] < 8 or box[3] - box[1] < 8:
+                    continue
+                # AN HTML5 CREATIVE HAS NO PREVIEW TO RENDER. The name column
+                # of this row is read for that and nothing else: a zip is a
+                # bundle of markup, there is no still to show, and the empty
+                # cell is the format rather than a fault.
+                name = " ".join(w[4] for w in sorted(
+                    [w for w in words
+                     if x1 - 4 <= w[0] < name_x1 - 2 and top <= w[1] <= bottom],
+                    key=lambda w: (round(w[1], 1), w[0])))
+                if is_html5(name):
                     continue
                 if is_blank(im.crop(box)):
                     key = (n, round(y, 1), round(x0, 1))
@@ -964,6 +989,126 @@ def zero_completion(text: str) -> list[tuple[int, str, int]]:
             j += 1
         if len(vals) >= 2 and not any(vals):
             out.append((starts[i], title or "Completion Rate", len(vals)))
+        i = max(j, i + 1)
+    return out
+
+
+# The widgets where a completion rate is the point of the buy.
+WATCHED_WIDGET = re.compile(r"\b(video|ctv|connected tv|audio)\b", re.I)
+
+
+def some_zero_completion(text: str) -> list[tuple[int, str, list]]:
+    """Rows at 0.00% in a completion column: (offset, title, [row names]).
+
+    A campaign-wide column of zeroes is a broken widget and gets its own
+    finding. THIS is the other half: one creative at 0.00% among nine that
+    watched fine is a creative nobody finished once - not a metric fault, but
+    not something to send to a client without having looked at it either.
+
+    Only where a completion rate is the point of the buy: video, CTV, audio.
+    A percentage column on a display grid is something else.
+    """
+    out = []
+    lines = text.split("\n")
+    starts, pos = [], 0
+    for ln in lines:
+        starts.append(pos)
+        pos += len(ln) + 1
+
+    i = 0
+    while i < len(lines):
+        cells = _cells_with_span(lines[i])
+        head = next((c for c in cells if COMPLETION_HEADER.search(c[0])), None)
+        if not head or any(NUMERIC.match(c[0]) for c in cells) or len(cells) < 2:
+            i += 1
+            continue
+        title = ""
+        for k in range(i - 1, max(-1, i - 8), -1):
+            t = lines[k].strip()
+            if t and not _is_chrome(lines[k]) and len(t) > 3:
+                title = t
+                break
+        zero, seen, j = [], 0, i + 1
+        while j < len(lines):
+            if PAGE_BREAK.search(lines[j]) or _title_of_next_widget(
+                    [(l, 0) for l in lines], j):
+                break
+            row = _cells_with_span(lines[j])
+            for c in row:
+                if abs(c[2] - head[2]) <= 4 and c[0].endswith("%"):
+                    try:
+                        v = float(c[0][:-1].replace(",", ""))
+                    except ValueError:
+                        continue
+                    seen += 1
+                    if v == 0.0:
+                        # The row's NAME, which is its longest text cell - the
+                        # first cell on a creative grid is the preview, and
+                        # "Thumbnail" is not what anybody is looking for.
+                        text_cells = [c[0] for c in row
+                                      if not NUMERIC.match(c[0])]
+                        zero.append(max(text_cells, key=len)[:60]
+                                    if text_cells else "a row")
+            j += 1
+        # All of them is the other finding's business.
+        if zero and seen > len(zero) and WATCHED_WIDGET.search(title or ""):
+            out.append((starts[i], title, zero))
+        i = max(j, i + 1)
+    return out
+
+
+# The link column on the Social Mirror AI grid. Every variant is supposed to
+# carry one; the report prints the words "Click to View" and hangs the URL off
+# them, so a row with nothing in that column has no way to see the ad.
+LINK_HEADER = re.compile(r"(Preview Link|Ad Preview Link|Creative Link)", re.I)
+
+
+def missing_preview_links(text: str) -> list[tuple[int, str, int, int]]:
+    """(offset, widget title, rows with no link, rows in the grid)."""
+    out = []
+    lines = text.split("\n")
+    starts, pos = [], 0
+    for ln in lines:
+        starts.append(pos)
+        pos += len(ln) + 1
+
+    i = 0
+    while i < len(lines):
+        cells = _cells_with_span(lines[i])
+        head = next((c for c in cells if LINK_HEADER.search(c[0])), None)
+        if not head or any(NUMERIC.match(c[0]) for c in cells) or len(cells) < 2:
+            i += 1
+            continue
+        title = ""
+        for k in range(i - 1, max(-1, i - 8), -1):
+            t = lines[k].strip()
+            if t and not _is_chrome(lines[k]) and len(t) > 3:
+                title = t
+                break
+        rows = blank = 0
+        j = i + 1
+        while j < len(lines):
+            if PAGE_BREAK.search(lines[j]) or _title_of_next_widget(
+                    [(l, 0) for l in lines], j):
+                break
+            row = _cells_with_span(lines[j])
+            # A ROW, not the tail of a wrapped name: it carries a number of its
+            # own somewhere to the right of the link column.
+            if row and any(NUMERIC.match(c[0]) and c[1] > head[1] for c in row):
+                # An HTML5 creative ships as a zip and has no preview to link
+                # to, so it is not a row with a missing link - it is a row that
+                # cannot have one. Out of both counts, or "2 of 9" would be
+                # answering a question nobody asked.
+                if any(is_html5(c[0]) for c in row):
+                    j += 1
+                    continue
+                rows += 1
+                cell = lines[j][head[1]:head[2] + 8]
+                if not cell.strip():
+                    blank += 1
+            j += 1
+        if rows and blank:
+            out.append((starts[i], title or "Preview Link", blank, rows))
         i = max(j, i + 1)
     return out
 

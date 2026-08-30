@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-115"
-BUILD_NOTES = ("delivery.py was a build behind. Every page now says so when "
-               "the box is running two builds at once.")
+BUILD = "2026.08.28-116"
+BUILD_NOTES = ("HTML5 creatives (.zip) are not missing previews, and a tick "
+               "survives a new file.")
 
 # ---------------------------------------------------------------------------
 

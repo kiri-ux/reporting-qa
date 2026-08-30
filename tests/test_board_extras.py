@@ -1655,3 +1655,71 @@ def test_a_half_deployed_box_says_so_instead_of_500ing(tmp_path, monkeypatch):
         from app import selfcheck as scmod; importlib.reload(scmod)
         scmod.check(force=True)
         from app import main as mmod; importlib.reload(mmod)
+
+
+def test_an_html5_creative_is_not_a_missing_preview_link():
+    """HTML5 ads ship as a zip of markup and assets. There is no still frame,
+    so the preview link is missing on every one of them - correctly. Flagging
+    that is flagging the format, and the reporter can do nothing about it but
+    tick the same box again next month."""
+    from app.checks.quality import missing_preview_links, is_html5
+
+    assert is_html5("HomeServices_300x250.zip")
+    assert is_html5("Spring Sale.ZIP ")
+    assert not is_html5("Zipline Tours")          # not an extension
+    assert not is_html5("banner_300x250.jpg")
+
+    head = "Creative Name          Preview Link          Impressions   Clicks"
+    def grid(third):
+        return "\n".join([
+            "PPC Creative Performance", head,
+            "summer_300x250.jpg     View                  12,000        140",
+            "html5_banner.zip".ljust(45) + "9,000         88",
+            third,
+        ])
+
+    text = grid("autumn_728x90.jpg      View                  7,500         61")
+    assert missing_preview_links(text) == [], "the zip row is the format"
+
+    # And a real one still fires.
+    got = missing_preview_links(grid("autumn_728x90.jpg".ljust(45) + "7,500         61"))
+    assert got and got[0][2] == 1, "one row with no link"
+    assert got[0][3] == 2, "out of the two that could have had one"
+
+
+def test_a_ticked_box_survives_a_new_file():
+    """Ticking six known false alarms and then uploading the corrected pull
+    used to clear all six, so the same six got ticked again every month. A
+    sign-off is about a copy; an acceptance is about a FINDING, and the finding
+    is as true of the new file as it was of the old one."""
+    from app.recheck import remap_acks
+
+    old = [{"code": "site_ctr", "title": "1 site clicking above 5%", "where": "p9"},
+           {"code": "blank_preview", "title": "2 previews did not render", "where": "p4"},
+           {"code": "ctr_high", "title": "CTR over 5%", "where": "p2"}]
+    # The middle one was accepted.
+    acked = [1]
+
+    # The new file fixed the CTR one and moved the preview finding up the list.
+    new = [{"code": "blank_preview", "title": "2 previews did not render", "where": "p4"},
+           {"code": "site_ctr", "title": "1 site clicking above 5%", "where": "p9"}]
+    assert remap_acks(old, acked, new) == [0], "carried, at its new position"
+
+    # And a finding the new file fixed does not drag its tick onto something
+    # else.
+    assert remap_acks(old, [0], [{"code": "ctr_high", "title": "CTR over 5%",
+                                  "where": "p2"}]) == []
+
+
+def test_every_path_that_replaces_a_file_keeps_the_ticks():
+    """Three places take a new PDF for a report that already exists - the feed
+    superseding an unprotected copy, "Use the new file" on a parked arrival,
+    and "Replace the file" by hand. All three cleared the ticks."""
+    main = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    ingest = (Path(__file__).resolve().parents[1] / "app" / "ingest.py").read_text()
+    assert main.count("rep.acked = remap_acks(") == 2
+    assert ingest.count("rep.acked = remap_acks(") == 1
+    # And none of them still wipes them.
+    assert "rep.acked = []" not in ingest
+    # main.py keeps one: a brand new report has nothing to carry.
+    assert main.count("rep.acked = []") == 0

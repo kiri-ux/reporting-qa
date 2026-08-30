@@ -418,9 +418,21 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
             # It moves to this batch, so the board and the digest both show it
             # against the delivery that actually corrected it.
             rep.batch_id = batch.id
-            # The findings describe a different file now. An acceptance or a
-            # sign-off given to the old copy cannot carry over to this one.
-            rep.acked = []
+            # THE SIGN-OFF GOES. THE TICKS DO NOT.
+            #
+            # A sign-off is a statement about a particular file, so a new file
+            # needs a new one. An acceptance is a statement about a FINDING -
+            # "that CTR flag is a known quirk of this client's GA page" - and
+            # it is just as true of the re-pull as it was of the copy before
+            # it. Clearing them meant re-ticking the same six boxes on the
+            # same six false alarms every time a report came round again,
+            # which is how somebody learns to stop reading them.
+            #
+            # Carried by what the finding SAYS, not by its position in the
+            # list: a finding that is gone from the new file drops its tick,
+            # and one that has moved down the list keeps it.
+            _old_findings = list(rep.findings or [])
+            _old_acked = list(rep.acked or [])
             rep.review_state = "new"
             rep.reviewed_at = None
             log.info("superseded report %s for %s %s", rep.id, rep.client, rep.period)
@@ -445,6 +457,9 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         rep.severity = result["severity"]
         rep.findings = result["findings"]
         rep.checks = result.get("checks") or []
+        if replaced:
+            from .recheck import remap_acks
+            rep.acked = remap_acks(_old_findings, _old_acked, rep.findings)
         # Stamped with the code that judged it, so a later deploy knows whether
         # this answer is still the current one.
         from .version import rules_version

@@ -136,6 +136,8 @@ Press **Check this file again** on the viewer. It re-reads the PDF already on di
 **You fixed the PDF yourself.**
 Drag it onto **Replace the file**, or press **Upload the corrected PDF**. Same report, same row, your note kept. Every check re-runs. It refuses a file named for a different order rather than quietly filing it in the wrong place.
 
+Your ticks carry over. A finding you accepted stays accepted on the new file if it is still there, word for word - so a known false alarm does not need re-ticking every time a report comes round again. Anything the new file actually fixed drops off. The sign-off does reset, because that was about the old copy.
+
 **It was re-pulled from TapClicks.**
 It comes in by itself and replaces the old one - unless the old one was signed off or uploaded by hand. In that case it is parked and the row grows an amber **newer file waiting** tag, and the row goes back to **Pending** even though it is signed off, because there is a decision on it. The sign-off itself is not torn up - the copy that was signed off is still the copy the partner gets until you say otherwise. Open the report and you get **A newer file arrived**, with the incoming file viewable before you choose:
 

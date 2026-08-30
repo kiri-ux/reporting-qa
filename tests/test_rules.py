@@ -1960,6 +1960,7 @@ def test_a_corrected_report_replaces_the_broken_one(tmp_path, monkeypatch):
     rep_id = b1.reports[0].id
 
     r = db.get(db_mod.Report, rep_id)
+    broken_findings = list(r.findings or [])
     r.acked = [0]
     r.review_note = "Chased Tap for a re-pull"
     db.commit()
@@ -1976,8 +1977,19 @@ def test_a_corrected_report_replaces_the_broken_one(tmp_path, monkeypatch):
     assert r.id == rep_id, "it replaced the row instead of updating it"
     assert Path(r.stored_path).read_bytes() == fixed, "the new file was dropped"
     assert r.batch_id == b2.id, "it should sit with the batch that corrected it"
-    assert r.acked == [] and r.review_state == "new" and r.reviewed_at is None, \
-        "acceptances on the broken copy carried over to the corrected one"
+    # THE SIGN-OFF RESETS. THE TICKS DO NOT.
+    #
+    # This used to assert that acceptances were cleared, and that was wrong in
+    # practice: a report that comes round again with the same known false alarm
+    # on it made somebody tick the same box every month, which is how a person
+    # learns to stop reading them. A sign-off is about a copy; an acceptance is
+    # about a finding, and it is carried by what the finding SAYS, so anything
+    # the corrected file actually fixed drops off.
+    assert r.review_state == "new" and r.reviewed_at is None, \
+        "a new file needs a new sign-off"
+    from app.recheck import remap_acks
+    assert r.acked == remap_acks(broken_findings, [0], r.findings), \
+        "the ticks that still describe something on this file are kept"
     assert r.review_note == "Chased Tap for a re-pull", "the note was lost"
     assert not r.has_pending, "nothing was waiting on it, so nothing should be"
 
@@ -2986,3 +2998,48 @@ def test_a_real_widget_title_still_ends_the_table():
             "Top CTV Publishers\n")
     rows = extract_tables(text, strict=True)[0].rows
     assert [n for n, _v in rows] == ["Acme - Keyword PPC"]
+
+
+def test_a_creative_variant_with_no_preview_link_is_flagged():
+    """The Social Mirror AI grid prints "Click to View" with the ad's URL
+    behind it, one per variant. A row with that column empty is a variant
+    nobody reading the report can see."""
+    from app.checks.rules import check_preview_links
+    text = ("Social Mirror Creative AI Performance\n"
+            " Creative Name        Variant Name        Creative Format   "
+            "Preview Link   Percentage Served    CTR\n\n"
+            " NTCC - Workforce     Variant: V_00007    Video             "
+            "Click to View             2.60%   0.62%\n\n"
+            " NTCC - Workforce     Variant: Original   Video             "
+            "                          2.25%   0.54%\n")
+    out = check_preview_links({"text": text, "page_of": lambda _o: 12})
+    assert len(out) == 1
+    assert "1 of 2 creatives have no preview link" == out[0]["title"]
+
+
+def test_one_creative_at_zero_completion_is_a_warning_not_a_fail():
+    """A whole column of zeroes is a broken widget and has its own finding.
+    One creative at 0% among nine that watched fine is the other half."""
+    from app.checks.rules import check_some_zero_completion, check_zero_completion
+    text = ("Connected TV (CTV) Creative Performance\n"
+            " Preview Image     Creative Name          Impressions   "
+            "Video Completion Rate\n\n"
+            " Thumb             Acme_Spring.mp4              5,614   "
+            "               98.69%\n\n"
+            " Thumb             Acme_Summer.mp4              5,525   "
+            "                0.00%\n")
+    ctx = {"text": text, "page_of": lambda _o: 8}
+    assert check_zero_completion(ctx) == [], "not all of them"
+    out = check_some_zero_completion(ctx)
+    assert len(out) == 1 and out[0]["severity"] == "warn"
+    assert "Acme_Summer.mp4" in out[0]["detail"]
+
+
+def test_a_zero_on_a_display_grid_is_not_a_completion_problem():
+    """Only where a completion rate is the point of the buy."""
+    from app.checks.rules import check_some_zero_completion
+    text = ("Display Creative Performance\n"
+            " Creative Name          Impressions   Completion Rate\n\n"
+            " Acme_300x250.gif             5,614            98.69%\n\n"
+            " Acme_728x90.gif              5,525             0.00%\n")
+    assert check_some_zero_completion({"text": text, "page_of": lambda _o: 8}) == []

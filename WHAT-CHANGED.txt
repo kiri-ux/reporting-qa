@@ -1,64 +1,67 @@
-build 2026.08.28-115
+build 2026.08.28-116
+Changed files only. (Build 115 was cumulative - if you deployed that one, this
+is a normal small zip again.)
 
-*** THIS ZIP IS CUMULATIVE. Unzip the whole thing over app/ and tests/. ***
-
-It contains every file that has changed since build 104, not just this build's,
-because the fault below was a missing file and I would rather not leave a
-second one behind.
-
-DELETE app/checks/catalog.py if it is still there.
-
-
-WHAT IT WAS
-==============
-Your error page said it exactly:
-
-  ImportError: cannot import name 'out_of_sync_why' from 'app.delivery'
-
-app/main.py on the server was from build 114. app/delivery.py was from before
-111. `out_of_sync_why` was added to delivery.py in build 111, and that build's
-zip is the one that did not make it up - so the board asked for a function that
-was not there, on every load.
-
-Nothing was wrong with the code. The box was running half of one build and half
-of another.
+app/checks/quality.py
+app/flag_catalog.py
+app/ingest.py
+app/main.py
+app/version.py
+docs/Report-QA-Reporter-Guide.md
+tests/test_board_extras.py
+tests/test_rules.py
 
 
-AND WHY NO TEST COULD HAVE CAUGHT IT
-=======================================
-Every test runs against a tree where all the files are present. A file missed
-on the way up is not a state the test suite can be in.
+HTML5 CREATIVES ARE NOT MISSING THEIR PREVIEWS
+=================================================
+A creative whose name ends in .zip is an HTML5 ad - a bundle of markup and
+assets. There is no still frame, so there is nothing to render into the preview
+cell and nothing to link to. Both preview checks skipped it before it could be
+called a fault:
 
-So there is a check for it now, and it is the one the failure suggests: read
-every `from .x import a, b` in the app and confirm x really has a and b. Most
-of those imports are inside functions - deliberately, it keeps startup fast -
-which is exactly why a missing file sits there looking fine until somebody
-opens the page that touches it.
+  Every creative preview rendered        the empty cell on a .zip row is the
+                                         format, not a preview that failed
 
-It runs at startup, logs what it finds, and puts this at the top of EVERY page:
+  Every creative variant carries a link  a .zip row is out of BOTH counts, not
+                                         just the failing one - "2 of 9 with no
+                                         link" has to be 2 of the 9 that could
+                                         have had one
 
-  This deploy is incomplete. Some files on the server are from an older build
-  than the rest, so parts of the tool will fail as they are opened. Copy the
-  missing files up:
+Only a trailing .zip, so "Zipline Tours" is a client and stays a client.
 
-    main.py line 1074 wants 'out_of_sync_why' from app.delivery, which does
-    not have it - delivery.py on this box is from an older build than main.py
-
-Which names the file to go and copy. /healthz/deep carries the same list and
-returns ok:false while it is not empty, so it can be checked without opening
-anything.
-
-Two tests hold it: one runs the check against the repo itself, and one takes a
-function out of delivery.py, boots the app, and fails unless the banner names
-it.
+Both lines on the Reporting flags tab say so now.
 
 
-ALSO IN HERE, FROM THE BUILDS YOU MAY HAVE MISSED
-====================================================
-  111  "sync reports" says WHY each report is behind - renamed, new file,
-       never sent
-  112  a report with a newer file waiting is back in Pending
-  113  the brain icon's Reporting flags tab - all 38 checks
-  114  a 500 says what broke, where, and on which build
+A TICKED BOX SURVIVES A NEW FILE
+===================================
+You would tick six known false alarms, the corrected pull would come in, and
+all six came back. Every month. That is how somebody learns to stop reading
+them.
 
-685 tests pass.
+A sign-off is a statement about a particular copy, so a new file still needs a
+new one. An acceptance is a statement about a FINDING - "that CTR flag is a
+known quirk of this client's GA page" - and it is just as true of the new file
+as it was of the old one.
+
+The ticks are carried by what the finding SAYS, not by its position in the
+list. So:
+
+  a finding that is still there, word for word    keeps its tick, wherever it
+                                                  has moved to in the list
+  a finding the new file actually fixed           drops off, and its tick does
+                                                  not land on something else
+  a finding that is new                           arrives unticked, which is
+                                                  the point
+
+Three paths take a new PDF for a report that already exists, and all three had
+the same bug: the feed superseding a copy nobody had signed off, "Use the new
+file" on a parked arrival, and "Replace the file" by hand. All three carry the
+ticks now.
+
+The re-check button already worked this way - this is the same rule applied to
+the other three.
+
+One old test asserted the opposite behaviour and has been rewritten to say why
+it changed.
+
+688 tests pass.

@@ -2287,6 +2287,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok,
                      sibling=sibling_of(db, rep))
+    _old_findings = list(rep.findings or [])
+    _old_acked = list(rep.acked or [])
     rep.stored_path = str(target)
     rep.logo_hash = logo
     rep.pages = result["pages"]
@@ -2297,9 +2299,16 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     rep.findings = result["findings"]
     rep.checks = result.get("checks") or []
     rep.rules_version = _rv()
-    # A different file, so the sign-off and the acceptances describe something
-    # that is no longer on screen.
-    rep.acked = []
+    # A DIFFERENT FILE NEEDS A NEW SIGN-OFF. IT DOES NOT NEED THE SAME SIX
+    # BOXES TICKED AGAIN.
+    #
+    # A sign-off is about a particular copy. An acceptance is about a FINDING -
+    # "that CTR flag is a known quirk of this client's GA page" - and it is as
+    # true of the new file as it was of the old one. Carried by what the
+    # finding says, so anything the new file fixed drops its tick and anything
+    # that moved down the list keeps it.
+    from .recheck import remap_acks
+    rep.acked = remap_acks(_old_findings, _old_acked, rep.findings)
     rep.review_state = "new"
     rep.reviewed_at = None
     rep.source = ""                       # it is the feed's copy now
@@ -2414,6 +2423,8 @@ async def replace_report(report_id: int, request: Request,
         db.commit()
         return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 
+    _old_findings = list(rep.findings or [])
+    _old_acked = list(rep.acked or [])
     rep.stored_path = str(path)
     rep.pages = result["pages"]
     rep.impressions = result["impressions"]
@@ -2422,10 +2433,13 @@ async def replace_report(report_id: int, request: Request,
     rep.severity = result["severity"]
     rep.findings = result["findings"]
     rep.checks = result.get("checks") or []
-    # A replacement is a new file, so previous acceptances and the sign-off no
-    # longer refer to what is on screen. The note is kept - it is about the
-    # client, not about that particular copy.
-    rep.acked = []
+    # A replacement is a new file, so it needs a new sign-off. The ticks are
+    # kept: an acceptance is about a finding, not about a copy, and re-ticking
+    # the same known false alarms on every corrected pull is how somebody
+    # learns to stop reading them. The note is kept for the same reason - it is
+    # about the client.
+    from .recheck import remap_acks
+    rep.acked = remap_acks(_old_findings, _old_acked, rep.findings)
     rep.review_state = "new"
     rep.reviewed_at = None
     rep.reviewed_by = who.strip() or rep.reviewed_by

@@ -99,11 +99,14 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ("Creative", [
         ("check_thumbnails",
          "A creative preview that did not render - an empty box where the ad "
-         "should be."),
+         "should be. HTML5 creatives are skipped: a zip of markup has no still "
+         "frame to show."),
         ("check_blank_screenshots",
          "An ad screenshot cell with no screenshot in it."),
         ("check_preview_links",
-         "A creative variant with no link to look at it."),
+         "A creative variant with no link to look at it. HTML5 creatives - "
+         "the ones whose name ends in .zip - are skipped, because there is "
+         "nothing to link to."),
         ("check_creative_names",
          "A creative row that does not say which creative it is."),
         ("check_social_mirror_sizes",
