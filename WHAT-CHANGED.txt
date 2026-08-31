@@ -1,46 +1,64 @@
-build 2026.08.31-126
+build 2026.08.31-127
 Changed files only.
 
+app/db.py
 app/main.py
-app/serving.py
-app/templates/orders.html
-app/templates/rules_body.html
+app/templates/audit.html
 app/version.py
 tests/test_board_extras.py
 
 
-A CAMPAIGN TRAILING OFF IS NOT A MISSING ORDER
-=================================================
-An order that ran to the last day of a month does not stop dead at midnight. A
-few impressions land in the first days of the next one, the serving file counts
-them as days served, and the order behind them ended before this month started
-- so it is correctly not in the order list, and the client came up as
-"delivered with no order behind it" every single month on the way out.
+NO, IT DID NOT SAVE. IT DOES NOW.
+====================================
+"Check a list" was a form post and nothing else. Paste four hundred rows of the
+tracker, read the comparison, refresh - and it is gone, or the browser offers to
+send the whole thing again.
 
-TWO CONDITIONS, AND IT NEEDS BOTH:
+The list is kept per cycle now. Come back to the page and it is there, and it
+re-runs against the board AS IT IS THEN - which is the way this actually gets
+used: read it, go and fix three rows, look again.
 
-  three days or fewer, AND
-  the last of them inside the first week of the month
+It says so under the button, because a thing that saves silently is a thing
+nobody trusts to have saved:
 
-Both, because three days at the END of a month is a campaign that has just
-launched - and that one really does need an order behind it, so it stays on the
-list. Your Transit of Frederick and NM Chupacabras rows are the first shape;
-something starting on the 29th is the second.
+  Kept for August 2026, pasted by Kiri · Aug 31 at 4:55 PM ET. It is here when
+  you come back, and it re-runs against the board as it is then.
 
-The dates come from the serving file itself - first day and last day are kept
-per client per month - so this is read off what actually happened rather than
-guessed from an order that is not there to look at.
+There is a "Clear the list" button beside it. One list per cycle, overwritten -
+it is a copy of somebody else's spreadsheet, not a record.
 
-COUNTED, NOT QUIETLY DROPPED. Under the panel:
 
-  4 more served a day or three in the first week and nothing since - a campaign
-  that ended delivering the last of itself, so they are not listed above.
+AND EVERY ROW ON IT IS NOW A DECISION
+========================================
+"On the list, not on the board" is a question, not a finding. Some of those
+rows belong on the board and the rules missed them; some are on the tracker by
+mistake. Both need somebody who knows the client to say which - and to say it
+ONCE, rather than working the same forty rows out again next month.
 
-And when the tail is all that is left, the panel says so rather than
-disappearing, because an empty panel and a panel that has been quietly emptied
-look exactly the same.
+Each row has a note box and two buttons:
 
-The rules sheet now carries this, the beta-YYYY rule, and what the panel means,
-under "Delivery with no order behind it".
+  APPROVE   puts the row on this cycle's board, with your note as the reason it
+            is there. It is the same override as "Needs a report" on the
+            not-owed panel, so it survives every rule underneath it and the row
+            says who kept it there.
 
-723 tests pass.
+  REJECT    settles it. The row stays on the table with the note on it rather
+            than reading as an open question the next time somebody opens the
+            page.
+
+Both record who and when, and both can be undone.
+
+ONE HONEST LIMIT. Approve can only put back a client the ORDER EXPORT knows
+about - the board is built from that export, so a client nothing in it carries
+cannot have a row created for it. Those are the rows whose reason reads "no
+order line carries 51981 - it is not in the export, or the export is out of
+date". The decision is still recorded; the row cannot appear until the order
+does. The page says that under the table rather than letting Approve look like
+it worked.
+
+The partner comes from the order line rather than from your list, because the
+list carries a partner CODE ("7MOU SG", "LOCK AUG") and the board is keyed on
+the partner's real name. Matched on the order id, which is the one thing both
+sides agree on.
+
+726 tests pass.

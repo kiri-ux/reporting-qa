@@ -1657,11 +1657,132 @@ def cycle_audit(request: Request, period: str = Form(""), group: str = Form(""),
     from .board import STATE_LABEL
     from .cycle import current_period
 
+    from .db import AuditList
+
     period = period or settings.default_period or current_period()
+    saved = db.scalars(select(AuditList)
+                       .where(AuditList.period == period)).first()
+
+    # KEPT, SO A REFRESH DOES NOT LOSE IT.
+    #
+    # Four hundred rows of somebody's tracker, pasted, compared, and gone the
+    # moment the page reloads - or worse, the browser offering to send it all
+    # again. The way this check actually gets used is: read it, go and fix
+    # three rows, look again. That needs the list to still be here.
+    if request.method == "POST":
+        if rows.strip():
+            if saved is None:
+                saved = AuditList(period=period)
+                db.add(saved)
+            saved.rows = rows[:400_000]
+            saved.group = group[:255]
+            saved.saved_by = whoami(request)
+            saved.saved_at = dt.datetime.utcnow()
+            db.commit()
+        elif saved is not None:
+            db.delete(saved)                 # submitted empty: forget it
+            db.commit()
+            saved = None
+    elif saved is not None:
+        # Coming back to the page: the list that is here is the list to run.
+        rows, group = saved.rows, saved.group
+
     result = audit(db, period, rows, group) if rows.strip() else None
+    # THE CALLS ALREADY MADE ON THIS CYCLE'S LIST, so a row somebody has
+    # already ruled on comes back with the ruling on it rather than as a fresh
+    # question.
+    from .db import AuditCall
+    calls = {(c.ref, c.kind): c for c in db.scalars(
+        select(AuditCall).where(AuditCall.period == period)).all()}
     return templates.TemplateResponse(request, "audit.html", {
-        "nav": "audit", "period": period, "group": group,
-        "rows_text": rows, "result": result, "state_label": STATE_LABEL})
+        "nav": "audit", "period": period, "group": group, "saved": saved,
+        "rows_text": rows, "result": result, "state_label": STATE_LABEL,
+        "calls": calls, "me": whoami(request)})
+
+
+@app.post("/cycle/audit/call")
+def cycle_audit_call(request: Request, period: str = Form(""),
+                     ref: str = Form(""), kind: str = Form("monthly"),
+                     client: str = Form(""), market: str = Form(""),
+                     call: str = Form(""), note: str = Form(""),
+                     who: str = Form(""), db: Session = Depends(get_db)):
+    """Approve or reject one row of the pasted list.
+
+    APPROVED PUTS IT ON THE BOARD. Not a note about a row that stays missing -
+    the same override the "not owed" panel uses, so the client appears in the
+    cycle with a report expected and whatever was typed here as the reason.
+    That is what makes this a decision rather than a comment.
+
+    REJECTED IS ALSO A DECISION, and it sticks: the row is still on the list
+    next month, and this is what stops forty of them being worked out again
+    from scratch every time somebody opens the page.
+    """
+    from .db import AuditCall, CycleDone
+    from .cycle import current_period
+
+    period = period or settings.default_period or current_period()
+    ref = (ref or "").strip()[:255]
+    if not ref or call not in ("approved", "rejected", "clear"):
+        return RedirectResponse("/cycle/audit", status_code=303)
+    name = (who or "").strip() or whoami(request)
+
+    row = db.scalars(select(AuditCall).where(
+        AuditCall.period == period, AuditCall.ref == ref,
+        AuditCall.kind == kind)).first()
+    if call == "clear":
+        if row is not None:
+            db.delete(row)
+        db.commit()
+        return RedirectResponse("/cycle/audit", status_code=303)
+
+    if row is None:
+        row = AuditCall(period=period, ref=ref, kind=kind)
+        db.add(row)
+    row.client = (client or "")[:255]
+    row.call = call
+    row.note = (note or "")[:2000]
+    row.who = name[:128]
+    row.at = dt.datetime.utcnow()
+
+    # AND APPROVED ACTUALLY PUTS IT ON THE BOARD.
+    #
+    # THE PARTNER COMES FROM THE ORDER LINE, not from the pasted list - the
+    # list carries a partner CODE ("7MOU SG") and the board is keyed on the
+    # partner's real name. Looked up by order id, which is the one thing both
+    # sides agree on.
+    #
+    # And when there is no order line at all, there is nothing to put back:
+    # the board is built from the order export, so a client the export has
+    # never heard of cannot have a row. The decision is still recorded, and the
+    # page says which of the two happened rather than looking like it worked.
+    if call == "approved" and not market:
+        for l in db.scalars(select(OrderLine)).all():
+            ids = (l.account_ids or "").replace(",", " ").split()
+            if ref in ids or (client and _ident_key(l.client) == _ident_key(client)):
+                market, client = l.market, l.client
+                break
+    if call == "approved" and market and client:
+        ident = f"{_ident_key(market)}|{_ident_key(client)}|{kind}"
+        mark = db.scalars(select(CycleDone).where(
+            CycleDone.period == period, CycleDone.ident == ident)).first()
+        if mark is None:
+            mark = CycleDone(period=period, ident=ident)
+            db.add(mark)
+        mark.market = market[:255]
+        mark.client = client[:255]
+        mark.kind = kind
+        mark.reason = "needed"
+        mark.marked_by = name[:128]
+        mark.note = (note or "Approved from the list check")[:255]
+        mark.marked_at = dt.datetime.utcnow()
+        row.note = (row.note or "")
+        row.client = client[:255]
+    db.commit()
+    return RedirectResponse("/cycle/audit", status_code=303)
+
+
+def _ident_key(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
 @app.get("/rules", response_class=HTMLResponse)

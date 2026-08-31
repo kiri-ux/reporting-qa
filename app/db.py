@@ -550,6 +550,61 @@ class ServedDays(Base):
                                                    default=dt.datetime.utcnow)
 
 
+class AuditList(Base):
+    """The list somebody pasted into "Check a list", kept per cycle.
+
+    IT WAS A FORM POST AND NOTHING ELSE. Paste four hundred rows of the
+    reporting tracker, read the comparison, refresh - and it is gone, or the
+    browser offers to send it all again. So the check that says where the board
+    and the tracker disagree was a thing you did once and could not come back
+    to, and coming back to it is exactly how it gets used: fix three rows, look
+    again.
+
+    One row per cycle, overwritten. The list is a copy of somebody else's
+    spreadsheet, not a record - the point is not to keep every version of it,
+    it is to still be there after a refresh.
+    """
+    __tablename__ = "audit_lists"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(16), unique=True, index=True)
+    rows: Mapped[str] = mapped_column(Text, default="")
+    group: Mapped[str] = mapped_column(String(255), default="")
+    saved_by: Mapped[str] = mapped_column(String(128), default="")
+    saved_at: Mapped[dt.datetime] = mapped_column(DateTime,
+                                                  default=dt.datetime.utcnow)
+
+
+class AuditCall(Base):
+    """A decision about one row of the pasted list, for one cycle.
+
+    "On the list, not on the board" is a question, not a finding: some of those
+    rows belong on the board and the rules missed them, and some are on the
+    tracker by mistake. Both need somebody who knows the client to say which -
+    and to say it once, rather than working the same forty rows out again next
+    time somebody opens the page.
+
+    Keyed on the ORDER ID, because that is the one thing both tools agree on.
+    A row with no id at all falls back to the client name, which is the same
+    thing the comparison itself does.
+    """
+    __tablename__ = "audit_calls"
+    __table_args__ = (UniqueConstraint("period", "ref", "kind",
+                                       name="uq_audit_call"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(16), index=True)
+    ref: Mapped[str] = mapped_column(String(255), index=True)   # order id, or the name
+    kind: Mapped[str] = mapped_column(String(16), default="monthly")
+    client: Mapped[str] = mapped_column(String(255), default="")
+    # "approved" - it belongs on the board, put it there.
+    # "rejected" - it does not, and stop asking.
+    call: Mapped[str] = mapped_column(String(16), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    who: Mapped[str] = mapped_column(String(128), default="")
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class SavedView(Base):
     """A named set of filters on the cycle board.
 

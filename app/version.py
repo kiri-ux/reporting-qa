@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-126"
-BUILD_NOTES = ("A campaign delivering its last two days into a new month is "
-               "not a missing order.")
+BUILD = "2026.08.31-127"
+BUILD_NOTES = ("The pasted list is kept, and every row on it can be approved "
+               "onto the board or rejected, with a note.")
 
 # ---------------------------------------------------------------------------
 

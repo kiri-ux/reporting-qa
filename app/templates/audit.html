@@ -29,8 +29,26 @@
                 padding:10px;border-radius:10px;border:1px solid var(--line);
                 background:var(--surface);color:var(--ink)"
                 placeholder="7MOU SG - Benton Rodeo #53915&#10;7MOU SG - Benton Rodeo #53915 LIFETIME&#10;7MOU SG - Bloom Heating #46333">{{ rows_text }}</textarea>
-      <button class="btn gold" type="submit" style="margin-top:10px">Compare</button>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <button class="btn gold" type="submit">Compare</button>
+        {# IT IS KEPT NOW, so the page has to say so - a thing that saves
+           silently is a thing nobody trusts to have saved. #}
+        {% if saved %}
+          <span class="acct">Kept for {{ period|month }}{% if saved.saved_by %},
+            pasted by {{ saved.saved_by }}{% endif %} ·
+            {{ saved.saved_at|et('%b %-d at %-I:%M %p') }}. It is here when you
+            come back, and it re-runs against the board as it is then.</span>
+        {% endif %}
+      </div>
     </form>
+    {% if saved %}
+      <form method="post" action="/cycle/audit" style="margin-top:8px">
+        <input type="hidden" name="period" value="{{ period }}">
+        <input type="hidden" name="rows" value="">
+        <button class="mini" type="submit"
+                data-tip="Forget the list kept for this cycle. Nothing else is touched.">Clear the list</button>
+      </form>
+    {% endif %}
   </div>
 </section>
 
@@ -52,14 +70,67 @@
   {% if result.missing %}
     <p class="sub">Why, for each one - the board's own reason where it has one,
     and the order line's where it does not.</p>
+    {# A DECISION, NOT A LIST TO READ AGAIN NEXT MONTH.
+       Some of these belong on the board and the rules missed them; some are on
+       the tracker by mistake. Both need somebody who knows the client to say
+       which - and to say it ONCE. #}
     <div class="tw"><table>
-      <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>Why not</th></tr></thead>
+      <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>Why not</th>
+        <th>Call</th></tr></thead>
       <tbody>{% for r in result.missing %}
-        <tr><td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
+        {% set ref = (r.ids|first) if r.ids else r.client %}
+        {% set c = calls.get((ref, r.kind)) %}
+        <tr{% if c and c.call == 'rejected' %} style="opacity:.55"{% endif %}>
+          <td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
           <td class="nw"><span class="pill p-{{ 'info' if r.kind == 'lifetime' else 'month' }}">{{ r.kind }}</span></td>
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
-          <td style="max-width:52ch">{{ r.why }}</td></tr>
+          <td style="max-width:44ch">{{ r.why }}</td>
+          <td style="min-width:22ch">
+            {% if c and c.call %}
+              <span class="pill p-{{ 'ready' if c.call == 'approved' else 'info' }}">
+                {{ 'Approved' if c.call == 'approved' else 'Rejected' }}</span>
+              <div class="acct" style="margin-top:4px">
+                {{ c.who or 'somebody' }}, {{ c.at|et('%b %-d') }}
+                {%- if c.note %}<br>{{ c.note }}{% endif %}</div>
+              <form method="post" action="/cycle/audit/call" style="margin-top:6px">
+                <input type="hidden" name="period" value="{{ period }}">
+                <input type="hidden" name="ref" value="{{ ref }}">
+                <input type="hidden" name="kind" value="{{ r.kind }}">
+                <input type="hidden" name="call" value="clear">
+                <button class="linkish" type="submit">undo</button>
+              </form>
+            {% else %}
+              <form method="post" action="/cycle/audit/call">
+                <input type="hidden" name="period" value="{{ period }}">
+                <input type="hidden" name="ref" value="{{ ref }}">
+                <input type="hidden" name="kind" value="{{ r.kind }}">
+                <input type="hidden" name="client" value="{{ r.client }}">
+                {% if not me %}<input type="text" name="who" placeholder="Your name"
+                   size="10" style="font:inherit;font-size:12px;padding:4px 8px;
+                   border-radius:12px;border:1px solid var(--line);
+                   background:var(--surface);color:var(--ink);margin-bottom:4px">{% endif %}
+                <input type="text" name="note" placeholder="Why - optional"
+                       size="16" style="font:inherit;font-size:12px;padding:4px 8px;
+                       border-radius:12px;border:1px solid var(--line);
+                       background:var(--surface);color:var(--ink);margin-bottom:4px">
+                <div style="display:flex;gap:6px">
+                  <button class="mini ok" type="submit" name="call" value="approved"
+                          data-tip="It belongs on the board. This puts the row on this cycle with your note as the reason - the same override the not-owed panel uses.">Approve</button>
+                  <button class="mini" type="submit" name="call" value="rejected"
+                          data-tip="It does not belong on the board this cycle. The row stays on this table with your note on it, and stops being a fresh question every time somebody opens this page.">Reject</button>
+                </div>
+              </form>
+            {% endif %}
+          </td></tr>
       {% endfor %}</tbody></table></div>
+    <p class="sub" style="font-size:12.5px;margin-top:8px">
+      <b>Approve</b> puts the row on this cycle's board, with your note as the
+      reason it is there - it is the same override as "Needs a report" on the
+      not-owed panel. It can only do that for a client the order export knows
+      about: if nothing carries that order id, the decision is still recorded
+      but there is no row to create, and the "Why not" column says so.<br>
+      <b>Reject</b> settles it. The row stays here with the note on it rather
+      than reading as an open question next time.</p>
   {% else %}<p class="empty">Nothing. Every row on the list is on the board.</p>{% endif %}
 
   <h2 style="margin-top:22px">On the board, not on the list ({{ result.extra|length }})</h2>

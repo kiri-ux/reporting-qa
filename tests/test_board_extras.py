@@ -2565,3 +2565,87 @@ def test_the_tail_rule_needs_both_halves():
     assert not trailing_off(row(2, "2026-08-30"))
     # No dates at all - say nothing rather than guess.
     assert not trailing_off(dbm.ServedDays(days=2, last_day=None))
+
+
+@pytest.fixture()
+def audit_client(tmp_path, monkeypatch):
+    import importlib
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'a.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+    db = dbm.SessionLocal()
+    yield TestClient(mmod.app), db, dbm
+    db.close(); monkeypatch.undo()
+    importlib.reload(cfg); importlib.reload(dbm); importlib.reload(mmod)
+
+
+def test_the_pasted_list_survives_a_refresh(audit_client):
+    """Four hundred rows of somebody's tracker, pasted, compared, and gone the
+    moment the page reloads - or worse, the browser offering to send it all
+    again. The way this check gets used is: read it, go and fix three rows,
+    look again. That needs the list to still be here."""
+    c, db, dbm = audit_client
+    # NOT the sample in the box's placeholder, or this proves nothing.
+    rows = "LOCK AUG - Augusta Technical College #54006\nCCBM - Cape Symphony #53956"
+    c.post("/cycle/audit", data={"period": "2026-08", "rows": rows, "group": ""})
+
+    # A plain visit brings it back and re-runs it.
+    page = c.get("/cycle/audit").text
+    assert "Augusta Technical College #54006" in page
+    assert "Kept for August 2026" in page
+    assert db.query(dbm.AuditList).count() == 1
+
+    # Submitting an empty box forgets it, which is what the Clear button does.
+    c.post("/cycle/audit", data={"period": "2026-08", "rows": "", "group": ""})
+    assert db.query(dbm.AuditList).count() == 0
+    assert "Augusta Technical College #54006" not in c.get("/cycle/audit").text
+
+
+def test_a_row_can_be_approved_onto_the_board(audit_client):
+    """Some of these belong on the board and the rules missed them. Approving
+    is the same override as "Needs a report" on the not-owed panel - the client
+    appears in the cycle with the note as the reason it is there."""
+    c, db, dbm = audit_client
+    db.add(dbm.OrderLine(market="7 Mountains PA Selinsgrove", client="Benton Rodeo",
+                         account_ids="53915", product="Display",
+                         starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 6, 30)))
+    db.commit()
+
+    c.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "53915", "kind": "monthly",
+        "client": "Benton Rodeo", "call": "approved",
+        "note": "rodeo ran, tracker is right", "who": "Kiri"})
+
+    call = db.query(dbm.AuditCall).one()
+    assert call.call == "approved" and call.note == "rodeo ran, tracker is right"
+    assert call.who == "Kiri"
+    # AND IT REACHED THE BOARD, as the same override the not-owed panel writes.
+    mark = db.query(dbm.CycleDone).one()
+    assert mark.reason == "needed"
+    assert mark.market == "7 Mountains PA Selinsgrove"
+    assert mark.note == "rodeo ran, tracker is right"
+    assert mark.ident == "7mountainspaselinsgrove|bentonrodeo|monthly"
+
+
+def test_a_rejected_row_stays_rejected(audit_client):
+    """It is a decision, and the point of it is not making forty of them again
+    next time somebody opens the page."""
+    c, db, dbm = audit_client
+    c.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "26734", "kind": "monthly",
+        "client": "7 Mountains Media LIVE CHAT ONLY", "call": "rejected",
+        "note": "live chat only, no report owed", "who": "Kiri"})
+    call = db.query(dbm.AuditCall).one()
+    assert call.call == "rejected"
+    # Nothing was put on the board.
+    assert db.query(dbm.CycleDone).count() == 0
+
+    # And it can be undone.
+    c.post("/cycle/audit/call", data={"period": "2026-08", "ref": "26734",
+                                      "kind": "monthly", "call": "clear"})
+    assert db.query(dbm.AuditCall).count() == 0
