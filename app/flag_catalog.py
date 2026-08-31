@@ -53,7 +53,9 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ("What the client bought", [
         ("check_products",
          "A product on the report that is not on the live orders, or a product "
-         "they are paying for that is not on the report."),
+         "they are paying for that is not on the report. Website Visitor ID "
+         "and Additional Billing are never expected - they are billed line "
+         "items with no widget."),
         ("check_strategy_categorized",
          "A strategy line that does not name the product it runs, so it cannot "
          "be checked against the order."),

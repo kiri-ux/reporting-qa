@@ -311,3 +311,33 @@ def meta_from_filename(name: str) -> dict:
     # A month-or-Lifetime prefix, or an order id, is what makes it a name.
     return {"client": client, "account_ids": " ".join(accounts),
             "is_lifetime": is_lifetime, "named": bool(m or accounts)}
+
+
+def quick_meta(path, filename: str = "") -> dict:
+    """What a report says about itself, with none of the checks run.
+
+    THE SHAPE run_all RETURNS, so a report nobody is judging can travel the
+    same path as one that is: stored, named, packaged, shown on the board.
+
+    SEO is why this exists. It is pulled outside TapClicks and looks nothing
+    like a Digital Marketing Report - no line item grid, no creative previews,
+    none of the widgets the rules are written about - so running it through
+    them produces a screenful of failures that are all about the wrong kind of
+    document. Not checked is an honest answer; checked and failed is not.
+    """
+    from pathlib import Path as _P
+
+    p = _P(path)
+    try:
+        text = pdf_text(p)
+    except Exception:                                        # noqa: BLE001
+        text = ""
+    meta = meta_from_text(text) if text else {}
+    for k, v in (meta_from_filename(filename or p.name) or {}).items():
+        meta.setdefault(k, v)
+    try:
+        pages = page_count(p)
+    except Exception:                                        # noqa: BLE001
+        pages = 0
+    return {"meta": meta, "pages": pages, "impressions": 0, "clicks": 0,
+            "products": [], "severity": "pass", "findings": [], "checks": []}

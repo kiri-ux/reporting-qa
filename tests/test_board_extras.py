@@ -2172,7 +2172,7 @@ def test_an_unmapped_product_does_not_delete_the_client():
 
     header = ("client_business_unit,orders_status,client,orders_id,product,id,"
               "status,orders_start_date,start_date,end_date,orders_end_date\n")
-    row = ("Growth by Design,IO Live,A Client,54568,Website Visitor ID,132082,"
+    row = ("Growth by Design,IO Live,A Client,54568,Skywriting Ads,132082,"
            "IO Live,2026-07-06,2026-07-06,2026-09-30,2026-09-30\n")
 
     eng = create_engine("sqlite://")
@@ -2181,14 +2181,14 @@ def test_an_unmapped_product_does_not_delete_the_client():
     res = import_io_export(db, (header + row).encode(), period="2026-08")
     line = db.query(OrderLine).one()
     assert line.client == "A Client", "the client is on the board"
-    assert line.product == "Website Visitor ID", "under the name the export gave"
-    assert res["unmapped_products"] == {"Website Visitor ID": 1}
+    assert line.product == "Skywriting Ads", "under the name the export gave"
+    assert res["unmapped_products"] == {"Skywriting Ads": 1}
 
     # AND IT IS NOT EXPECTED ON A REPORT. Nothing knows what it looks like when
     # it is there, so failing a report for its absence would be the tool
     # blaming somebody for a gap in its own dictionary.
     from app.roster import expected_products, is_mapped
-    assert not is_mapped("Website Visitor ID")
+    assert not is_mapped("Skywriting Ads")
     assert expected_products(db, "A Client", "54568", period="2026-08") == set()
     db.close(); eng.dispose()
 
@@ -2197,7 +2197,7 @@ def test_the_unmapped_products_are_named_on_the_page(client_orders_db):
     """Kept quietly is how a product stays unmapped forever."""
     c, db, dbm = client_orders_db
     db.add(dbm.OrderLine(market="Growth by Design", client="A Client",
-                         account_ids="54568", product="Website Visitor ID",
+                         account_ids="54568", product="Skywriting Ads",
                          starts_on=dt.date(2026, 1, 1),
                          ends_on=dt.date(2026, 12, 31)))
     db.add(dbm.OrderLine(market="Growth by Design", client="B Client",
@@ -2207,7 +2207,7 @@ def test_the_unmapped_products_are_named_on_the_page(client_orders_db):
     db.commit()
     html = c.get("/orders").text
     assert "not in the product map" in html
-    assert "Website Visitor ID" in html
+    assert "Skywriting Ads" in html
     # A product that IS mapped is not in the panel.
     panel = html[html.index("not in the product map"):]
     panel = panel[:panel.index("</section>")]
@@ -2233,3 +2233,73 @@ def test_no_sentence_the_tests_assert_on_is_split_across_lines():
         html = (TPL / name).read_text()
         for phrase in phrases:
             assert phrase in html, f"{name}: {phrase!r} is wrapped across lines"
+
+
+def _line(dbm, client, product, market="Partner", ids="1"):
+    return dbm.OrderLine(market=market, client=client, account_ids=ids,
+                         product=product, status="IO Live", live=True,
+                         starts_on=dt.date(2026, 1, 1),
+                         ends_on=dt.date(2026, 12, 31),
+                         order_starts_on=dt.date(2026, 1, 1),
+                         order_ends_on=dt.date(2026, 12, 31))
+
+
+def test_a_product_that_never_shows_on_a_report_is_not_owed_one():
+    """Website Visitor ID and Additional Billing are invoiced line items with
+    no widget, and there never will be one. Live Chat DOES belong on a report -
+    it is only ever sold alongside another digital product, so it never brings
+    one with it."""
+    from app.checks.products import earns_a_report, on_a_report
+
+    assert not earns_a_report("Website Visitor ID")
+    assert not earns_a_report("Additional Billing")
+    assert not earns_a_report("Live Chat")
+    assert earns_a_report("Display") and earns_a_report("LinkedIn")
+
+    # But only two of those three are absent from the page.
+    assert not on_a_report("Website Visitor ID")
+    assert not on_a_report("Additional Billing")
+    assert on_a_report("Live Chat"), "it belongs on the report, it just does not earn one"
+
+
+def test_a_client_running_only_those_is_not_on_the_board():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app import db as dbm
+    from app.board import expected_for
+
+    eng = create_engine("sqlite://")
+    dbm.Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(_line(dbm, "Billing Only", "Additional Billing", ids="1"))
+    db.add(_line(dbm, "Chat Only", "Live Chat", ids="2"))
+    db.add(_line(dbm, "Visitor Only", "Website Visitor ID", ids="3"))
+    # And one client running Live Chat WITH something else, which is the real
+    # shape - the chat is on that report, and the report is owed.
+    db.add(_line(dbm, "Real Client", "Live Chat", ids="4"))
+    db.add(_line(dbm, "Real Client", "Display", ids="4"))
+    db.commit()
+
+    clients = {e.client for e in expected_for(db, "2026-08")}
+    assert clients == {"Real Client"}, clients
+    row = next(e for e in expected_for(db, "2026-08"))
+    assert "Live Chat" in row.products, "it rides along on the report it is sold with"
+    db.close(); eng.dispose()
+
+
+def test_a_report_is_not_failed_for_missing_what_can_never_be_on_it():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app import db as dbm
+    from app.roster import expected_products
+
+    eng = create_engine("sqlite://")
+    dbm.Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(_line(dbm, "A Client", "Display", ids="9"))
+    db.add(_line(dbm, "A Client", "Website Visitor ID", ids="9"))
+    db.add(_line(dbm, "A Client", "Live Chat", ids="9"))
+    db.commit()
+    got = expected_products(db, "A Client", "9", period="2026-08")
+    assert got == {"Display", "Live Chat"}, got
+    db.close(); eng.dispose()

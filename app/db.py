@@ -86,6 +86,17 @@ class Report(Base):
     # report still needs a human to have looked at it before it ships, and a
     # failing one can be waived when the finding is a known data quirk rather
     # than something wrong with the report.
+    # NOT EVERY REPORT IS CHECKABLE.
+    #
+    # SEO is pulled outside TapClicks and looks nothing like a Digital
+    # Marketing Report - no line item grid, no creative previews, none of the
+    # widgets forty checks are written about. Run through them it fails on
+    # every one, which teaches somebody to ignore a screen full of red.
+    #
+    # So it can be uploaded to sit with the rest and go into the partner's
+    # folder, with the checks not run rather than run and lied about. The board
+    # says "not checked" on the row; nothing pretends it passed.
+    checks_skipped: Mapped[bool] = mapped_column(Boolean, default=False)
     review_state: Mapped[str] = mapped_column(String(16), default="new")
     # new | reviewed | waived | needs_fix
     reviewed_by: Mapped[str] = mapped_column(String(128), default="")
@@ -687,6 +698,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "pending_name", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("reports", "pending_at", "TIMESTAMP"),
     ("reports", "checks", "JSON"),
+    ("reports", "checks_skipped", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
     ("order_sync", "started_at", "TIMESTAMP"),

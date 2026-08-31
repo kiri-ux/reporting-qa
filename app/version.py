@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-121"
-BUILD_NOTES = ("LinkedIn was not in the product map, so its clients were "
-               "deleted from the board. Unmapped products are kept now.")
+BUILD = "2026.08.31-122"
+BUILD_NOTES = ("Billed-only products no longer owe a report, and an SEO PDF "
+               "can be uploaded without the checks and still be packaged.")
 
 # ---------------------------------------------------------------------------
 

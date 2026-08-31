@@ -558,7 +558,11 @@
             {# Problems only. A confirmation in this column reads as another
                thing wrong, which is the opposite of what it means. #}
             {% set open = e.report.open_findings %}
-            {% if open %}
+            {# "All checks passed" on a report nobody checked is the one thing
+               this column must never say. #}
+            {% if e.report.checks_skipped %}
+              <span class="empty">Checks not run</span><br>
+            {% elif open %}
               {# No page reference here. This column is for deciding which
                  reports to open; the page number only matters once you have
                  opened one, and it is on the report page where it is useful. #}
@@ -570,6 +574,9 @@
             {% else %}<span class="empty">All checks passed</span><br>{% endif %}
             {% if e.report.review_note %}
               <span class="notetag" title="{{ e.report.review_note }}">note</span>
+            {% endif %}
+            {% if e.report.checks_skipped %}
+              <span class="pendtag" data-tip="Uploaded without the checks - an SEO report, or something else the rules cannot judge. It is in the folder with the rest; nothing here says it passed.">not checked</span>
             {% endif %}
             {% if e.report.has_pending %}<br>
               {# A LINK, NOT A LABEL. The decision is on the report page and
@@ -626,6 +633,28 @@
                 <input type="file" name="file" accept="application/pdf,.pdf"
                        onchange="this.form.submit()">
                 Upload
+              </label>
+            </form>
+            {# AND ONE THAT DOES NOT RUN THE CHECKS.
+               An SEO report is not a Digital Marketing Report - no line item
+               grid, no creative previews, none of the widgets forty checks are
+               written about - so running them produces a screenful of failures
+               that are all about the wrong kind of document. This stores it,
+               names it and packages it with the rest, and says "not checked"
+               on the row rather than pretending it passed. An SEO-only row
+               does it automatically; this is for the ones that are not. #}
+            <form method="post" action="/cycle/upload" enctype="multipart/form-data"
+                  class="upform">
+              <input type="hidden" name="period" value="{{ period }}">
+              <input type="hidden" name="market" value="{{ e.market }}">
+              <input type="hidden" name="client" value="{{ e.client }}">
+              <input type="hidden" name="account_ids" value="{{ e.account_ids }}">
+              <input type="hidden" name="kind" value="{{ e.kind }}">
+              <input type="hidden" name="skip_checks" value="1">
+              <label class="uplabel" data-tip="Store it, name it and package it with the rest, without running the checks. For SEO and anything else that is not a Digital Marketing Report.">
+                <input type="file" name="file" accept="application/pdf,.pdf"
+                       onchange="this.form.submit()">
+                No checks
               </label>
             </form>
             {# SEO is pulled outside TapClicks, so there is nothing to upload

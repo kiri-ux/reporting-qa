@@ -253,8 +253,12 @@ def is_mapped(product: str) -> bool:
     looks like when it is there. Failing a report for not carrying it would be
     the tool blaming somebody for a gap in its own dictionary.
     """
-    from .checks.products import map_order_product
-    return bool(product) and map_order_product(product) is not None
+    from .checks.products import map_order_product, on_a_report
+    # AND SOME MAPPED PRODUCTS ARE STILL NEVER ON A REPORT. Website Visitor ID
+    # and Additional Billing are invoiced line items with no widget and never
+    # will have one, so expecting them fails every report they are on.
+    return (bool(product) and map_order_product(product) is not None
+            and on_a_report(product))
 
 
 def expected_products(db: Session, client: str, account_ids: str,

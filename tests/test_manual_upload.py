@@ -1240,3 +1240,55 @@ def test_the_status_filter_offers_what_a_card_actually_says(client):
     html = c.get("/cycle?period=2026-07").text
     assert 'data-opts-status="Open"' in html or 'data-opts-status="Good to go"' in html
     assert "Not received|" not in html
+
+
+def _order_line(dbm, client, product, market="Partner", ids="1"):
+    import datetime as _d
+    return dbm.OrderLine(market=market, client=client, account_ids=ids,
+                         product=product, status="IO Live", live=True,
+                         starts_on=_d.date(2026, 1, 1),
+                         ends_on=_d.date(2026, 12, 31),
+                         order_starts_on=_d.date(2026, 1, 1),
+                         order_ends_on=_d.date(2026, 12, 31))
+
+
+def test_an_seo_row_uploads_without_running_the_checks(client):
+    """SEO is pulled outside TapClicks and looks nothing like a Digital
+    Marketing Report, so the rules fail it on nearly every one - a screenful of
+    red that is all about the wrong kind of document. It still has to reach the
+    partner's folder with the rest."""
+    c, (db, dbm, imod) = client
+    db.add(_order_line(dbm, "An SEO Client", "Search Engine Optimization+",
+                 market="7 Mountains KY", ids="70001"))
+    db.commit()
+
+    pdf = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    r = c.post("/cycle/upload",
+               data={"period": "2026-07", "market": "7 Mountains KY",
+                     "client": "An SEO Client", "account_ids": "70001",
+                     "kind": "monthly"},
+               files={"file": ("seo.pdf", pdf, "application/pdf")})
+    assert r.status_code in (200, 303)
+    rep = db.query(dbm.Report).filter_by(client="An SEO Client").one()
+    assert rep.checks_skipped is True, "an SEO row skips them without being asked"
+    assert rep.findings == [] and rep.checks == []
+    assert rep.severity == "pass"
+    assert rep.stored_path, "it is stored, so it packages with the rest"
+
+    # The board does not claim it passed.
+    board = c.get("/cycle?period=2026-07").text
+    assert "Checks not run" in board
+    assert "not checked" in board
+    page = c.get(f"/report/{rep.id}/view").text
+    assert "The checks were not run on this report." in page
+    assert "Nothing to fix." not in page
+
+
+def test_any_row_can_be_uploaded_without_the_checks(client):
+    """The automatic case covers SEO. This is the escape hatch for everything
+    else that is not a Digital Marketing Report."""
+    c, (db, dbm, imod) = client
+    cycle = (Path(__file__).resolve().parents[1] / "app" / "templates" / "cycle.html").read_text()
+    assert 'name="skip_checks" value="1"' in cycle
+    assert ">\n                No checks\n              </label>" in cycle \
+        or "No checks" in cycle

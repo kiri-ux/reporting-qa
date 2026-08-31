@@ -1,78 +1,79 @@
-build 2026.08.31-121
+build 2026.08.31-122
 Changed files only.
 
+app/board.py
+app/checks/parser.py
 app/checks/products.py
+app/db.py
+app/flag_catalog.py
 app/main.py
-app/orders_io.py
 app/roster.py
-app/templates/orders.html
+app/templates/cycle.html
+app/templates/rules_body.html
+app/templates/viewer.html
 app/version.py
+docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
+tests/test_manual_upload.py
 
 
-IT IS IN THE FILE. THE IMPORT THREW IT AWAY, AGAIN, FOR A DIFFERENT REASON.
-==============================================================================
-I ran your actual export - 460,784 rows - through the importer. Order 54568 is
-in there, 19 rows of it, IO Live, Growth by Design, Credit Union Audit Group.
+NOT EVERY PRODUCT OWES A REPORT
+==================================
+Three products, and they are not the same case, so they are not handled the
+same way.
 
-  product: LinkedIn Ads
+  Website Visitor ID    billed, never on a report. Not expected, and never
+  Additional Billing    flagged as missing. A client running only these is not
+                        owed a report at all.
 
-LINKEDIN WAS NOT IN THE PRODUCT MAP. Not a spelling it did not recognise - no
-entry at all. Every LinkedIn line item in your board has been dropped on import
-as "unmapped product", every time, since the beginning. Credit Union Audit
-Group sells LinkedIn and nothing else, so the client was not on the board at
-all, delivering 31 days a month, with nothing anywhere saying why.
+  Live Chat             IS on a report - it just never brings one with it,
+                        because it is only ever sold alongside another digital
+                        product. So a client running Live Chat and nothing else
+                        owes nothing, and a client running Live Chat with
+                        Display has Live Chat on that Display report.
 
-The tool knows about LinkedIn everywhere else, which is what makes this
-embarrassing rather than debatable: the export carries monthly_linkedin_ad_
-spend and reads it, and the device check excludes LinkedIn by name. The map is
-the one place it was missing.
+That last distinction is the whole thing: Live Chat cannot CREATE a row, and it
+does belong on a row that already exists. The board builds the rows first and
+adds the ride-alongs after, which is the difference in one sentence.
 
-Fixed. "LinkedIn Ads", "LinkedIn", "LinkedIn Display & Video Ads" all map to
-LinkedIn now.
-
-
-AND THE REAL BUG UNDER IT
-============================
-A product name the map had never seen DELETED THE CLIENT. Not the line, not the
-product - the whole client, out of the order list, off the board, no row and no
-reason.
-
-That is a dictionary gap taking a live client off the board, silently. It is
-the worst kind of failure this tool has: a thing it cannot see, saying nothing.
-
-The line is kept now, under the name the export gave it. Your export has two
-more of these:
-
-  Website Visitor ID    116 line items
-  Additional Billing     30 line items
-
-Those clients are back on the board with their real dates and money. What does
-NOT happen is a report being failed for not carrying "Website Visitor ID" -
-nothing knows what that looks like on a page, so the product checks leave it
-alone rather than blaming somebody for a gap in the tool's own dictionary.
-
-And the Order list page now names every unmapped product with a count, because
-kept quietly is how a product stays unmapped forever. Tell me what those two
-should map to - or that they are not reportable products at all - and I will
-set them.
-
-Loading your export before and after:
-
-  before   2,291 order lines, 1,192 clients
-  after    2,427 order lines, 1,217 clients
-
-25 clients and 136 line items were being thrown away.
+Both of the never-on-a-report ones are in the product map now, so they stop
+showing up as unmapped - they are mapped, and quiet.
 
 
-ONE MORE THING, FOR THE THIRD TIME
-=====================================
-The panel was rendering correctly and my test said it was not, because the
-sentence it matched on wrapped across two lines in the template - so the phrase
-is not in the HTML as one string. That has now cost two rounds of hunting for a
-bug in code that was fine.
+AN SEO UPLOAD THAT SKIPS THE CHECKS
+======================================
+On any row waiting for a report there are now two upload controls:
 
-There is a test for it now: it holds the phrases other tests assert on and
-fails if any of them gets wrapped.
+  Upload       as before, and the checks run
+  No checks    stored, named and packaged with the rest, checks not run
 
-708 tests pass.
+An SEO report is not a Digital Marketing Report - no line item grid, no
+creative previews, none of the widgets forty checks are written about - so
+running them produces a screenful of failures that are all about the wrong kind
+of document. A screen of red that is entirely wrong is worse than no screen.
+
+A ROW THAT IS SEO-ONLY DOES IT AUTOMATICALLY. It is the same answer every
+month, and one more box to tick is one more box to forget. "No checks" is there
+for anything else that is not a Digital Marketing Report.
+
+It is a report in every other way: it gets the proper filename, it sits on the
+board, it goes into the partner's Drive or Dropbox folder and into the zip with
+everything else, and it counts toward the partner's percentage once somebody
+signs it off.
+
+WHAT IT WILL NOT DO IS CLAIM IT PASSED. The board says "Checks not run" where
+it would say "All checks passed", carries a "not checked" tag, and the report
+page says so in a box rather than "Nothing to fix.":
+
+  The checks were not run on this report.
+  It was uploaded to sit with the rest and go into the partner's folder - an
+  SEO report, or something else the rules cannot judge. Nothing here says it is
+  right; nobody has looked.
+
+It still needs signing off, which is the honest state: somebody has to say they
+looked at it. "Select the ones that passed" picks it up with the rest, so a
+partner's SEO is one click, not one each.
+
+The rules sheet and the guide both say all of this now.
+
+713 tests pass.

@@ -2090,10 +2090,28 @@ def _names_another_report(rep, uploaded: str) -> str:
             f"name is the thing that is wrong.")
 
 
+def _is_seo_row(db: Session, client: str, account_ids: str,
+                period: str) -> bool:
+    """Is this row nothing but SEO?
+
+    SEO is pulled outside TapClicks and does not look like a Digital Marketing
+    Report, so the checks cannot judge it. Read off the client's order lines
+    rather than asked of the person uploading, because it is the same answer
+    every month and one more box to tick is one more box to forget.
+    """
+    from .partners import is_seo
+    from .roster import client_lines
+
+    hit = client_lines(db, client, account_ids)
+    products = [l.product for l in (hit or []) if l.product]
+    return bool(products) and all(is_seo(p) for p in products)
+
+
 @app.post("/cycle/upload")
 async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                               client: str = Form(""), account_ids: str = Form(""),
                               kind: str = Form("monthly"),
+                              skip_checks: str = Form(""),
                               file: UploadFile = File(...),
                               db: Session = Depends(get_db)):
     """Put a report against a row that is still waiting for one.
@@ -2116,6 +2134,19 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         raise HTTPException(400, "That is not a PDF.")
     period = period or settings.default_period or ""
     is_lifetime = kind == "lifetime"
+    # A REPORT THE CHECKS CANNOT JUDGE.
+    #
+    # SEO is pulled outside TapClicks and looks nothing like a Digital
+    # Marketing Report - no line item grid, no creative previews, none of the
+    # widgets the rules are written about. Run through them it fails on nearly
+    # every one, and a screen full of red that is all wrong is worse than no
+    # screen at all.
+    #
+    # So it is stored, named and packaged like anything else, with the checks
+    # not run rather than run and disbelieved. Ticked automatically when the
+    # row is SEO-only, so nobody has to remember.
+    no_checks = (skip_checks == "1") or _is_seo_row(db, client, account_ids,
+                                                    period)
 
     # If one already exists for this client and cycle, this is a replacement
     # and should go through the route that knows how to handle one.
@@ -2163,7 +2194,14 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     logo = header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    try:
+    if no_checks:
+        # Read for its page count and nothing else. A report nobody is judging
+        # still has to say how long it is and go into the folder under a
+        # sensible name.
+        from .checks.parser import quick_meta
+        result = quick_meta(path, file.filename or safe)
+    else:
+      try:
         result = run_all(path, filename=file.filename,
                          # The row it was uploaded against.
                          for_client=client, expected_products=exp,
@@ -2183,7 +2221,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                      # about does not exist yet.
                      sibling=sibling_for(db, client, period, market,
                                          is_lifetime))
-    except Exception as exc:  # noqa: BLE001
+      except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"That PDF could not be read: {exc}")
 
     meta = result["meta"]
@@ -2200,6 +2238,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         products=", ".join(result.get("products") or []),
         severity=result["severity"], findings=result["findings"],
         checks=result.get("checks") or [], acked=[], review_state="new",
+        checks_skipped=no_checks,
         rules_version=_rv())
     db.add(rep)
     db.flush()

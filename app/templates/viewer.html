@@ -93,11 +93,18 @@
           {{ rep.acked|length }} accepted. The note stays on the report; it just
           stops counting against the status.</p>
       {% endif %}
+    {% elif rep.checks_skipped %}
+      {# NOT "Nothing to fix". Nothing was looked at. #}
+      <p class="allclear" style="background:var(--warn-bg);color:var(--ink)">
+        <b>The checks were not run on this report.</b><br>
+        It was uploaded to sit with the rest and go into the partner's folder -
+        an SEO report, or something else the rules cannot judge. Nothing here
+        says it is right; nobody has looked.</p>
     {% else %}
       <p class="allclear">Nothing to fix.</p>
     {% endif %}
 
-    {% if rep.checks %}
+    {% if rep.checks and not rep.checks_skipped %}
       {% set passed = rep.checks|selectattr('state','equalto','passed')|list %}
       {% set skipped = rep.checks|selectattr('state','equalto','skipped')|list %}
       {# Always collapsed. The count on the bar is the whole answer most of the

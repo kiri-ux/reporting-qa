@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .checks.products import earns_a_report, on_a_report
 from .cycle import Cycle, cycle_for, month_label
 from .db import OrderLine, Partner, Report
 from .partners import is_seo
@@ -333,6 +334,8 @@ def expected_for(db: Session, period: str,
     # the ones still running.
     life_order: dict[tuple[str, str, str], str] = {}
     windows: dict[tuple[str, str], list[tuple]] = {}
+    # Products that belong on a report but never earn one - see below.
+    ride_along: dict[tuple[str, str], set] = {}
     # And what every one of the client's orders says it is, whether or not that
     # order earns a row of its own this cycle. The pills name the whole
     # campaign, so the colours have to come from the whole campaign too.
@@ -484,6 +487,23 @@ def expected_for(db: Session, period: str,
             finished or cyc.needs_lifetime(l.order_ends_on or l.ends_on))
         if not live and not life:
             continue
+        # A PRODUCT THAT DOES NOT BRING A REPORT WITH IT.
+        #
+        # Website Visitor ID and Additional Billing are invoiced and never
+        # appear on a report. Live Chat does appear on one, but is only ever
+        # sold alongside another digital product - so none of the three is a
+        # reason on its own to expect a report. They still count when the
+        # client has something else running: this drops the LINE from earning
+        # a row, not the client from the board.
+        if not earns_a_report(l.product):
+            # It still belongs ON the report, when there is one. Live Chat is
+            # sold alongside a digital product and appears on that product's
+            # report; it just never brings one with it. Held here and added to
+            # the row after the rows exist, so it cannot create one.
+            if live and on_a_report(l.product):
+                ride_along.setdefault((_key(l.market), _key(l.client)),
+                                      set()).add(l.product)
+            continue
         if l.market in pcache:
             p = pcache[l.market]
         else:
@@ -604,6 +624,17 @@ def expected_for(db: Session, period: str,
                     if oid and oid not in have:
                         have.append(oid)
             e.account_ids = " ".join(have)
+
+    # AND THE RIDE-ALONGS GO ON THE ROWS THAT EXIST.
+    #
+    # Live Chat is on the report of whatever it was sold with, so a report
+    # without it is missing something - but a client running Live Chat and
+    # nothing else is not owed a report at all. Added here, after the rows are
+    # built, which is the difference between the two.
+    for (mk, ck, _kind), e in rows.items():
+        for product in sorted(ride_along.get((mk, ck), ())):
+            if product not in e.products:
+                e.products.append(product)
 
     # AND EVERY PILL GETS ITS COLOUR.
     #

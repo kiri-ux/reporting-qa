@@ -159,6 +159,7 @@ On any **Not received** row, in the Sign-off column:
 | Control | Use it for |
 |---|---|
 | **Upload** | you pulled the PDF by hand. Uploading against the row beats whatever the filename says. |
+| **No checks** | an SEO report, or anything else that is not a Digital Marketing Report. It is stored, named and packaged with the rest, and the row says **not checked** rather than pretending it passed. An SEO-only row does this automatically. |
 | Teal tick - **Done, no report** | handled this month with no PDF. This is the SEO case. |
 | Red slash - **Not needed** | it did not run, nothing is owed |
 | **Note** box | why. It stays on the row. |

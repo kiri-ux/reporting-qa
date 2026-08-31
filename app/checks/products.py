@@ -189,6 +189,9 @@ PRODUCT_LEADS: list[tuple[str, str]] = [
     # product. Credit Union Audit Group sells nothing else, so the client
     # vanished from the board entirely while delivering 31 days a month.
     ("LinkedIn", r"linkedin\b"),
+    # Sold, billed, and never on a report. See NOT_ON_A_REPORT below.
+    ("Website Visitor ID", r"website visitor id\b"),
+    ("Additional Billing", r"additional billing\b"),
     ("PPC", r"(?:pay per click|ppc|google ads)\b"),
     ("SEO", r"(?:search engine optimization|seo)\b"),
     ("Live Chat", r"live chat\b"),
@@ -347,3 +350,40 @@ def detect(text: str, tables) -> set[str]:
                     found.add(product)
                     break
     return found
+
+
+# ---------------------------------------------------------------- what a product
+# owes, and whether it owes a report at all
+#
+# NOT EVERYTHING ON AN ORDER IS A THING A CLIENT READS ABOUT.
+#
+# Website Visitor ID and Additional Billing are real line items that are
+# invoiced and never appear on a report - there is no widget for them and there
+# never will be. Left in the expected set they fail every report they are on
+# for missing a section that cannot exist; taken out of the order list
+# entirely, their client disappears from the board. They are kept, and they
+# are quiet.
+NOT_ON_A_REPORT = {"Website Visitor ID", "Additional Billing"}
+
+# AND SOME PRODUCTS DO NOT EARN A REPORT ON THEIR OWN.
+#
+# Live Chat belongs on a report and is only ever sold alongside another digital
+# product, so it rides along - a client running Live Chat and nothing else is
+# not owed a report for it. SEO is pulled outside TapClicks and has always been
+# handled by hand.
+RIDES_ALONG = {"Live Chat"}
+
+
+def on_a_report(product: str) -> bool:
+    """Should this product appear on the client's report at all?"""
+    return bool(product) and product not in NOT_ON_A_REPORT
+
+
+def earns_a_report(product: str) -> bool:
+    """Is this product, on its own, a reason to owe the client a report?
+
+    A client running nothing but Website Visitor ID, Additional Billing or Live
+    Chat is not owed one. Live Chat is the interesting case: it belongs ON a
+    report, it just never brings one with it.
+    """
+    return on_a_report(product) and product not in RIDES_ALONG
