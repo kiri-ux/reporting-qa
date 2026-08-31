@@ -520,6 +520,15 @@ class ServedDays(Base):
     market: Mapped[str] = mapped_column(String(255), default="")
     client: Mapped[str] = mapped_column(String(255), default="")
     days: Mapped[int] = mapped_column(Integer, default=0)
+    # WHICH DAYS, not just how many.
+    #
+    # A file uploaded by hand covers a whole month and replaces it. The daily
+    # export does not - it lands every morning carrying whatever range it
+    # carries - so the two have to be merged, and merging counts means either
+    # trusting the newer file (and losing the days it does not mention) or
+    # taking the larger (and never coming down). Keeping the dates makes it a
+    # union, which is the actual answer.
+    day_list: Mapped[list] = mapped_column(JSON, default=list)
     first_day: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     last_day: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     loaded_at: Mapped[dt.datetime] = mapped_column(DateTime,
@@ -714,6 +723,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("order_lines", "detail", "JSON"),
+    ("served_days", "day_list", "JSON"),
 ]
 
 

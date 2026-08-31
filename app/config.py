@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Pin the board to one cycle while a month is being re-run. The dropdown
     # still switches freely; this only decides where /cycle lands with no
     # period in the URL. Set it to "" to go back to following the calendar.
-    default_period: str = "2026-07"
+    default_period: str = "2026-08"
 
     # Re-check reports in the background when the checking code changes. Off
     # only if a deploy needs to stop the sweep for some reason - a stale report
@@ -94,6 +94,16 @@ class Settings(BaseSettings):
     # the files arrive as "ordersdb7moupa_..." and the convention is written
     # down with hyphens. Blank takes everything, as it used to.
     orders_file_prefix: str = "ordersdb"
+    # THE DAILY SERVE EXPORT, IN THE SAME FOLDER.
+    #
+    # One row per client per day with impressions on it, dropped in every
+    # morning. It is what says a campaign actually ran, which is the one thing
+    # the order export cannot say - a line sold January to December and paused
+    # on the 2nd reads exactly like one paused on the 30th.
+    #
+    # Matched punctuation-insensitively like the orders prefix, so
+    # "client-serve", "client_serve" and "clientserve" are the same thing.
+    serving_file_prefix: str = "clientserve"
 
     io_order_url: str = ("https://www.reporting.zone/client/iotool/dist/"
                          "#/items/viewOrder/")

@@ -169,7 +169,7 @@ def normalize_period(period: str | None) -> str | None:
 
 
 def import_serving(db: Session, rows, *, period: str | None = None,
-                   replace: bool = True) -> dict:
+                   replace: bool = True, merge: bool = False) -> dict:
     """Count the days each client delivered on, per period.
 
     A DAY COUNTS WHEN SOMETHING WAS DELIVERED ON IT, not when a row exists for
@@ -246,6 +246,49 @@ def import_serving(db: Session, rows, *, period: str | None = None,
             + " and ".join(money) + "." if money else
             f"Read {read:,} rows and none of them counted.")
 
+    # MERGED, FOR THE FILE THAT ARRIVES EVERY MORNING.
+    #
+    # A file uploaded by hand covers a whole month and replaces it. The daily
+    # export carries whatever range it carries, so replacing on it would throw
+    # away every day the newest file does not happen to mention - a client that
+    # served twenty days would read as one. The days themselves are kept, so
+    # this is a union rather than a guess about which count to believe.
+    if merge:
+        existing = {(r.period, r.market_key, r.client_key): r
+                    for r in db.scalars(select(ServedDays).where(
+                        ServedDays.period.in_(sorted({k[0] for k in days})))).all()}
+        added = 0
+        for k, dates in days.items():
+            p_, mk, ck = k
+            market, client = names[k]
+            iso = {d.isoformat() for d in dates}
+            row = existing.get(k)
+            if row is None:
+                db.add(ServedDays(period=p_, market_key=mk, client_key=ck,
+                                  market=market[:255], client=client[:255],
+                                  days=len(iso), day_list=sorted(iso),
+                                  first_day=min(dates), last_day=max(dates)))
+                added += 1
+                continue
+            was = set(getattr(row, "day_list", None) or [])
+            now = sorted(was | iso)
+            row.day_list = now
+            # A row loaded before the days were kept has a count and no dates.
+            # Its count is real, so it is a floor rather than something to
+            # overwrite with a smaller number.
+            row.days = max(len(now), row.days or 0)
+            row.market = market[:255] or row.market
+            row.client = client[:255] or row.client
+            lo, hi = min(dates), max(dates)
+            row.first_day = min(row.first_day or lo, lo)
+            row.last_day = max(row.last_day or hi, hi)
+            row.loaded_at = dt.datetime.utcnow()
+        db.commit()
+        return {"rows_read": read, "clients": len(days), "new_clients": added,
+                "periods": sorted({k[0] for k in days}), "merged": True,
+                "counted_on": ", ".join(money) or "a row per day, no figures in the file",
+                "columns": {f: str(rows[head][i]) for f, i in sorted(cols.items())}}
+
     if replace:
         # DELETED AND *FLUSHED* BEFORE ANYTHING IS INSERTED.
         #
@@ -266,8 +309,9 @@ def import_serving(db: Session, rows, *, period: str | None = None,
         market, client = names[k]
         db.add(ServedDays(period=p, market_key=mk, client_key=ck,
                           market=market[:255], client=client[:255],
-                          days=len(dates), first_day=min(dates),
-                          last_day=max(dates)))
+                          days=len(dates),
+                          day_list=sorted(d.isoformat() for d in dates),
+                          first_day=min(dates), last_day=max(dates)))
     db.commit()
     return {"rows_read": read, "clients": len(days),
             "periods": sorted({k[0] for k in days}),

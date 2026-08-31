@@ -1,67 +1,63 @@
-build 2026.08.28-116
-Changed files only. (Build 115 was cumulative - if you deployed that one, this
-is a normal small zip again.)
+build 2026.08.28-117
+Changed files only.
 
-app/checks/quality.py
-app/flag_catalog.py
-app/ingest.py
+app/config.py
+app/db.py
 app/main.py
+app/orders_s3.py
+app/serving.py
+app/templates/orders.html
 app/version.py
-docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
-tests/test_rules.py
+tests/test_manual_upload.py
 
 
-HTML5 CREATIVES ARE NOT MISSING THEIR PREVIEWS
-=================================================
-A creative whose name ends in .zip is an HTML5 ad - a bundle of markup and
-assets. There is no still frame, so there is nothing to render into the preview
-cell and nothing to link to. Both preview checks skipped it before it could be
-called a fault:
-
-  Every creative preview rendered        the empty cell on a .zip row is the
-                                         format, not a preview that failed
-
-  Every creative variant carries a link  a .zip row is out of BOTH counts, not
-                                         just the failing one - "2 of 9 with no
-                                         link" has to be 2 of the 9 that could
-                                         have had one
-
-Only a trailing .zip, so "Zipline Tours" is a client and stays a client.
-
-Both lines on the Reporting flags tab say so now.
+THE CYCLE IS AUGUST
+======================
+DEFAULT_PERIOD is 2026-08. If it is also set in Render's Environment tab, that
+one wins - check "What this deploy actually sees" on the Order list page, which
+prints the value the running process actually has.
 
 
-A TICKED BOX SURVIVES A NEW FILE
-===================================
-You would tick six known false alarms, the corrected pull would come in, and
-all six came back. Every month. That is how somebody learns to stop reading
-them.
+THE DAILY SERVE FILE READS ITSELF IN
+=======================================
+Anything named client-serve* in the same S3 folder as the orders is now read on
+every sync. Punctuation is ignored, so client-serve, client_serve and
+clientserve are the same thing - and the order import will not touch those
+files, which matters because merged into the order list they would be 1.4
+million rows of nothing recognisable.
 
-A sign-off is a statement about a particular copy, so a new file still needs a
-new one. An acceptance is a statement about a FINDING - "that CTR flag is a
-known quirk of this client's GA page" - and it is just as true of the new file
-as it was of the old one.
+I checked your column list against the parser and it reads without any changes:
 
-The ticks are carried by what the finding SAYS, not by its position in the
-list. So:
+  Business Unit  -> the partner
+  Client         -> the client
+  Date           -> the day        (NOT Campaign Start Date, which is also
+                                    in the file - there is a test on that)
+  Impressions    -> whether that day counted
 
-  a finding that is still there, word for word    keeps its tick, wherever it
-                                                  has moved to in the list
-  a finding the new file actually fixed           drops off, and its tick does
-                                                  not land on something else
-  a finding that is new                           arrives unticked, which is
-                                                  the point
+A day counts when something actually delivered on it, so a row of zeros is not
+a day. That is the same rule the uploaded file has always used.
 
-Three paths take a new PDF for a report that already exists, and all three had
-the same bug: the feed superseding a copy nobody had signed off, "Use the new
-file" on a parked arrival, and "Replace the file" by hand. All three carry the
-ticks now.
+ON ITS OWN TIMESTAMP. The serve file changes every morning and the order export
+does not, so they are checked separately - otherwise noticing a new 2 MB serve
+file would re-download several hundred megabytes of orders with it. And it can
+never fail the order sync: a serve file that will not parse is logged and the
+orders load anyway.
 
-The re-check button already worked this way - this is the same rule applied to
-the other three.
+MERGED, NOT REPLACED, and this is the part that mattered. A file uploaded by
+hand covers a whole month, so it replaces it. The daily one carries whatever
+range it carries - if it replaced, a client on twenty days would read as
+whatever this morning's file happened to mention, and drop off the board.
 
-One old test asserted the opposite behaviour and has been rewritten to say why
-it changed.
+Merging counts alone is a choice between trusting the newest file and never
+coming down, so the days themselves are kept now: one row per client per month
+carries its list of dates, and a load is a union. Twenty days plus this
+morning's two, one of which it had already seen, is twenty-one.
 
-688 tests pass.
+Rows already in the database have a count and no dates. That count is real, so
+it is treated as a floor rather than replaced by something smaller.
+
+Uploading by hand still replaces the month outright, which is what you want for
+a corrected file. The Order list page says all of this above the upload box.
+
+693 tests pass.

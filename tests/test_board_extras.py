@@ -23,8 +23,11 @@ def test_the_partner_search_only_searches_partner_names():
 def test_the_pinned_period_is_a_setting_not_a_hard_coded_date():
     """Reloading app.config here would re-register app.db's mappers and break
     every test that runs after it, so read the default off the class."""
+    import re as _re
     from app.config import Settings
-    assert Settings.model_fields["default_period"].default == "2026-07"
+    got = Settings.model_fields["default_period"].default
+    assert _re.fullmatch(r"\d{4}-\d{2}", got or ""), \
+        "a pinned period, in the form the rest of the tool stores"
 
 
 def test_an_seo_line_gives_the_group_its_own_s_tag():
@@ -1145,6 +1148,9 @@ def client_orders_db(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'o.db'}")
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AUTO_RECHECK", "false")
+    # The board these tests build is July's, whatever cycle the tool is pinned
+    # to today - otherwise every one of them has to be rewritten each month.
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-07")
     from app import config as cfg
     importlib.reload(cfg)
     from app import db as dbm
@@ -1298,10 +1304,14 @@ def test_the_hyphenated_period_is_not_printed_at_a_person():
             frag = m.group(0)
             if "|month" in frag or "urlencode" in frag:
                 continue
-            # A period inside a URL or a form value is machinery, not writing.
+            # A period inside a URL or a form value is machinery, not
+            # writing. Nor is the placeholder in the box you type one INTO -
+            # that is showing the format, and "e.g. August 2026" would be
+            # showing the wrong one.
             before = html[max(0, m.start() - 40):m.start()]
             assert ("period=" in before or "/cycle/" in before
-                    or 'value="' in before), f"{name}: {frag} is shown raw"
+                    or 'value="' in before or "placeholder=" in before), \
+                f"{name}: {frag} is shown raw"
 
 
 def test_needs_fix_does_not_promise_to_re_pull_anything():
@@ -1723,3 +1733,118 @@ def test_every_path_that_replaces_a_file_keeps_the_ticks():
     assert "rep.acked = []" not in ingest
     # main.py keeps one: a brand new report has nothing to carry.
     assert main.count("rep.acked = []") == 0
+
+
+DAILY_SERVE_HEADER = [
+    "Business Unit", "Client", "Impressions", "Clicks", "CTR", "Internal CPM",
+    "Internal Cost", "Goal CPM %", "Goal CPM $", "Goal Internal CPM",
+    "Campaign Name", "Campaign ID", "Avg Daily Serve", "Campaign Start Date",
+    "Data Source Name", "Date", "Line Item Name", "Line Item ID",
+    "Number of Days Served", "Number of Products", "Order ID",
+    "Order Level Name", "Product", "Product Level Name", "Product Line Item ID",
+    "Restricted", "Strategy ID", "Strategy Name", "Strategy Type",
+    "Total Conversions", "View-throughs", "Click Conversions",
+]
+
+
+def test_the_daily_serve_export_is_read_as_a_serving_file():
+    """The new file's own header, as it comes out of the reporting tool. It has
+    a Campaign Start Date as well as a Date, which is the column that would
+    otherwise be picked up as the day."""
+    from app.serving import looks_like_serving, map_columns
+
+    assert looks_like_serving(DAILY_SERVE_HEADER)
+    cols = map_columns(DAILY_SERVE_HEADER)
+    assert DAILY_SERVE_HEADER[cols["day"]] == "Date", "not Campaign Start Date"
+    assert DAILY_SERVE_HEADER[cols["client"]] == "Client"
+    assert DAILY_SERVE_HEADER[cols["market"]] == "Business Unit"
+    assert DAILY_SERVE_HEADER[cols["impressions"]] == "Impressions"
+
+
+def test_the_daily_file_is_told_apart_from_the_order_export():
+    """Both land in the same folder. Merged into the orders it would be rows of
+    nothing recognisable; read as orders it would empty the board."""
+    from app import config as cfg
+    from app.orders_s3 import is_serving_file, _name_matches
+
+    assert is_serving_file("exports/client-serve_20260828.csv")
+    assert is_serving_file("client_serve.csv"), "punctuation is not the point"
+    assert not is_serving_file("exports/ordersdb7moupa_20260826.csv")
+    assert not _name_matches("exports/client-serve_20260828.csv")
+    assert _name_matches("exports/orders-db-anne.csv")
+
+
+def test_a_daily_serve_file_adds_days_instead_of_replacing_them():
+    """The hand-uploaded file covers a whole month and replaces it. The daily
+    one carries whatever range it carries, so replacing on it would throw away
+    every day it does not happen to mention - a client on twenty days would
+    read as one, and drop off the board."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, ServedDays
+    from app.serving import import_serving
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+
+    def rows(days):
+        out = [["Business Unit", "Client", "Impressions", "Date"]]
+        for d in days:
+            out.append(["Acme Media", "Bloom Heating", "12000", d])
+        return out
+
+    # Monday's file: three days.
+    import_serving(db, rows(["2026-08-03", "2026-08-04", "2026-08-05"]),
+                   merge=True)
+    got = db.query(ServedDays).one()
+    assert got.days == 3
+
+    # Tuesday's: one new day, and two it has seen before.
+    import_serving(db, rows(["2026-08-05", "2026-08-06"]), merge=True)
+    got = db.query(ServedDays).one()
+    assert got.days == 4, "the union, not the newest file's count"
+    assert got.first_day == dt.date(2026, 8, 3)
+    assert got.last_day == dt.date(2026, 8, 6)
+
+    # A row with no impressions on it is not a day of delivery.
+    zero = [["Business Unit", "Client", "Impressions", "Date"],
+            ["Acme Media", "Bloom Heating", "0", "2026-08-07"]]
+    import_serving(db, zero + [["Acme Media", "Bloom Heating", "5", "2026-08-08"]],
+                   merge=True)
+    assert db.query(ServedDays).one().days == 5
+
+    # And a hand-uploaded file still replaces the month outright.
+    import_serving(db, rows(["2026-08-20"]))
+    got = db.query(ServedDays).one()
+    assert got.days == 1, "an upload by hand is the whole month"
+    db.close(); eng.dispose()
+
+
+def test_a_count_loaded_before_the_days_were_kept_is_a_floor():
+    """Rows already in the database have a count and no dates. Merging must not
+    replace a real 20 with the 2 days this morning's file mentions."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, ServedDays
+    from app.serving import import_serving, _key
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(ServedDays(period="2026-08", market_key=_key("Acme Media"),
+                      client_key=_key("Bloom Heating"), market="Acme Media",
+                      client="Bloom Heating", days=20, day_list=[]))
+    db.commit()
+
+    import_serving(db, [["Business Unit", "Client", "Impressions", "Date"],
+                        ["Acme Media", "Bloom Heating", "900", "2026-08-27"],
+                        ["Acme Media", "Bloom Heating", "900", "2026-08-28"]],
+                   merge=True)
+    assert db.query(ServedDays).one().days == 20, "the old count still stands"
+    db.close(); eng.dispose()
+
+
+def test_the_cycle_is_august():
+    from app.config import Settings
+    assert Settings.model_fields["default_period"].default == "2026-08"

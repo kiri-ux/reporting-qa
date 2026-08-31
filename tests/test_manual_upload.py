@@ -254,7 +254,9 @@ def test_the_cycle_board_and_a_report_page_render_after_a_pulled_signoff(client)
     assert page.status_code == 200
     assert "k signed this off" in page.text
 
-    board = c.get("/cycle")
+    # The report this fixture feeds is July's, so ask for July - the board
+    # opens on whatever cycle the tool is pinned to, and that moves.
+    board = c.get(f"/cycle?period={r.period}")
     assert board.status_code == 200
     assert "needs signing off again" in board.text
     # And the name is not sitting in the reviewer column as though it stood.

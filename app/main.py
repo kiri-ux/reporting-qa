@@ -824,7 +824,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster, "disk": disk,
         "missing_orders": missing_orders, "name_split": name_split,
-        "period": _p,
+        "period": _p, "serving_prefix": settings.serving_file_prefix,
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
         # Three different things can start a sync, and none of them used to

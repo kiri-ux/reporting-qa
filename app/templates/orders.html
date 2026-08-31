@@ -359,10 +359,24 @@
         {{ serve_log.message }}
         {% if not serve_log.ok %}</span>{% endif %}</p>
     {% endif %}
+    {# IT ARRIVES BY ITSELF NOW. This was a file somebody had to remember to
+       upload, and the months nobody remembered fall back to reading flight
+       dates - which cannot tell a campaign paused on the 2nd from one paused
+       on the 30th. The upload stays for a month that needs re-loading by
+       hand. #}
+    {% if serving_prefix %}
+      <p class="sub" style="margin:0 0 12px;font-size:13px">
+        <b>The daily serve file arrives on its own.</b> Anything named
+        <code class="acct">{{ serving_prefix }}*</code> in the same S3 folder as
+        the orders is read on every sync, on its own timestamp, and
+        <b>merged</b> with what is already loaded - the days add up rather than
+        the newest file replacing the month. Uploading below still replaces the
+        month outright, which is what you want for a corrected file.</p>
+    {% endif %}
     <form action="/orders/serving" method="post" enctype="multipart/form-data"
           style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <input type="file" name="file" accept=".csv,.xlsx,.xlsm" required>
-      <input type="text" name="period" placeholder="Period, e.g. 2026-07" size="16">
+      <input type="text" name="period" placeholder="Period, e.g. {{ period }}" size="16">
       <button class="btn" type="submit">Load serving days</button>
     </form>
     <p class="sub" style="font-size:13px;margin-top:12px">

@@ -118,6 +118,28 @@ class NothingToImport(RuntimeError):
     pass
 
 
+def _flat(s: str) -> str:
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+def _starts(key: str, want: str) -> bool:
+    """Does this object's file name start with `want`, ignoring punctuation?
+
+    The files arrive as "ordersdb7moupa_20260826_1508_0.csv" and
+    "client-serve_20260828.csv" while the conventions are written down as
+    "orders-db-" and "client-serve". A filter that reads those as different
+    things is a silent empty sync waiting to happen.
+    """
+    if not want.strip():
+        return False
+    return _flat(key.rsplit("/", 1)[-1]).startswith(_flat(want))
+
+
+def is_serving_file(key: str) -> bool:
+    """The daily serve export, as opposed to an order export."""
+    return _starts(key, settings.serving_file_prefix or "")
+
+
 def _name_matches(key: str) -> bool:
     """Is this one of the order-database exports?
 
@@ -132,10 +154,11 @@ def _name_matches(key: str) -> bool:
     """
     want = (settings.orders_file_prefix or "").strip()
     if not want:
-        return True                       # unset means take everything, as before
-    name = key.rsplit("/", 1)[-1].lower()
-    flat = "".join(ch for ch in name if ch.isalnum())
-    return flat.startswith("".join(ch for ch in want.lower() if ch.isalnum()))
+        # Unset means take everything, as before - except the serve export,
+        # which lives in the same folder and is not an order list. Merged into
+        # the orders it would be 1.4 million rows of nothing recognisable.
+        return not is_serving_file(key)
+    return _starts(key, want)
 
 
 def sweep_leftovers(older_than_minutes: int = 30) -> int:
@@ -284,6 +307,14 @@ def sync(db: Session, *, force: bool = False, claim_id: int | None = None,
                              ~OrderSync.source.like(NOT_A_SYNC))
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     try:
+        # THE DAILY SERVE FILE COMES IN ON THE SAME TRIGGERS, and on its own
+        # ETag - it changes every morning and the order export does not, so
+        # tying them together would re-download several hundred megabytes to
+        # notice a small file had moved. It cannot fail the order sync.
+        try:
+            sync_serving(db, force=force)
+        except Exception:                                    # noqa: BLE001
+            log.exception("daily serve sync failed, carrying on with orders")
         return _sync(db, source, prev, force=force, trigger=trigger)
     finally:
         _close(db, claim_id)
@@ -395,3 +426,124 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     if tmpdir:
         shutil.rmtree(tmpdir, ignore_errors=True)
     return rec
+
+
+# ---------------------------------------------------------- the daily serve
+#
+# WHAT ACTUALLY RAN, EVERY MORNING, WITHOUT ANYBODY UPLOADING IT.
+#
+# The serving file was a thing somebody remembered to upload, which means the
+# months nobody remembered fall back to reading flight dates - and a line sold
+# January to December and paused on the 2nd reads exactly like one paused on
+# the 30th. Now it lands in the same bucket as the orders every morning and is
+# read on the same triggers.
+#
+# ITS OWN ETAG, SEPARATE FROM THE ORDERS'. A serve file that changes daily
+# would otherwise force a re-download of a several-hundred-megabyte order
+# export every morning to notice a change in a small one.
+SERVING_SOURCE = "serving upload: s3"
+
+
+def serving_keys(client) -> list[str]:
+    """Every daily serve export under the configured prefix."""
+    out: list[str] = []
+    for k in settings.orders_s3_keys:
+        k = k.lstrip("/")
+        if k and not k.endswith("/"):
+            if is_serving_file(k):
+                out.append(k)
+            continue
+        token = None
+        while True:
+            kw = {"Bucket": settings.orders_s3_bucket, "Prefix": k}
+            if token:
+                kw["ContinuationToken"] = token
+            page = client.list_objects_v2(**kw)
+            for obj in page.get("Contents", []):
+                key, size = obj["Key"], obj.get("Size", 0)
+                if (not key.endswith("/") and size > 0
+                        and key.lower().endswith(DATA_EXTS)
+                        and is_serving_file(key)):
+                    out.append(key)
+            if not page.get("IsTruncated"):
+                break
+            token = page.get("NextContinuationToken")
+    return sorted(set(out))
+
+
+def _serving_etag(client, keys: list[str]) -> str:
+    h = hashlib.sha256()
+    for k in keys:
+        try:
+            resp = client.head_object(Bucket=settings.orders_s3_bucket, Key=k)
+        except Exception:                                    # noqa: BLE001
+            return ""
+        h.update(k.encode())
+        h.update((resp.get("ETag") or "").strip('"').encode())
+    return h.hexdigest()[:32]
+
+
+def sync_serving(db: Session, *, force: bool = False) -> OrderSync | None:
+    """Read the daily serve export from S3. Returns the record, or None.
+
+    NEVER RAISES INTO THE ORDER SYNC. This runs alongside it, and a serve file
+    that will not parse is not a reason for the order list to fail to load -
+    the two answer different questions and one is not worth losing for the
+    other.
+    """
+    if not settings.s3_configured or not (settings.serving_file_prefix or "").strip():
+        return None
+    prev = db.scalars(select(OrderSync).where(
+        OrderSync.source.like(SERVING_SOURCE + "%"))
+        .order_by(desc(OrderSync.id)).limit(1)).first()
+    tmpdir = None
+    try:
+        client = _client()
+        keys = serving_keys(client)
+        if not keys:
+            return prev
+        etag = _serving_etag(client, keys)
+        if not force and prev and prev.ok and etag and prev.etag == etag:
+            return prev                       # this morning's file is already in
+        tmpdir = tempfile.mkdtemp(prefix="serve-", dir=str(settings.data_dir))
+        rows = []
+        from .roster import _rows_from_csv, _rows_from_xlsx
+        for i, k in enumerate(keys):
+            dest = Path(tmpdir) / f"{i:03d}-{Path(k).name}"
+            with open(dest, "wb") as fh:
+                client.download_fileobj(settings.orders_s3_bucket, k, fh)
+            raw = dest.read_bytes()
+            part = (_rows_from_xlsx(raw, settings.orders_s3_sheet or None)
+                    if k.lower().endswith((".xlsx", ".xlsm"))
+                    else _rows_from_csv(raw))
+            if not part:
+                continue
+            # One header, not one per file.
+            rows.extend(part if not rows else part[1:])
+        from .serving import import_serving
+        # MERGED, NOT REPLACED. This file carries whatever range it carries,
+        # and replacing on it would throw away every day it does not happen to
+        # mention.
+        res = import_serving(db, rows, period=None, merge=True)
+        msg = (f"Read {res['rows_read']:,} rows from {len(keys)} daily serve "
+               f"file(s), {res['clients']} client(s) across "
+               f"{', '.join(res['periods'])}. Days counted on "
+               f"{res['counted_on']}, and merged with what was already loaded "
+               f"rather than replacing it.")
+        rec = OrderSync(source=f"{SERVING_SOURCE} {Path(keys[0]).name}"[:512],
+                        etag=(etag or "")[:255], rows=res["clients"], ok=True,
+                        message=msg, trigger="s3")
+        db.add(rec); db.commit()
+        log.info("daily serve: %s", msg)
+        return rec
+    except Exception as exc:                                 # noqa: BLE001
+        db.rollback()
+        rec = OrderSync(source=SERVING_SOURCE, rows=0, ok=False,
+                        message=f"Daily serve file: {type(exc).__name__}: {exc}",
+                        trigger="s3")
+        db.add(rec); db.commit()
+        log.exception("daily serve import failed")
+        return rec
+    finally:
+        if tmpdir:
+            shutil.rmtree(tmpdir, ignore_errors=True)

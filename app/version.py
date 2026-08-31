@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.28-116"
-BUILD_NOTES = ("HTML5 creatives (.zip) are not missing previews, and a tick "
-               "survives a new file.")
+BUILD = "2026.08.28-117"
+BUILD_NOTES = ("The daily client-serve file is read from S3 on every sync, "
+               "and the cycle is August.")
 
 # ---------------------------------------------------------------------------
 
