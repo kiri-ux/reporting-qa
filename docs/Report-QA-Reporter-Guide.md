@@ -235,6 +235,7 @@ Worth doing once a month before you start packaging.
 | A finding is clearly wrong about a number | open **Investigate** on the finding - it prints the rule's own figures |
 | "The stored PDF is gone" | PDFs are pruned after 4 months. Findings and sign-offs are kept. Upload it again if you need it. |
 | A partner has no reports at all | its order export may not have landed. Check the **Order list** page. |
+| The wrong person is named as reporter or buyer | it comes from the breakout sheet. Fix it there - the tool re-reads the sheet on every sync, and the **Partners** page says when it last did. |
 | A report never showed up at all | check **Batch history** - if it is not there, it never reached the tool |
 | Not sure whether a lifetime already went out | check **Lifetimes delivered** |
 | Everything looks stale | press the amber re-check button in the board toolbar (it shows a count, like `40 checks`) |

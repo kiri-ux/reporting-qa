@@ -63,7 +63,19 @@ def _key(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (name or "").lower())
 
 
-def import_partners(db: Session, raw: bytes | str, *, replace: bool = True) -> int:
+class NotARoster(ValueError):
+    """What came back is not the roster, so nothing was touched.
+
+    THE FAILURE THAT MATTERS HERE IS THE SILENT ONE. A sheet read that comes
+    back as a Google sign-in page, or as an empty range because a tab was
+    renamed, parses as "a file with no partners in it" - and a straight import
+    of that deletes 206 partners and every owner on the board with them. So a
+    read has to look like a roster before it is allowed to replace one.
+    """
+
+
+def import_partners(db: Session, raw: bytes | str, *, replace: bool = True,
+                    keep_targets: bool = False, min_rows: int = 0) -> int:
     text = raw.decode("utf-8-sig", "replace") if isinstance(raw, bytes) else raw
     reader = csv.reader(io.StringIO(text))
     header = next(reader, None)
@@ -111,9 +123,27 @@ def import_partners(db: Session, raw: bytes | str, *, replace: bool = True) -> i
         row["group"] = row["group"] or name      # blank = ships on its own
         rows[_key(name)] = row
 
+    if min_rows and len(rows) < min_rows:
+        raise NotARoster(
+            f"Read {len(rows)} partner row(s), and the roster loaded here has "
+            f"{min_rows}. Nothing was changed - a read that comes back short "
+            f"is a permissions page or a renamed tab far more often than it is "
+            f"the roster actually losing two thirds of its partners.")
+
+    # WHERE A PARTNER TAKES DELIVERY IS SET IN THE TOOL, NOT ALWAYS IN THE
+    # SHEET. Overwriting it with a blank hands a Dropbox partner's client a
+    # Google Drive link, and nothing on screen looks wrong. So a target the
+    # sheet does not mention is kept.
+    had: dict[str, str] = {}
+    if keep_targets:
+        had = {_key(p.partner): (p.delivery_target or "")
+               for p in db.query(Partner).all()}
+
     if replace:
         db.query(Partner).delete()
-    for r in rows.values():
+    for k, r in rows.items():
+        if keep_targets and not (r.get("delivery_target") or "").strip():
+            r = r | {"delivery_target": had.get(k, "")}
         db.add(Partner(**r))
     db.commit()
     forget_partners()

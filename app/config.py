@@ -105,6 +105,19 @@ class Settings(BaseSettings):
     # "client-serve", "client_serve" and "clientserve" are the same thing.
     serving_file_prefix: str = "clientserve"
 
+    # THE REPORTING BREAKOUT SHEET, READ LIVE.
+    #
+    # Who buys, who reports, who trains, where a partner takes delivery. It
+    # was a copy in here - a bundled CSV and an upload on the Partners page -
+    # so a reporter changing hands in the sheet reached the board whenever
+    # somebody remembered to export it, and not before.
+    #
+    # A Google Sheet is a Drive file, and the tool already holds Drive
+    # credentials because that is how it packages reports. Paste the browser
+    # URL; the id and the tab are read out of it.
+    roster_sheet: str = ("https://docs.google.com/spreadsheets/d/"
+                         "1_WfyDOEN4oOdPdEoYtv5yMZZ6_hk8vu5o6pElIJ-8d4/edit?gid=0")
+
     io_order_url: str = ("https://www.reporting.zone/client/iotool/dist/"
                          "#/items/viewOrder/")
 

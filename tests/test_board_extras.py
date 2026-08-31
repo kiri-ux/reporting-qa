@@ -1848,3 +1848,112 @@ def test_a_count_loaded_before_the_days_were_kept_is_a_floor():
 def test_the_cycle_is_august():
     from app.config import Settings
     assert Settings.model_fields["default_period"].default == "2026-08"
+
+
+ROSTER_CSV = ("Partner,Buyer,Email,SEO,Email,Manager,Reporting Team,To:,"
+              "Trainer,Reporting Notes,Buyer Notes,Group,Delivery\n")
+
+
+def _roster(n, target=""):
+    out = ROSTER_CSV
+    for i in range(n):
+        out += (f"Partner {i},Bella,bella@vicimediainc.com,Matt,"
+                f"matt@vicimediainc.com,Amin,Paulina,client{i}@x.com,Jennaya,"
+                f",,Partner {i},{target}\n")
+    return out
+
+
+def test_the_sheet_link_is_read_for_its_id_and_tab():
+    """A pasted browser URL is what somebody has to hand, so that is what it
+    takes - the id and the tab come out of it."""
+    from app import roster_sheet as rs
+
+    url = ("https://docs.google.com/spreadsheets/d/"
+           "1_WfyDOEN4oOdPdEoYtv5yMZZ6_hk8vu5o6pElIJ-8d4/edit?gid=0#gid=0")
+    # THE MODULE'S OWN SETTINGS OBJECT. Another fixture in this file reloads
+    # app.config, so app.config.settings and roster_sheet.settings are two
+    # different objects by the time this runs - and setting the one nobody is
+    # reading is a test that passes alone and fails in company.
+    cfg = rs
+    old = cfg.settings.roster_sheet
+    try:
+        cfg.settings.roster_sheet = url
+        assert rs.sheet_id() == "1_WfyDOEN4oOdPdEoYtv5yMZZ6_hk8vu5o6pElIJ-8d4"
+        assert rs.sheet_gid() == "0"
+        assert rs.configured()
+        # A bare id works too.
+        cfg.settings.roster_sheet = "1_WfyDOEN4oOdPdEoYtv5yMZZ6_hk8vu5o6pElIJ-8d4"
+        assert rs.sheet_id() == "1_WfyDOEN4oOdPdEoYtv5yMZZ6_hk8vu5o6pElIJ-8d4"
+        cfg.settings.roster_sheet = ""
+        assert not rs.configured()
+    finally:
+        cfg.settings.roster_sheet = old
+
+
+def test_a_sign_in_page_does_not_delete_the_roster():
+    """THE FAILURE THAT MATTERS IS THE SILENT ONE. A read that comes back as a
+    Google sign-in page, or empty because a tab was renamed, parses perfectly
+    well as "a roster with no partners in it" - and importing that takes 206
+    partners and every owner on the board with them."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, Partner
+    from app.partners import NotARoster, import_partners
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    import_partners(db, _roster(200))
+    assert db.query(Partner).count() == 200
+
+    for junk in ("<html><body>Sign in</body></html>", ROSTER_CSV,
+                 _roster(3)):
+        with pytest.raises((NotARoster, ValueError)):
+            import_partners(db, junk, keep_targets=True, min_rows=132)
+        assert db.query(Partner).count() == 200, "the roster is untouched"
+
+    # A real edit still loads, including a genuine batch of leavers.
+    assert import_partners(db, _roster(150), keep_targets=True, min_rows=132) == 150
+    assert db.query(Partner).count() == 150
+    db.close(); eng.dispose()
+
+
+def test_a_delivery_target_set_here_is_not_blanked_by_the_sheet():
+    """Where a partner takes delivery is set in the tool and not always in the
+    sheet. Overwriting it with a blank hands a Dropbox partner's client a
+    Google Drive link, and nothing on screen looks wrong."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, Partner
+    from app.partners import import_partners
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    import_partners(db, _roster(3))
+    p = db.query(Partner).filter_by(partner="Partner 1").one()
+    p.delivery_target = "dropbox"
+    db.commit()
+
+    # The sheet says nothing about delivery.
+    import_partners(db, _roster(3), keep_targets=True)
+    assert db.query(Partner).filter_by(partner="Partner 1").one().delivery_target \
+        == "dropbox", "kept, because the sheet did not say otherwise"
+
+    # And when the sheet DOES say, the sheet wins.
+    import_partners(db, _roster(3, target="drive"), keep_targets=True)
+    assert db.query(Partner).filter_by(partner="Partner 1").one().delivery_target \
+        == "drive"
+
+    # An upload by hand still replaces outright, as it always did.
+    import_partners(db, _roster(3))
+    assert db.query(Partner).filter_by(partner="Partner 1").one().delivery_target == ""
+    db.close(); eng.dispose()
+
+
+def test_the_sheet_is_read_only():
+    """A tool that edits the sheet it reads is a tool nobody trusts."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "roster_sheet.py").read_text()
+    for writer in ("update(", "append_row", "batchUpdate", "values().update",
+                   "spreadsheets().values"):
+        assert writer not in src, f"{writer} writes to the sheet"

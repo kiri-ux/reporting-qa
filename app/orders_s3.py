@@ -315,6 +315,13 @@ def sync(db: Session, *, force: bool = False, claim_id: int | None = None,
             sync_serving(db, force=force)
         except Exception:                                    # noqa: BLE001
             log.exception("daily serve sync failed, carrying on with orders")
+        # AND THE BREAKOUT SHEET, on the same triggers and its own checksum.
+        # Same rule: it cannot fail the order sync.
+        try:
+            from .roster_sheet import sync_roster
+            sync_roster(db, force=force)
+        except Exception:                                    # noqa: BLE001
+            log.exception("roster sheet sync failed, carrying on with orders")
         return _sync(db, source, prev, force=force, trigger=trigger)
     finally:
         _close(db, claim_id)

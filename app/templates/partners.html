@@ -93,8 +93,50 @@
   {% endif %}
 </section>
 
+{# THE SHEET IS THE SOURCE OF TRUTH, so it goes above the upload rather than
+   under it. The upload used to be the only way in, which is why the roster
+   could sit months behind the sheet with nothing on screen saying so. #}
+{% if sheet_on %}
 <section>
-  <h2>Replace the roster</h2>
+  <h2>The breakout sheet</h2>
+  <div class="panel">
+    {% if sheet_log %}
+      <p class="sub" style="margin:0 0 12px;font-size:14px">
+        {% if sheet_log.ok %}
+          Last read {{ sheet_log.synced_at|et('%b %-d, %Y at %-I:%M %p') }} ·
+          {{ sheet_log.rows }} partners<br>
+          <span class="acct">{{ sheet_log.message }}</span>
+        {% else %}
+          <span style="color:var(--crit)"><b>The sheet could not be read</b>
+            {{ sheet_log.synced_at|et('%b %-d, %Y at %-I:%M %p') }}:</span><br>
+          <span style="color:var(--crit)">{{ sheet_log.message }}</span>
+        {% endif %}</p>
+    {% else %}
+      <p class="sub" style="margin:0 0 12px;font-size:14px">Not read yet.</p>
+    {% endif %}
+    <form action="/partners/sheet" method="post" style="display:inline">
+      <button class="btn" type="submit">Read the sheet now</button>
+    </form>
+    {% if sheet_url %}
+      <a class="mini" href="{{ sheet_url }}" target="_blank" rel="noopener"
+         style="display:inline-block;text-decoration:none;margin-left:10px">Open the sheet</a>
+    {% endif %}
+    <p class="sub" style="font-size:13px;margin-top:12px">
+      Read on every order sync, and only when the sheet has actually changed.
+      It is read-only - nothing here is ever written back, so the sheet stays
+      the source of truth for who owns what.<br>
+      <b>Two guards.</b> Where a partner takes delivery is set here, not always
+      in the sheet, so a target the sheet does not name is kept rather than
+      blanked - a blank means Drive, and that hands a Dropbox partner's client
+      the wrong link. And a read that comes back much shorter than the roster
+      already loaded is refused: a sign-in page and a renamed tab both parse
+      perfectly well as a roster with nobody in it.</p>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h2>Replace the roster by hand</h2>
   <div class="panel">
     <form action="/partners/import" method="post" enctype="multipart/form-data"
           style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">

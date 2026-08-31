@@ -2643,9 +2643,23 @@ def partners_view(request: Request, db: Session = Depends(get_db)):
         just_set = int(request.query_params.get("set") or 0)
     except ValueError:
         just_set = 0
+    # WHETHER THE SHEET IS STILL BEING READ. A sync that quietly stopped looks
+    # exactly like a roster nobody has changed.
+    from .roster_sheet import configured as _sheet_on, last_read, sheet_id
     return templates.TemplateResponse(request, "partners.html", {
         "partners": rows, "nav": "partners",
+        "sheet_on": _sheet_on(), "sheet_log": last_read(db),
+        "sheet_url": (f"https://docs.google.com/spreadsheets/d/{sheet_id()}/edit"
+                      if _sheet_on() else ""),
         "tally": sorted(tally.items()), "just_set": just_set})
+
+
+@app.post("/partners/sheet")
+def partners_sheet_sync(db: Session = Depends(get_db)):
+    """Read the breakout sheet now, rather than on the next order sync."""
+    from .roster_sheet import sync_roster
+    sync_roster(db, force=True)
+    return RedirectResponse("/partners", status_code=303)
 
 
 @app.post("/partners/{partner_id}/target")

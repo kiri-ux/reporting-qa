@@ -1,63 +1,75 @@
-build 2026.08.28-117
+build 2026.08.31-118
 Changed files only.
 
 app/config.py
-app/db.py
 app/main.py
 app/orders_s3.py
-app/serving.py
-app/templates/orders.html
+app/partners.py
+app/roster_sheet.py       (new)
+app/templates/partners.html
 app/version.py
+docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
-tests/test_manual_upload.py
 
 
-THE CYCLE IS AUGUST
-======================
-DEFAULT_PERIOD is 2026-08. If it is also set in Render's Environment tab, that
-one wins - check "What this deploy actually sees" on the Order list page, which
-prints the value the running process actually has.
+THE BREAKOUT SHEET IS READ LIVE
+==================================
+Yes, and nothing new had to be built for it.
+
+The tool already authenticates to Google with a refresh token and the full
+Drive scope, because that is how it packages reports into Drive - and a Google
+Sheet is a Drive file. So the sheet is exported as CSV through the credentials
+that are already there. No service account, no extra scope, no new dependency,
+nothing to authorise.
+
+  Sheet   1_WfyDOEN4oOdPdEoYtv5yMZZ6_hk8vu5o6pElIJ-8d4
+  Tab     Market Breakout (the first, which is what Drive's export gives)
+
+It reads on every order sync, and only when the sheet has actually changed -
+the CSV is checksummed, so an unedited sheet costs one request and no writes.
+
+ONE THING TO CHECK ON YOUR SIDE: the sheet has to be visible to the Google
+account the Drive connection authorised as. If it is not, the Partners page
+says so in those words rather than failing quietly, and the roster already
+loaded is untouched.
+
+Paste a different URL into ROSTER_SHEET to point it elsewhere - the id and the
+tab are read out of a normal browser URL. Blank turns the whole thing off.
 
 
-THE DAILY SERVE FILE READS ITSELF IN
-=======================================
-Anything named client-serve* in the same S3 folder as the orders is now read on
-every sync. Punctuation is ignored, so client-serve, client_serve and
-clientserve are the same thing - and the order import will not touch those
-files, which matters because merged into the order list they would be 1.4
-million rows of nothing recognisable.
+TWO GUARDS, BOTH FROM THINGS THAT HAVE ALREADY GONE WRONG HERE
+=================================================================
+IT WILL NOT REPLACE THE ROSTER WITH SOMETHING THAT IS NOT ONE. A read that
+comes back as a Google sign-in page, or empty because a tab was renamed, parses
+perfectly well as "a roster with no partners in it" - and importing that
+deletes 206 partners and every owner on the board with them. A read has to
+carry at least two thirds of what is already loaded or it is refused, with the
+count in the message. A real batch of leavers still loads; a permissions page
+never does.
 
-I checked your column list against the parser and it reads without any changes:
+A DELIVERY TARGET SET IN THE TOOL IS NOT BLANKED BY A SHEET THAT IS SILENT
+ABOUT IT. That field is set on the Partners page and not always in the sheet,
+and a blank means Drive - which is how a Dropbox partner's client got a Drive
+link once already. When the sheet names a target the sheet wins; when it says
+nothing, what is here is kept. Uploading a CSV by hand still replaces outright,
+which is what an upload is for.
 
-  Business Unit  -> the partner
-  Client         -> the client
-  Date           -> the day        (NOT Campaign Start Date, which is also
-                                    in the file - there is a test on that)
-  Impressions    -> whether that day counted
+AND IT NEVER WRITES BACK. The sheet stays the source of truth for who owns
+what. A test fails if any writing call turns up in that file.
 
-A day counts when something actually delivered on it, so a row of zeros is not
-a day. That is the same rule the uploaded file has always used.
 
-ON ITS OWN TIMESTAMP. The serve file changes every morning and the order export
-does not, so they are checked separately - otherwise noticing a new 2 MB serve
-file would re-download several hundred megabytes of orders with it. And it can
-never fail the order sync: a serve file that will not parse is logged and the
-orders load anyway.
+ON THE PARTNERS PAGE
+=======================
+Above the upload box, because the sheet is the source of truth and the upload
+is now the fallback:
 
-MERGED, NOT REPLACED, and this is the part that mattered. A file uploaded by
-hand covers a whole month, so it replaces it. The daily one carries whatever
-range it carries - if it replaced, a client on twenty days would read as
-whatever this morning's file happened to mention, and drop off the board.
+  Last read Aug 31, 2026 at 11:42 AM ET · 206 partners
+  Read 206 partners from the breakout sheet. Delivery targets the sheet does
+  not name were kept as they were.
 
-Merging counts alone is a choice between trusting the newest file and never
-coming down, so the days themselves are kept now: one row per client per month
-carries its list of dates, and a load is a union. Twenty days plus this
-morning's two, one of which it had already seen, is twenty-one.
+  [ Read the sheet now ]   Open the sheet
 
-Rows already in the database have a count and no dates. That count is real, so
-it is treated as a floor rather than replaced by something smaller.
+A sync that quietly stopped looks exactly like a roster nobody has changed, so
+that timestamp is the point of the panel.
 
-Uploading by hand still replaces the month outright, which is what you want for
-a corrected file. The Order list page says all of this above the upload box.
-
-693 tests pass.
+697 tests pass.
