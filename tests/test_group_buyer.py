@@ -8,6 +8,11 @@ Two faults it fixes, both visible on the July board:
     the SEO line.
   * ADX Communications showed "Anna Halligan, Bella Duddy", which answers "who
     do I chase" with "work it out yourself".
+
+
+A CARD SHOWS FIRST NAMES. These tests are about WHICH buyer
+wins, not how the name is spelled - the shortening is build 125 and it is
+deliberate. The full name is still what the roster stores.
 """
 import datetime as dt
 import importlib
@@ -55,7 +60,7 @@ def test_the_seo_manager_is_not_the_buyer(db):
     _line(db, "Amp Digital Innovations", "A Co", "SEO", "Matt Ogden")
     db.commit()
     g = _groups(db)["Amp Digital Innovations"]
-    assert g.buyer == "Hanna Walentukonis"
+    assert g.buyer == "Hanna"
     assert "Matt Ogden" not in g.buyer
     assert g.seo == "Matt"
 
@@ -66,7 +71,7 @@ def test_the_seo_line_read_first_still_does_not_win(db):
     _line(db, "Amp Digital Innovations", "A Co", "SEO", "Matt Ogden")
     _line(db, "Amp Digital Innovations", "A Co", "Social Mirror", "Hanna Walentukonis")
     db.commit()
-    assert _groups(db)["Amp Digital Innovations"].buyer == "Hanna Walentukonis"
+    assert _groups(db)["Amp Digital Innovations"].buyer == "Hanna"
 
 
 def test_an_seo_only_client_keeps_its_seo_owner_as_the_buyer(db):
@@ -74,7 +79,7 @@ def test_an_seo_only_client_keeps_its_seo_owner_as_the_buyer(db):
     _partner(db, "Amp Digital Innovations", buyer="", seo="Matt")
     _line(db, "Amp Digital Innovations", "A Co", "SEO", "Matt Ogden")
     db.commit()
-    assert _groups(db)["Amp Digital Innovations"].buyer == "Matt Ogden"
+    assert _groups(db)["Amp Digital Innovations"].buyer == "Matt"
 
 
 def test_two_buyers_collapse_to_the_reporting_breakout(db):
@@ -83,7 +88,7 @@ def test_two_buyers_collapse_to_the_reporting_breakout(db):
     _line(db, "ADX Communications", "A Co", "Display", "Anna Halligan")
     _line(db, "ADX Communications", "B Co", "Display", "Bella Duddy")
     db.commit()
-    assert _groups(db)["ADX Communications"].buyer == "Anna Halligan"
+    assert _groups(db)["ADX Communications"].buyer == "Anna"
 
 
 def test_one_buyer_is_used_even_when_the_roster_disagrees(db):
@@ -93,7 +98,7 @@ def test_one_buyer_is_used_even_when_the_roster_disagrees(db):
     _line(db, "ADX Communications", "A Co", "Display", "Anna Halligan")
     _line(db, "ADX Communications", "B Co", "Display", "Anna Halligan")
     db.commit()
-    assert _groups(db)["ADX Communications"].buyer == "Anna Halligan"
+    assert _groups(db)["ADX Communications"].buyer == "Anna"
 
 
 def test_two_buyers_and_no_roster_entry_still_names_both(db):
@@ -102,7 +107,7 @@ def test_two_buyers_and_no_roster_entry_still_names_both(db):
     _line(db, "Nowhere Media", "B Co", "Display", "Bella Duddy")
     db.commit()
     g = _groups(db)["Nowhere Media"]
-    assert "Anna Halligan" in g.buyer and "Bella Duddy" in g.buyer
+    assert "Anna" in g.buyer and "Bella" in g.buyer
 
 
 def test_the_seo_line_does_not_count_towards_two_buyers(db):
@@ -111,4 +116,4 @@ def test_the_seo_line_does_not_count_towards_two_buyers(db):
     _line(db, "Amp Digital Innovations", "A Co", "Social Mirror", "Hanna Walentukonis")
     _line(db, "Amp Digital Innovations", "B Co", "SEO", "Matt Ogden")
     db.commit()
-    assert _groups(db)["Amp Digital Innovations"].buyer == "Hanna Walentukonis"
+    assert _groups(db)["Amp Digital Innovations"].buyer == "Hanna"

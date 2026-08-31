@@ -165,7 +165,11 @@ class Report(Base):
         initial beside a report in the unreviewed state.
         """
         if self.review_state in ("reviewed", "waived", "needs_fix"):
-            return self.reviewed_by or ""
+            # First names here too. What is STORED is whatever the person
+            # typed, because that is the record; this is only how it reads on
+            # a row that already carries a partner, a client and a status.
+            from .partners import first_name
+            return first_name(self.reviewed_by or "")
         return ""
 
     @property

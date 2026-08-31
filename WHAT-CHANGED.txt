@@ -1,83 +1,45 @@
-build 2026.08.31-124
+build 2026.08.31-125
 Changed files only.
 
+app/board.py
 app/db.py
-app/lookup.py
-app/orders_io.py
-app/orders_s3.py
-app/templates/orders.html
+app/main.py
+app/partners.py
 app/version.py
 tests/test_board_extras.py
+tests/test_group_buyer.py
 
 
-FIRST, THE ANSWER ABOUT YOUR THREE
-=====================================
-I ran your export - the 460,784-row file you sent - through the importer as it
-stands today. All three load:
+FIRST NAMES
+==============
+Everywhere a person is named: the B / R / T / S tags on a partner card, the
+Reporter column, the sign-off beside it, the filter dropdowns, and the workload
+page. "Lauren Hunter" reads as "Lauren", because that is what anybody here would
+say out loud and the card is already carrying a partner name, a percentage, a
+progress bar and six state pills.
 
-  CBF Productions - Surfers Point Live   55377  Local Media San Diego  IO Live
-  Safe Harbor- Auburn Workshop           55963  Zoey Advertising       IO Live
-  SRVVB Philly Cycling Classic           55842  7 Mountains PA         IO Live
+THE ROLES KEEP THE TWO KATIES APART. A name is only ever read inside its role -
+the buyer tag, the trainer tag, one tab each on the workload page - so the
+trainer Katie and the buyer Katie are never in the same list to be confused for
+each other. Nothing merges them.
 
-So the file is fine and the code is fine. Your board's order list came from a
-DIFFERENT set of files: it reported 3,300 lines from the sync at 4:11 PM, and
-that one file on its own gives 2,427. There is more than one export in that
-folder.
+Where it would be ambiguous, the surname stays. Two people in the SAME role
+sharing a first name - a buyer Katie Oxman and a buyer Katie Reed - keep their
+surnames, both of them, because a label that cannot tell two people apart is
+worse than a long one.
 
+AND THE OTHER WAY ROUND, WHICH IS THE ONE THAT WAS COSTING YOU SOMETHING. The
+sheet spells the same person two ways: "Lauren" on one partner, "Lauren Hunter"
+on another. The workload page counted those as two people with half a workload
+each. A clash is now two different SURNAMES on one first name, not two
+spellings - so Lauren is one person again, and Katie Oxman and Katie Reed would
+still both keep theirs.
 
-AND AN OLDER EXPORT COULD BEAT A NEWER ONE
-=============================================
-Which is a real bug, and it is exactly the shape of what you are seeing.
+"Todd, Megan" in one field stays two names, shortened individually - "Todd
+Sanders, Megan Hill" reads as "Todd, Megan".
 
-Rows are de-duplicated on order id, line item id and flight dates - so the same
-line item in two files collapses to one. THE STATUS WAS NOT PART OF THAT KEY.
-Two exports pulled a week apart carry the same order, the same line and the
-same dates, and not the same status - so an order that was "RFP Pending" on
-Tuesday and has been IO Live since kept the Tuesday row, got thrown out by the
-RFP filter, and the live row behind it was discarded as a duplicate.
+WHAT IS STORED DOES NOT CHANGE. A sign-off keeps whatever the person typed,
+because that is the record of who said so; the first name is only how it reads
+on the row. Same for the roster: the sheet is untouched.
 
-An old file left in the folder quietly beat the one that arrived this morning,
-while the page said "Overlapping exports are fine".
-
-Two fixes, because either alone leaves half of it:
-
-  The status is part of the key now, so both rows are read and merged - and the
-  merge already knew what to do with them: live wins over not-live, and every
-  status the line has carried is kept in its own words.
-
-  Files are read NEWEST FIRST, off the S3 timestamp rather than the filename.
-  Where two rows really are identical the fresher file is the one that lands.
-
-
-"FILES THIS SYNC READ", ON THE ORDER LIST PAGE
-=================================================
-Under the sync line. s3://bucket/folder/ is what was asked for; this is what
-was actually in it. A stale export sitting beside the current one is invisible
-otherwise, and it is the first thing to check when the board disagrees with the
-IO tool.
-
-If you see old per-partner files in there next to orders-db-all-1, that is your
-3,300 against my 2,427 - and deleting them is the fix.
-
-
-AND THE LOOKUP NOW SAYS WHEN SOMETHING WAS READ AND THROWN AWAY
-==================================================================
-This is the part that should have existed two rounds ago. The skip counts said
-"5,796 RFP" and nothing about WHOSE, so "I can see this order in the export and
-it is not on the board" could only be answered by somebody downloading the
-export and running the importer over it by hand. That is what it took, twice.
-
-Every import now records the clients it dropped and why, and "Is this order in
-the lists?" reads it back:
-
-  Not in the order list loaded here.
-  IT IS IN THE EXPORT AND WAS DROPPED ON THE WAY IN: Zoey Advertising / Safe
-  Harbor- Auburn Workshop - the export has it as an RFP, not a live order.
-
-Four reasons it can give: RFP, every line ended before the month, starts after
-the month after this one, and the order status is not a live one - with the
-status in its own words. "It is not in the export at all" is now a different
-answer from "it was there and here is what happened to it", which is the
-distinction this has been missing all along.
-
-717 tests pass.
+721 tests pass.

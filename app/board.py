@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from .checks.products import earns_a_report, on_a_report
 from .cycle import Cycle, cycle_for, month_label
 from .db import OrderLine, Partner, Report
-from .partners import is_seo
+from .partners import first_name, is_seo
 
 ACC = re.compile(r"\b\d{4,6}\b")
 
@@ -164,6 +164,23 @@ class Expected:
     @property
     def ident(self) -> str:
         return f"{_key(self.market)}|{_key(self.client)}|{self.kind}"
+
+
+_REPORTERS: tuple[set, int] | None = None
+
+
+def _reporter_names(db: Session) -> set:
+    """Every reporter on the roster, cached for one board build.
+
+    Shortening a name needs to know the others, and asking the database once
+    per expected row is a few hundred queries to answer the same question.
+    """
+    global _REPORTERS
+    n = db.query(Partner).count()
+    if _REPORTERS is None or _REPORTERS[1] != n:
+        _REPORTERS = ({p.reporting_team or "" for p in db.scalars(
+            select(Partner)).all()}, n)
+    return _REPORTERS[0]
 
 
 def overrides(db: Session, period: str) -> dict:
@@ -518,7 +535,11 @@ def expected_for(db: Session, period: str,
                 e = rows[k] = Expected(
                     market=l.market, group=group, client=l.client, kind=kind,
                     account_ids=l.account_ids, line_ids=l.line_ids, buyer=l.buyer,
-                    reporter=(p.reporting_team if p else ""))
+                    # First names, so the report table reads the way people
+                    # talk. Judged across every reporter, so two of them
+                    # sharing a first name keep their surnames.
+                    reporter=first_name(p.reporting_team if p else "",
+                                        _reporter_names(db)))
             # SEO belongs to a different person, and whichever line happened to
             # be read first decided the buyer - so a client with one SEO line
             # showed its SEO manager as the buyer for everything it ran.
@@ -1042,6 +1063,16 @@ def by_group(db: Session, period: str,
         g = p.group or p.partner
         people.setdefault(g, p)
 
+    # Every name used in each role, so a first name that is not unique inside
+    # its own role keeps its surname.
+    name_pool = {
+        "buyer": {(p.buyer or "") for p in idx.values()}
+                 | {e.buyer or "" for e in exp},
+        "reporter": {(p.reporting_team or "") for p in idx.values()},
+        "trainer": {(p.trainer or "") for p in idx.values()},
+        "seo": {(p.seo or "") for p in idx.values()},
+    }
+
     groups: dict[str, list[Expected]] = {}
     for e in exp:
         groups.setdefault(e.group, []).append(e)
@@ -1062,12 +1093,19 @@ def by_group(db: Session, period: str,
         buyer = buyers[0] if len(buyers) == 1 else (roster_buyer or ", ".join(buyers))
 
         has_seo = any(is_seo(prod) for e in rows for prod in (e.products or []))
+        # FIRST NAMES. That is how everybody here refers to each other, and a
+        # card already carrying a partner name, a percentage, a progress bar and
+        # six state pills does not need a surname on top of it. Shortened per
+        # role, so the trainer Katie and the buyer Katie stay two people - and a
+        # surname comes back on both the moment two of them share a first name
+        # inside the SAME role.
         out.append(GroupRow(
             group=g, target=targets.get(g, ""), expected=rows,
-            buyer=buyer,
-            reporter=(p.reporting_team if p else ""),
-            trainer=(p.trainer if p else ""),
-            seo=((p.seo if p else "") if has_seo else "")))
+            buyer=first_name(buyer, name_pool["buyer"]),
+            reporter=first_name(p.reporting_team if p else "", name_pool["reporter"]),
+            trainer=first_name(p.trainer if p else "", name_pool["trainer"]),
+            seo=first_name((p.seo if p else "") if has_seo else "",
+                           name_pool["seo"])))
     out.sort(key=lambda g: (g.ready, g.group.lower()))   # unfinished first
     return out
 

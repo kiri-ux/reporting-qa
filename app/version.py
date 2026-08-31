@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-124"
-BUILD_NOTES = ("An older export could beat a newer one on the same order. And "
-               "the lookup now says when a client was read and dropped.")
+BUILD = "2026.08.31-125"
+BUILD_NOTES = ("First names, per role - so the trainer Katie and the buyer "
+               "Katie stay two people and Lauren stops being two.")
 
 # ---------------------------------------------------------------------------
 

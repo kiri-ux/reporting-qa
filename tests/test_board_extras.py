@@ -2450,3 +2450,53 @@ def test_the_lookup_says_it_was_read_and_dropped():
     assert "IT IS IN THE EXPORT AND WAS DROPPED ON THE WAY IN" in joined
     assert "RFP" in joined
     db.close(); eng.dispose()
+
+
+def test_names_read_as_first_names():
+    """It is how everybody here refers to each other, and a card already
+    carrying a partner, a percentage, a progress bar and six state pills does
+    not need a surname on top of it."""
+    from app.partners import first_name
+
+    assert first_name("Lauren Hunter") == "Lauren"
+    assert first_name("Katie Oxman") == "Katie"
+    assert first_name("Anna Halligan") == "Anna"
+    assert first_name("") == ""
+    # Two people in one field stay two people.
+    assert first_name("Todd, Megan") == "Todd, Megan"
+    assert first_name("Todd Sanders, Megan Hill") == "Todd, Megan"
+
+
+def test_two_people_with_one_first_name_keep_their_surnames():
+    """The trainer Katie and the buyer Katie are different people, and roles
+    keep them apart - a name is only ever read inside its own role. Two Katies
+    in the SAME role is the case a first name cannot survive."""
+    from app.partners import first_name
+
+    role = {"Katie Oxman", "Katie Reed", "Lauren Hunter"}
+    assert first_name("Katie Oxman", role) == "Katie Oxman"
+    assert first_name("Katie Reed", role) == "Katie Reed"
+    # The one that is not shared still shortens.
+    assert first_name("Lauren Hunter", role) == "Lauren"
+    # And a bare "Katie" beside a "Katie Oxman" is left alone - there is
+    # nothing more to show.
+    assert first_name("Katie", {"Katie", "Katie Oxman"}) == "Katie"
+
+
+def test_the_same_person_spelled_two_ways_is_one_person_on_the_workload():
+    """The sheet says "Lauren" on one partner and "Lauren Hunter" on another.
+    Counted as written that is two people with half a workload each."""
+    from app.partners import first_name
+
+    pool = {"Lauren", "Lauren Hunter", "Matt"}
+    assert first_name("Lauren", pool) == first_name("Lauren Hunter", pool)
+
+
+def test_a_sign_off_shows_a_first_name_and_stores_the_whole_one():
+    """The stored value is the record of who said so. This is only how it
+    reads on a row."""
+    from app.db import Report
+
+    r = Report(review_state="reviewed", reviewed_by="Lauren Hunter")
+    assert r.signed_off_by == "Lauren"
+    assert r.reviewed_by == "Lauren Hunter", "the record keeps what was typed"

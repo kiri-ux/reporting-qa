@@ -306,3 +306,65 @@ def resolve_owner(partner: Partner | None, product: str,
     if is_seo(product):
         return partner.seo or "", partner.seo_email or ""
     return partner.buyer or "", partner.buyer_email or ""
+
+
+# ------------------------------------------------------------- how a name reads
+#
+# FIRST NAMES. That is how everybody here refers to each other, and a board
+# already carrying a partner, a client, five product chips and a date range does
+# not need "Lauren Hunter" where "Lauren" is what anybody would say out loud.
+#
+# THE ROLES KEEP THE TWO KATIES APART. There is a trainer Katie and a buyer
+# Katie, and they are different people - which is why one of them is written in
+# the sheet as "Katie Oxman". Nothing merges them, because a name is only ever
+# read inside its role: the buyer tag, the trainer tag, and one tab each on the
+# workload page. Two people with the same first name in the SAME role would be
+# a real collision, and that is the one case this does not shorten.
+def first_name(value: str, others: set | None = None) -> str:
+    """"Lauren Hunter" -> "Lauren". "Todd, Megan" -> "Todd, Megan".
+
+    `others` is every name that appears in the same role. When two of them
+    share a first name the surname stays on both, because a label that cannot
+    tell two people apart is worse than a long one.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    parts = [p.strip() for p in re.split(r"\s*(?:,|&|/| and )\s*", raw) if p.strip()]
+    if not parts:
+        return raw
+
+    # A CLASH IS TWO SURNAMES, NOT TWO SPELLINGS.
+    #
+    # "Katie Oxman" beside "Katie Reed" is two people and neither can lose its
+    # surname. "Lauren" beside "Lauren Hunter" is ONE person the sheet spells
+    # two ways - and treating that as a clash leaves the workload page showing
+    # Lauren and Lauren Hunter as two rows with half the work each, which is
+    # the thing this is meant to fix.
+    clash = set()
+    if others:
+        surnames: dict[str, set] = {}
+        for o in others:
+            for bit in re.split(r"\s*(?:,|&|/| and )\s*", (o or "").strip()):
+                bit = bit.strip()
+                if not bit:
+                    continue
+                head, _, rest = bit.partition(" ")
+                if rest.strip():
+                    surnames.setdefault(head.lower(), set()).add(rest.strip().lower())
+        clash = {k for k, v in surnames.items() if len(v) > 1}
+
+    out = []
+    for p in parts:
+        head = p.split()[0]
+        out.append(p if head.lower() in clash else head)
+    return ", ".join(out)
+
+
+def role_names(db, role: str) -> set:
+    """Every name used in one role, so a clash inside it can be spotted."""
+    field = {"buyer": "buyer", "reporter": "reporting_team",
+             "trainer": "trainer", "seo": "seo"}.get(role, "")
+    if not field:
+        return set()
+    return {getattr(p, field, "") or "" for p in all_partners(db)}

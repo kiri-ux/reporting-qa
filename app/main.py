@@ -1935,7 +1935,8 @@ def people_view(request: Request, role: str = Query("reporter"),
     workload look several times bigger than it is for whoever runs multi-product
     accounts.
     """
-    from .partners import find as find_partner, resolve_owner
+    from .partners import find as find_partner, first_name, resolve_owner, role_names
+    pool = role_names(db, role)
     lines = db.scalars(select(OrderLine)).all()
     pcache: dict[str, Partner | None] = {}
 
@@ -1950,7 +1951,13 @@ def people_view(request: Request, role: str = Query("reporter"),
         who = {"buyer": l.buyer or resolve_owner(p, l.product)[0],
                "reporter": p.reporting_team if p else "",
                "trainer": p.trainer if p else ""}.get(role, "")
-        who = who or "(unassigned)"
+        # FIRST NAMES, AND IT IS ALSO WHAT GROUPS THE ROWS.
+        #
+        # The sheet spells the same person two ways - "Lauren" on one partner
+        # and "Lauren Hunter" on another - and counted as written that is two
+        # people with half a workload each. One tab per role, so the trainer
+        # Katie and the buyer Katie are never in the same list to be confused.
+        who = first_name(who, pool) or "(unassigned)"
         t = tally.setdefault(who, {"who": who, "clients": 0, "lines": 0,
                                    "partners": set(), "products": {}})
         t["lines"] += 1
