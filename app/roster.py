@@ -244,6 +244,19 @@ def _overlaps(line, start, end) -> bool:
     return True
 
 
+def is_mapped(product: str) -> bool:
+    """A product the tool can actually judge a report against.
+
+    An order line whose product name the map has never seen is kept now rather
+    than dropped - the client belongs on the board either way - but it cannot
+    be EXPECTED on a report, because nothing knows what "Website Visitor ID"
+    looks like when it is there. Failing a report for not carrying it would be
+    the tool blaming somebody for a gap in its own dictionary.
+    """
+    from .checks.products import map_order_product
+    return bool(product) and map_order_product(product) is not None
+
+
 def expected_products(db: Session, client: str, account_ids: str,
                      period: str | None = None,
                      lifetime: bool = False,
@@ -277,7 +290,7 @@ def expected_products(db: Session, client: str, account_ids: str,
         # A CANCELLED BUY IS STILL ON THE LIFETIME. Cancelling does not mean it
         # never ran - it ran and was stopped - and the lifetime is the report
         # that closes the campaign out, so what it delivered belongs on it.
-        return {l.product for l in hit if l.product}
+        return {l.product for l in hit if is_mapped(l.product)}
     if period:
         # An empty result here is not the same as no order list. If every one
         # of a client's products stopped before the period, the honest answer
@@ -286,7 +299,8 @@ def expected_products(db: Session, client: str, account_ids: str,
         hit = [l for l in hit if _ran_during(l, period)]
     # A paused buy is not delivering, so it is not owed on the report. Nor is a
     # canceled one - which live=False already covers, but says so out loud.
-    return {l.product for l in hit if l.product and getattr(l, "live", True)
+    return {l.product for l in hit if is_mapped(l.product)
+            and getattr(l, "live", True)
             and not getattr(l, "canceled", False)}
 
 

@@ -2146,3 +2146,90 @@ def test_the_lookup_answers_the_three_questions():
     joined = " ".join(got["notes"])
     assert "NO orders loaded at all" in joined, joined
     db.close(); eng.dispose()
+
+
+def test_linkedin_is_a_product():
+    """It is a product the tool knows about everywhere else - the export
+    carries monthly_linkedin_ad_spend, the device check excludes it by name -
+    and the product map had no entry at all. Every LinkedIn line item was
+    thrown out of the order list, and Credit Union Audit Group, which sells
+    nothing else and delivers 31 days a month, was not on the board."""
+    from app.checks.products import map_order_products
+
+    assert map_order_products("LinkedIn Ads") == ["LinkedIn"]
+    assert map_order_products("LinkedIn") == ["LinkedIn"]
+    assert map_order_products("LinkedIn Display & Video Ads") == ["LinkedIn"]
+
+
+def test_an_unmapped_product_does_not_delete_the_client():
+    """A product name the map has never seen used to throw the line away, so a
+    client whose ONLY product was unknown vanished from the board completely -
+    no row, no report expected, and nothing saying why."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    header = ("client_business_unit,orders_status,client,orders_id,product,id,"
+              "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    row = ("Growth by Design,IO Live,A Client,54568,Website Visitor ID,132082,"
+           "IO Live,2026-07-06,2026-07-06,2026-09-30,2026-09-30\n")
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    res = import_io_export(db, (header + row).encode(), period="2026-08")
+    line = db.query(OrderLine).one()
+    assert line.client == "A Client", "the client is on the board"
+    assert line.product == "Website Visitor ID", "under the name the export gave"
+    assert res["unmapped_products"] == {"Website Visitor ID": 1}
+
+    # AND IT IS NOT EXPECTED ON A REPORT. Nothing knows what it looks like when
+    # it is there, so failing a report for its absence would be the tool
+    # blaming somebody for a gap in its own dictionary.
+    from app.roster import expected_products, is_mapped
+    assert not is_mapped("Website Visitor ID")
+    assert expected_products(db, "A Client", "54568", period="2026-08") == set()
+    db.close(); eng.dispose()
+
+
+def test_the_unmapped_products_are_named_on_the_page(client_orders_db):
+    """Kept quietly is how a product stays unmapped forever."""
+    c, db, dbm = client_orders_db
+    db.add(dbm.OrderLine(market="Growth by Design", client="A Client",
+                         account_ids="54568", product="Website Visitor ID",
+                         starts_on=dt.date(2026, 1, 1),
+                         ends_on=dt.date(2026, 12, 31)))
+    db.add(dbm.OrderLine(market="Growth by Design", client="B Client",
+                         account_ids="1", product="LinkedIn",
+                         starts_on=dt.date(2026, 1, 1),
+                         ends_on=dt.date(2026, 12, 31)))
+    db.commit()
+    html = c.get("/orders").text
+    assert "not in the product map" in html
+    assert "Website Visitor ID" in html
+    # A product that IS mapped is not in the panel.
+    panel = html[html.index("not in the product map"):]
+    panel = panel[:panel.index("</section>")]
+    assert "LinkedIn" not in panel
+
+
+def test_no_sentence_the_tests_assert_on_is_split_across_lines():
+    """This has now cost two rounds. A phrase wrapped across two lines in a
+    template is not in the rendered HTML as one string, so an assertion on it
+    fails while the page is perfectly correct - and the hunt goes looking for a
+    bug in the code underneath it.
+
+    These are the phrases other tests match on. They have to survive wrapping.
+    """
+    checked = {
+        "orders.html": ["not in the product map",
+                        "delivered impressions in",
+                        "linked to the wrong client record"],
+        "cycle.html": ["not in the folder as"],
+        "viewer.html": ["View order lines"],
+    }
+    for name, phrases in checked.items():
+        html = (TPL / name).read_text()
+        for phrase in phrases:
+            assert phrase in html, f"{name}: {phrase!r} is wrapped across lines"

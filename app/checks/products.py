@@ -182,6 +182,13 @@ PRODUCT_LEADS: list[tuple[str, str]] = [
     ("YouTube", r"youtube\+?\b"),
     ("TikTok", r"tiktok\b"),
     ("Meta", r"(?:meta|facebook|instagram)\b"),
+    # LINKEDIN WAS NEVER IN HERE. It is a product the tool knows about
+    # everywhere else - the export carries monthly_linkedin_ad_spend, the
+    # device check excludes it by name - and the map had no entry, so every
+    # LinkedIn line item was thrown out of the order list as an unmapped
+    # product. Credit Union Audit Group sells nothing else, so the client
+    # vanished from the board entirely while delivering 31 days a month.
+    ("LinkedIn", r"linkedin\b"),
     ("PPC", r"(?:pay per click|ppc|google ads)\b"),
     ("SEO", r"(?:search engine optimization|seo)\b"),
     ("Live Chat", r"live chat\b"),

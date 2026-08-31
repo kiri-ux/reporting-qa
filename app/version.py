@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-120"
-BUILD_NOTES = ("\"Is this order in the lists?\" on the Order list page, and a "
-               "client whose orders sit under another partner now says so.")
+BUILD = "2026.08.31-121"
+BUILD_NOTES = ("LinkedIn was not in the product map, so its clients were "
+               "deleted from the board. Unmapped products are kept now.")
 
 # ---------------------------------------------------------------------------
 

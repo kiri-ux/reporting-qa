@@ -311,6 +311,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
         sources = [sources]
 
     skipped: dict[str, int] = {}
+    # Product names the map has never seen. Kept rather than dropped, and named
+    # on the page so they get added.
+    unmapped: dict[str, int] = {}
 
     def skip(reason):
         skipped[reason] = skipped.get(reason, 0) + 1
@@ -468,7 +471,22 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # plainly both.
             products = map_order_products(product_raw)
             if not products:
-                skip(f"unmapped product: {product_raw}"); continue
+                # AN UNKNOWN PRODUCT NAME MUST NOT DELETE THE CLIENT.
+                #
+                # This used to throw the line away, and a client whose ONLY
+                # product was one the map had not heard of disappeared from the
+                # board completely - no row, no report expected, nothing saying
+                # why. Credit Union Audit Group sells LinkedIn and nothing
+                # else, delivers 31 days a month, and was simply not there.
+                #
+                # The line is kept under the name the export gave it. The
+                # client is on the board, its dates and money are real, and the
+                # product checks leave an unmapped product alone rather than
+                # failing a report for not carrying something nobody can name.
+                # It is counted and shown on the Order list page, which is what
+                # gets it into the map.
+                unmapped[product_raw.strip()] = unmapped.get(product_raw.strip(), 0) + 1
+                products = [product_raw.strip()[:60] or "unmapped"]
 
             os_ = _date(r.get("orders_start_date"))
             if os_ and (order_start_min is None or os_ < order_start_min):
@@ -716,6 +734,8 @@ def import_io_export(db: Session, sources, period: str | None = None,
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
             "order_end_is_a_window": window_end,
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
+            "unmapped_products": dict(sorted(unmapped.items(),
+                                             key=lambda kv: -kv[1])[:20]),
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,
             "header_overruled": header_overruled, "restamped": restamped,
             "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}

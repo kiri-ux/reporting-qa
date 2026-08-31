@@ -826,6 +826,10 @@ def orders_view(request: Request, view: str = Query("clients"),
         "clients": clients, "no_roster": no_roster, "disk": disk,
         "missing_orders": missing_orders, "name_split": name_split,
         "period": _p, "serving_prefix": settings.serving_file_prefix,
+        # PRODUCT NAMES THE MAP HAS NEVER SEEN. Read off the loaded lines
+        # rather than off the last sync message, so it is true whether or not
+        # anybody was watching when the export came in.
+        "unmapped": _unmapped_products(db),
         # ONE BOX FOR "IS THIS ORDER IN THE LISTS". Everything needed to answer
         # it was already loaded and there was no way to ask.
         "find_q": (request.query_params.get("find") or "").strip(),
@@ -854,6 +858,22 @@ def _csv_response(filename: str, header: list[str], rows) -> Response:
         content="\ufeff" + buf.getvalue(),        # BOM, so Excel reads UTF-8
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _unmapped_products(db: Session) -> list[tuple[str, int]]:
+    """[(product name, how many clients carry it)] for names the map misses.
+
+    An unmapped product no longer deletes its client from the board - it is
+    kept under the name the export gave it - but nothing can judge a report
+    against it either, so it has to be visible or it stays unmapped forever.
+    """
+    from .roster import is_mapped
+
+    out: dict[str, int] = {}
+    for product, in db.execute(select(OrderLine.product)).all():
+        if product and not is_mapped(product):
+            out[product] = out.get(product, 0) + 1
+    return sorted(out.items(), key=lambda kv: (-kv[1], kv[0]))[:20]
 
 
 @app.get("/orders.csv")

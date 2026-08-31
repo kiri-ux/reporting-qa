@@ -124,6 +124,33 @@
 </section>
 {% endif %}
 
+{# A PRODUCT NAME NOBODY MAPPED USED TO DELETE THE CLIENT. It is kept now, so
+   this is the only sign it is unmapped - and without it the tool quietly stops
+   checking a product forever. #}
+{% if unmapped %}
+<section>
+  <div class="note" style="border-left-color:var(--gold);background:var(--warn-bg)">
+    <b>{{ unmapped|length }} product name{{ 's' if unmapped|length != 1 else '' }} in
+    the order export {{ "are" if unmapped|length != 1 else "is" }}
+    not in the product map.</b>
+    The clients carrying {{ 'them' if unmapped|length != 1 else 'it' }} are on
+    the board and their orders are loaded - what cannot happen is a report being
+    checked for a product nothing can recognise, so those are left alone. Tell me
+    what {{ 'they' if unmapped|length != 1 else 'it' }} should map to and
+    {{ 'they' if unmapped|length != 1 else 'it' }} will be judged like anything
+    else.
+    <table class="whyt" style="margin-top:8px"><thead><tr>
+      <th style="text-align:left">Product name in the export</th>
+      <th style="text-align:left">Order lines carrying it</th>
+    </tr></thead><tbody>
+      {% for name, n in unmapped %}
+        <tr><td>{{ name }}</td><td>{{ n }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
+</section>
+{% endif %}
+
 {# "I SEE THIS ORDER, WHY IS IT NOT ON THE BOARD." That was a screenshot and a
    round trip every time, and everything needed to answer it was already loaded
    with no way to ask. #}

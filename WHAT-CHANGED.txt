@@ -1,76 +1,78 @@
-build 2026.08.31-120
+build 2026.08.31-121
 Changed files only.
 
-app/lookup.py           (new)
+app/checks/products.py
 app/main.py
-app/serving.py
+app/orders_io.py
+app/roster.py
 app/templates/orders.html
 app/version.py
 tests/test_board_extras.py
 
 
-118 DOWN TO 21. HERE IS WHAT THE 21 ARE MADE OF.
-===================================================
+IT IS IN THE FILE. THE IMPORT THREW IT AWAY, AGAIN, FOR A DIFFERENT REASON.
+==============================================================================
+I ran your actual export - 460,784 rows - through the importer. Order 54568 is
+in there, 19 rows of it, IO Live, Growth by Design, Credit Union Audit Group.
 
-SHASTA FARM & EQUIPMENT - the two tools disagree about which partner it is
-============================================================================
-Look at your own screenshot. Order 52146 says
+  product: LinkedIn Ads
 
-  Media Group/Agency:  Results Media Solutions CHICO
+LINKEDIN WAS NOT IN THE PRODUCT MAP. Not a spelling it did not recognise - no
+entry at all. Every LinkedIn line item in your board has been dropped on import
+as "unmapped product", every time, since the beginning. Credit Union Audit
+Group sells LinkedIn and nothing else, so the client was not on the board at
+all, delivering 31 days a month, with nothing anywhere saying why.
 
-and the serving file has it delivering under
+The tool knows about LinkedIn everywhere else, which is what makes this
+embarrassing rather than debatable: the export carries monthly_linkedin_ad_
+spend and reads it, and the device check excludes LinkedIn by name. The map is
+the one place it was missing.
 
-  Results Media Solutions REDDING
-
-One client, two business units. The order is loaded, it is live, it is fine -
-it is just filed under a partner that is not the one showing delivery, so the
-board looked for it under Redding and did not find it.
-
-"this partner has orders, but not this client" was true and useless. The panel
-now says:
-
-  its orders are under Results Media Solutions Chico
-
-Which is the whole answer. Fix it in whichever tool is wrong and the row goes.
-I would guess KKCY - Meta Collaboration on Yuba-Marysville is the same thing;
-the panel will now say so if it is.
+Fixed. "LinkedIn Ads", "LinkedIn", "LinkedIn Display & Video Ads" all map to
+LinkedIn now.
 
 
-CREDIT UNION AUDIT GROUP - and "how can I check if it's in our lists"
-=======================================================================
-There is a box for that now, on the Order list page:
+AND THE REAL BUG UNDER IT
+============================
+A product name the map had never seen DELETED THE CLIENT. Not the line, not the
+product - the whole client, out of the order list, off the board, no row and no
+reason.
 
-  Is this order in the lists?    [ 54568 ]  [ Look it up ]
+That is a dictionary gap taking a live client off the board, silently. It is
+the worst kind of failure this tool has: a thing it cannot see, saying nothing.
 
-Type an order id, a client, or a partner. It answers the three questions a
-missing order actually raises, in the order you would work through them:
+The line is kept now, under the name the export gave it. Your export has two
+more of these:
 
-  1. Is it loaded at all - and if it is, every line, with its partner, product,
-     status and dates.
-  2. Is it loaded under a DIFFERENT partner than the one delivering it, which
-     is the Shasta case and reads as missing.
-  3. Did that partner's export land at all - it says which, because "the file
-     never arrived" and "the file arrived without this client in it" are
-     different afternoons.
+  Website Visitor ID    116 line items
+  Additional Billing     30 line items
 
-It also prints when the order list was last read, since an order created after
-that is not in it however live it looks in the IO tool. Order 54568 was
-submitted in June and the panel says Growth by Design has no orders loaded at
-ALL, so that one is a file that did not land rather than anything about the
-order.
+Those clients are back on the board with their real dates and money. What does
+NOT happen is a report being failed for not carrying "Website Visitor ID" -
+nothing knows what that looks like on a page, so the product checks leave it
+alone rather than blaming somebody for a gap in the tool's own dictionary.
 
-Reports already on the board for that client are linked from the same panel.
+And the Order list page now names every unmapped product with a count, because
+kept quietly is how a product stays unmapped forever. Tell me what those two
+should map to - or that they are not reportable products at all - and I will
+set them.
+
+Loading your export before and after:
+
+  before   2,291 order lines, 1,192 clients
+  after    2,427 order lines, 1,217 clients
+
+25 clients and 136 line items were being thrown away.
 
 
-BETA CLIENTS ARE GONE
-========================
-Anything whose name carries beta-YYYY - "Plumb Creek Pet Lodge - GT -
-beta-2026" - is dropped on the way in and never counted anywhere. They deliver
-impressions like anything else and will never have an order behind them, so
-they sat on that panel permanently, and a flag that is always on is a flag
-nobody reads.
+ONE MORE THING, FOR THE THIRD TIME
+=====================================
+The panel was rendering correctly and my test said it was not, because the
+sentence it matched on wrapped across two lines in the template - so the phrase
+is not in the HTML as one string. That has now cost two rounds of hunting for a
+bug in code that was fine.
 
-The hyphen is required, so a real client called "Zeta Beta 1999" is not
-quietly dropped from the board by a rule meant for trial records.
+There is a test for it now: it holds the phrases other tests assert on and
+fails if any of them gets wrapped.
 
-704 tests pass.
+708 tests pass.
