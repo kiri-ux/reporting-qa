@@ -48,6 +48,19 @@
     no monthly before.</li>
 </ul>
 
+<h2 style="margin-top:18px">Delivery with no order behind it</h2>
+<ul class="rules">
+  <li>A client that <b>delivered</b> this month with no order line loaded is
+    named on the Order list page - that is what a partner's export failing to
+    land looks like.</li>
+  <li><b>Not</b> when it served three days or fewer and all of them in the first
+    week. An order that ran to the last day of a month keeps delivering for a
+    day or two into the next one; the order behind that is finished and is
+    correctly not on the list.</li>
+  <li><b>Not</b> a client whose name carries <code>beta-YYYY</code>. Those are
+    trial records and will never have an order.</li>
+</ul>
+
 <h2 style="margin-top:18px">What each report is checked against</h2>
 <ul class="rules">
   <li><b>Monthly</b>: the products live that month, that month's budget, and a

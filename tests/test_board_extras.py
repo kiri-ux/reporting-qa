@@ -2500,3 +2500,68 @@ def test_a_sign_off_shows_a_first_name_and_stores_the_whole_one():
     r = Report(review_state="reviewed", reviewed_by="Lauren Hunter")
     assert r.signed_off_by == "Lauren"
     assert r.reviewed_by == "Lauren Hunter", "the record keeps what was typed"
+
+
+def _served(dbm, market, client, days, first, last, period="2026-08"):
+    from app.serving import _key
+    return dbm.ServedDays(period=period, market_key=_key(market),
+                          client_key=_key(client), market=market, client=client,
+                          days=days, first_day=dt.date.fromisoformat(first),
+                          last_day=dt.date.fromisoformat(last))
+
+
+def test_a_campaign_trailing_off_is_not_a_missing_order():
+    """An order that ran to the last day of a month does not stop dead at
+    midnight - a few impressions land in the first days of the next one, and
+    the serving file counts them as days served. The order behind them ended
+    before this month started, so it is correctly not in the order list, and
+    the client came up as "delivered with no order behind it" every month on
+    the way out."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app import db as dbm
+    from app.serving import served_but_no_order, tailing_off
+
+    eng = create_engine("sqlite://")
+    dbm.Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    # The partner has orders, so "no file landed" is not the answer either way.
+    db.add(dbm.OrderLine(market="Manning Media", client="Someone Else",
+                         account_ids="1", product="Display",
+                         starts_on=dt.date(2026, 1, 1),
+                         ends_on=dt.date(2026, 12, 31)))
+    # Three days, all in the first week: the last of a finished campaign.
+    db.add(_served(dbm, "Manning Media", "Transit of Frederick", 3,
+                   "2026-08-01", "2026-08-03"))
+    # Three days at the END of the month is a campaign that just launched, and
+    # that DOES need an order behind it.
+    db.add(_served(dbm, "Manning Media", "Just Launched", 3,
+                   "2026-08-27", "2026-08-29"))
+    # And a month of delivery is never a tail.
+    db.add(_served(dbm, "Manning Media", "Running All Month", 31,
+                   "2026-08-01", "2026-08-31"))
+    db.commit()
+
+    got = {c for _m, c, _d, _w in served_but_no_order(db, "2026-08")}
+    assert got == {"Just Launched", "Running All Month"}, got
+    assert tailing_off(db, "2026-08") == 1, "counted, not silently dropped"
+    db.close(); eng.dispose()
+
+
+def test_the_tail_rule_needs_both_halves():
+    from app import db as dbm
+    from app.serving import trailing_off
+
+    def row(days, last):
+        return dbm.ServedDays(days=days, last_day=dt.date.fromisoformat(last))
+
+    assert trailing_off(row(1, "2026-08-01"))
+    assert trailing_off(row(3, "2026-08-03"))
+    assert trailing_off(row(2, "2026-08-07"))
+    # Too many days.
+    assert not trailing_off(row(4, "2026-08-04"))
+    # Too late in the month.
+    assert not trailing_off(row(3, "2026-08-08"))
+    assert not trailing_off(row(2, "2026-08-30"))
+    # No dates at all - say nothing rather than guess.
+    assert not trailing_off(dbm.ServedDays(days=2, last_day=None))

@@ -594,7 +594,28 @@
             <tr><td>{{ market or '(no partner)' }}</td><td>{{ client }}</td>
               <td class="mono">{{ days }}</td><td>{{ why }}</td></tr>
           {% endfor %}
-        </tbody></table></details></div>
+        </tbody></table></details>
+      {% if missing_tail %}
+        <p class="sub" style="margin:10px 0 0;font-size:12.5px">
+          {{ missing_tail }} more served {{ 'a day or two' if missing_tail == 1
+          else 'a day or three' }} in the first week and nothing since - a
+          campaign that ended delivering the last of itself, so
+          {{ 'it is' if missing_tail == 1 else 'they are' }} not listed above.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {# AND WHEN THE ONLY THING LEFT IS THE TAIL, say so rather than showing
+     nothing at all: an empty panel and a panel that has been quietly emptied
+     look identical. #}
+  {% if not missing_orders and missing_tail %}
+    <div class="note" style="margin-bottom:14px">
+      <b>Nothing is missing an order line.</b>
+      {{ missing_tail }} client{{ 's' if missing_tail != 1 else '' }} delivered
+      a couple of days at the very start of {{ period|month }} with no order
+      behind {{ 'them' if missing_tail != 1 else 'it' }}, which is a campaign
+      that ended still delivering the last of itself rather than anything to
+      look at.</div>
   {% endif %}
 
   {% if disk.total and disk.pct >= 75 %}

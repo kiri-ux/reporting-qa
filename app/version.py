@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-125"
-BUILD_NOTES = ("First names, per role - so the trainer Katie and the buyer "
-               "Katie stay two people and Lauren stops being two.")
+BUILD = "2026.08.31-126"
+BUILD_NOTES = ("A campaign delivering its last two days into a new month is "
+               "not a missing order.")
 
 # ---------------------------------------------------------------------------
 

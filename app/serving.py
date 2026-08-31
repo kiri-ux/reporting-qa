@@ -432,6 +432,8 @@ def served_but_no_order(db: Session, period: str,
             continue
         if is_beta(r.client):
             continue
+        if trailing_off(r):
+            continue
         # WHICH OF THE THREE THINGS IT IS. A partner with no orders at all is a
         # file that did not land; a client whose orders are under a DIFFERENT
         # partner is the two tools disagreeing about which business unit it
@@ -450,6 +452,53 @@ def served_but_no_order(db: Session, period: str,
         out.append((r.market, r.client, r.days or 0, why))
     out.sort(key=lambda x: (-x[2], x[0] or "", x[1] or ""))
     return out[:limit]
+
+
+# A CAMPAIGN THAT ENDED STILL DELIVERS FOR A DAY OR TWO.
+#
+# An order that ran to the last day of a month does not stop dead at midnight -
+# a few impressions land in the first days of the next one, and the serving file
+# counts them as days served. The order behind them ended before this month
+# started, so it is correctly not in the order list, and the client came up as
+# "delivered with no order behind it" every single month on the way out.
+#
+# Two conditions, and it needs both: barely any days, and all of them at the
+# very start of the month. A campaign delivering three days at the END of the
+# month is one that just launched, and that DOES need an order behind it.
+TAIL_DAYS = 3
+TAIL_WINDOW = 7
+
+
+def trailing_off(row) -> bool:
+    """Is this the last of a campaign that ended, rather than a live one?"""
+    days = row.days or 0
+    last = getattr(row, "last_day", None)
+    if not last or days > TAIL_DAYS:
+        return False
+    return last.day <= TAIL_WINDOW
+
+
+def tailing_off(db: Session, period: str) -> int:
+    """How many were set aside as the tail of a finished campaign.
+
+    Counted and said out loud rather than silently dropped: a panel that
+    quietly stops mentioning things is one nobody can check.
+    """
+    from .db import OrderLine
+
+    rows = db.scalars(select(ServedDays).where(
+        ServedDays.period == period)).all()
+    if not rows:
+        return 0
+    have = set()
+    for m, c in db.execute(select(OrderLine.market, OrderLine.client)
+                           .distinct()).all():
+        have.add((_key(m), _key(c)))
+        have.add((_key(m), _base_key(c)))
+    return sum(1 for r in rows
+               if (r.market_key, r.client_key) not in have
+               and (r.days or 0) >= 2 and not is_beta(r.client)
+               and trailing_off(r))
 
 
 def matched_on_base_name(db: Session, period: str,

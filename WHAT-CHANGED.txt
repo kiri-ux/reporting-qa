@@ -1,45 +1,46 @@
-build 2026.08.31-125
+build 2026.08.31-126
 Changed files only.
 
-app/board.py
-app/db.py
 app/main.py
-app/partners.py
+app/serving.py
+app/templates/orders.html
+app/templates/rules_body.html
 app/version.py
 tests/test_board_extras.py
-tests/test_group_buyer.py
 
 
-FIRST NAMES
-==============
-Everywhere a person is named: the B / R / T / S tags on a partner card, the
-Reporter column, the sign-off beside it, the filter dropdowns, and the workload
-page. "Lauren Hunter" reads as "Lauren", because that is what anybody here would
-say out loud and the card is already carrying a partner name, a percentage, a
-progress bar and six state pills.
+A CAMPAIGN TRAILING OFF IS NOT A MISSING ORDER
+=================================================
+An order that ran to the last day of a month does not stop dead at midnight. A
+few impressions land in the first days of the next one, the serving file counts
+them as days served, and the order behind them ended before this month started
+- so it is correctly not in the order list, and the client came up as
+"delivered with no order behind it" every single month on the way out.
 
-THE ROLES KEEP THE TWO KATIES APART. A name is only ever read inside its role -
-the buyer tag, the trainer tag, one tab each on the workload page - so the
-trainer Katie and the buyer Katie are never in the same list to be confused for
-each other. Nothing merges them.
+TWO CONDITIONS, AND IT NEEDS BOTH:
 
-Where it would be ambiguous, the surname stays. Two people in the SAME role
-sharing a first name - a buyer Katie Oxman and a buyer Katie Reed - keep their
-surnames, both of them, because a label that cannot tell two people apart is
-worse than a long one.
+  three days or fewer, AND
+  the last of them inside the first week of the month
 
-AND THE OTHER WAY ROUND, WHICH IS THE ONE THAT WAS COSTING YOU SOMETHING. The
-sheet spells the same person two ways: "Lauren" on one partner, "Lauren Hunter"
-on another. The workload page counted those as two people with half a workload
-each. A clash is now two different SURNAMES on one first name, not two
-spellings - so Lauren is one person again, and Katie Oxman and Katie Reed would
-still both keep theirs.
+Both, because three days at the END of a month is a campaign that has just
+launched - and that one really does need an order behind it, so it stays on the
+list. Your Transit of Frederick and NM Chupacabras rows are the first shape;
+something starting on the 29th is the second.
 
-"Todd, Megan" in one field stays two names, shortened individually - "Todd
-Sanders, Megan Hill" reads as "Todd, Megan".
+The dates come from the serving file itself - first day and last day are kept
+per client per month - so this is read off what actually happened rather than
+guessed from an order that is not there to look at.
 
-WHAT IS STORED DOES NOT CHANGE. A sign-off keeps whatever the person typed,
-because that is the record of who said so; the first name is only how it reads
-on the row. Same for the roster: the sheet is untouched.
+COUNTED, NOT QUIETLY DROPPED. Under the panel:
 
-721 tests pass.
+  4 more served a day or three in the first week and nothing since - a campaign
+  that ended delivering the last of itself, so they are not listed above.
+
+And when the tail is all that is left, the panel says so rather than
+disappearing, because an empty panel and a panel that has been quietly emptied
+look exactly the same.
+
+The rules sheet now carries this, the beta-YYYY rule, and what the panel means,
+under "Delivery with no order behind it".
+
+723 tests pass.

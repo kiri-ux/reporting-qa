@@ -787,8 +787,12 @@ def orders_view(request: Request, view: str = Query("clients"),
     # dark or a spelling the two tools disagree on: something was running and
     # there is nothing here to judge it against. That is what a file failing to
     # land looks like, said by name.
-    from .serving import served_but_no_order
+    from .serving import served_but_no_order, tailing_off
     missing_orders = served_but_no_order(db, _p)
+    # AND THE ONES SET ASIDE AS A CAMPAIGN TRAILING OFF. Counted rather than
+    # silently dropped - a panel that quietly stops mentioning things is one
+    # nobody can check.
+    missing_tail = tailing_off(db, _p)
     from .serving import matched_on_base_name
     name_split = matched_on_base_name(db, _p)
     _days = served_days(db, _p)
@@ -824,7 +828,8 @@ def orders_view(request: Request, view: str = Query("clients"),
         "served": served, "min_days": MIN_DAYS_IN_MONTH, "serve_log": serve_log,
         "nav": "orders", "view": view, "legend": legend,
         "clients": clients, "no_roster": no_roster, "disk": disk,
-        "missing_orders": missing_orders, "name_split": name_split,
+        "missing_orders": missing_orders, "missing_tail": missing_tail,
+        "name_split": name_split,
         "period": _p, "serving_prefix": settings.serving_file_prefix,
         # PRODUCT NAMES THE MAP HAS NEVER SEEN. Read off the loaded lines
         # rather than off the last sync message, so it is true whether or not
