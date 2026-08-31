@@ -341,7 +341,15 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     # below, doing exactly what it was built to do, means the file is never
     # read again to correct them. A live TikTok order sat on the board as a
     # Video order for that reason. The mapping is part of the input.
-    mapv = product_map_version()
+    # AND THE CYCLE IS PART OF THE INPUT TOO.
+    #
+    # The import keeps line items that touch the period being worked, so the
+    # answer depends on which period that is - and nothing re-reads the export
+    # when the cycle rolls over, because the file has not changed. August's
+    # orders were dropped as "starts after the period" by an import that ran
+    # while the board was still on July, and stayed dropped.
+    from .cycle import current_period
+    mapv = f"{product_map_version()}:{settings.default_period or current_period()}"
     remap = bool(prev and prev.ok and (prev.map_version or "") != mapv)
 
     if not force and not remap and prev and prev.ok:
@@ -424,7 +432,11 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
                     "rather than any campaign's end - both order header dates "
                     "were set aside and the line items used instead")
     if remap:
-        msg += ", re-read because the product mapping changed"
+        was = (prev.map_version or "").split(":")
+        now = mapv.split(":")
+        msg += (", re-read because the cycle moved to " + now[-1]
+                if len(was) > 1 and len(now) > 1 and was[-1] != now[-1]
+                else ", re-read because the product mapping changed")
     rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],
                     etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + ".",
                     map_version=mapv, trigger=trigger,

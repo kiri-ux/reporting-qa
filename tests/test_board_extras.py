@@ -1957,3 +1957,76 @@ def test_the_sheet_is_read_only():
     for writer in ("update(", "append_row", "batchUpdate", "values().update",
                    "spreadsheets().values"):
         assert writer not in src, f"{writer} writes to the sheet"
+
+
+def test_an_order_that_starts_this_month_is_not_dropped_on_the_way_in():
+    """River Valley Builders Facebook, order 55476, IO Live, 1 August to 31
+    December, came back on the board as a client that delivered 31 days with no
+    order behind it. So did 117 others.
+
+    The import keeps line items that touch "the period", and the period
+    defaulted to the calendar month BEFORE today - so on 31 August every line
+    item starting 1 August was skipped as "starts after the period". A whole
+    month of new orders, dropped by a window a month behind the board.
+    """
+    from app.orders_io import import_io_export
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+
+    header = ("client_business_unit,orders_status,client,orders_id,product,id,"
+              "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    row = ("7 Mountains PA Selinsgrove,IO Live,River Valley Builders Facebook,"
+           "55476,Meta,551,IO Live,2026-08-01,2026-08-01,2026-12-31,2026-12-31\n")
+    # And one that starts the month after, which the rollover would otherwise
+    # leave behind on the 1st.
+    soon = row.replace("55476", "55999").replace("2026-08-01", "2026-09-01")
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    res = import_io_export(db, (header + row + soon).encode(), period="2026-08")
+    # One row per client and product, so both orders roll into it.
+    ids = " ".join(l.account_ids or "" for l in db.query(OrderLine).all())
+    assert "55476" in ids, f"kept, {res.get('skipped')}"
+    assert "55999" in ids, "next month's orders are here before the rollover"
+
+    # A year out is still not this cycle's problem.
+    far = row.replace("55476", "56999").replace("2026-08-01", "2027-06-01")
+    db.query(OrderLine).delete(); db.commit()
+    import_io_export(db, (header + far).encode(), period="2026-08")
+    assert db.query(OrderLine).count() == 0
+    db.close(); eng.dispose()
+
+
+def test_the_import_window_follows_the_cycle_not_the_calendar():
+    from app.orders_io import import_io_export
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app import config as cfg
+
+    header = ("client_business_unit,orders_status,client,orders_id,product,id,"
+              "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    row = ("Partner,IO Live,A Client,1,Meta,11,IO Live,"
+           "2026-08-01,2026-08-01,2026-12-31,2026-12-31\n")
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    was = cfg.settings.default_period
+    try:
+        cfg.settings.default_period = "2026-08"
+        import_io_export(db, (header + row).encode())   # no period passed
+        assert db.query(OrderLine).count() == 1, "the board's cycle is the window"
+    finally:
+        cfg.settings.default_period = was
+    db.close(); eng.dispose()
+
+
+def test_moving_the_cycle_re_reads_the_export():
+    """Nothing re-reads the export when the cycle rolls over - the file has not
+    changed, so the ETag says there is nothing to do. That is how August's
+    orders stayed dropped after the board moved to August."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "orders_s3.py").read_text()
+    assert 'mapv = f"{product_map_version()}:' in src
+    assert "default_period or current_period()" in src

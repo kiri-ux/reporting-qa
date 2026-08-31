@@ -282,8 +282,30 @@ def import_io_export(db: Session, sources, period: str | None = None,
     harmless. Rows are streamed rather than collected, because a single export
     can be 400 MB and the service has 512 MB to work with.
     """
-    period = period or previous_period()
+    # THE CYCLE BEING WORKED, NOT "LAST MONTH".
+    #
+    # This defaulted to the calendar month before today, and on 31 August that
+    # is July - so every line item starting 1 August was dropped on the way in
+    # as "starts after the period". River Valley Builders Facebook, order
+    # 55476, IO Live, 1 August to 31 December, came back on the board as a
+    # client that delivered 31 days with no order behind it. So did 117 others,
+    # which is what a whole month of new orders looks like when the window is
+    # a month behind the board.
+    if not period:
+        from .config import settings
+        from .cycle import current_period
+        period = settings.default_period or current_period()
     p_start, p_end = period_bounds(period)
+
+    # AND A MONTH OF HEADROOM PAST IT.
+    #
+    # The cycle rolls over on its own, and nothing re-reads the export when it
+    # does - the ETag has not changed, so the file is never looked at again.
+    # Loading next month's orders now means the rollover finds them already
+    # here instead of leaving the same hole on the 1st. They are not owed a
+    # report until their month comes round; the board decides that, not this.
+    y2, m2 = (p_end.year + (p_end.month == 12), p_end.month % 12 + 1)
+    horizon = period_bounds(f"{y2:04d}-{m2:02d}")[1]
 
     if not isinstance(sources, list):
         sources = [sources]
@@ -425,7 +447,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                             or DEAD_ORDER_STATUS.match(order_status))
             if end and end < p_start:
                 skip("ended before the period"); continue
-            if start and start > p_end:
+            if start and start > horizon:
                 skip("starts after the period"); continue
             paused = bool(PAUSED_STATUS.match(line_status)
                           or (not line_status

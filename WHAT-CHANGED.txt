@@ -1,75 +1,53 @@
-build 2026.08.31-118
+build 2026.08.31-119
 Changed files only.
 
-app/config.py
-app/main.py
+app/orders_io.py
 app/orders_s3.py
-app/partners.py
-app/roster_sheet.py       (new)
-app/templates/partners.html
 app/version.py
-docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
 
 
-THE BREAKOUT SHEET IS READ LIVE
-==================================
-Yes, and nothing new had to be built for it.
+THE ORDER IS THERE. THE IMPORT THREW IT AWAY.
+================================================
+Order 55476 is IO Live, 1 August to 31 December, client "River Valley Builders
+Facebook", partner 7 Mountains PA Selinsgrove. Both tools spell it the same, so
+this is not a name problem.
 
-The tool already authenticates to Google with a refresh token and the full
-Drive scope, because that is how it packages reports into Drive - and a Google
-Sheet is a Drive file. So the sheet is exported as CSV through the credentials
-that are already there. No service account, no extra scope, no new dependency,
-nothing to authorise.
+The import keeps line items that touch "the period", and the period defaulted
+to THE CALENDAR MONTH BEFORE TODAY. Today is 31 August, so the window it was
+loading against was July - and every line item starting on 1 August was dropped
+on the way in as "starts after the period".
 
-  Sheet   1_WfyDOEN4oOdPdEoYtv5yMZZ6_hk8vu5o6pElIJ-8d4
-  Tab     Market Breakout (the first, which is what Drive's export gives)
+That is your 118. It is not 118 unrelated problems, it is one: a whole month of
+new orders, filtered out by a window a month behind the board. Every one of
+them serving 31 days in August is the tell.
 
-It reads on every order sync, and only when the sheet has actually changed -
-the CSV is checksummed, so an unedited sheet costs one request and no writes.
-
-ONE THING TO CHECK ON YOUR SIDE: the sheet has to be visible to the Google
-account the Drive connection authorised as. If it is not, the Partners page
-says so in those words rather than failing quietly, and the roster already
-loaded is untouched.
-
-Paste a different URL into ROSTER_SHEET to point it elsewhere - the id and the
-tab are read out of a normal browser URL. Blank turns the whole thing off.
+The window now comes from the cycle being worked - the same period the board is
+showing - rather than from the calendar.
 
 
-TWO GUARDS, BOTH FROM THINGS THAT HAVE ALREADY GONE WRONG HERE
-=================================================================
-IT WILL NOT REPLACE THE ROSTER WITH SOMETHING THAT IS NOT ONE. A read that
-comes back as a Google sign-in page, or empty because a tab was renamed, parses
-perfectly well as "a roster with no partners in it" - and importing that
-deletes 206 partners and every owner on the board with them. A read has to
-carry at least two thirds of what is already loaded or it is refused, with the
-count in the message. A real batch of leavers still loads; a permissions page
-never does.
+AND IT WOULD HAVE HAPPENED AGAIN ON 1 SEPTEMBER
+==================================================
+Two reasons, both fixed, because fixing only the first would have left this
+waiting to repeat.
 
-A DELIVERY TARGET SET IN THE TOOL IS NOT BLANKED BY A SHEET THAT IS SILENT
-ABOUT IT. That field is set on the Partners page and not always in the sheet,
-and a blank means Drive - which is how a Dropbox partner's client got a Drive
-link once already. When the sheet names a target the sheet wins; when it says
-nothing, what is here is kept. Uploading a CSV by hand still replaces outright,
-which is what an upload is for.
+A MONTH OF HEADROOM. The import now also keeps orders starting in the month
+AFTER the cycle. When the board rolls to September the orders are already here
+instead of the same hole opening on the 1st. They are not owed a report until
+their month comes round - the board decides that, and it always did.
 
-AND IT NEVER WRITES BACK. The sheet stays the source of truth for who owns
-what. A test fails if any writing call turns up in that file.
+AND THE CYCLE IS PART OF WHAT "UNCHANGED" MEANS. Nothing re-read the export
+when the cycle moved, because the file had not changed and the ETag said there
+was nothing to do. So an import that ran under July stayed under July. The
+cycle is now in the sync's fingerprint alongside the product mapping, so
+changing it forces a re-read - and the sync message says which of the two it
+was.
 
+This is the same shape as the TikTok bug in build 82: derived data that keeps
+answering from an input nobody noticed had changed.
 
-ON THE PARTNERS PAGE
-=======================
-Above the upload box, because the sheet is the source of truth and the upload
-is now the fallback:
+NOTHING TO PRESS. The fingerprint changed, so the next sync re-reads the export
+on its own and the 118 should go with it. If you want it now, "Sync from S3 now"
+on the Order list page.
 
-  Last read Aug 31, 2026 at 11:42 AM ET · 206 partners
-  Read 206 partners from the breakout sheet. Delivery targets the sheet does
-  not name were kept as they were.
-
-  [ Read the sheet now ]   Open the sheet
-
-A sync that quietly stopped looks exactly like a roster nobody has changed, so
-that timestamp is the point of the panel.
-
-697 tests pass.
+700 tests pass.
