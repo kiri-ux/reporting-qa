@@ -86,6 +86,21 @@ def looks_like_serving(headers: list[str]) -> bool:
     return not ({"ordersstatus", "ordersenddate"} & seen)
 
 
+# A BETA CLIENT IS NOT A CLIENT. The reporting tool carries trial records named
+# "... - GT - beta-2026", which deliver impressions like anything else and will
+# never have an order behind them, so they sat on the missing-orders panel
+# forever. A flag that is permanently on is a flag nobody reads.
+#
+# THE HYPHEN IS REQUIRED. "beta 2026" with a space would also catch a real
+# client called "Zeta Beta 1999", and a rule that quietly drops a real client
+# from the board is worse than the noise it removes.
+BETA_CLIENT = re.compile(r"\bbeta-\d{4}\b", re.I)
+
+
+def is_beta(name: str) -> bool:
+    return bool(BETA_CLIENT.search(name or ""))
+
+
 ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 
 
@@ -215,6 +230,8 @@ def import_serving(db: Session, rows, *, period: str | None = None,
         when = _date(g("day"))
         if not client or not when:
             continue
+        if is_beta(client):
+            continue                       # a trial record, not a client
         read += 1
         if money and not any(_num(g(f)) > 0 for f in money):
             continue                       # a row with nothing in it is not a day
@@ -395,24 +412,41 @@ def served_but_no_order(db: Session, period: str,
     pairs = db.execute(select(OrderLine.market, OrderLine.client).distinct()).all()
     have = set()
     partners = set()
+    # AND WHICH PARTNER EACH CLIENT'S ORDERS ARE ACTUALLY UNDER. Shasta Farm &
+    # Equipment delivers under "Results Media Solutions Redding" in the serving
+    # file and its order sits under "Results Media Solutions Chico" - one
+    # client, two business units, and the row read as a file that had not
+    # landed. Naming the other partner is the difference between a fix and an
+    # afternoon.
+    elsewhere: dict[str, set] = {}
     for m, c in pairs:
         have.add((_key(m), _key(c)))
         have.add((_key(m), _base_key(c)))     # "A-1 Appliance - Display"
         partners.add(_key(m))
+        elsewhere.setdefault(_base_key(c), set()).add(m)
     out = []
     for r in rows:
         if (r.market_key, r.client_key) in have:
             continue
         if (r.days or 0) < 2:
             continue
-        # WHICH OF THE TWO THINGS IT IS. A partner with no orders at all is a
-        # file that did not land; a partner with orders but not this client is
-        # one client missing from a file that did - or a name the two tools
-        # spell differently, which is worth knowing before anybody goes looking
-        # for a file that is already there.
-        why = ("no orders loaded for this partner at all"
-               if r.market_key not in partners
-               else "this partner has orders, but not this client")
+        if is_beta(r.client):
+            continue
+        # WHICH OF THE THREE THINGS IT IS. A partner with no orders at all is a
+        # file that did not land; a client whose orders are under a DIFFERENT
+        # partner is the two tools disagreeing about which business unit it
+        # belongs to; and what is left is one client missing from a file that
+        # did land.
+        other = sorted(elsewhere.get(r.client_key, set())
+                       | elsewhere.get(_base_key(r.client), set()))
+        other = [m for m in other if _key(m) != r.market_key]
+        if other:
+            why = ("its orders are under " + " and ".join(other[:2])
+                   + (" and others" if len(other) > 2 else ""))
+        elif r.market_key not in partners:
+            why = "no orders loaded for this partner at all"
+        else:
+            why = "this partner has orders, but not this client"
         out.append((r.market, r.client, r.days or 0, why))
     out.sort(key=lambda x: (-x[2], x[0] or "", x[1] or ""))
     return out[:limit]

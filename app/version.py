@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-119"
-BUILD_NOTES = ("A whole month of new orders was being dropped on import - the "
-               "window was a month behind the board.")
+BUILD = "2026.08.31-120"
+BUILD_NOTES = ("\"Is this order in the lists?\" on the Order list page, and a "
+               "client whose orders sit under another partner now says so.")
 
 # ---------------------------------------------------------------------------
 

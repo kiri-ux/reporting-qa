@@ -124,6 +124,75 @@
 </section>
 {% endif %}
 
+{# "I SEE THIS ORDER, WHY IS IT NOT ON THE BOARD." That was a screenshot and a
+   round trip every time, and everything needed to answer it was already loaded
+   with no way to ask. #}
+<section>
+  <h2>Is this order in the lists?</h2>
+  <div class="panel">
+    <form method="get" action="/orders" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input type="search" name="find" value="{{ find_q }}" size="34"
+             placeholder="An order id, a client, or a partner">
+      <button class="btn" type="submit">Look it up</button>
+      {% if find_q %}<a class="mini" href="/orders"
+         style="display:inline-block;text-decoration:none">Clear</a>{% endif %}
+    </form>
+
+    {% if found %}
+      <div class="note" style="margin-top:14px{% if not found.lines %};
+           border-left-color:var(--gold);background:var(--warn-bg){% endif %}">
+        {% for n in found.notes %}
+          <p style="margin:0 0 8px">{{ n }}</p>
+        {% endfor %}
+        {% if found.sync %}
+          <p class="sub" style="margin:0;font-size:12.5px">
+            The order list was last read
+            {{ found.sync.synced_at|et('%b %-d, %Y at %-I:%M %p') }} -
+            {{ found.sync.rows }} lines. Anything created since then is not in
+            it until the next sync.</p>
+        {% endif %}
+      </div>
+
+      {% if found.lines %}
+        <div class="tw" style="margin-top:12px"><table>
+          <thead><tr><th>Partner</th><th>Client</th><th>Product</th><th>Order</th>
+            <th>Line</th><th>Status</th><th>Starts</th><th>Ends</th></tr></thead>
+          <tbody>
+            {% for l in found.lines %}
+              <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
+                <td>{{ l.product }}</td>
+                <td class="acct">{{ l.account_ids }}</td>
+                <td class="acct">{{ l.line_ids }}</td>
+                <td>{{ l.status }}</td>
+                <td class="nw">{{ l.starts_on or '' }}</td>
+                <td class="nw">{{ l.ends_on or '' }}</td></tr>
+            {% endfor %}
+          </tbody></table></div>
+      {% endif %}
+
+      {% if found.served %}
+        <p class="sub" style="margin:12px 0 0;font-size:13px"><b>Delivery in
+          {{ period|month }}:</b>
+          {% for r in found.served %}{{ r.market }} / {{ r.client }} -
+            {{ r.days }} day{{ 's' if r.days != 1 }}{{ '; ' if not loop.last }}
+          {% endfor %}</p>
+      {% endif %}
+
+      {% if found.reports %}
+        <p class="sub" style="margin:8px 0 0;font-size:13px"><b>Reports:</b>
+          {% for r in found.reports %}
+            <a href="/report/{{ r.id }}/view">{{ r.client }} {{ r.period|month }}</a>{{ ', ' if not loop.last }}
+          {% endfor %}</p>
+      {% endif %}
+    {% else %}
+      <p class="sub" style="font-size:13px;margin:12px 0 0">
+        Answers the three questions a missing order raises, in order: is it
+        loaded at all, is it loaded under a DIFFERENT partner than the one
+        delivering it, and did that partner's export land.</p>
+    {% endif %}
+  </div>
+</section>
+
 <section>
   <h2>Narrowing the pull</h2>
   <div class="panel">

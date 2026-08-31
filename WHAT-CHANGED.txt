@@ -1,53 +1,76 @@
-build 2026.08.31-119
+build 2026.08.31-120
 Changed files only.
 
-app/orders_io.py
-app/orders_s3.py
+app/lookup.py           (new)
+app/main.py
+app/serving.py
+app/templates/orders.html
 app/version.py
 tests/test_board_extras.py
 
 
-THE ORDER IS THERE. THE IMPORT THREW IT AWAY.
-================================================
-Order 55476 is IO Live, 1 August to 31 December, client "River Valley Builders
-Facebook", partner 7 Mountains PA Selinsgrove. Both tools spell it the same, so
-this is not a name problem.
+118 DOWN TO 21. HERE IS WHAT THE 21 ARE MADE OF.
+===================================================
 
-The import keeps line items that touch "the period", and the period defaulted
-to THE CALENDAR MONTH BEFORE TODAY. Today is 31 August, so the window it was
-loading against was July - and every line item starting on 1 August was dropped
-on the way in as "starts after the period".
+SHASTA FARM & EQUIPMENT - the two tools disagree about which partner it is
+============================================================================
+Look at your own screenshot. Order 52146 says
 
-That is your 118. It is not 118 unrelated problems, it is one: a whole month of
-new orders, filtered out by a window a month behind the board. Every one of
-them serving 31 days in August is the tell.
+  Media Group/Agency:  Results Media Solutions CHICO
 
-The window now comes from the cycle being worked - the same period the board is
-showing - rather than from the calendar.
+and the serving file has it delivering under
+
+  Results Media Solutions REDDING
+
+One client, two business units. The order is loaded, it is live, it is fine -
+it is just filed under a partner that is not the one showing delivery, so the
+board looked for it under Redding and did not find it.
+
+"this partner has orders, but not this client" was true and useless. The panel
+now says:
+
+  its orders are under Results Media Solutions Chico
+
+Which is the whole answer. Fix it in whichever tool is wrong and the row goes.
+I would guess KKCY - Meta Collaboration on Yuba-Marysville is the same thing;
+the panel will now say so if it is.
 
 
-AND IT WOULD HAVE HAPPENED AGAIN ON 1 SEPTEMBER
-==================================================
-Two reasons, both fixed, because fixing only the first would have left this
-waiting to repeat.
+CREDIT UNION AUDIT GROUP - and "how can I check if it's in our lists"
+=======================================================================
+There is a box for that now, on the Order list page:
 
-A MONTH OF HEADROOM. The import now also keeps orders starting in the month
-AFTER the cycle. When the board rolls to September the orders are already here
-instead of the same hole opening on the 1st. They are not owed a report until
-their month comes round - the board decides that, and it always did.
+  Is this order in the lists?    [ 54568 ]  [ Look it up ]
 
-AND THE CYCLE IS PART OF WHAT "UNCHANGED" MEANS. Nothing re-read the export
-when the cycle moved, because the file had not changed and the ETag said there
-was nothing to do. So an import that ran under July stayed under July. The
-cycle is now in the sync's fingerprint alongside the product mapping, so
-changing it forces a re-read - and the sync message says which of the two it
-was.
+Type an order id, a client, or a partner. It answers the three questions a
+missing order actually raises, in the order you would work through them:
 
-This is the same shape as the TikTok bug in build 82: derived data that keeps
-answering from an input nobody noticed had changed.
+  1. Is it loaded at all - and if it is, every line, with its partner, product,
+     status and dates.
+  2. Is it loaded under a DIFFERENT partner than the one delivering it, which
+     is the Shasta case and reads as missing.
+  3. Did that partner's export land at all - it says which, because "the file
+     never arrived" and "the file arrived without this client in it" are
+     different afternoons.
 
-NOTHING TO PRESS. The fingerprint changed, so the next sync re-reads the export
-on its own and the 118 should go with it. If you want it now, "Sync from S3 now"
-on the Order list page.
+It also prints when the order list was last read, since an order created after
+that is not in it however live it looks in the IO tool. Order 54568 was
+submitted in June and the panel says Growth by Design has no orders loaded at
+ALL, so that one is a file that did not land rather than anything about the
+order.
 
-700 tests pass.
+Reports already on the board for that client are linked from the same panel.
+
+
+BETA CLIENTS ARE GONE
+========================
+Anything whose name carries beta-YYYY - "Plumb Creek Pet Lodge - GT -
+beta-2026" - is dropped on the way in and never counted anywhere. They deliver
+impressions like anything else and will never have an order behind them, so
+they sat on that panel permanently, and a flag that is always on is a flag
+nobody reads.
+
+The hyphen is required, so a real client called "Zeta Beta 1999" is not
+quietly dropped from the board by a rule meant for trial records.
+
+704 tests pass.

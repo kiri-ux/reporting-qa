@@ -2030,3 +2030,119 @@ def test_moving_the_cycle_re_reads_the_export():
     src = (Path(__file__).resolve().parents[1] / "app" / "orders_s3.py").read_text()
     assert 'mapv = f"{product_map_version()}:' in src
     assert "default_period or current_period()" in src
+
+
+def test_a_beta_client_is_not_a_missing_order():
+    """The reporting tool carries trial records named "... - GT - beta-2026".
+    They deliver impressions like anything else and will never have an order
+    behind them, so they sat on the missing-orders panel forever - and a flag
+    that is permanently on is a flag nobody reads."""
+    from app.serving import is_beta
+
+    assert is_beta("Plumb Creek Pet Lodge - GT - beta-2026")
+    assert is_beta("North Texas Fair & Rodeo - GT - beta-2026")
+    assert is_beta("Stanley's Greenhouse - GT - beta-2027")
+    # The hyphen is required. Without it this catches a real client.
+    assert not is_beta("Zeta Beta 1999")
+    assert not is_beta("Betamax 2026 Ltd")
+    assert not is_beta("Beta Alpha Co")
+
+
+def test_a_beta_client_is_dropped_on_the_way_in():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, ServedDays
+    from app.serving import import_serving
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    import_serving(db, [["Business Unit", "Client", "Impressions", "Date"],
+                        ["Acme", "Real Client", "900", "2026-08-04"],
+                        ["Acme", "Plumb Creek - GT - beta-2026", "900", "2026-08-04"]])
+    assert [r.client for r in db.query(ServedDays).all()] == ["Real Client"]
+    db.close(); eng.dispose()
+
+
+def test_a_client_whose_orders_are_under_another_partner_says_so():
+    """Shasta Farm & Equipment delivers under "Results Media Solutions Redding"
+    in the serving file, and order 52146 sits under "Results Media Solutions
+    Chico". One client, two business units - and the row read as a partner
+    export that had not landed, which sends somebody looking for a file that is
+    already there."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine, ServedDays
+    from app.serving import served_but_no_order, _key
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderLine(market="Results Media Solutions Chico",
+                     client="Shasta Farm & Equipment", account_ids="52146",
+                     product="Display", starts_on=dt.date(2026, 4, 10),
+                     ends_on=dt.date(2027, 3, 31)))
+    # Redding has orders of its own, so "no file landed" is not the answer.
+    db.add(OrderLine(market="Results Media Solutions Redding",
+                     client="Someone Else", account_ids="1", product="Display",
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 12, 31)))
+    db.add(ServedDays(period="2026-08",
+                      market_key=_key("Results Media Solutions Redding"),
+                      client_key=_key("Shasta Farm & Equipment"),
+                      market="Results Media Solutions Redding",
+                      client="Shasta Farm & Equipment", days=31))
+    db.commit()
+
+    got = served_but_no_order(db, "2026-08")
+    assert len(got) == 1
+    assert got[0][3] == "its orders are under Results Media Solutions Chico"
+    db.close(); eng.dispose()
+
+
+def test_the_lookup_answers_the_three_questions():
+    """"I see this order, why is it not on the board" was a screenshot and a
+    round trip every time, and everything needed to answer it was already
+    loaded with no way to ask."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine, ServedDays
+    from app.lookup import find
+    from app.serving import _key
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderLine(market="Results Media Solutions Chico",
+                     client="Shasta Farm & Equipment", account_ids="52146",
+                     product="Display", status="IO Live",
+                     starts_on=dt.date(2026, 4, 10), ends_on=dt.date(2027, 3, 31)))
+    db.add(ServedDays(period="2026-08",
+                      market_key=_key("Results Media Solutions Redding"),
+                      client_key=_key("Shasta Farm & Equipment"),
+                      market="Results Media Solutions Redding",
+                      client="Shasta Farm & Equipment", days=31))
+    db.commit()
+
+    # By order id: loaded, and delivering under a different partner.
+    got = find(db, "52146", "2026-08")
+    assert got["lines"] and got["lines"][0].account_ids == "52146"
+    joined = " ".join(got["notes"])
+    assert "Loaded." in joined
+    assert "DELIVERS UNDER A DIFFERENT PARTNER" in joined
+    assert "Redding" in joined and "Chico" in joined
+
+    # An order nobody has heard of.
+    got = find(db, "54568", "2026-08")
+    assert not got["lines"]
+    assert "Not in the order list loaded here." in " ".join(got["notes"])
+
+    # By name, where the partner has no orders at all.
+    db.add(ServedDays(period="2026-08", market_key=_key("Growth by Design"),
+                      client_key=_key("Credit Union Audit Group"),
+                      market="Growth by Design",
+                      client="Credit Union Audit Group", days=31))
+    db.commit()
+    got = find(db, "Credit Union Audit", "2026-08")
+    joined = " ".join(got["notes"])
+    assert "NO orders loaded at all" in joined, joined
+    db.close(); eng.dispose()

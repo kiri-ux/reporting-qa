@@ -20,6 +20,7 @@ from .db import (Batch, Delivery, Inbound, KnownLogo, OrderLine, OrderSync,
                  Partner, Report, SessionLocal, init_db)
 from .ingest import (finish_batch, parse_postmark, process_batch,
                     prune_old_pdfs, sweep_stale)
+from .lookup import find as _find
 from .orders_s3 import last_sync, sync as sync_orders
 from .roster import completeness, import_orders
 
@@ -825,6 +826,11 @@ def orders_view(request: Request, view: str = Query("clients"),
         "clients": clients, "no_roster": no_roster, "disk": disk,
         "missing_orders": missing_orders, "name_split": name_split,
         "period": _p, "serving_prefix": settings.serving_file_prefix,
+        # ONE BOX FOR "IS THIS ORDER IN THE LISTS". Everything needed to answer
+        # it was already loaded and there was no way to ask.
+        "find_q": (request.query_params.get("find") or "").strip(),
+        "found": (_find(db, request.query_params.get("find") or "", _p)
+                  if (request.query_params.get("find") or "").strip() else None),
         "env_report": settings.env_report(),
         "plan": pull_plan(db), "tap_max_days": TAP_MAX_DAYS,
         # Three different things can start a sync, and none of them used to
