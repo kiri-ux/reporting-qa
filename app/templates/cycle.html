@@ -506,9 +506,9 @@
           {# AND IT LINKS TO THE ORDER. The board says a campaign is owed a
              report; the next question is always what the order says, and that
              meant copying the number out and pasting it into the IO tool. #}
-          {# EACH ORDER IS ITS OWN PILL, COLOURED BY WHAT THAT ORDER SAYS.
+          {# EACH ORDER IS ITS OWN PILL, COLORED BY WHAT THAT ORDER SAYS.
              Green live, orange paused, red cancelled, blue complete, and the
-             words on hover. It was one grey block of ids with a row of dots
+             words on hover. It was one gray block of ids with a row of dots
              beside it, which said two orders and two statuses and nothing at
              all about which was which. #}
           {% if e.account_ids %}<br><span class="oids">
@@ -516,10 +516,10 @@
               {%- set st = e.order_status.get(oid, '') %}
               <a class="oidp io-{{ st|iokind }}" href="{{ io_order_url }}{{ oid }}"
                  target="_blank" rel="noopener"
-                 {# GREY MEANS THE EXPORT LEFT THE STATUS BLANK, and naming
+                 {# GRAY MEANS THE EXPORT LEFT THE STATUS BLANK, and naming
                     the export is the point. Worded as the ORDER being silent
                     it read as the tool being coy about something it knew.
-                    The pill is grey because there is nothing to colour it
+                    The pill is gray because there is nothing to color it
                     with. #}
                  data-tip="Order {{ oid }}{% if st %} - {{ st }}{% else %} - no status on it in the order export{% endif %}. Opens in the IO tool.">{{ oid }}</a>
             {%- endfor %}</span>{% endif %}</td>
@@ -955,7 +955,7 @@
  margin-top:3px;user-select:all}
 /* WHAT THE ORDER SAYS, ON THE ORDER IT SAYS IT ABOUT. Green live, orange
    paused, red cancelled, blue complete - and the words themselves on hover,
-   because a colour is a reminder and not a label. */
+   because a color is a reminder and not a label. */
 /* A tile whose headline is a number plus one more mark, side by side. */
 .cards .tilerow .fig{display:flex;align-items:center;gap:9px}
 .cards .tilerow .fig b{display:inline-block;margin:0}

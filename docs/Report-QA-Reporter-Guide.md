@@ -61,8 +61,8 @@ On the board, the **Reports** table defaults to the **Pending** bucket - signed-
 
 Two things to know about filtering, because there are two rows that look alike:
 
-- The row labelled **Filters** narrows the **partner cards**.
-- The row labelled **Reports** narrows the **report rows**.
+- The row labeled **Filters** narrows the **partner cards**.
+- The row labeled **Reports** narrows the **report rows**.
 
 And: typing in a search box filters the page you are on. **Pressing Enter searches the whole cycle.** That matters, because the table is 50 rows a page and the cards are 20.
 
@@ -71,7 +71,7 @@ And: typing in a search box filters the page you are on. **Pressing Enter search
 | Column | What is in it |
 |---|---|
 | Client | the client, with one pill per order id underneath. Green is live, orange paused, red cancelled, blue complete. Click a pill to open that order in the IO tool. |
-| Products | colored product chips, plus a grey pill of the line item ids |
+| Products | colored product chips, plus a gray pill of the line item ids |
 | Kind | **monthly** or **lifetime**. A lifetime shows its flight, and an amber **stopped** tag if the campaign ended early - pull to that date, not the one on the order. |
 | Status | see the table below |
 | Findings | problems only, up to three then `+4 more` |

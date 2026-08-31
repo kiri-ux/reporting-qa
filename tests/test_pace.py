@@ -102,12 +102,12 @@ def test_only_this_cycle_is_counted(db):
 def test_a_rough_projection_is_not_written_like_a_measurement():
     """"3.7 hours" makes an extrapolation from a bursty signal look like a
     reading off an instrument."""
-    from app.pace import humanise, working_days
-    assert humanise(0.4) == "about 24 minutes"
-    assert humanise(1.0) == "about 1 hour"
-    assert humanise(3.7) == "about 4 hours"
-    assert humanise(50) == "about 2 days"
-    assert humanise(None) == ""
+    from app.pace import humanize, working_days
+    assert humanize(0.4) == "about 24 minutes"
+    assert humanize(1.0) == "about 1 hour"
+    assert humanize(3.7) == "about 4 hours"
+    assert humanize(50) == "about 2 days"
+    assert humanize(None) == ""
     # and the same span in working hours, because nothing arrives overnight
     assert working_days(16) == "2 working days at that rate"
     assert working_days(3) == ""

@@ -45,7 +45,7 @@ LIVE_STATUS = {"io live", "io complete"}
 
 # Two things the order header IS authoritative about, because both are
 # deliberate acts rather than a state nobody updated. An RFP was never sold,
-# and cancelling an order cancels what is under it.
+# and canceling an order cancels what is under it.
 DEAD_ORDER_STATUS = re.compile(r"^(Cancelled)$", re.I)
 
 # PAUSED IS NOT DROPPED. IT RAN AND THEN STOPPED.
@@ -56,7 +56,7 @@ DEAD_ORDER_STATUS = re.compile(r"^(Cancelled)$", re.I)
 # days are owed a report.
 #
 # So a paused order is kept and lands on the board on the strength of its
-# dates. If it turns out it did not run at all this month, that is a judgement
+# dates. If it turns out it did not run at all this month, that is a judgment
 # nothing in the export can make - mark the row "no report needed" and it comes
 # off, for that cycle only.
 PAUSED_STATUS = re.compile(r"^(IO\s+)?Paused$", re.I)
@@ -499,7 +499,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # buy is not delivering, so it is not owed on the report - and if
             # its product does turn up, that is not a surprise either.
             # EVERY LINE COMPLETE MEANS THE CAMPAIGN IS OVER. "IO Complete"
-            # is a deliberate act like cancelling, and it is the only thing on
+            # is a deliberate act like canceling, and it is the only thing on
             # the export that says a campaign finished early - order 45911's
             # four line items are all complete while two of them are dated to
             # the end of 2026.

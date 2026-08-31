@@ -1,79 +1,56 @@
-build 2026.08.31-122
+build 2026.08.31-123
 Changed files only.
 
 app/board.py
-app/checks/parser.py
-app/checks/products.py
+app/checks/quality.py
+app/checks/rules.py
+app/checks/served.py
+app/config.py
 app/db.py
+app/delivery.py
 app/flag_catalog.py
+app/folder_match.py
 app/main.py
+app/orders_io.py
+app/orders_s3.py
+app/pace.py
 app/roster.py
+app/roster_sheet.py
+app/templates/base.html
 app/templates/cycle.html
+app/templates/links.html
+app/templates/orders.html
 app/templates/rules_body.html
 app/templates/viewer.html
 app/version.py
 docs/Report-QA-Reporter-Guide.md
 tests/test_board_extras.py
-tests/test_manual_upload.py
+tests/test_pace.py
 
 
-NOT EVERY PRODUCT OWES A REPORT
-==================================
-Three products, and they are not the same case, so they are not handled the
-same way.
+AMERICAN ENGLISH, EVERYWHERE
+===============================
+The one you caught - "a product nothing can recognise" on the Order list page -
+and every other one with it. Fifty-odd words across twenty-one files:
 
-  Website Visitor ID    billed, never on a report. Not expected, and never
-  Additional Billing    flagged as missing. A client running only these is not
-                        owed a report at all.
+  colour/colours/coloured    recognise/recognisable    grey
+  cancelling                 authorise/authorises      labelled
+  judgement                  itemised                  memorised
+  catalogue                  centred                   whilst
+  towards                    afterwards                maths
+  normalise                  organise                  analyse
 
-  Live Chat             IS on a report - it just never brings one with it,
-                        because it is only ever sold alongside another digital
-                        product. So a client running Live Chat and nothing else
-                        owes nothing, and a client running Live Chat with
-                        Display has Live Chat on that Display report.
+Code as well as screen text, because half of what a person reads on screen is
+written in a Python string, and the comments are read by whoever comes to fix
+this next. One function was renamed too - pace.humanise is humanize.
 
-That last distinction is the whole thing: Live Chat cannot CREATE a row, and it
-does belong on a row that already exists. The board builds the rows first and
-adds the ride-alongs after, which is the difference in one sentence.
+WHAT WAS LEFT ALONE, ON PURPOSE: the tests and the fixtures. Those carry client
+names and order statuses copied out of your export - "Cancelled" as the IO
+tool spells it, a client with "Centre" in its name - and correcting somebody
+else's data is a different thing from writing in one voice. The export says
+what it says.
 
-Both of the never-on-a-report ones are in the product map now, so they stop
-showing up as unmapped - they are mapped, and quiet.
+A test walks every .py and .html file under app/ and fails on any of them,
+naming the file, the line and what to write instead. It cannot drift back.
 
-
-AN SEO UPLOAD THAT SKIPS THE CHECKS
-======================================
-On any row waiting for a report there are now two upload controls:
-
-  Upload       as before, and the checks run
-  No checks    stored, named and packaged with the rest, checks not run
-
-An SEO report is not a Digital Marketing Report - no line item grid, no
-creative previews, none of the widgets forty checks are written about - so
-running them produces a screenful of failures that are all about the wrong kind
-of document. A screen of red that is entirely wrong is worse than no screen.
-
-A ROW THAT IS SEO-ONLY DOES IT AUTOMATICALLY. It is the same answer every
-month, and one more box to tick is one more box to forget. "No checks" is there
-for anything else that is not a Digital Marketing Report.
-
-It is a report in every other way: it gets the proper filename, it sits on the
-board, it goes into the partner's Drive or Dropbox folder and into the zip with
-everything else, and it counts toward the partner's percentage once somebody
-signs it off.
-
-WHAT IT WILL NOT DO IS CLAIM IT PASSED. The board says "Checks not run" where
-it would say "All checks passed", carries a "not checked" tag, and the report
-page says so in a box rather than "Nothing to fix.":
-
-  The checks were not run on this report.
-  It was uploaded to sit with the rest and go into the partner's folder - an
-  SEO report, or something else the rules cannot judge. Nothing here says it is
-  right; nobody has looked.
-
-It still needs signing off, which is the honest state: somebody has to say they
-looked at it. "Select the ones that passed" picks it up with the rest, so a
-partner's SEO is one click, not one each.
-
-The rules sheet and the guide both say all of this now.
-
-713 tests pass.
+714 tests pass.

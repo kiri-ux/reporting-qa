@@ -26,7 +26,7 @@ from difflib import SequenceMatcher
 
 # Words that carry no identity. "Summit Media" and "Summit Group" are not
 # distinguished by "media" or "group", so they must not count as the shared
-# token that authorises a match.
+# token that authorizes a match.
 NOISE = {
     "media", "group", "marketing", "advertising", "digital", "broadcasting",
     "communications", "agency", "solutions", "company", "inc", "llc", "co",

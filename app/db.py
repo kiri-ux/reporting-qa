@@ -216,7 +216,7 @@ class Report(Base):
         it from scratch.
         """
         # No findings recorded at all: trust the stored verdict. A report that
-        # could not be parsed has severity "fail" and nothing itemised, and
+        # could not be parsed has severity "fail" and nothing itemized, and
         # computing from an empty list would quietly call it clean.
         if not self.findings:
             return self.severity
@@ -457,7 +457,7 @@ class OrderLine(Base):
 
 
 class KnownLogo(Base):
-    """A page-one logo somebody has passed judgement on.
+    """A page-one logo somebody has passed judgment on.
 
     The check does not guess which mark is the reporting tool's default. It is
     told, once, by a person looking at a picture of the actual crop - because

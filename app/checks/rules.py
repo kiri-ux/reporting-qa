@@ -343,7 +343,7 @@ def check_line_items(ctx) -> list[dict]:
                or "none"),
               ("Left unexplained", f"{unexplained:+,.0f} clicks")]
 
-    # WHICH LINES THE TILE EXCLUDES IS A JUDGEMENT, NOT A FACT.
+    # WHICH LINES THE TILE EXCLUDES IS A JUDGMENT, NOT A FACT.
     #
     # "Retargeting Social Mirror OTT" is a Social Mirror line with an OTT
     # placement, and whether the Clicks tile leaves it out is not something the
@@ -352,7 +352,7 @@ def check_line_items(ctx) -> list[dict]:
     # clicks against a tile of 39,566 - a warning, every month, about one
     # eighth of one percent.
     #
-    # Under a percent of the tile is that judgement being slightly off, and
+    # Under a percent of the tile is that judgment being slightly off, and
     # nothing anybody can act on. Five percent is a line item missing from the
     # pull.
     noise = max(25.0, clicks * 0.01)
@@ -644,7 +644,7 @@ GEOFENCE_WIDGET = "Geo-Fencing Performance"
 # ONLY MOBILE CONQUESTING OWES THE FENCE LIST.
 #
 # Geo-fencing is a targeting method, and most of the catalog can be bought that
-# way - "Bloomsburg Theatre Ensemble - Geo-Fencing Social Mirror" is a Social
+# way - "Bloomsburg Theater Ensemble - Geo-Fencing Social Mirror" is a Social
 # Mirror line. The Geo-Fencing Performance widget belongs to Mobile
 # Conquesting, its Event variant and its Political variant, and to nothing
 # else, so every geo-fenced Social Mirror line on the board was failing for a
@@ -922,7 +922,7 @@ def check_lifetime_goal(ctx) -> list[dict]:
     ordered = ctx.get("ordered") or {}
     # A CANCELLED CAMPAIGN IS NOT SHORT OF ITS GOAL.
     #
-    # Cancelling changes the deal: what a campaign was SOLD to deliver stopped
+    # Canceling changes the deal: what a campaign was SOLD to deliver stopped
     # being what it was asked to deliver on the day somebody stopped it. Sorge
     # Funeral Home's cancelled buy read "finished 100% under its goal, 3,873
     # served against 2,400,000 sold (20 months at the monthly figure on the
@@ -1680,6 +1680,51 @@ def check_zero_completion(ctx) -> list[dict]:
     return out
 
 
+def check_some_zero_completion(ctx) -> list[dict]:
+    """One creative at 0% among nine that watched fine.
+
+    A whole column of zeroes is a broken widget and has its own finding. This
+    is the other half: a single 0.00% is not a metric fault, but it is not
+    something to send a client without having looked at it either.
+    """
+    from .quality import some_zero_completion
+    text = ctx.get("text") or ""
+    page_of = ctx.get("page_of")
+    out = []
+    for at, title, rows in some_zero_completion(text):
+        where = (f"p{page_of(at)} · " if page_of else "") + title
+        out.append(_f("completion_zero_row", "warn",
+                      f"{len(rows)} row{'s' if len(rows) > 1 else ''} at 0% "
+                      f"completion on {title}",
+                      "Nobody finished these once: " + "; ".join(rows[:6])
+                      + (f"; and {len(rows) - 6} more" if len(rows) > 6 else "")
+                      + ".",
+                      where=where))
+    return out
+
+
+def check_preview_links(ctx) -> list[dict]:
+    """Every creative variant has to carry a link to look at it.
+
+    The Social Mirror AI grid prints "Click to View" with the ad's URL behind
+    it, one per variant. A row with that column empty is a variant nobody
+    reading the report can see - and it is the column somebody opens when they
+    want to know what an underperforming variant actually looks like.
+    """
+    from .quality import missing_preview_links
+    text = ctx.get("text") or ""
+    page_of = ctx.get("page_of")
+    out = []
+    for at, title, blank, rows in missing_preview_links(text):
+        where = (f"p{page_of(at)} · " if page_of else "") + title
+        out.append(_f("preview_link_blank", "warn",
+                      f"{blank} of {rows} creatives have no preview link",
+                      "The Preview Link column is empty on those rows, so "
+                      "there is no way to see the ad from the report.",
+                      where=where))
+    return out
+
+
 # Every rule, with the plain-English claim it is making. The label is written
 # as the thing that is TRUE when the check passes, because that is how it is
 # read on the report page - a list of what was verified, not a list of rule
@@ -1710,6 +1755,8 @@ CHECKS: list[tuple] = [
     (check_month_within_lifetime,
      "The month does not report more than the whole campaign"),
     (check_zero_completion, "No completion widget is 0% all the way down"),
+    (check_some_zero_completion, "No video, CTV or audio row sits at 0% watched"),
+    (check_preview_links,   "Every creative variant carries a link to view it"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
@@ -1745,6 +1792,9 @@ SKIP_WHY = {
     "check_rate_ceiling": "no grids on the report",
     "check_completion_rates": "no completion widget on the report",
     "check_zero_completion": "no completion rate column on the report",
+    "check_some_zero_completion": "no video, CTV or audio completion column on "
+                                  "the report",
+    "check_preview_links": "no creative grid with a preview link column",
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
     "check_geofence_names": "no geo-fencing table on the report",
@@ -1818,6 +1868,13 @@ def _rule_applies(rule, ctx) -> bool:
         return "Completion Performance" in (ctx.get("text") or "")
     if name == "check_zero_completion":
         return "Completion Rate" in (ctx.get("text") or "")
+    if name == "check_some_zero_completion":
+        from .quality import WATCHED_WIDGET
+        text = ctx.get("text") or ""
+        return "Completion Rate" in text and bool(WATCHED_WIDGET.search(text))
+    if name == "check_preview_links":
+        from .quality import LINK_HEADER
+        return bool(LINK_HEADER.search(ctx.get("text") or ""))
     if name == "check_devices_known":
         return "Device Performance" in (ctx.get("text") or "")
     if name == "check_required_widgets":
@@ -2027,7 +2084,7 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
         # THE CALLER FIRST. A file uploaded against a board row is judged as
         # that row's client whatever it happens to be called, and TapClicks
         # calls every file you download by hand "Digital Marketing Report.pdf".
-        # Bloomsburg Theatre Ensemble's July slot held seven pages of Benton
+        # Bloomsburg Theater Ensemble's July slot held seven pages of Benton
         # Rodeo and nothing was said, because the filename named nobody.
         "filed_as": (for_client or "").strip() or _filed_client(filename or path.name),
     }

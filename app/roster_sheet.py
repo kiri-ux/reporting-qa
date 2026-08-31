@@ -71,7 +71,7 @@ def fetch_csv() -> bytes:
     THE FIRST TAB, which is what Drive's export gives you. That is the roster
     on this workbook. If it ever moves to a named tab that is not first, the
     gid on the URL is used instead - the same export, addressed by tab, which
-    an authorised request can ask for directly.
+    an authorized request can ask for directly.
     """
     from .delivery import _drive_credentials
 
@@ -136,7 +136,7 @@ def sync_roster(db: Session, *, force: bool = False) -> OrderSync | None:
             hint = ""
         elif "403" in str(exc) or "404" in str(exc):
             hint = (" Share the sheet with the Google account the Drive "
-                    "connection authorised as, with at least Viewer.")
+                    "connection authorized as, with at least Viewer.")
         rec = OrderSync(source=SOURCE, rows=0, ok=False, trigger="sheet",
                         message=f"Breakout sheet: {type(exc).__name__}: {exc}"
                                 f"{hint} The roster already loaded is untouched.")

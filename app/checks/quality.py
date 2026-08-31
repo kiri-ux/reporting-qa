@@ -3,7 +3,7 @@
 The rules in rules.py mostly do arithmetic. These read the words: a strategy
 line the buyer named badly, a grid cell the layout clipped, a conversion still
 carrying the word "retargeting", a widget that printed an error instead of a
-table. None of it is a maths fault, and all of it is visible to whoever the
+table. None of it is a math fault, and all of it is visible to whoever the
 report is sent to.
 """
 from __future__ import annotations
@@ -641,8 +641,8 @@ def is_blank(crop) -> bool:
 
     A FLAT PICTURE IS STILL A PICTURE. Northeast Texas Community College's
     creatives come through as a solid navy band clipped to a few points tall -
-    two or three colours in the whole cell - and the colour count alone called
-    two of them empty when one was. So a cell with few colours is asked the
+    two or three colors in the whole cell - and the color count alone called
+    two of them empty when one was. So a cell with few colors is asked the
     other question: how much of it is NOT the background. Almost all of it, and
     the cell is empty; a quarter of it in navy, and something is printed there.
     """
@@ -828,7 +828,7 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
     the text: a preview that WORKED is an image, and an image is empty in
     pdftotext exactly like an empty cell is. So this looks at the rendered
     pixels of the cell, the same way the ad-screenshot check does - a cell
-    holding a real ad has thousands of colours and an empty one has the table
+    holding a real ad has thousands of colors and an empty one has the table
     fill and its border.
     """
     from .. import proc as _proc
@@ -896,7 +896,7 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
             im = Image.open(hits[0]).convert("RGB")
             # THE WHOLE CELL, not a band around the number.
             #
-            # The row's figures are centred vertically and its picture is not -
+            # The row's figures are centered vertically and its picture is not -
             # a short logo sits at the TOP of a tall row - so a symmetric slice
             # around the number missed it and called the cell empty. Northeast
             # Texas Community College came back "2 previews did not render"

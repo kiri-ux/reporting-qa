@@ -291,7 +291,7 @@ def expected_products(db: Session, client: str, account_ids: str,
         # a report without it is not missing anything.
         if window and (window[0] or window[1]):
             hit = [l for l in hit if _overlaps(l, window[0], window[1])]
-        # A CANCELLED BUY IS STILL ON THE LIFETIME. Cancelling does not mean it
+        # A CANCELLED BUY IS STILL ON THE LIFETIME. Canceling does not mean it
         # never ran - it ran and was stopped - and the lifetime is the report
         # that closes the campaign out, so what it delivered belongs on it.
         return {l.product for l in hit if is_mapped(l.product)}
@@ -443,7 +443,7 @@ def ordered_for(db: Session, client: str, account_ids: str,
         row = out.setdefault(name, {"budget": None, "impressions": None,
                                     "basis": "", "started": None, "days": None,
                                     # A CANCELLED BUY IS NOT SHORT OF ITS GOAL.
-                                    # Cancelling changes the deal - what it was
+                                    # Canceling changes the deal - what it was
                                     # sold to deliver stopped being what it was
                                     # asked to deliver on the day somebody
                                     # stopped it. Sorge's cancelled Meta line
@@ -511,7 +511,7 @@ def ordered_for(db: Session, client: str, account_ids: str,
             #
             # The lifetime panel already does this in reverse - a monthly goal
             # multiplied out across the flight - and says so. Same here: the
-            # total divided by the months it covers, labelled as derived rather
+            # total divided by the months it covers, labeled as derived rather
             # than presented as something the order stated.
             months = _months_of(l)
             for src, key in (("total_budget", "budget"),

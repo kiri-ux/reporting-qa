@@ -6,8 +6,8 @@ only place in the text where the campaign is broken down far enough to attach
 a number to a product. Money comes off the Spend Overview tiles.
 
 ATTRIBUTION IS DELIBERATELY CAUTIOUS. A line item whose name maps to one
-product counts towards that product. One that maps to none, or to more than
-one, counts towards the total and nothing else - because "CTV + Video" served
+product counts toward that product. One that maps to none, or to more than
+one, counts toward the total and nothing else - because "CTV + Video" served
 40,000 impressions says nothing about how they split, and a made-up split is
 worse than an honest "not attributed".
 """

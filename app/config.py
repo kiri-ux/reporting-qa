@@ -125,7 +125,7 @@ class Settings(BaseSettings):
     # orgs now enforce iam.disableServiceAccountKeyCreation, which makes a
     # service account key impossible to create at all.
     #
-    #   OAuth  - a person authorises once and the refresh token is stored here.
+    #   OAuth  - a person authorizes once and the refresh token is stored here.
     #            Files land in the SHARED DRIVE, which owns them, so nothing is
     #            lost if that person leaves.
     #   Key    - a service account JSON key, if the org policy allows one.

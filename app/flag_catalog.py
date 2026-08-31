@@ -9,7 +9,7 @@ ever shows the ones that fired. Forty checks, and no way to see the forty.
 
 The label in `CHECKS` is the claim being made about a passing report - "Line
 item totals add up to the headline". That is the right sentence for a checklist
-on a report and the wrong one for a catalogue: it does not say what a failure
+on a report and the wrong one for a catalog: it does not say what a failure
 looks like or why anybody cares. So each one gets a second line here, written
 the other way round - what goes wrong.
 
@@ -144,7 +144,7 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
 
 
 def flags() -> list[dict]:
-    """[{group, checks: [{label, what}]}] - the catalogue, ready to render.
+    """[{group, checks: [{label, what}]}] - the catalog, ready to render.
 
     The label comes from `CHECKS`, so the two can never drift into saying
     different things about the same rule.

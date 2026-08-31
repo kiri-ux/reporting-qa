@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-122"
-BUILD_NOTES = ("Billed-only products no longer owe a report, and an SEO PDF "
-               "can be uploaded without the checks and still be packaged.")
+BUILD = "2026.08.31-123"
+BUILD_NOTES = ("American English throughout, with a test that keeps it that "
+               "way.")
 
 # ---------------------------------------------------------------------------
 

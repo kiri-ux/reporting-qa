@@ -231,8 +231,8 @@ templates.env.filters["month"] = _month_label
 
 
 def _human_hours(h):
-    from .pace import humanise
-    return humanise(h)
+    from .pace import humanize
+    return humanize(h)
 
 
 def _working_days(h):
@@ -272,7 +272,7 @@ templates.env.filters["sum_orders"] = _sum_orders
 
 
 def _io_kind(status: str) -> str:
-    """Which colour an order status gets on the board.
+    """Which color an order status gets on the board.
 
     Green live, orange paused, red cancelled, blue complete. Read off the
     words rather than off a fixed list, because the export writes "Cancelled"
@@ -304,7 +304,7 @@ templates.env.filters["iokind"] = _io_kind
 # what made people stop doing it.
 #
 # So the name is remembered in a plain cookie on that browser. It is not a
-# security boundary and is not treated as one - nothing is authorised by it.
+# security boundary and is not treated as one - nothing is authorized by it.
 USER_COOKIE = "qa_user"
 USER_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
@@ -1293,7 +1293,7 @@ def _card_options(groups) -> dict:
                 if part:
                     out[key].add(part)
         # THE TWO VALUES A CARD ACTUALLY CARRIES. This offered every report
-        # state - Not received, Errors, In review - and a card is labelled
+        # state - Not received, Errors, In review - and a card is labeled
         # "Good to go" or "Open", so picking any of them matched no card at
         # all and the board went empty.
         out["status"].add("Good to go" if g.ready else "Open")
@@ -2013,7 +2013,7 @@ def ack_finding(report_id: int, request: Request, index: int = Form(...),
     # ACCEPTING THE LAST ONE IS A REVIEW.
     #
     # Going through every finding and ticking it off IS reading the report -
-    # asking for a signature afterwards is asking the same question twice, and
+    # asking for a signature after is asking the same question twice, and
     # the answer was a screen full of reports sitting at "in, unreviewed" that
     # somebody had in fact been through.
     #

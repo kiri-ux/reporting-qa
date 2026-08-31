@@ -106,7 +106,7 @@ def pace(db: Session, period: str, outstanding: int,
 STALLED_RATE = 20.0
 
 
-def humanise(hours: float | None) -> str:
+def humanize(hours: float | None) -> str:
     """"about 4 hours", "about 2 days". Never "3.7 hours"; nobody believes the
     decimal and it makes a rough projection look like a measurement."""
     if hours is None:

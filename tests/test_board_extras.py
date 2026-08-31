@@ -2303,3 +2303,58 @@ def test_a_report_is_not_failed_for_missing_what_can_never_be_on_it():
     got = expected_products(db, "A Client", "9", period="2026-08")
     assert got == {"Display", "Live Chat"}, got
     db.close(); eng.dispose()
+
+
+# Spellings that must not appear anywhere a person reads. The value is what to
+# write instead, so a failure tells you the fix rather than only the fault.
+BRITISH_SPELLINGS = {
+    "colour": "color", "colours": "colors", "coloured": "colored",
+    "colouring": "coloring",
+    "recognise": "recognize", "recognised": "recognized",
+    "recognisable": "recognizable", "recognising": "recognizing",
+    "organise": "organize", "organised": "organized",
+    "normalise": "normalize", "normalised": "normalized",
+    "normalising": "normalizing",
+    "summarise": "summarize", "analyse": "analyze", "analysed": "analyzed",
+    "analysing": "analyzing",
+    "behaviour": "behavior", "labelled": "labeled", "labelling": "labeling",
+    "whilst": "while", "amongst": "among", "catalogue": "catalog",
+    "centre": "center", "centred": "centered", "judgement": "judgment",
+    "acknowledgement": "acknowledgment", "licence": "license",
+    "defence": "defense", "favourite": "favorite", "programme": "program",
+    "apologise": "apologize", "capitalise": "capitalize",
+    "prioritise": "prioritize", "utilise": "utilize", "customise": "customize",
+    "optimise": "optimize", "authorise": "authorize",
+    "authorised": "authorized", "authorises": "authorizes",
+    "realise": "realize", "realised": "realized",
+    "cancelling": "canceling", "travelled": "traveled", "modelled": "modeled",
+    "sceptical": "skeptical", "grey": "gray", "towards": "toward",
+    "afterwards": "afterward", "maths": "math", "humanise": "humanize",
+    "itemised": "itemized", "memorised": "memorized",
+    "enquiry": "inquiry", "speciality": "specialty", "storey": "story",
+    "aluminium": "aluminum", "metre": "meter", "theatre": "theater",
+}
+
+
+def test_everything_is_american_english():
+    """One tool, one spelling. This covers the templates and the code together,
+    because half the words a person reads on screen are written in a Python
+    string and the comments are read by whoever comes to fix this next.
+
+    NOT the tests and not the fixtures: those carry client names and order
+    statuses copied out of the export - "Cancelled", "Centre" - and correcting
+    somebody's data is a different thing entirely.
+    """
+    import re as _re
+    root = Path(__file__).resolve().parents[1] / "app"
+    pattern = _re.compile(r"\b(" + "|".join(BRITISH_SPELLINGS) + r")\b", _re.I)
+    bad = []
+    for path in sorted(root.rglob("*")):
+        if path.suffix not in (".py", ".html") or "__pycache__" in path.parts:
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for m in pattern.finditer(line):
+                word = m.group(0).lower()
+                bad.append(f"{path.name}:{n} {m.group(0)!r} -> "
+                           f"{BRITISH_SPELLINGS[word]!r}")
+    assert not bad, "British spellings:\n  " + "\n  ".join(bad[:25])

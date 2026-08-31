@@ -80,7 +80,7 @@
 {{ l.should|capitalize }}, but this was packaged to {{ l.target|capitalize }}. Package it again once the roster is right - the link above is a {{ l.target|capitalize }} link.">went to {{ l.target|capitalize }}, should be {{ l.should|capitalize }}</span>
             {% elif l.target and l.target != 'local' %}
               {# The icon says where it went. The word said the same thing in
-                 grey, a hundred and fifty times down a page. #}
+                 gray, a hundred and fifty times down a page. #}
               <svg class="tgt big" aria-hidden="true"
                    ><use href="#ic-{{ 'dropbox' if l.target == 'dropbox' else 'drive' }}"/></svg>
               <span class="acct" style="margin-left:-4px">{{ l.target|capitalize }}</span>

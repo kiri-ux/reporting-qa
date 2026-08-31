@@ -128,7 +128,7 @@ def _drive_credentials():
     `iam.disableServiceAccountKeyCreation`, which does not restrict what a key
     can do - it stops the key existing at all. There is no code change that
     gets around that, so the primary path is a refresh token from a person who
-    authorised once. Files uploaded into a SHARED drive are owned by the drive
+    authorized once. Files uploaded into a SHARED drive are owned by the drive
     rather than by that person, so nothing is orphaned when they leave.
     """
     mode = settings.google_auth_mode

@@ -265,7 +265,7 @@ def expected_for(db: Session, period: str,
         # THE LINE ITEMS THEMSELVES, which is where the per-order status lives.
         #
         # Leaving this out of the select is why every order pill on the board
-        # was grey. The code that colours them reads `l.detail`, and on a row
+        # was gray. The code that colors them reads `l.detail`, and on a row
         # selected column by column that attribute simply does not exist - so
         # it read None on every line, said nothing, and never once failed. The
         # tooltip then blamed the export for a status the board had not asked
@@ -338,7 +338,7 @@ def expected_for(db: Session, period: str,
     ride_along: dict[tuple[str, str], set] = {}
     # And what every one of the client's orders says it is, whether or not that
     # order earns a row of its own this cycle. The pills name the whole
-    # campaign, so the colours have to come from the whole campaign too.
+    # campaign, so the colors have to come from the whole campaign too.
     order_status_all: dict[tuple[str, str], dict[str, str]] = {}
 
     # WHEN DID IT STOP? The export never says.
@@ -410,7 +410,7 @@ def expected_for(db: Session, period: str,
         # nor owed a lifetime. But a finished order that overlaps the campaign
         # still gets its id onto the row, because the row is about the whole
         # campaign, not about one order. So the pill was there and its status
-        # was not, and a grey pill said the export had no status on order 51903
+        # was not, and a gray pill said the export had no status on order 51903
         # when the export has one on every row it ships.
         for d in (getattr(l, "detail", None) or []):
             if not isinstance(d, dict):
@@ -424,7 +424,7 @@ def expected_for(db: Session, period: str,
                 seen[oid] = st
         # A CANCELLED BUY OWES A LIFETIME, NOT A MONTHLY.
         #
-        # Cancelling does not mean it never ran - it ran and was stopped - so
+        # Canceling does not mean it never ran - it ran and was stopped - so
         # the campaign still needs closing out. What it does not need is
         # another month's report on a month it was cancelled in.
         gone = bool(getattr(l, "canceled", False))
@@ -636,7 +636,7 @@ def expected_for(db: Session, period: str,
             if product not in e.products:
                 e.products.append(product)
 
-    # AND EVERY PILL GETS ITS COLOUR.
+    # AND EVERY PILL GETS ITS COLOR.
     #
     # Last, because the order ids on a row are not settled until here: the
     # window test above adds orders that never went through the loop which

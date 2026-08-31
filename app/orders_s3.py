@@ -156,7 +156,7 @@ def _name_matches(key: str) -> bool:
     if not want:
         # Unset means take everything, as before - except the serve export,
         # which lives in the same folder and is not an order list. Merged into
-        # the orders it would be 1.4 million rows of nothing recognisable.
+        # the orders it would be 1.4 million rows of nothing recognizable.
         return not is_serving_file(key)
     return _starts(key, want)
 
