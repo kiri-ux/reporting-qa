@@ -314,6 +314,23 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # Product names the map has never seen. Kept rather than dropped, and named
     # on the page so they get added.
     unmapped: dict[str, int] = {}
+    # Clients whose rows were read and thrown away, and why. Capped, because
+    # this rides on the sync record.
+    dropped: dict[str, str] = {}
+
+    def note_drop(market, client, reason):
+        """WHICH CLIENT WAS DROPPED, not just how many rows.
+
+        The counts said "5,796 RFP" and nothing about whose. So "I can see this
+        order in the export and it is not on the board" could only be answered
+        by somebody downloading the export and running the importer over it by
+        hand - which is exactly what it took, twice.
+        """
+        if len(dropped) >= 6000:
+            return
+        k = f"{(market or '').strip()}|{(client or '').strip()}"
+        if k != "|":
+            dropped.setdefault(k, reason)
 
     def skip(reason):
         skipped[reason] = skipped.get(reason, 0) + 1
@@ -361,17 +378,33 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # is five objects where one will do. It is the largest thing this
             # import keeps in memory, and the service was being restarted for
             # exceeding its memory limit.
+            order_status = _txt(r.get("orders_status"))
+            line_status = _txt(r.get("status"))
+            # AND THE STATUS IS PART OF WHAT MAKES A ROW DIFFERENT.
+            #
+            # Two exports of the same order, pulled a week apart, carry the
+            # same order id, the same line id and the same flight - and not
+            # the same status. Keyed without it, the FIRST file read wins and
+            # the second is thrown away as a duplicate, so an order that was
+            # "RFP Pending" on Tuesday and has been IO Live since is dropped
+            # by the RFP filter and never seen again. The older file quietly
+            # beats the newer one, and the page says "Overlapping exports are
+            # fine".
+            #
+            # With the status in the key both rows are read, and the merge
+            # already knows what to do with them: live wins over not-live, and
+            # every status the line has carried is kept in its own words.
             key = (order_id + "\x00" + line_id + "\x00"
                    + str(r.get("start_date") or "")[:10] + "\x00"
-                   + str(r.get("end_date") or "")[:10])
+                   + str(r.get("end_date") or "")[:10] + "\x00"
+                   + order_status + "\x00" + line_status)
             if key in seen:              # daily grain, and exports may overlap
                 dupes += 1
                 continue
             seen.add(key)
 
-            order_status = _txt(r.get("orders_status"))
-            line_status = _txt(r.get("status"))
             client = _txt(r.get("client"))
+            market = _txt(r.get("client_business_unit"))
             product_raw = _txt(r.get("product"))
 
             if not client or not product_raw:
@@ -388,6 +421,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             if (RFP.search(order_status) or RFP.search(line_status)
                     or RFP.search(order_type)
                     or "request for proposal" in order_type.lower()):
+                note_drop(market, client, "the export has it as an RFP, not a live order")
                 skip("RFP"); continue
 
             order_end = _date(r.get("orders_end_date"))
@@ -449,8 +483,12 @@ def import_io_export(db: Session, sources, period: str | None = None,
             canceled = bool(DEAD_LINE_STATUS.match(line_status)
                             or DEAD_ORDER_STATUS.match(order_status))
             if end and end < p_start:
+                note_drop(market, client,
+                          f"every line item ended before {period} started")
                 skip("ended before the period"); continue
             if start and start > horizon:
+                note_drop(market, client,
+                          f"it starts after {period} and the month after it")
                 skip("starts after the period"); continue
             paused = bool(PAUSED_STATUS.match(line_status)
                           or (not line_status
@@ -459,6 +497,11 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 if line_status.lower() in LIVE_STATUS:
                     header_overruled += 1        # the line item rescued it
                 else:
+                    note_drop(market, client,
+                              f"the order status is {order_status or 'blank'}"
+                              + (f" and the line item {line_status}"
+                                 if line_status else "")
+                              + " - not a live order")
                     skip(f"order status {order_status or 'blank'}"
                          + (f", line item {line_status}" if line_status else ""))
                     continue
@@ -734,6 +777,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
             "order_end_is_a_window": window_end,
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
+            "dropped": dropped,
             "unmapped_products": dict(sorted(unmapped.items(),
                                              key=lambda kv: -kv[1])[:20]),
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,

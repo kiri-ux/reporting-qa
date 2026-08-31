@@ -227,12 +227,18 @@ def _resolve_keys(client) -> list[str]:
                     seen.append(f"{key} ({size:,} bytes)")
                     if (key.lower().endswith(DATA_EXTS) and size > 0
                             and _name_matches(key)):
-                        out.append(key)
+                        # NEWEST FIRST. Where two exports carry the same line
+                        # item the first one read wins, so the freshest file
+                        # has to be the one read first - otherwise a stale
+                        # export left in the folder quietly beats the export
+                        # that arrived this morning.
+                        when = obj.get("LastModified")
+                        out.append((-(when.timestamp() if when else 0), key))
                 if not page.get("IsTruncated"):
                     break
                 token = page.get("NextContinuationToken")
         else:
-            out.append(k)
+            out.append((0.0, k))
 
     if not out:
         prefix = ", ".join(settings.orders_s3_keys)
@@ -247,7 +253,9 @@ def _resolve_keys(client) -> list[str]:
             f"but none are usable data files ({', '.join(DATA_EXTS)}, non-empty"
             f"{named}): "
             + "; ".join(seen[:8]) + (" ..." if len(seen) > 8 else ""))
-    return sorted(set(out))
+    # Newest first, then by name so the order is stable when two files carry
+    # the same timestamp.
+    return [k for _when, k in sorted(set(out))]
 
 
 def head() -> tuple[str, dt.datetime | None]:
@@ -440,7 +448,8 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],
                     etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + ".",
                     map_version=mapv, trigger=trigger,
-                    guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {})
+                    guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {},
+                    dropped=(result.get("dropped") or {}) if isinstance(result, dict) else {})
     db.add(rec); db.commit()
     if tmpdir:
         shutil.rmtree(tmpdir, ignore_errors=True)

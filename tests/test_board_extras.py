@@ -2358,3 +2358,95 @@ def test_everything_is_american_english():
                 bad.append(f"{path.name}:{n} {m.group(0)!r} -> "
                            f"{BRITISH_SPELLINGS[word]!r}")
     assert not bad, "British spellings:\n  " + "\n  ".join(bad[:25])
+
+
+def test_an_older_export_does_not_beat_a_newer_one():
+    """Two exports of the same order pulled a week apart carry the same order
+    id, the same line id and the same flight - and not the same status. Keyed
+    without the status, the first file read won and the second was thrown away
+    as a duplicate, so an order that was "RFP Pending" on Tuesday and has been
+    IO Live since was dropped by the RFP filter and never seen again.
+
+    The page said "Overlapping exports are fine" the whole time.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.orders_io import import_io_export
+
+    header = ("client_business_unit,orders_status,client,orders_id,product,id,"
+              "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    stale = ("Local Media San Diego,RFP Pending Approval,CBF Productions,55377,"
+             "Social Mirror Ads,134401,RFP Pending Approval,2026-08-24,"
+             "2026-08-24,2026-09-24,2026-09-24\n")
+    fresh = ("Local Media San Diego,IO Live,CBF Productions,55377,"
+             "Social Mirror Ads,134401,IO Live,2026-08-24,"
+             "2026-08-24,2026-09-24,2026-09-24\n")
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    # The stale file first, which is the case that used to lose the order.
+    import_io_export(db, (header + stale + fresh).encode(), period="2026-08")
+    got = db.query(OrderLine).all()
+    assert len(got) == 1, "the live row is read, not swallowed as a duplicate"
+    assert got[0].client == "CBF Productions"
+    assert got[0].live is True
+
+    # And the same rows in the other order come out the same way.
+    db.query(OrderLine).delete(); db.commit()
+    import_io_export(db, (header + fresh + stale).encode(), period="2026-08")
+    assert db.query(OrderLine).count() == 1
+    db.close(); eng.dispose()
+
+
+def test_a_dropped_client_is_recorded_by_name():
+    """The skip counts said "5,796 RFP" and nothing about whose, so "I can see
+    this order in the export and it is not on the board" could only be answered
+    by downloading the export and running the importer over it by hand. It took
+    exactly that, twice."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base
+    from app.orders_io import import_io_export
+
+    header = ("client_business_unit,orders_status,client,orders_id,product,id,"
+              "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rfp = ("Zoey Advertising,RFP Pending Approval,Safe Harbor- Auburn Workshop,"
+           "55963,Social Mirror Ads,135993,RFP Pending Approval,2026-08-28,"
+           "2026-08-28,2026-09-08,2026-09-08\n")
+    old = ("Zoey Advertising,IO Complete,An Old Client,111,Display,222,"
+           "IO Complete,2024-01-01,2024-01-01,2024-06-30,2024-06-30\n")
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    res = import_io_export(db, (header + rfp + old).encode(), period="2026-08")
+    dropped = res["dropped"]
+    assert dropped["Zoey Advertising|Safe Harbor- Auburn Workshop"] == \
+        "the export has it as an RFP, not a live order"
+    assert "ended before 2026-08 started" in \
+        dropped["Zoey Advertising|An Old Client"]
+    db.close(); eng.dispose()
+
+
+def test_the_lookup_says_it_was_read_and_dropped():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderSync
+    from app.lookup import find
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderSync(source="s3://bucket/orders-db-all-1.csv", ok=True, rows=10,
+                     dropped={"Zoey Advertising|Safe Harbor- Auburn Workshop":
+                              "the export has it as an RFP, not a live order"}))
+    db.commit()
+
+    got = find(db, "Safe Harbor- Auburn Workshop", "2026-08")
+    joined = " ".join(got["notes"])
+    assert "Not in the order list loaded here." in joined
+    assert "IT IS IN THE EXPORT AND WAS DROPPED ON THE WAY IN" in joined
+    assert "RFP" in joined
+    db.close(); eng.dispose()

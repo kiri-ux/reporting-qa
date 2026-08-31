@@ -52,6 +52,26 @@
         <button class="btn" type="submit" {% if running %}disabled{% endif %}>
           {{ 'Sync running...' if running else 'Sync from S3 now' }}</button>
       </form>
+      {# WHICH FILES IT ACTUALLY READ. "s3://bucket/folder/" is what was asked
+         for; this is what was there. A stale export left in the folder beside
+         the current one is invisible otherwise, and it is the first thing to
+         check when the board disagrees with the IO tool. #}
+      {% if sync and sync.ok and sync.source and '/' in sync.source %}
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer;font-size:13px;color:var(--muted)">
+            Files this sync read</summary>
+          <ul class="rules" style="margin-top:6px">
+            {% for f in sync.source.split(', ') %}
+              <li class="acct">{{ f.rsplit('/', 1)[-1] }}</li>
+            {% endfor %}
+          </ul>
+          <p class="sub" style="font-size:12.5px;margin:6px 0 0">
+            Read newest first. Where two exports carry the same line item the
+            newer one wins, so an old file left in the folder cannot beat the
+            one that arrived this morning - but it can still add clients that
+            have since been removed.</p>
+        </details>
+      {% endif %}
       <p class="sub" style="font-size:13px;margin-top:12px">
         Every incoming batch refreshes this first, so a campaign added or ended since the
         last run is already reflected. Files are only re-downloaded when something changes,

@@ -646,6 +646,13 @@ class OrderSync(Base):
     ok: Mapped[bool] = mapped_column(Boolean, default=True)
     message: Mapped[str] = mapped_column(Text, default="")
     guidance: Mapped[dict] = mapped_column(JSON, default=dict)
+    # WHICH CLIENTS WERE READ AND THROWN AWAY, AND WHY. {"Partner|Client": why}
+    #
+    # The skip counts said "5,796 RFP" and nothing about whose, so "I can see
+    # this order in the export and it is not on the board" could only be
+    # answered by downloading the export and running the importer over it by
+    # hand. It took exactly that, twice, before this existed.
+    dropped: Mapped[dict] = mapped_column(JSON, default=dict)
     # running | done. A sync downloads ~850 MB and parses a couple of million
     # rows; holding a browser request open for that is what made the page hang.
     state: Mapped[str] = mapped_column(String(16), default="done")
@@ -683,6 +690,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_lines", "product", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("reports", "products", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "guidance", "JSON"),
+    ("order_sync", "dropped", "JSON"),
     ("batches", "last_report_at", "TIMESTAMP"),
     ("reports", "review_state", "VARCHAR(16) DEFAULT 'new' NOT NULL"),
     ("reports", "reviewed_by", "VARCHAR(128) DEFAULT '' NOT NULL"),

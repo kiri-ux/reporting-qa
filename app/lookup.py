@@ -28,6 +28,23 @@ def _key(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+def _why_dropped(db: Session, q: str, k: str) -> list[str]:
+    """Reasons the last sync gave for throwing this client's rows away."""
+    sync = db.scalars(select(OrderSync)
+                      .where(OrderSync.source.like("s3://%"), OrderSync.ok.is_(True))
+                      .order_by(desc(OrderSync.id)).limit(1)).first()
+    if not sync or not getattr(sync, "dropped", None) or not k:
+        return []
+    out = []
+    for pair, why in sync.dropped.items():
+        market, _, client = pair.partition("|")
+        if k in _key(client) or (client and _key(client) in k):
+            out.append(f"{market} / {client} - {why}")
+        if len(out) >= 3:
+            break
+    return out
+
+
 def find(db: Session, q: str, period: str) -> dict:
     """What the tool knows about an order id, a client, or a partner."""
     q = (q or "").strip()
@@ -84,6 +101,12 @@ def find(db: Session, q: str, period: str) -> dict:
                     "board reads it as a client with no order behind it.")
     else:
         out["notes"].append("Not in the order list loaded here.")
+        # WAS IT READ AND THROWN AWAY? That is a completely different answer
+        # from "the file never had it", and until now the only way to tell was
+        # to download the export and run the importer over it by hand.
+        for why in _why_dropped(db, q, k):
+            out["notes"].append("IT IS IN THE EXPORT AND WAS DROPPED ON THE WAY "
+                                "IN: " + why)
         if out["served"]:
             for r in out["served"][:3]:
                 have = db.scalars(select(OrderLine).where(
