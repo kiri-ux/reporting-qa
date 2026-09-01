@@ -166,17 +166,19 @@ class Expected:
         return f"{_key(self.market)}|{_key(self.client)}|{self.kind}"
 
 
-def _has_seo(e) -> bool:
-    """Is there any SEO on this row?
-
-    Deliberately ANY and not ALL. A client running SEO beside a digital product
-    should be in the serving file on the strength of the digital half - but if
-    they are not, taking the row off loses the SEO report they are still owed,
-    and losing a report is the expensive mistake here. The row stays and
-    somebody looks at it.
-    """
-    from .partners import is_seo
-    return any(is_seo(p) for p in (getattr(e, "products", None) or []) if p)
+# SEO IS NOT IN THE SERVING FILE AND NEVER WILL BE.
+#
+# The serving file is ad delivery - impressions against days - and SEO is not
+# served, so an SEO client is absent from it every month for ever. The rule
+# that reads absence as "it did not run" took Whitley's whole SEO list off the
+# board with "not in the serving file at all - either it did not run, or the
+# serving file spells this client differently".
+#
+# There is no special case for it below, and there does not need to be: an SEO
+# row never enters `ran_days`, which is the only thing the serving rules read.
+# Splitting SEO onto its own row is what makes that true, and it is a better
+# answer than exempting a mixed client's whole row - the digital half of that
+# buy IS served, and is still judged.
 
 
 def _reporter_names(idx: dict) -> set:
@@ -541,6 +543,18 @@ def expected_for(db: Session, period: str,
         for kind, wanted in (("monthly", live), ("lifetime", life)):
             if not wanted:
                 continue
+            # SEO GETS ITS OWN ROW. IT IS A DIFFERENT FILE.
+            #
+            # A client running SEO and Social Mirror was one row expecting one
+            # PDF, and the two reports are not one PDF - the SEO one is pulled
+            # by hand outside TapClicks and arrives on its own. One row meant
+            # whichever file turned up first satisfied the row and the other
+            # was never asked for again.
+            #
+            # Only the monthly splits. A lifetime is a campaign finishing, and
+            # SEO is not sold as a flight that ends.
+            if kind == "monthly" and is_seo(l.product):
+                kind = "seo"
             k = (_key(l.market), _key(l.client), kind)
             e = rows.get(k)
             if e is None:
@@ -555,7 +569,10 @@ def expected_for(db: Session, period: str,
             # SEO belongs to a different person, and whichever line happened to
             # be read first decided the buyer - so a client with one SEO line
             # showed its SEO manager as the buyer for everything it ran.
-            if is_seo(l.product):
+            if kind == "seo":
+                # Its own row, so its own owner - no contest to settle.
+                e.buyer = l.buyer or e.buyer
+            elif is_seo(l.product):
                 seo_buyer.setdefault(k, True)
             else:
                 if seo_buyer.get(k, True):     # nothing real on it yet
@@ -741,15 +758,6 @@ def expected_for(db: Session, period: str,
         else:
             days = served.get((k[0], k[1]), 0)
             if (k[0], k[1]) not in served:
-                # ABSENCE IS NOT A NUMBER, AND FOR SEO IT IS NOT EVEN A HINT.
-                #
-                # A client the file DOES mention with two days served is a
-                # fact, and that rule stays on for everybody. Absence is the
-                # ambiguous one, and for a row carrying SEO it is not even
-                # ambiguous - SEO is never in that file, so its absence says
-                # nothing at all about whether the work was done.
-                if _has_seo(rows[k]):
-                    continue
                 unmatched.add((k[0], k[1]))
         if days < MIN_DAYS_IN_MONTH:
             short[k] = days
@@ -995,7 +1003,12 @@ def _attach_reports(db: Session, period: str,
             by_account[(a, e.kind)] = e
 
     for r in reports:
-        kind = "lifetime" if r.is_lifetime else "monthly"
+        # THREE ROWS A CLIENT CAN OWE, not two. An SEO report is a different
+        # file from the digital one, so it has to find the SEO row - otherwise
+        # whichever file arrived first satisfied whichever row it matched and
+        # the other was never asked for again.
+        kind = ("lifetime" if r.is_lifetime else
+                "seo" if getattr(r, "is_seo", False) else "monthly")
         hit = None
         for a in ACC.findall(r.account_ids or "") or []:
             hit = by_account.get((a, kind))
@@ -1003,6 +1016,24 @@ def _attach_reports(db: Session, period: str,
                 break
         if hit is None:
             hit = by_client.get((_key(r.client), kind))
+        # EVERY REPORT THAT ALREADY EXISTS PREDATES THE SPLIT.
+        #
+        # `is_seo` is new, so every report in the database is stamped False -
+        # including the SEO ones already uploaded this cycle, whose row is now
+        # the SEO row. Without this they would all come off the board as never
+        # delivered, on a deploy that was supposed to be about tidying.
+        #
+        # So a monthly with no monthly row falls back to the SEO row and the
+        # other way round. It only ever fires when the row it wanted is not
+        # there, so a client owed both keeps both files apart.
+        if hit is None and kind in ("monthly", "seo"):
+            other = "seo" if kind == "monthly" else "monthly"
+            for a in ACC.findall(r.account_ids or "") or []:
+                hit = by_account.get((a, other))
+                if hit:
+                    break
+            if hit is None:
+                hit = by_client.get((_key(r.client), other))
         if hit is not None and hit.report is None:
             hit.report = r
 

@@ -1,5 +1,5 @@
-build 2026.09.01-139
-Changed files only. Includes 131 through 138 - install this one, not all nine.
+build 2026.09.01-141
+Changed files only. Everything since 130 - install this one.
 
 app/audit.py
 app/board.py
@@ -10,6 +10,7 @@ app/orders_s3.py
 app/partners.py
 app/templates/audit.html
 app/templates/base.html
+app/templates/cycle.html
 app/templates/why_slow.html      (new)
 app/timing.py                    (new)
 app/version.py
@@ -17,85 +18,77 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-SEO WAS BEING JUDGED BY A FILE IT CAN NEVER BE IN
-=================================================
-The serving file is ad delivery - impressions against days. SEO is not served,
-so an SEO client is absent from that file every month, for ever. And the rule
-that reads absence as "it did not run" then took the whole of Whitley's SEO
-list off the board with:
+SEO IS ITS OWN ROW NOW
+======================
+A client running SEO and Social Mirror was one row expecting one PDF, and those
+are two files. Whichever one arrived first satisfied the row and the other was
+never asked for again.
 
-  not in the serving file at all - either it did not run, or the serving file
-  spells this client differently to the order export
+They are two rows. The products go with the right one - the SEO row says SEO
+and the monthly row says Social Mirror Ads, rather than both saying both and
+telling the reporter to pull each file twice. The SEO row carries an SEO tag,
+its checks are skipped automatically, and both files go into the partner's
+folder as before.
 
-Fourteen rows of one wrong answer, and the answer blamed the file for being
-misspelled. Those reports are pulled by hand and uploaded; the row on the cycle
-list is the only thing telling anybody they are owed, and it was being deleted.
+Three things had to move with it:
 
-ANY SEO ON THE ROW, NOT ONLY SEO. A client running SEO beside a digital product
-should be in the serving file on the strength of the digital half - but if they
-are not, taking the row off loses the SEO report they are still owed too, and
-losing a report is the expensive mistake here. The row stays and somebody looks.
-
-WHAT DID NOT CHANGE: a client the file DOES mention, with two days served, is a
-fact, and that rule is still on for everybody including SEO. Absence is the
-ambiguous signal; a number is not.
-
-
-AND THE BIG ONE - IT WAS BLAMING THE EXPORT FOR ORDERS THAT ARE IN IT
-=====================================================================
-53437 is in your export. Three line items, all IO Paused, all ended 30 June.
-54338 is in it too, complete. The tool said "it is not in the export, or the
-export is out of date" about both.
-
-Here is why, and it explains most of what you have shown me today. The import
-keeps the line items that touch the cycle and throws the rest away. The list
-check then looked at what survived, found nothing, and concluded the export had
-never heard of the order. An empty table read as an empty feed.
-
-That is the worst shape a wrong answer can take here, because it accuses
-somebody else's system and sends whoever is on the page to go and check a file
-that is perfectly correct. You have now done that several times today.
-
-The import already writes down why it drops each client's rows - 2,337 of them
-on your Aug 31 file - and only the lookup page ever read it. The list check
-asks now. Against your real export those rows read:
-
-  RegistryAZ           the export has this order and every line on it ended
-                       2026-06-30, before August 2026
-  Dive Into Space      the export has this order and every line on it ended
-                       2026-07-31, before August 2026
-  Buffalo Wings        the only lines on this order that reach this cycle are
-                       canceled. The other one is not canceled - it ended
-                       2026-07-31, before August 2026
-
-"Not in the export" is now only said when nothing was recorded about the client
-at all - which is what it always meant.
-
-THE NOTE THAT DID NOT MAKE SENSE was mine, and you were right. I had bolted the
-drop reason onto the end with a dash and it read as two half-sentences that had
-never met. Every reason is written as a predicate now so the sentence around it
-holds together, and there is a test that fails if a new one is added that does
-not. Dates read as August 2026 rather than 2026-08.
+  * YOUR TRACKER ALREADY WRITES IT. "WHIT - Jefferson Hospital #54153 SEO" is
+    read as an SEO row now, the same way LIFETIME is. Read as a monthly it
+    would hunt for a digital row that does not exist and report every SEO
+    client on your list as missing from the board.
+  * EVERY REPORT ALREADY UPLOADED predates the split and is stamped "not SEO",
+    including the SEO ones sitting on this cycle. Without a fallback they would
+    all have come off the board as never delivered, on a deploy meant to tidy.
+    A report falls back to the other row when the one it wanted is not there,
+    and only then - so a client owed both keeps their two files apart.
+  * THE SERVING FILE RULE got simpler and better. An SEO row never enters the
+    day counting at all now, so there is no special case to maintain - and a
+    mixed client's DIGITAL row is still judged by the serving file, which it
+    should be, while their SEO row is not.
 
 
-STILL OUTSTANDING: AUDIOGO AND BROWN BAG NY
-===========================================
-Those two are still "not in the export", and against the 148 MB file I have
-that is all I can honestly say - neither string appears in it anywhere. You can
-see them in the 830 MB file. Deploy this, let the sync run, and look at the
-sync line: it now names every file it read with its size. If it lists the
-830 MB one and those rows still say "not in the export", send me that line and
-it is a real bug rather than my copy being half an export.
+THE LOGAN AT DEER VALLEY - THE REASON BELONGED TO A DIFFERENT ORDER
+===================================================================
+It said "every line on it is an RFP" about order 51554, whose two lines are
+IO Complete and ended on 15 May.
+
+The import records why it drops rows keyed on the CLIENT, and keeps the first
+reason it sees. A client with two orders has two reasons, and yesterday's fix
+printed whichever came first as though it were about the order you asked about.
+That is worse than no reason: it is wrong and it reads certain.
+
+Drops are recorded per order id now, and the order's own reason wins. A row
+with no order id on it still gets the client-level answer, which is the best
+that can be said about it.
 
 
-FROM 136 AND 137
-================
-The sync was merging every export ever dropped in that S3 folder into today's -
-gigabytes an hour of downloading and parsing, and a board that could be half
-today and half a fortnight back. It reads the newest run and anything within
-twelve hours of it now, which keeps 07:32 and 07:34 together and drops
-yesterday. It says which files it read, with sizes, and how many older ones it
-walked past. And it checks the disk has room before it starts, rather than
-dying halfway through with an error about the file.
+ON YOUR QUESTION ABOUT THE DATE RANGE - YES, NARROW IT
+======================================================
+The 830 MB file covers 3.6.21 to 8.26.26 at daily grain. Of the 213,394 rows in
+the copy I have, the tool keeps 2,427. Everything else is read and thrown away
+every morning.
 
-778 tests pass.
+NARROWING IT LOSES NOTHING, and the reason is worth knowing: every row carries
+its line item's real start and end dates, so a campaign running 2021 to 2026
+still reports those dates from a row dated last week. You are trimming the
+daily grain, not the campaigns.
+
+WHAT IT MUST STILL COVER. A line item needs at least one day inside the range
+to appear at all, so the range has to reach back far enough to include:
+
+  * campaigns that ended recently - lifetimes are owed the month a campaign
+    finishes, and "ended 30 June, before August" is only sayable if those rows
+    are in the file
+  * campaigns starting soon, for next month's headroom
+
+Six months back and two months forward covers both comfortably. For a
+1 September run that is 1 March to 31 October. On what I can see that would be
+something like a tenth of the current file.
+
+AND THE TOOL NOW SHOUTS IF YOU CUT IT TOO FAR. The import replaces the order
+list outright, so a narrower export takes clients off the board silently -
+nothing anywhere said a number went down. A sync that comes back with more than
+a quarter fewer order lines than the last one now says so on the sync record,
+in those words, with both counts. Try a narrower range and check that line.
+
+784 tests pass.

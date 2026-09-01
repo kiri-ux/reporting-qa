@@ -348,15 +348,29 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # Clients whose rows were read and thrown away, and why. Capped, because
     # this rides on the sync record.
     dropped: dict[str, str] = {}
+    # AND THE SAME THING KEYED ON THE ORDER, which is the question people
+    # actually ask. See note_drop.
+    dropped_orders: dict[str, str] = {}
 
-    def note_drop(market, client, reason):
+    def note_drop(market, client, reason, order_id=""):
         """WHICH CLIENT WAS DROPPED, not just how many rows.
 
         The counts said "5,796 RFP" and nothing about whose. So "I can see this
         order in the export and it is not on the board" could only be answered
         by somebody downloading the export and running the importer over it by
         hand - which is exactly what it took, twice.
+
+        AND WHICH ORDER. The client-level answer is the first reason recorded
+        for that client, and a client with two orders has two reasons - The
+        Logan at Deer Valley was told "every line on it is an RFP" about order
+        51554, whose two lines are IO Complete and ended on 15 May. The RFP
+        belonged to a different order of theirs. A reason about the client,
+        printed as a reason about the order, is worse than no reason: it is
+        wrong in a way that reads authoritative.
         """
+        oid = (order_id or "").strip()
+        if oid and len(dropped_orders) < 20000:
+            dropped_orders.setdefault(oid, reason)
         if len(dropped) >= 6000:
             return
         k = f"{(market or '').strip()}|{(client or '').strip()}"
@@ -453,7 +467,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     or RFP.search(order_type)
                     or "request for proposal" in order_type.lower()):
                 note_drop(market, client,
-                          "is an RFP in the export, not a live order")
+                          "is an RFP, not a live order", order_id)
                 skip("RFP"); continue
 
             order_end = _date(r.get("orders_end_date"))
@@ -526,12 +540,12 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # simply finished.
             if end and end < p_start:
                 note_drop(market, client, f"ended {end.isoformat()}, before "
-                                          f"{month_label(period)}")
+                                          f"{month_label(period)}", order_id)
                 skip("ended before the period"); continue
             if start and start > horizon:
                 note_drop(market, client, f"starts {start.isoformat()}, after "
                                           f"{month_label(period)} and the "
-                                          f"month after it")
+                                          f"month after it", order_id)
                 skip("starts after the period"); continue
             paused = bool(PAUSED_STATUS.match(line_status)
                           or (not line_status
@@ -544,7 +558,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                               f"has order status {order_status or 'blank'}"
                               + (f" and line item status {line_status}"
                                  if line_status else "")
-                              + ", which is not a live order")
+                              + ", which is not a live order", order_id)
                     skip(f"order status {order_status or 'blank'}"
                          + (f", line item {line_status}" if line_status else ""))
                     continue
@@ -820,7 +834,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
             "order_end_is_a_window": window_end,
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
-            "dropped": dropped,
+            "dropped": dropped, "dropped_orders": dropped_orders,
             "unmapped_products": dict(sorted(unmapped.items(),
                                              key=lambda kv: -kv[1])[:20]),
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,

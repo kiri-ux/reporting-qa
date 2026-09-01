@@ -122,7 +122,7 @@
         {% set c = calls.get((ref, r.kind)) %}
         <tr data-ref="{{ ref }}"{% if c and c.call == 'rejected' %} style="opacity:.55"{% endif %}>
           <td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
-          <td class="nw"><span class="pill p-{{ 'info' if r.kind == 'lifetime' else 'month' }}">{{ r.kind }}</span></td>
+          <td class="nw"><span class="pill p-{{ 'month' if r.kind == 'monthly' else 'info' }}">{{ 'SEO' if r.kind == 'seo' else r.kind }}</span></td>
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
           {# THE CATCH-ALL IS THE ONLY "I DO NOT KNOW" ON THIS PAGE, and it
              looked exactly like the forty answers that are the rules working.
@@ -192,7 +192,7 @@
       <tbody>{% for e in result.extra %}
         <tr><td>{{ e.market }}</td>
           <td><b>{{ e.client }}</b></td>
-          <td><span class="pill p-{{ 'info' if e.kind == 'lifetime' else 'month' }}">{{ e.kind }}</span></td>
+          <td><span class="pill p-{{ 'month' if e.kind == 'monthly' else 'info' }}">{{ 'SEO' if e.kind == 'seo' else e.kind }}</span></td>
           <td class="mono nw">{{ e.account_ids }}</td>
           <td><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td></tr>
       {% endfor %}</tbody></table></div>

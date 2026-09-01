@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-139"
-BUILD_NOTES = ("SEO is no longer judged by a serving file it can never be "
-               "in, and the list check stopped blaming the export.")
+BUILD = "2026.09.01-141"
+BUILD_NOTES = ("SEO gets its own row, because it is its own file - and a "
+               "much smaller export than last time now says so.")
 
 # ---------------------------------------------------------------------------
 

@@ -488,6 +488,25 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
                      prev, etag, lm)
 
     n = result["kept"] if isinstance(result, dict) else result
+    # DID THIS EXPORT JUST LOSE HALF THE BOARD?
+    #
+    # The import replaces the order list outright, so a narrower export - a
+    # date range someone tightened to make the files smaller, a partner's feed
+    # that failed this morning - silently takes clients off the board. Nothing
+    # anywhere says a number went down; the board simply has fewer rows on it,
+    # which looks exactly like a quiet month.
+    #
+    # This cannot refuse the import: by the time the count is known the replace
+    # has happened. It can refuse to be quiet about it.
+    warn = ""
+    was = getattr(prev, "rows", 0) or 0
+    if was >= 200 and n < was * 0.75:
+        warn = (f" WORTH A LOOK: this is {was - n} fewer order lines than the "
+                f"last sync ({was} to {n}, down {(was - n) / was * 100:.0f}%). "
+                f"That is a big drop for one morning. Either a lot of campaigns "
+                f"ended at once, or this export covers less than the last one "
+                f"did - a narrower date range, or a partner's file missing from "
+                f"the folder.")
     msg = f"Imported {n} order lines"
     if isinstance(result, dict):
         msg += f" from {result.get('files', 1)} file(s), {result.get('rows_read', 0):,} rows read"
@@ -525,10 +544,12 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
                 if len(was) > 1 and len(now) > 1 and was[-1] != now[-1]
                 else ", re-read because the product mapping changed")
     rec = OrderSync(source=(f"s3://{settings.orders_s3_bucket}/" + ", ".join(keys))[:512],
-                    etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + ".",
+                    etag=etag[:255], last_modified=lm, rows=n, ok=True, message=msg + "." + warn,
                     map_version=mapv, trigger=trigger,
                     guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {},
-                    dropped=(result.get("dropped") or {}) if isinstance(result, dict) else {})
+                    dropped=(result.get("dropped") or {}) if isinstance(result, dict) else {},
+                    dropped_orders=(result.get("dropped_orders") or {})
+                    if isinstance(result, dict) else {})
     db.add(rec); db.commit()
     if tmpdir:
         shutil.rmtree(tmpdir, ignore_errors=True)

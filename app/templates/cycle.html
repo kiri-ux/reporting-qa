@@ -565,6 +565,14 @@
             <span class="pendtag"
                   data-tip="This campaign was cancelled or completed early. It last delivered on {{ e.stopped_on }}, so pull the report to that date rather than the {{ e.ends_on }} on the order.">stopped {{ e.stopped_on }}</span>
           {% endif %}
+          {% elif e.kind == 'seo' %}
+          {# ITS OWN ROW BECAUSE IT IS ITS OWN FILE. Pulled outside TapClicks
+             and uploaded by hand, so a client running SEO alongside a digital
+             product is owed two PDFs this month rather than one - and on one
+             row, whichever file arrived first satisfied it and the other was
+             never asked for again. #}
+          <span class="pill p-info"
+                data-tip="SEO is a separate report, pulled outside TapClicks and uploaded here. It goes into the partner's folder with the rest, and the checks are not run on it.">SEO</span>
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
         <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch">

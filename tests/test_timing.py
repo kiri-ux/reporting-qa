@@ -557,7 +557,7 @@ def test_two_reasons_are_given_and_a_third_is_not(live):
     _c, db, db_mod, _t = live
     db.add(db_mod.OrderSync(
         source="s3://bucket/orders/", ok=True, state="done",
-        dropped={"a|Mixed Co": "is an RFP in the export, not a live order",
+        dropped={"a|Mixed Co": "is an RFP, not a live order",
                  "b|Mixed Co": "ended 2026-06-30, before August 2026",
                  "c|Mixed Co": "starts 2026-11-01, after August 2026"}))
     db.commit()
@@ -648,6 +648,112 @@ def test_a_client_the_serving_file_does_mention_is_still_judged_by_it(live):
     rows = board.expected_for(db, "2026-08", skipped=skipped)
     assert "Barely Ran" not in {e.client for e in rows}
     assert any("2 days" in s["why"] for s in skipped if s["client"] == "Barely Ran")
+
+
+def test_seo_gets_its_own_row_beside_the_digital_one(live):
+    """A client running SEO and Social Mirror is owed two files, not one.
+
+    On a single row whichever PDF arrived first satisfied the row and the other
+    was never asked for again.
+    """
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    D = dt.date.fromisoformat
+    db.add(db_mod.Partner(partner="Whitley Media"))
+    for prod in ("Search Engine Optimization", "Social Mirror Ads"):
+        db.add(db_mod.OrderLine(
+            market="Whitley Media", client="Mixed Client", account_ids="54154",
+            product=prod, starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.commit()
+    from app import board
+    rows = {(e.client, e.kind): e for e in board.expected_for(db, "2026-08")}
+    assert ("Mixed Client", "seo") in rows
+    assert ("Mixed Client", "monthly") in rows
+    # AND THE PRODUCTS GO WITH THE RIGHT ROW. Two rows both saying "SEO,
+    # Social Mirror Ads" would tell the reporter to pull each file twice.
+    assert rows[("Mixed Client", "seo")].products == ["Search Engine Optimization"]
+    assert rows[("Mixed Client", "monthly")].products == ["Social Mirror Ads"]
+
+
+def test_the_tracker_reads_an_seo_row_as_an_seo_row(live):
+    """It writes SEO the way it writes LIFETIME. Read as a monthly it would
+    hunt for a digital row that does not exist and call every SEO client
+    missing from the board."""
+    from app.audit import parse_list
+    got = {(r["client"], r["kind"]) for r in parse_list(
+        "WHIT - Jefferson Hospital #54153 SEO\nWHIT - Mixed Client #54154")}
+    assert got == {("Jefferson Hospital", "seo"), ("Mixed Client", "monthly")}
+
+
+def test_reports_from_before_the_split_still_find_their_row(live):
+    """`is_seo` is new, so every report already in the database is stamped
+    False - including the SEO ones uploaded this cycle. Without a fallback they
+    would all come off the board as never delivered, on a deploy that was
+    supposed to be about tidying."""
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    D = dt.date.fromisoformat
+    db.add(db_mod.OrderLine(
+        market="Whitley Media", client="Jefferson Hospital", account_ids="54153",
+        product="Search Engine Optimization",
+        starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    b = db_mod.Batch(market="Whitley Media", period="2026-08")
+    db.add(b); db.flush()
+    db.add(db_mod.Report(batch_id=b.id, client="Jefferson Hospital",
+                         account_ids="54153", market="Whitley Media",
+                         period="2026-08", filename="jh.pdf", findings=[],
+                         acked=[], is_seo=False))
+    db.commit()
+    from app import board
+    rows = {(e.client, e.kind): e for e in board.expected_for(db, "2026-08")}
+    assert rows[("Jefferson Hospital", "seo")].report is not None
+
+
+def test_a_much_smaller_export_than_last_time_says_so(live):
+    """The import replaces the order list outright, so a narrower export takes
+    clients off the board and nothing anywhere says a number went down."""
+    from app.orders_s3 import _sync
+    # The warning text is what matters, and it is built from two counts.
+    import inspect
+    src = inspect.getsource(_sync)
+    assert "WORTH A LOOK" in src
+    assert "0.75" in src
+
+
+def test_the_order_gets_its_own_reason_not_the_clients(live):
+    """The client map holds the FIRST reason recorded for that client, and a
+    client with two orders has two.
+
+    The Logan at Deer Valley was told "every line on it is an RFP" about order
+    51554, whose two lines are IO Complete and ended on 15 May. The RFP was a
+    different order of theirs. A reason about the client, printed as a reason
+    about the order, is worse than none: it is wrong and it reads certain.
+    """
+    _c, db, db_mod, _t = live
+    db.add(db_mod.OrderSync(
+        source="s3://b/orders/", ok=True, state="done",
+        dropped={"MCM|The Logan at Deer Valley": "is an RFP, not a live order"},
+        dropped_orders={"51999": "is an RFP, not a live order",
+                        "51554": "ended 2026-05-15, before August 2026"}))
+    db.commit()
+    from app.audit import _why
+    row = {"client": "The Logan at Deer Valley", "kind": "monthly"}
+    assert "ended 2026-05-15" in _why(db, "2026-08", {**row, "ids": ["51554"]}, [])
+    assert "RFP" in _why(db, "2026-08", {**row, "ids": ["51999"]}, [])
+
+
+def test_the_client_reason_is_still_there_for_a_row_with_no_id(live):
+    """Half the tracker's rows carry no order id at all."""
+    _c, db, db_mod, _t = live
+    db.add(db_mod.OrderSync(
+        source="s3://b/orders/", ok=True, state="done",
+        dropped={"MCM|Nameless Co": "ended 2026-05-15, before August 2026"},
+        dropped_orders={}))
+    db.commit()
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Nameless Co", "ids": [],
+                               "kind": "monthly"}, [])
+    assert "ended 2026-05-15" in why
 
 
 def test_the_rail_has_a_way_in():

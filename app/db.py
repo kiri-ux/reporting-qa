@@ -97,6 +97,13 @@ class Report(Base):
     # folder, with the checks not run rather than run and lied about. The board
     # says "not checked" on the row; nothing pretends it passed.
     checks_skipped: Mapped[bool] = mapped_column(Boolean, default=False)
+    # WHICH ROW THIS BELONGS TO, when a client is owed two reports this month.
+    #
+    # SEO is a separate file pulled outside TapClicks, so a client running SEO
+    # and Social Mirror is owed two PDFs and has two rows on the board. Without
+    # a mark on the report itself the first file to arrive satisfied whichever
+    # row it matched and the other one was never asked for again.
+    is_seo: Mapped[bool] = mapped_column(Boolean, default=False)
     review_state: Mapped[str] = mapped_column(String(16), default="new")
     # new | reviewed | waived | needs_fix
     reviewed_by: Mapped[str] = mapped_column(String(128), default="")
@@ -764,6 +771,15 @@ class OrderSync(Base):
     # answered by downloading the export and running the importer over it by
     # hand. It took exactly that, twice, before this existed.
     dropped: Mapped[dict] = mapped_column(JSON, default=dict)
+    # THE SAME THING KEYED ON THE ORDER ID: {"51554": why}.
+    #
+    # The client-level map holds the FIRST reason recorded for that client, and
+    # a client with two orders has two reasons. The Logan at Deer Valley was
+    # told "every line on it is an RFP" about order 51554, whose two lines are
+    # IO Complete and ended on 15 May - the RFP was a different order of
+    # theirs. A reason about the client printed as a reason about the order is
+    # worse than no reason: it is wrong in a way that reads authoritative.
+    dropped_orders: Mapped[dict] = mapped_column(JSON, default=dict)
     # running | done. A sync downloads ~850 MB and parses a couple of million
     # rows; holding a browser request open for that is what made the page hang.
     state: Mapped[str] = mapped_column(String(16), default="done")
@@ -818,6 +834,8 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "pending_at", "TIMESTAMP"),
     ("reports", "checks", "JSON"),
     ("reports", "checks_skipped", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("reports", "is_seo", "BOOLEAN DEFAULT FALSE NOT NULL"),
+    ("order_sync", "dropped_orders", "JSON"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
     ("order_sync", "started_at", "TIMESTAMP"),

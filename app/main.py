@@ -1709,7 +1709,7 @@ def mark_row_done(request: Request, period: str = Form(...),
     """
     from .board import _key as board_key
     from .db import CycleDone
-    if kind not in {"monthly", "lifetime"}:
+    if kind not in {"monthly", "lifetime", "seo"}:
         raise HTTPException(400, "unknown report kind")
     back = request.headers.get("referer") or f"/cycle?period={period}"
     ident = f"{board_key(market)}|{board_key(client)}|{kind}"
@@ -2514,14 +2514,27 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     # So it is stored, named and packaged like anything else, with the checks
     # not run rather than run and disbelieved. Ticked automatically when the
     # row is SEO-only, so nobody has to remember.
-    no_checks = (skip_checks == "1") or _is_seo_row(db, client, account_ids,
-                                                    period)
+    # THE ROW SAYS SO NOW, rather than the client's whole product list.
+    #
+    # SEO has its own row on the board, so a client running SEO and Social
+    # Mirror has two, and "is every product this client runs SEO" was the wrong
+    # question - it answered no for exactly the mixed client whose SEO upload
+    # most needs the checks skipped.
+    # An SEO-only client's row IS the SEO row, so an upload against it belongs
+    # there whichever kind the form happened to post.
+    is_seo_report = kind == "seo" or _is_seo_row(db, client, account_ids, period)
+    no_checks = (skip_checks == "1") or is_seo_report
 
     # If one already exists for this client and cycle, this is a replacement
     # and should go through the route that knows how to handle one.
     from .ingest import _rkey
     for r in db.scalars(select(Report).where(Report.period == period)).all():
         if bool(r.is_lifetime) != is_lifetime:
+            continue
+        # A client's SEO report and their digital one are two files, not two
+        # copies of one. Matching across them made the second upload look like
+        # a replacement for the first.
+        if bool(getattr(r, "is_seo", False)) != is_seo_report:
             continue
         ids, _n = _rkey(client, account_ids, is_lifetime)
         mine, _m = _rkey(r.client, r.account_ids, bool(r.is_lifetime))
@@ -2607,7 +2620,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         products=", ".join(result.get("products") or []),
         severity=result["severity"], findings=result["findings"],
         checks=result.get("checks") or [], acked=[], review_state="new",
-        checks_skipped=no_checks,
+        checks_skipped=no_checks, is_seo=is_seo_report,
         rules_version=_rv())
     db.add(rep)
     db.flush()

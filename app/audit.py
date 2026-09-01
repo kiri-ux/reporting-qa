@@ -16,6 +16,7 @@ import re
 
 ORDER_ID = re.compile(r"#\s*(\d{4,6})")
 LIFETIME = re.compile(r"\blifetime\b", re.I)
+SEO = re.compile(r"\bSEO\b", re.I)
 
 # "7MOU SG - Benton Rodeo #53915 LIFETIME" -> "Benton Rodeo". The prefix is the
 # market's own shorthand, which is not what the client is called anywhere else.
@@ -88,8 +89,17 @@ def parse_list(text: str) -> list[dict]:
         # A header row names columns, not campaigns.
         if _key(name) in ("campaign", "client", "market", "list", "campaigns"):
             continue
+        # SEO IS ITS OWN ROW ON THE BOARD, so it has to be its own row here.
+        #
+        # The tracker writes it the same way it writes LIFETIME - "WHIT -
+        # Jefferson Hospital #54153 SEO" - and the word was already being
+        # stripped off the client's name. Read as a monthly it would look for a
+        # digital row that does not exist and report every SEO client on the
+        # list as missing from the board.
+        kind = ("lifetime" if LIFETIME.search(best)
+                else "seo" if SEO.search(best) else "monthly")
         out.append({"raw": best, "client": name, "ids": ids, "prefix": prefix,
-                    "kind": "lifetime" if LIFETIME.search(best) else "monthly"})
+                    "kind": kind})
     return out
 
 
@@ -187,7 +197,7 @@ def _partners_missing_entirely(listed: list, missing: list) -> list:
         key=lambda d: (-d["rows"], d["prefix"]))
 
 
-def _dropped_reason(db, names: set) -> str:
+def _dropped_reason(db, names: set, ids=()) -> str:
     """What the last sync said about rows it threw away for this client.
 
     The import records why each client's rows were dropped, and until now only
@@ -201,7 +211,7 @@ def _dropped_reason(db, names: set) -> str:
     # clients on the real export, and this is asked for every missing row.
     idx = getattr(db, "_qa_drop_index", None)
     if idx is None:
-        idx = {}
+        idx, by_order = {}, {}
         try:
             from sqlalchemy import desc, select
             from .db import OrderSync
@@ -213,12 +223,22 @@ def _dropped_reason(db, names: set) -> str:
                 k = _key(client)
                 if k and why not in idx.setdefault(k, []):
                     idx[k].append(why)
+            by_order = dict(getattr(sync, "dropped_orders", None) or {})
         except Exception:                                    # noqa: BLE001
-            idx = {}
+            idx, by_order = {}, {}
         try:
             db._qa_drop_index = idx      # for the life of this request only
+            db._qa_drop_orders = by_order
         except Exception:                                    # noqa: BLE001
             pass
+    # THE ORDER'S OWN REASON FIRST. The client map holds the first reason
+    # recorded for that client, and a client with two orders has two - which is
+    # how order 51554 came to be called an RFP when its two lines are IO
+    # Complete and ended in May.
+    for oid in (ids or ()):
+        why = (getattr(db, "_qa_drop_orders", None) or {}).get(str(oid).strip())
+        if why:
+            return why
     for name in names:
         why = idx.get(name)
         if why:
@@ -318,7 +338,7 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
         # which is somebody else's system, and sends whoever is on this page to
         # go and check a file that is perfectly correct. The import already
         # writes down why it threw each client's rows away. This asks.
-        gone = _dropped_reason(db, {want})
+        gone = _dropped_reason(db, {want}, row["ids"])
         if gone:
             return ("the export has this order and every line on it " + gone)
         return ("no order line carries "
@@ -338,7 +358,8 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
     # So the claim is scoped to what it is actually about, and the reason the
     # others went is added when the last sync recorded one.
     if all(getattr(l, "canceled", False) for l in lines):
-        gone = _dropped_reason(db, {_key(l.client or "") for l in lines} | {want})
+        gone = _dropped_reason(db, {_key(l.client or "") for l in lines} | {want},
+                               row["ids"])
         if gone:
             # WRITTEN, NOT GLUED. The first version of this bolted the drop
             # reason onto the end with a dash and read as two half-sentences
