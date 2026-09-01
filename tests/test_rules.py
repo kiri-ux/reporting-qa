@@ -3043,3 +3043,84 @@ def test_a_zero_on_a_display_grid_is_not_a_completion_problem():
             " Acme_300x250.gif             5,614            98.69%\n\n"
             " Acme_728x90.gif              5,525             0.00%\n")
     assert check_some_zero_completion({"text": text, "page_of": lambda _o: 8}) == []
+
+
+def test_a_verdict_can_be_taken_back_without_becoming_needs_fix(tmp_path, monkeypatch):
+    """Undoing a sign-off must leave NO mark, not the opposite mark.
+
+    The only two buttons on offer were the two other verdicts, so the way out
+    of a Reviewed was to press Needs fix - which says the report is wrong and
+    holds it out of the partner's folder. Clearing has to put the row back to
+    unlooked-at: no state, no name, no timestamp, and no "a re-check pulled
+    your sign-off" message, which is a different thing that happened.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'u.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from fastapi.testclient import TestClient
+    from app import main as mmod
+    importlib.reload(mmod)
+
+    db = db_mod.SessionLocal()
+    b = db_mod.Batch(market="M", period="2026-08"); db.add(b); db.flush()
+    r = db_mod.Report(batch_id=b.id, client="C", period="2026-08", severity="pass",
+                      filename="C.pdf", findings=[], acked=[])
+    db.add(r); db.commit()
+    rid = r.id
+
+    c = TestClient(mmod.app)
+    c.post(f"/report/{rid}/review", data={"state": "reviewed", "who": "Jacob"},
+           follow_redirects=False)
+    db.expire_all()
+    r = db.get(db_mod.Report, rid)
+    assert r.review_state == "reviewed" and r.reviewed_by == "Jacob"
+
+    c.post(f"/report/{rid}/review", data={"state": "new"}, follow_redirects=False)
+    db.expire_all()
+    r = db.get(db_mod.Report, rid)
+    assert r.review_state == "new"
+    assert r.reviewed_by == "", "the name stayed on a row with no verdict"
+    assert r.reviewed_at is None
+    assert r.signoff_pulled == "", "clearing read as a re-check pulling the sign-off"
+    assert r.signed_off_by == ""
+    assert not r.protected, "a cleared report is still being guarded as signed off"
+
+
+def test_a_verdict_can_be_taken_back_in_bulk(tmp_path, monkeypatch):
+    """And without anybody having to type a name to un-say something."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'ub.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from fastapi.testclient import TestClient
+    from app import main as mmod
+    importlib.reload(mmod)
+
+    db = db_mod.SessionLocal()
+    b = db_mod.Batch(market="M", period="2026-08"); db.add(b); db.flush()
+    ids = []
+    for n in ("A", "B"):
+        r = db_mod.Report(batch_id=b.id, client=n, period="2026-08",
+                          severity="pass", filename=f"{n}.pdf", findings=[],
+                          acked=[], review_state="needs_fix", reviewed_by="Jacob",
+                          reviewed_at=dt.datetime.utcnow())
+        db.add(r); db.flush(); ids.append(r.id)
+    db.commit()
+
+    c = TestClient(mmod.app)
+    c.post("/reports/review", data={"ids": ids, "state": "new"},
+           follow_redirects=False)
+    db.expire_all()
+    for i in ids:
+        r = db.get(db_mod.Report, i)
+        assert r.review_state == "new" and r.reviewed_by == ""
+        assert r.reviewed_at is None

@@ -238,6 +238,13 @@
                   title="Send it as it is. The failure stays on the record, but this report stops holding up the partner's link."
                   {% if rep.review_state == 'waived' %}disabled{% endif %}>Waive</button>
         {% endif %}
+        {# TAKING A VERDICT BACK IS NOT ANOTHER VERDICT. The only way to undo a
+           Reviewed was to press Needs fix, which says something different
+           about the report and keeps it out of the partner's folder. #}
+        {% if rep.review_state and rep.review_state != 'new' %}
+          <button class="mini" name="state" value="new"
+                  data-tip="Take the verdict off and leave the report with no tag at all, as though nobody had looked at it yet. It is not marked wrong and it is not kept out of the partner's folder.">Clear verdict</button>
+        {% endif %}
       </div>
     </form>
 

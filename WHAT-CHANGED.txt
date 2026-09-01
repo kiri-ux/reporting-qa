@@ -1,68 +1,37 @@
-build 2026.09.01-156
+build 2026.09.01-157
 Changed files only. Everything since 130 - install this one.
 
-app/audit.py
-app/board.py
-app/db.py
 app/main.py
-app/orders_io.py
-app/orders_s3.py
-app/partners.py
-app/templates/audit.html
-app/templates/base.html
 app/templates/cycle.html
-app/templates/orders.html
-app/templates/report_orders_body.html
-app/templates/why_slow.html      (new)
-app/timing.py                    (new)
+app/templates/viewer.html
 app/version.py
-tests/test_board_extras.py
-tests/test_timing.py             (new)
+tests/test_rules.py
 
 
-TEXOMA ROOFING - A LIFETIME ROW WAS GETTING A MONTHLY'S REASON
-==============================================================
-"Live Chat does not earn a report on its own" is a true sentence about the
-wrong question. Whether a product earns a report of its own decides a MONTHLY.
-A lifetime is about a campaign finishing, and that check was running first and
-answering for it.
+UNDOING A REVIEWED
+==================
+There was no way to take a verdict off. The buttons were Reviewed, Needs fix
+and Waive, so undoing a Reviewed meant pressing Needs fix - which is not
+"never mind", it is "this report is wrong", and it holds the report out of the
+partner's folder.
 
-It does not run on a lifetime row now. And the lifetime answer says the second
-half, which was the part you actually wanted:
+Clear verdict does what you asked for: the row goes back to unlooked-at. No
+state, no name, no timestamp. It is not marked wrong and nothing is held back.
 
-  order 54263 does not end until 2026-12-31 and overlaps order 54900, which is
-  still running - so this client is reported on that order rather than closed
-  out here
+Three places:
 
-"Runs past the window" said why no lifetime is owed and not what happens
-instead. The client IS on the cycle; they are on the other order's report. It
-names that order.
+  - the report page, beside Reviewed / Needs fix / Waive
+  - each cycle row, as the same undo arrow the row overrides use, showing only
+    on a row that already carries a verdict
+  - the bulk bar at the top of the cycle list, for a batch of them
 
+Clearing does not need a name typed in. Every other state records who said so;
+this one is the absence of anybody having said anything, and leaving a name on
+a row with no verdict reads as signed by somebody.
 
-SPEND PRODUCTS USE THE AD SPEND FIELDS
-======================================
-They already did for the monthly figure - PPC, Meta, LinkedIn and Performance
-Max each have their own spend column and the reader has always preferred it.
-What was missing was the campaign total on those lines, for the same reason
-impressions were missing: nothing was multiplying by the months.
+One thing it deliberately does NOT do: it will not produce the "Jacob signed
+this off, then a re-check found a failure" line. That message is for a
+sign-off the system pulled on its own, which is a different event, and it
+turns up on exactly the same fields.
 
-Now it is. 425 of the 440 spend-only order lines carry a campaign total spend
-where they had none, worked out the same way - monthly spend times
-months_running - and only ever filling a blank, never replacing a total the
-export gave.
-
-  PEO Brokers Network-SE   SEO        $700/mo    x51    $35,700
-  Blessing Health System   LinkedIn   $1,750/mo  x44    $77,000
-
-Impressions and spend now both come from the order's own month count.
-
-
-WHERE THE NUMBERS STAND
-=======================
-  2,427  order lines
-  1,846  have a monthly impressions figure - all 1,846 now have a campaign total
-  2,286  have a monthly spend figure - 2,271 now have a campaign total
-      3  line items where months_running and the budgets disagree, named on the
-         sync record so somebody can look
-
-808 tests pass.
+810 tests pass.

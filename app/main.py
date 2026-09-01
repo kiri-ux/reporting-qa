@@ -1667,18 +1667,20 @@ def review_many(request: Request, ids: list[int] = Form([]), state: str = Form("
     you a one-click way to take only the ones that passed.
     """
     back = request.headers.get("referer") or "/cycle"
-    if state not in {"reviewed", "waived", "needs_fix"}:
+    if state not in {"new", "reviewed", "waived", "needs_fix"}:
         raise HTTPException(400, "unknown review state")
     name = who.strip() or whoami(request)
-    if not name or not ids:
+    # CLEARING A VERDICT NEEDS NOBODY'S NAME. Every other state records who
+    # said so; this one is the absence of anybody having said anything.
+    if (not name and state != "new") or not ids:
         return RedirectResponse(back, status_code=303)
     now = dt.datetime.utcnow()
     # Capped. The form is built from what is on screen, but the request is not
     # trusted to be, and a runaway list should not become a table scan.
     for rep in db.scalars(select(Report).where(Report.id.in_(ids[:500]))).all():
         rep.review_state = state
-        rep.reviewed_by = name
-        rep.reviewed_at = now
+        rep.reviewed_by = "" if state == "new" else name
+        rep.reviewed_at = None if state == "new" else now
         rep.signoff_cleared_at = None
     db.commit()
     resp = RedirectResponse(back, status_code=303)
@@ -1701,7 +1703,14 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     # somebody sitting next to them.
     name = who.strip() or whoami(request)
     rep.review_state = state
-    rep.reviewed_by = name
+    # BACK TO "NEW" MEANS BACK TO NOTHING.
+    #
+    # This is how a sign-off is taken back, and the only two verdicts on offer
+    # were the two other verdicts - so undoing a Reviewed meant marking it
+    # Needs fix, which is a different statement about the report and keeps it
+    # out of the partner's folder. Leaving the name on a row with no verdict is
+    # the same mistake one field along: it reads as signed by somebody.
+    rep.reviewed_by = "" if state == "new" else name
     rep.reviewed_at = dt.datetime.utcnow() if state != "new" else None
     rep.signoff_cleared_at = None        # a fresh decision, whatever went before
     db.commit()

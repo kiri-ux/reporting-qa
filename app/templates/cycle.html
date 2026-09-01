@@ -752,6 +752,16 @@
                 <svg aria-hidden="true"><use href="#ic-waive"/></svg>
                 <span class="sr">Waive</span></button>
             {% endif %}
+            {# TAKING A VERDICT BACK IS NOT ANOTHER VERDICT. The only way out of
+               a Reviewed was to press Needs fix, which says something else
+               about the report and keeps it out of the partner's folder. This
+               leaves no mark at all - the row goes back to unlooked-at. #}
+            {% if e.report.review_state and e.report.review_state != 'new' %}
+              <button class="iconbtn" name="state" value="new"
+                      data-tip="Clear the verdict - back to no mark at all, as though nobody had looked at it yet. It is not marked wrong and it is not held out of the partner's folder.">
+                <svg aria-hidden="true"><use href="#ic-undo"/></svg>
+                <span class="sr">Clear verdict</span></button>
+            {% endif %}
           </form>
           {% else %}<span class="empty">—</span>{% endif %}
         </td>
@@ -827,6 +837,11 @@
     {% endif %}
     <button class="mini ok" name="state" value="reviewed" disabled>Mark reviewed</button>
     <button class="mini warn" name="state" value="needs_fix" disabled>Mark needs fix</button>
+    {# TAKING A VERDICT BACK IS NOT ANOTHER VERDICT. Undoing a Reviewed meant
+       pressing Needs fix, which says something else entirely about the report
+       and keeps it out of the partner's folder. #}
+    <button class="mini" name="state" value="new" disabled
+            data-tip="Take the verdict off these and leave them with no tag at all. They are not marked wrong and they are not kept out of the partner's folder.">Clear verdict</button>
   </form>
 
   <div class="tw"><table id="tbl-cycle">
