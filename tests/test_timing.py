@@ -91,6 +91,58 @@ def test_the_page_loads_and_names_the_worker(live):
     assert "Restarts" in r.text
 
 
+def test_drawing_the_page_is_timed_separately_from_building_it(live):
+    """A four second page with a fifth of a second in the database is one of
+    two completely different problems, and the total cannot tell them apart."""
+    client, _db, _dbm, timing = live
+    client.get("/cycle")
+    row = next(r for r in timing.recent(50) if r["path"] == "/cycle")
+    assert "render" in row["phases"], "the template render was not timed"
+    assert row["phases"]["render"] <= row["seconds"] + 0.01
+
+
+def test_a_slow_page_writes_itself_down(live):
+    """The in-memory list needs somebody at the screen while it happens, on the
+    right one of the two workers. This one can be read the next day."""
+    client, db, db_mod, _t = live
+    from app import main as mmod
+    mmod.SLOW_SECONDS = 0.0              # everything counts as slow
+    try:
+        client.get("/cycle")
+    finally:
+        mmod.SLOW_SECONDS = 3.0
+    rows = db.query(db_mod.SlowRequest).all()
+    assert rows, "a slow page left no record"
+    assert rows[0].path == "/cycle"
+    assert rows[0].queries > 0
+    assert "render" in (rows[0].phases or {})
+
+
+def test_the_health_check_is_never_logged_as_slow(live):
+    """The platform pings it every few seconds. A bad minute would write a
+    thousand rows and bury the pages somebody actually waited on."""
+    client, db, db_mod, _t = live
+    from app import main as mmod
+    mmod.SLOW_SECONDS = 0.0
+    try:
+        client.get("/healthz")
+    finally:
+        mmod.SLOW_SECONDS = 3.0
+    assert db.query(db_mod.SlowRequest).count() == 0
+
+
+def test_a_busy_box_says_the_number_might_not_be_ours(live):
+    """Inside a container the load average is usually the whole host's."""
+    _c, _db, _dbm, timing = live
+    real = timing.load_average
+    timing.load_average = lambda: (7.5, 7.4, 7.2)
+    try:
+        lines = timing.verdict(boots_last_hour=0)
+    finally:
+        timing.load_average = real
+    assert any("neighbors" in line for line in lines)
+
+
 def test_the_worker_wrote_down_that_it_started(live):
     client, db, db_mod, _t = live
     # The startup hook only fires when the client is entered as a context
@@ -148,6 +200,67 @@ def test_a_big_upload_is_not_read_into_memory_three_times(tmp_path):
     small = list(orders_io._open_source((header + body[:200]).encode()))
     assert len(big) == 160000
     assert big[0] == small[0], "the two paths read the same row differently"
+
+
+def test_shortening_a_name_still_knows_a_real_clash():
+    """The clash set is worked out once per roster now instead of once per
+    label. Same answers, or the saving is worthless."""
+    from app.partners import first_name
+    roster = {"Katie Oxman", "Katie Reed", "Lauren Hunter", "Todd Beal"}
+    assert first_name("Katie Oxman", roster) == "Katie Oxman"
+    assert first_name("Lauren Hunter", roster) == "Lauren"
+    # A DIFFERENT ROSTER MUST GET A DIFFERENT ANSWER. The cache is keyed on the
+    # set of names, so this is the test that catches it being keyed on nothing.
+    assert first_name("Katie Oxman", {"Katie Oxman", "Lauren Hunter"}) == "Katie"
+
+
+def test_one_spelling_and_a_full_name_is_one_person_not_a_clash():
+    from app.partners import first_name
+    assert first_name("Lauren Hunter", {"Lauren", "Lauren Hunter"}) == "Lauren"
+
+
+def test_the_audit_page_folds_away_its_wall_of_partner_names():
+    """A hundred and thirty-seven names sat between the heading and the tables
+    people open that page to read."""
+    from pathlib import Path
+    tpl = (Path(__file__).resolve().parents[1] / "app" / "templates"
+           / "audit.html").read_text()
+    assert "Which partners" in tpl
+    assert "the list covers: <b>" not in tpl
+
+
+def test_a_live_chat_only_order_is_explained_as_a_rule_not_a_missing_line(live):
+    """It said "not in the export, or the export is out of date" for an order
+    sitting right there, which sends somebody to check a feed for nothing."""
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    D = dt.date.fromisoformat
+    db.add(db_mod.OrderLine(market="7 Mountains Media", client="7 Mountains Media",
+                            account_ids="26734", product="Live Chat",
+                            starts_on=D("2026-08-01"), ends_on=D("2026-12-31")))
+    db.commit()
+    from app.audit import _why
+    why = _why(db, "2026-08",
+               {"client": "7 Mountains Media", "ids": ["26734"],
+                "kind": "monthly"}, [])
+    assert "does not earn a report on its own" in why
+    assert "not in the export" not in why
+
+
+def test_an_order_that_really_is_missing_still_says_so(live):
+    _c, db, _dbm, _t = live
+    from app.audit import _why
+    why = _why(db, "2026-08",
+               {"client": "Nobody", "ids": ["99999"], "kind": "monthly"}, [])
+    assert "not in the export" in why
+
+
+def test_check_a_list_says_which_cycle_it_is_deciding(live):
+    """Every approve and reject on it is scoped to one cycle and nothing on the
+    page said so, which makes a reject look permanent."""
+    client, _db, _dbm, _t = live
+    text = client.get("/cycle/audit").text
+    assert "Everything on this page is" in text
 
 
 def test_the_rail_has_a_way_in():

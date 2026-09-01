@@ -74,7 +74,7 @@
   </p>
   {% if recent %}
     <div class="tw"><table id="tbl-req">
-      <thead><tr><th>When</th><th>Page</th><th>Seconds</th>
+      <thead><tr><th>When</th><th>Page</th><th>Seconds</th><th>Drawing it</th>
         <th>In the database</th><th>Queries</th><th>Status</th></tr></thead>
       <tbody>
         {% for r in recent %}
@@ -82,6 +82,7 @@
             <td class="nw">{{ ((now.timestamp() - r.at) / 60)|int }} min ago</td>
             <td>{{ r.method }} {{ r.path }}</td>
             <td class="nw">{{ r.seconds }}</td>
+            <td class="nw">{{ (r.phases or {}).get('render', '-') }}</td>
             <td class="nw">{{ r.db_seconds }}</td>
             <td class="nw">{{ r.queries }}</td>
             <td class="nw">{{ r.status }}</td>
@@ -91,6 +92,46 @@
     </table></div>
   {% else %}
     <p class="empty">Nothing recorded yet. Load a page or two and come back.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Every page that took more than {{ slow_seconds|int }} seconds</h2>
+  <p class="sub">
+    Kept in the database, from both workers, so a slow page can be looked at
+    the next day rather than caught in the act. "Where the time went" splits it
+    between building the rows and drawing them - those are two different
+    problems with two different fixes, and a total cannot tell them apart.
+  </p>
+  {% if slow %}
+    <div class="tw"><table id="tbl-slow">
+      <thead><tr><th>When</th><th>Page</th><th>Seconds</th>
+        <th>Where the time went</th><th>Database</th><th>Queries</th>
+        <th>Box load</th><th>Memory</th></tr></thead>
+      <tbody>
+        {% for s in slow %}
+          <tr>
+            <td class="nw">{{ s.at.strftime('%b %d, %H:%M') }}</td>
+            <td>{{ s.path }}</td>
+            <td class="nw"><b>{{ s.seconds }}</b></td>
+            <td class="nw">
+              {% set r = (s.phases or {}).get('render') %}
+              {% if r %}drawing {{ r }}s, working out {{ (s.seconds - r - s.db_seconds)|round(2) }}s
+              {% else %}not recorded{% endif %}
+            </td>
+            <td class="nw">{{ s.db_seconds }}</td>
+            <td class="nw">{{ s.queries }}</td>
+            <td class="nw">{{ s.load1 }}</td>
+            <td class="nw">{{ s.rss_mb|round(0)|int }} MB</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="empty">
+      No page has taken more than {{ slow_seconds|int }} seconds since this
+      went in. If one does, it lands here on its own.
+    </p>
   {% endif %}
 </section>
 

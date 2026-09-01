@@ -18,6 +18,7 @@ import csv
 import io
 import logging
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import select
@@ -310,6 +311,30 @@ def resolve_owner(partner: Partner | None, product: str,
 
 # ------------------------------------------------------------- how a name reads
 #
+# WORKED OUT ONCE PER ROSTER, NOT ONCE PER LABEL.
+#
+# Which first names are ambiguous is a fact about the roster - about 150 names
+# - and it does not change between one label on the board and the next. It was
+# being worked out again on every single call: 1,964 calls to shorten a name on
+# one page, each one splitting and re-grouping the whole roster to answer the
+# same question. That was a third of the time the board spent building itself.
+#
+# The key is the set of names, so a roster change gets a different answer for
+# free and nothing has to remember to clear anything.
+@lru_cache(maxsize=64)
+def _clashing_first_names(others: frozenset) -> frozenset:
+    surnames: dict[str, set] = {}
+    for o in others:
+        for bit in re.split(r"\s*(?:,|&|/| and )\s*", (o or "").strip()):
+            bit = bit.strip()
+            if not bit:
+                continue
+            head, _, rest = bit.partition(" ")
+            if rest.strip():
+                surnames.setdefault(head.lower(), set()).add(rest.strip().lower())
+    return frozenset(k for k, v in surnames.items() if len(v) > 1)
+
+
 # FIRST NAMES. That is how everybody here refers to each other, and a board
 # already carrying a partner, a client, five product chips and a date range does
 # not need "Lauren Hunter" where "Lauren" is what anybody would say out loud.
@@ -341,18 +366,7 @@ def first_name(value: str, others: set | None = None) -> str:
     # two ways - and treating that as a clash leaves the workload page showing
     # Lauren and Lauren Hunter as two rows with half the work each, which is
     # the thing this is meant to fix.
-    clash = set()
-    if others:
-        surnames: dict[str, set] = {}
-        for o in others:
-            for bit in re.split(r"\s*(?:,|&|/| and )\s*", (o or "").strip()):
-                bit = bit.strip()
-                if not bit:
-                    continue
-                head, _, rest = bit.partition(" ")
-                if rest.strip():
-                    surnames.setdefault(head.lower(), set()).add(rest.strip().lower())
-        clash = {k for k, v in surnames.items() if len(v) > 1}
+    clash = _clashing_first_names(frozenset(others)) if others else frozenset()
 
     out = []
     for p in parts:

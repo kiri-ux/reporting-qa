@@ -3,11 +3,17 @@
 {% block where %}Check a list{% endblock %}
 {% block body %}
 <div>
-  <h1>Check the board against a list</h1>
+  <h1>Check the board against a list · {{ period|month }}</h1>
   <p class="sub">The board is built from the order export. The reporting
   tracker is built from what people know. This says where the two disagree.
   Paste the campaign column - or the whole sheet, it reads the column with the
   order ids in it.</p>
+  {# EVERY CONTROL ON THIS PAGE IS SCOPED TO ONE CYCLE and nothing on it said
+     so, which makes an approve look like a permanent decision about a client
+     rather than a decision about August. #}
+  <p class="sub"><b>Everything on this page is {{ period|month }}.</b> The list
+  you paste, and every approve and reject on it, applies to this cycle only -
+  next month starts clean.</p>
 </div>
 
 <section>
@@ -59,12 +65,20 @@
       {{ result.listed|length }} on the list · {{ result.board|length }} on the board</h2>
   </div>
   <p class="sub">{{ result.matched|length }} match.
-    {% if result.covered %}Comparing against
+    {% if result.covered %}Comparing against the
       {{ result.covered|length }} partner{{ 's' if result.covered|length != 1 }}
-      the list covers: <b>{{ result.covered|join(', ') }}</b>.
+      the list covers.
     {% else %}Nothing on the list matched a board row, so the whole cycle is
       shown below.{% endif %}
     {% if group %}Narrowed to <b>{{ group }}</b>.{% endif %}</p>
+  {# THE NAMES ARE WORTH HAVING AND NOT WORTH A HUNDRED AND THIRTY-SEVEN NAMES
+     OF WALL between the heading and the tables people came here to read. #}
+  {% if result.covered %}
+    <details class="fold">
+      <summary>Which partners</summary>
+      <p class="sub">{{ result.covered|join(', ') }}</p>
+    </details>
+  {% endif %}
 
   <h2 style="margin-top:22px">On the list, not on the board ({{ result.missing|length }})</h2>
   {% if result.missing %}

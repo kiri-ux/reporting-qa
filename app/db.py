@@ -626,6 +626,37 @@ class WorkerBoot(Base):
     service: Mapped[str] = mapped_column(String(64), default="")
 
 
+class SlowRequest(Base):
+    """One page that took long enough for somebody to notice.
+
+    The in-memory list on the diagnostics page only holds what THIS worker has
+    answered since it started, which means catching a slow page needs somebody
+    at the screen while it happens, on the right one of the two workers. This
+    is the same reading, kept, so the question can be answered the next day
+    instead of the next time it happens.
+
+    `phases` is where the seconds went - building the rows against rendering
+    them - because a four-second page with two tenths in the database is one of
+    two completely different problems and the total cannot tell them apart.
+    """
+    __tablename__ = "slow_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, index=True,
+                                            default=dt.datetime.utcnow)
+    path: Mapped[str] = mapped_column(String(200), default="")
+    method: Mapped[str] = mapped_column(String(8), default="GET")
+    status: Mapped[int] = mapped_column(Integer, default=200)
+    seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    db_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    queries: Mapped[int] = mapped_column(Integer, default=0)
+    phases: Mapped[dict] = mapped_column(JSON, default=dict)
+    pid: Mapped[int] = mapped_column(Integer, default=0)
+    rss_mb: Mapped[float] = mapped_column(Float, default=0.0)
+    load1: Mapped[float] = mapped_column(Float, default=0.0)
+    build: Mapped[str] = mapped_column(String(64), default="")
+
+
 class SavedView(Base):
     """A named set of filters on the cycle board.
 

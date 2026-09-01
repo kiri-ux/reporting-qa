@@ -68,6 +68,30 @@ if not timing.LISTENING:
     timing.LISTENING = True
 
 
+# Long enough that normal pages never write a row, short enough that anything
+# anybody would call slow does.
+SLOW_SECONDS = 3.0
+
+
+def _log_slow(request, status: int, took: float, box: dict) -> None:
+    from .db import SlowRequest, SessionLocal as _SL
+    db = _SL()
+    try:
+        load = timing.load_average()
+        db.add(SlowRequest(
+            path=str(request.url.path)[:200], method=request.method,
+            status=status, seconds=round(took, 3),
+            db_seconds=round(box["db"], 3), queries=box["queries"],
+            phases=dict(box["phases"]), pid=os.getpid(),
+            rss_mb=timing.rss_mb() or 0.0, load1=round(load[0], 2) if load else 0.0,
+            build=version.BUILD))
+        db.commit()
+    except Exception:                                        # noqa: BLE001
+        db.rollback()
+    finally:
+        db.close()
+
+
 @app.middleware("http")
 async def _stopwatch(request: Request, call_next):
     box = timing.start_counting()
@@ -78,8 +102,16 @@ async def _stopwatch(request: Request, call_next):
         status = response.status_code
         return response
     finally:
-        timing.record(request.url.path, request.method, status,
-                      _time.perf_counter() - started, box[0], box[1])
+        took = _time.perf_counter() - started
+        timing.record(request.url.path, request.method, status, took,
+                      box["queries"], box["db"], box["phases"])
+        # A REQUEST SLOW ENOUGH TO COMPLAIN ABOUT GOES IN THE DATABASE.
+        #
+        # The list above is in memory and per worker, so seeing it means being
+        # at the screen while it happens and catching the right one of the two.
+        # This one can be read afterward.
+        if took >= SLOW_SECONDS and not request.url.path.startswith("/healthz"):
+            _log_slow(request, status, took, box)
 
 
 # ------------------------------------------------------------ when it breaks
@@ -250,6 +282,26 @@ _HERE = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
+
+
+# HOW MUCH OF THE PAGE WAS DRAWING IT.
+#
+# Jinja renders inside TemplateResponse, so wrapping this one call times every
+# page in the tool without touching a single route. Building the rows and
+# rendering them are separate problems with separate fixes, and a total that
+# does not separate them is what sent the last two builds after the wrong one.
+_render = templates.TemplateResponse
+
+
+def _timed_template_response(*a, **kw):
+    started = _time.perf_counter()
+    try:
+        return _render(*a, **kw)
+    finally:
+        timing.mark("render", _time.perf_counter() - started)
+
+
+templates.TemplateResponse = _timed_template_response
 
 
 def _eastern(value, fmt: str = "%b %-d at %-I:%M %p"):
@@ -528,11 +580,15 @@ def why_slow(request: Request, db: Session = Depends(get_db)):
         jobs = running_jobs(db)
     except Exception:                                        # noqa: BLE001
         queue, jobs = None, {}
+    from .db import SlowRequest
+    slow = db.scalars(select(SlowRequest)
+                      .order_by(desc(SlowRequest.at)).limit(60)).all()
     return templates.TemplateResponse(request, "why_slow.html", {
         "request": request, "nav": "whyslow",
         "summary": timing.summary(),
         "verdict": timing.verdict(boots_hour),
-        "recent": timing.recent(60),
+        "recent": timing.recent(60), "slow": slow,
+        "slow_seconds": SLOW_SECONDS,
         "boots": boots, "boots_hour": boots_hour,
         "queue": queue, "jobs": jobs,
         "last_sync": last_sync(db),
@@ -546,10 +602,18 @@ def healthz_slow(db: Session = Depends(get_db)):
     boots = _boot_rows(db)
     hour_ago = dt.datetime.utcnow() - dt.timedelta(hours=1)
     boots_hour = sum(1 for b in boots if b.at >= hour_ago)
+    from .db import SlowRequest
+    slow = db.scalars(select(SlowRequest)
+                      .order_by(desc(SlowRequest.at)).limit(15)).all()
     return {"ok": True, **version.info(), **timing.summary(),
             "boots_last_hour": boots_hour, "boots_last_24h": len(boots),
             "verdict": timing.verdict(boots_hour),
-            "recent": timing.recent(25)}
+            "recent": timing.recent(25),
+            "slow": [{"at": s.at.isoformat(timespec="seconds"), "path": s.path,
+                      "seconds": s.seconds, "db_seconds": s.db_seconds,
+                      "queries": s.queries, "phases": s.phases,
+                      "load1": s.load1, "rss_mb": s.rss_mb, "pid": s.pid}
+                     for s in slow]}
 
 
 @app.get("/favicon.ico", include_in_schema=False)

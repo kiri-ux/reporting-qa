@@ -61,8 +61,8 @@ LISTENING = False
 _COUNTER: ContextVar[list | None] = ContextVar("qa_query_counter", default=None)
 
 
-def start_counting() -> list:
-    box = [0, 0.0]                       # queries, seconds inside the driver
+def start_counting() -> dict:
+    box = {"queries": 0, "db": 0.0, "phases": {}}
     _COUNTER.set(box)
     return box
 
@@ -70,17 +70,33 @@ def start_counting() -> list:
 def note_query(seconds: float) -> None:
     box = _COUNTER.get()
     if box is not None:
-        box[0] += 1
-        box[1] += seconds
+        box["queries"] += 1
+        box["db"] += seconds
+
+
+def mark(name: str, seconds: float) -> None:
+    """Time spent in one named part of the request.
+
+    WHICH HALF, is the question this answers. A page that takes four seconds
+    with two tenths of it in the database is either building its rows slowly or
+    rendering slowly, and those have nothing to do with each other. Guessing
+    between them from a total is how the last two builds got aimed at the wrong
+    thing.
+    """
+    box = _COUNTER.get()
+    if box is not None:
+        box["phases"][name] = round(box["phases"].get(name, 0.0) + seconds, 3)
 
 
 def record(path: str, method: str, status: int, seconds: float,
-           queries: int, db_seconds: float) -> None:
+           queries: int, db_seconds: float,
+           phases: dict | None = None) -> None:
     with _LOCK:
         RECENT.append({"at": time.time(), "path": path[:120], "method": method,
                        "status": status, "seconds": round(seconds, 3),
                        "queries": queries,
-                       "db_seconds": round(db_seconds, 3)})
+                       "db_seconds": round(db_seconds, 3),
+                       "phases": dict(phases or {})})
 
 
 def recent(limit: int = 60) -> list[dict]:
@@ -178,6 +194,15 @@ def verdict(boots_last_hour: int = 0) -> list[str]:
         out.append(
             f"This worker is holding {rss:.0f} MB of a {cap:.0f} MB ceiling. "
             "It is close enough that the next large job gets it killed.")
+    load = s["load"]
+    if load and load[0] >= 4:
+        out.append(
+            f"The box is carrying a load of {load[0]:.1f}, which means work is "
+            "queuing rather than running. Worth knowing: inside a container "
+            "this figure is usually the WHOLE MACHINE, including whatever else "
+            "the host is running - so it can be high because of neighbors "
+            "rather than because of this tool. The per-request seconds below "
+            "are the ones that are definitely ours.")
     if s["requests_seen"] >= 5 and s["median_seconds"] < 2 and \
             s["slowest_seconds"] < 5:
         out.append(

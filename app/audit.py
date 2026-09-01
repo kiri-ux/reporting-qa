@@ -133,6 +133,33 @@ def audit(db, period: str, text: str, group: str = "") -> dict:
             "covered": sorted(covered)}
 
 
+def _order_index(db):
+    """Every order line, indexed by order id and by client, built once.
+
+    Explaining one missing row used to read the whole order table - twice, if
+    the ids did not match. A list of a hundred and fifty missing rows read it
+    three hundred times to answer the same question.
+    """
+    from .db import OrderLine
+    from sqlalchemy import select
+
+    cached = getattr(db, "_qa_order_index", None)
+    if cached is not None:
+        return cached
+    by_id: dict[str, list] = {}
+    by_client: dict[str, list] = {}
+    for l in db.scalars(select(OrderLine)).all():
+        for oid in (l.account_ids or "").replace(",", " ").split():
+            by_id.setdefault(oid, []).append(l)
+        by_client.setdefault(_key(l.client or ""), []).append(l)
+    out = (by_id, by_client)
+    try:
+        db._qa_order_index = out          # for the life of this request only
+    except Exception:                                        # noqa: BLE001
+        pass
+    return out
+
+
 def _why(db, period: str, row: dict, not_owed: list) -> str:
     """Why this row is not on the board, in the board's own words where it has
     them and in the order line's where it does not."""
@@ -148,18 +175,17 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
             return s.get("why", "not owed this cycle")
 
     # 2. No order line carries these ids at all.
+    #
+    # READ ONCE, NOT ONCE PER ROW. This walked the whole order table twice for
+    # every row it had to explain - 2,400 lines rebuilt 150 times over, on a
+    # page that already takes its time.
     lines = []
     if db is not None:
-        ids = row["ids"]
-        if ids:
-            for l in db.scalars(select(OrderLine)).all():
-                have = set((l.account_ids or "").replace(",", " ").split())
-                if have & set(ids):
-                    lines.append(l)
+        by_id, by_client = _order_index(db)
+        for oid in row["ids"]:
+            lines.extend(by_id.get(oid, ()))
         if not lines:
-            for l in db.scalars(select(OrderLine)).all():
-                if _key(l.client or "") == want:
-                    lines.append(l)
+            lines = list(by_client.get(want, ()))
     if not lines:
         return ("no order line carries "
                 + (", ".join(row["ids"]) if row["ids"] else "this client")
@@ -167,6 +193,23 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
 
     if all(getattr(l, "canceled", False) for l in lines):
         return "every line on this order is canceled"
+
+    # THE ORDER IS THERE AND NOTHING ON IT EARNS A REPORT.
+    #
+    # Live Chat rides along with a digital product; Website Visitor ID and
+    # Additional Billing never appear on a report at all. An order carrying
+    # only those is not a miss - it is the rule working - and it was being
+    # explained with the reason belonging to an order that is not in the
+    # export, which sends somebody off to check a feed for a line that is
+    # sitting right there. "#26734 LIVE CHAT ONLY" is exactly this shape.
+    from .checks.products import earns_a_report
+    live = [l for l in lines if not getattr(l, "canceled", False)]
+    if live and not any(earns_a_report(l.product or "") for l in live):
+        what = sorted({(l.product or "").strip() for l in live if l.product})
+        if len(what) == 1:
+            return f"{what[0]} does not earn a report on its own"
+        return ("nothing on this order earns a report on its own - "
+                + ", ".join(what))
 
     cyc = cycle_for(period)
     ends = [l.ends_on for l in lines if l.ends_on]
