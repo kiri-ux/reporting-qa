@@ -326,6 +326,14 @@ body.sheet-open{overflow:hidden}
  background:var(--warn-bg);border:1px solid #E8CE95;border-radius:10px;
  padding:10px 14px;margin:0 0 12px;font-size:13px;color:#6B4C0E}
 .stalebar b{color:#5A3F09}
+/* PROSE IS ONE FLEX ITEM, NOT ONE PER WORD.
+   The bar is a flex row so the spinner and the button sit beside the text -
+   but every text node and every <code> inside it was a flex item of its own,
+   wrapping independently. That is how a sentence came to start with a lonely
+   comma on its own line and a semicolon floated between two code spans. The
+   sentence goes in .msg and wraps like a sentence. */
+.stalebar .msg{flex:1 1 24ch;min-width:0;line-height:1.5}
+.stalebar .msg code{white-space:nowrap}
 
 /* ---- bulk sign-off ---- */
 .bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}

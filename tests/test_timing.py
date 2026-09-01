@@ -1168,3 +1168,19 @@ def test_a_campaign_total_is_only_claimed_when_months_were_summed():
     # One month, twice. No total is claimed - and the duplicate is not summed.
     one = line.format(m="2026-08", i=88235) * 2
     assert _load(one) == [(88235.0, None)]
+
+
+def test_the_orders_panel_keeps_its_sentences_in_one_piece():
+    """.stalebar is a flex row so the spinner and button sit beside the text,
+    and every bare text node inside it was a flex item of its own. That is how
+    a sentence came to start with a lonely comma on its own line and a
+    semicolon floated between two code spans."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "app" / "templates"
+    body = (root / "report_orders_body.html").read_text()
+    # Every stale bar wraps its prose.
+    assert body.count('class="stalebar"') == body.count('class="msg"')
+    assert '</b>, started' not in body, "a bold heading cannot end mid-sentence"
+    assert '</code>;' not in body, "no semicolon stranded between code spans"
+    base = (root / "base.html").read_text()
+    assert ".stalebar .msg{" in base

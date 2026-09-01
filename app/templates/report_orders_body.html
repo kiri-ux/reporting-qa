@@ -19,20 +19,24 @@
   {% if not frag %}<meta http-equiv="refresh" content="10">{% endif %}
   <div class="stalebar" data-orders-running="1">
     <span class="spin" aria-hidden="true"></span>
-    <b>Re-reading the orders now</b>, started
-    {{ (running.started_at or running.synced_at)|et('%-I:%M %p') }}. It downloads
-    the whole export and parses a couple of million rows, so give it a minute or
-    two. This refreshes itself - leave it, or close it and come back.
+    <div class="msg"><b>Re-reading the orders now,</b> started
+      {{ (running.started_at or running.synced_at)|et('%-I:%M %p') }}. It
+      downloads the whole export and parses a couple of million rows, so give it
+      a minute or two. This refreshes itself - leave it, or close it and come
+      back.</div>
   </div>
 {% elif started %}
-  <div class="stalebar"><b>Sync started.</b> It runs in the background; these
-    rows change when it lands.</div>
+  <div class="stalebar"><div class="msg"><b>Sync started.</b> It runs in the
+    background, and these rows change when it lands.</div></div>
 {% elif stale %}
   <div class="stalebar">
-    <b>These rows were written by older import code.</b>
-    Last read {{ sync.synced_at|et('%b %-d at %-I:%M %p') }} with map
-    <code>{{ sync.map_version or 'none' }}</code>; the code running now is
-    <code>{{ map_now }}</code>. The product check abstains while that is true.
+    <div class="msg"><b>These rows were written by older import code.</b>
+      They were last read {{ sync.synced_at|et('%b %-d at %-I:%M %p') }}, and
+      the code that reads the export has changed since. The product check
+      abstains until they are read again.
+      <span class="acct" style="display:block;margin-top:4px">then
+        <code>{{ sync.map_version or 'none' }}</code> · now
+        <code>{{ map_now }}</code></span></div>
     <form method="post" action="/orders/sync" style="display:inline">
       <input type="hidden" name="back" value="/report/{{ rep.id }}/orders">
       <button class="mini" type="submit">Re-read the orders</button>

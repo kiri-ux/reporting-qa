@@ -1,4 +1,4 @@
-build 2026.09.01-152
+build 2026.09.01-153
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -12,6 +12,7 @@ app/templates/audit.html
 app/templates/base.html
 app/templates/cycle.html
 app/templates/orders.html
+app/templates/report_orders_body.html
 app/templates/why_slow.html      (new)
 app/timing.py                    (new)
 app/version.py
@@ -19,72 +20,53 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-WHERE TO SEE 53872 - TWO THINGS, AND ONE OF THEM IS MINE
+THE ROGUE COMMA AND THE ROGUE SEMICOLON ARE THE SAME BUG
 ========================================================
-The search box in your screenshot says 52876. The order is 53872. Same digits,
-transposed. That alone would find nothing.
+That bar is laid out with flex, so the spinner and the button can sit beside
+the text. Flex makes a flex item of EVERY child - including every bare run of
+text and every <code> - and each one wraps on its own. So the sentence broke
+after the bold heading and left the comma alone at the start of the next line,
+and the semicolon floated between two code spans.
 
-But it would not have found it anyway, and that part is mine. A row put on the
-board by hand has no order line to take an order number from, so it arrived
-with the Order column blank - on a board where searching by order number is how
-anybody looks for a row. It was there and could not be found.
+The prose is one element now, so it wraps like a sentence. And the stale-code
+panel is rewritten while I was in there: it was a sentence with two hashes
+buried in the middle of it, which nobody reads as a sentence.
 
-The order id from the tracker row you approved is kept now and shown on the
-row, so a search finds it.
+  These rows were written by older import code. They were last read Sep 1 at
+  2:57 PM, and the code that reads the export has changed since. The product
+  check abstains until they are read again.
+    then 36566e3b05423be7:2026-08 · now 36566e3b05423be7
 
-WHERE IT APPEARS: the REPORTS table at the bottom of the cycle page, partner
-NAV, client Navigate Marketing, kind SEO, tagged as put on by hand with your
-note. Not in the partner cards above it - those are built from the export and
-this client is not in the export, which is the whole reason it needed approving.
-
-
-TOTAL IMPRESSIONS PER LINE ITEM - THE EXPORT DOES NOT HAVE IT
-=============================================================
-Short answer: the number is not in the file, and I checked two ways before
-saying so.
-
-The export HAS a total_campaign_impressions column. Four of them, in fact - the
-header repeats - and the one that is populated holds "1". It is a share of
-goal, not a count. There is already a guard throwing that away, which is why
-the Campaign total column has only ever shown money: the money column is real,
-the impressions one is not.
-
-So the only other route is adding up the months, and I built that: the monthly
-impressions figure IS real, and summing it across a line item's months gives a
-campaign total. It is careful about the two traps - it counts before the
-duplicate test, because that test discards the rows carrying the other months,
-and it keys on the month, because 95% of your file is rows repeated verbatim.
-
-THEN I RAN IT OVER YOUR EXPORT AND IT PRODUCED NOTHING, for a reason worth
-knowing: of the 10,597 line items in that file, NOT ONE has more than a single
-dated row. Every line item's date is pinned to the month it started, which is
-the same thing that makes narrowing the date range so dangerous. There are no
-months to add up.
-
-The code is in and it is honest about this: a campaign total is only claimed
-where more than one month actually contributed. One month gets a dash rather
-than a number that would read as the whole flight and be a twelfth of it. If a
-wider export ever carries per-month rows, the column fills in on its own.
-
-If that figure exists somewhere else - TapClicks itself, or a different export
-- point me at it and I will read it from there.
+The two fingerprints are still there, on their own line, where they are
+reference rather than grammar.
 
 
-ALSO IN THIS ZIP, FROM TODAY
-============================
-APPROVING A CLIENT THE EXPORT NEVER HAD now puts it on the cycle. The override
-could only KEEP a row the rules removed, never create one, so approving a
-client with no order lines recorded a decision and changed nothing, silently.
-Your four existing approvals were recorded and take effect on this deploy.
+NO - IT IS A SUM OF REAL MONTHS, NEVER A MULTIPLICATION
+=======================================================
+You are right to ask, and multiplying would be making a number up. It does not
+do that and it never will.
 
-SOUTHEASTERN COOLING's lifetime is owed - 51648 ran to 31 August, 51649 starts
-1 September, they do not overlap. Three places were reading the rolled-up row
-instead of the orders inside it. North Bay TIP still waits, which is the rule
-you picked.
+WHAT IT DOES: the monthly impressions figure in the export is real. Where a
+line item has rows for several months, those actual values are added together.
+That is the whole of it - no rate, no extrapolation, no month count.
 
-"ONLY LISTS CANCELLED WHEN THERE IS ONE LIVE" was my own filter.
+WHERE THE TOTAL WOULD SHOW: the Campaign total column, under the money that is
+already there.
 
-"IT SPLIT THE CLIENT NAME" - the glue-back rule counted LIFETIME as part of the
-name, so "Family Centered Resources, Inc." came out as "Inc.".
+AND WHY IT IS EMPTY ON YOUR DATA, which is the real answer to your question.
+Of the 10,597 line items in the export I have, NOT ONE has more than a single
+dated row - every line item's date is pinned to the month it started. There are
+no months to add up, so there is nothing to show, so it shows nothing. It does
+not fill the gap with a guess.
 
-804 tests pass.
+THE COLUMN THAT CLAIMS TO HAVE IT DOES NOT. total_campaign_impressions appears
+four times in the header; three are empty and the populated one holds "1" - a
+share of goal, not a count. There has been a guard throwing that away since
+before today, which is why Campaign total has only ever shown money.
+
+So: the figure is not in this export, in either form. If it exists in TapClicks
+itself or in a different export, point me at it and I will read it from there.
+The summing code stays in and will fill the column on its own the day a file
+arrives carrying per-month rows.
+
+805 tests pass.
