@@ -144,10 +144,26 @@
 
 {% if rows %}
   {{ olines(rows) }}
-{% elif other %}
+{% elif other or dead %}
   <p class="empty">Nothing this client bought was running in {{ rep.period|month }}.</p>
 {% else %}
   <p class="empty">No order lines match this client at all.</p>
+{% endif %}
+
+{% if dead %}
+  {# A CANCELLED LINE IS NOT PART OF WHAT THIS REPORT IS JUDGED AGAINST, and a
+     red pill in the middle of the list reads as the finding when it is the one
+     row nothing is being decided from. #}
+  <details class="offmonth">
+    <summary>{{ dead|length }} cancelled line item{{ 's' if dead|length != 1 }}</summary>
+    <p class="sub" style="margin:10px 0 0">
+      Out of every goal on this report. A cancelled buy is not owed here and is
+      not part of what the campaign was asked to deliver, so its impressions and
+      its money are out of the pacing figures - and it is not an error if the
+      report still shows what it ran before it was stopped.
+    </p>
+    {{ olines(dead) }}
+  </details>
 {% endif %}
 
 {% if other %}

@@ -526,6 +526,14 @@ class CycleDone(Base):
     # find it. The id is on the tracker row that was approved; it just was not
     # being kept.
     ref: Mapped[str] = mapped_column(String(64), default="")
+    # AND WHAT THE REPORT IS SUPPOSED TO CARRY.
+    #
+    # A hand-added row arrived with no products on it, because nothing knew
+    # them - so the board could not say what the report was for, and the row
+    # read as a blank beside a hundred that name their buy. The person adding
+    # the row knows; this is where they say so. Comma-separated, the same
+    # shape the board's own product list takes.
+    products: Mapped[str] = mapped_column(String(512), default="")
     note: Mapped[str] = mapped_column(String(255), default="")
     marked_by: Mapped[str] = mapped_column(String(128), default="")
     marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
@@ -859,6 +867,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_sync", "dropped_orders", "JSON"),
     ("order_sync", "order_statuses", "JSON"),
     ("cycle_done", "ref", "VARCHAR(64) DEFAULT '' NOT NULL"),
+    ("cycle_done", "products", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_lines", "order_canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),

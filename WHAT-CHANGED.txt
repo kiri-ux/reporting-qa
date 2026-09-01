@@ -1,13 +1,19 @@
-build 2026.09.01-161
+build 2026.09.01-162
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
+app/board.py
+app/checks/products.py
 app/checks/rules.py
 app/checks/served.py
+app/db.py
 app/main.py
 app/orders_io.py
+app/roster.py
 app/templates/audit.html
+app/templates/base.html
 app/templates/cycle.html
+app/templates/report_orders_body.html
 app/templates/viewer.html
 app/version.py
 tests/test_board_extras.py
@@ -15,49 +21,70 @@ tests/test_order_remap.py
 tests/test_rules.py
 
 
-ADD A ROW BY HAND - AND SEE THE ONES YOU ADDED
-==============================================
-New panel on the cycle page, just above Reports: "N rows added by hand this
-cycle."
+PARAGON CASINO RESORT - A GOAL MORE THAN HALF OF WHICH WAS CALLED OFF
+=====================================================================
+Order 55583 is two Social Mirror line items: 134958 cancelled at 97,500 and
+134957 live at 85,000. The monthly panel has taken cancelled lines out for a
+while. The lifetime panel had not - it was still reading the rolled-up row,
+which is every line item added together - so it paced 86,573 against 182,500
+and called it 53% short.
 
-It answers both questions at once. Every row somebody put on this cycle
-themselves is listed there - partner, client, kind, order number, who and when,
-the note, and whether the report has come in yet - with an undo arrow on each.
-Approving from the list check has always written exactly this override, so your
-approves show up here too. That was the missing half: an approve that worked
-and an approve that silently did nothing looked identical, and the only way to
-check was to already know the client's spelling and search for it.
+Against the 85,000 still being asked for, that report is slightly over.
 
-Under the list is the form:
-
-  Partner | Client | Report (monthly / lifetime / SEO) | Order | Why
-
-That is the spot for 53206. C & W Roofing is cancelled, ran earlier in the
-year, and is owed a lifetime nobody has pulled - there is no rule that finds
-that from an export with nothing running in August, and there does not need to
-be one. There needs to be somewhere to say it.
-
-The row behaves like any other from then on: it waits for its report, gets
-checked, gets signed off, and counts toward the partner being ready. This cycle
-only - next month starts from the export again.
-
-The order number rides along now, so searching 53206 finds the row. Without it
-a hand-added row is findable only by the client's name, which is the spelling
-the two tools disagree about in the first place.
+Cancelled lines are out of the goal on lifetimes now, the same as on monthlies,
+and the "N months at the monthly figure" line names the months actually
+multiplied rather than the merged span across a cancelled July line and a live
+August one.
 
 
-THE REPORT SEARCH, PROPERLY THIS TIME
-=====================================
-Pointing the form at #reports was not enough, and I should have checked rather
-than trusted it. The browser jumps to the anchor while it is still parsing, and
-then this page's own scripts run - hiding partner cards, injecting the column
-filter dropdowns - which changes the height of everything above the anchor and
-leaves you back at the top. Where the partner box is holding your term, because
-it is the same q. So it still read as the typing jumping into the other box.
+AND THE SAME SENTENCE WAS BEING SAID TWICE
+==========================================
+  Social Mirror is 53% short - 86,573 served against 182,500 ordered
+  Campaign finished 53% under its goal - 86,573 against 182,500 sold
 
-It re-aims after the scripts have settled, and puts the caret back in the box
-you typed in, at the end of the word. Enter now leaves you looking at the
-reports with the cursor where you left it.
+Two warnings, one number. On a lifetime the campaign check reports the whole
+campaign and the product check reports a product, and when the campaign IS one
+product those are the same fact. The campaign line keeps it - it is the point
+of a lifetime, it carries the goal's basis and it says which page. It only ever
+reports UNDER, so a product that over-delivers still gets its own line.
 
 
-819 tests pass.
+CANCELLED LINES FOLD AWAY ON THE ORDER PANEL
+============================================
+A cancelled line is out of every goal on the report and is not owed on it, so a
+red pill in the middle of the list reads as the finding when it is the one row
+nothing is being decided from. It is behind "N cancelled line items" now, with
+its money still on it - which half was called off is exactly what somebody
+opens that panel to find out.
+
+
+ADDED BY HAND, ON THE ROW ITSELF
+================================
+The panel listing every hand-added row is gone. You were right that it is a
+second board to read: those rows are already on the board below it.
+
+Instead:
+
+  * every row somebody put on the cycle carries a BY HAND tag beside the
+    client, with who and why on hover - on every row, not only the ones still
+    waiting for a report
+  * a filter beside the report search, "Added by hand N", narrows to just them
+    and works alongside the search and the column dropdowns rather than
+    fighting them
+  * "Add a row to this cycle" is a fold-down above the reports:
+
+      Partner (dropdown) | Client | Order | Report (monthly/lifetime/SEO)
+      Products (multi-select) | Why | Save
+
+The partner is picked, not typed - the board is keyed on the partner's real
+name and one spelled a hair differently groups with nothing. The products go
+onto the row, so it names its buy like every other row and the product checks
+have something to judge the PDF against. The order number too, so searching it
+finds the row.
+
+Approving from the list check writes the same thing, so your approves carry the
+same tag and appear in the same filter.
+
+
+823 tests pass. The orders re-read themselves on the next sync and the reports
+re-check in the background - both fingerprints moved.

@@ -504,96 +504,57 @@
 </section>
 
 <section id="added">
-  {# ROWS SOMEBODY PUT HERE THEMSELVES.
-     Approving on the list check writes one of these and the board grows a row,
-     and there was nowhere to see WHICH rows those were - so an approve that
-     worked and an approve that silently did nothing looked identical, and the
-     only way to check was to already know the client's name and search for it.
+  {# ADDING A ROW THE EXPORT WILL NEVER ASK FOR.
+     53206 is a cancelled order that ran earlier in the year and is owed a
+     lifetime nobody has pulled; 51430's non-SEO half is owed one too. No rule
+     finds those from an export with nothing running in the month, and there
+     does not need to be one - there needs to be somewhere to say it.
 
-     It is also the way in for a report the export will never ask for: 53206 is
-     a cancelled order that ran earlier in the year and is owed a lifetime
-     nobody has pulled. There is no rule that finds that, and there does not
-     need to be - there needs to be somewhere to say it. #}
-  <details class="added notowed" {% if added %}open{% endif %}>
-    <summary>{{ added|length }} row{{ 's' if added|length != 1 }} added by hand this cycle</summary>
-    {% if added %}
-      <table class="pacing" style="margin-top:8px">
-        <tbody>
-          {% for a in added %}
-            <tr>
-              <td>{{ a.market }}</td>
-              <td style="text-align:left"><b>{{ a.client }}</b>
-                {%- if a.note %}<br><span class="acct">{{ a.note }}</span>{% endif %}</td>
-              <td class="nw"><span class="pill p-{{ 'month' if a.kind == 'monthly' else 'info' }}">{{ 'SEO' if a.kind == 'seo' else a.kind }}</span></td>
-              <td class="mono nw" style="text-align:left">{{ a.ref or '—' }}</td>
-              <td class="nw"><span class="pill p-{{ 'ready' if a.arrived else 'info' }}"
-                    data-tip="{% if a.arrived %}The report has come in - the row is on the board above with the rest.{% else %}The row is on the board above, waiting for its report like any other.{% endif %}"
-                  >{{ 'arrived' if a.arrived else 'waiting' }}</span></td>
-              <td class="acct nw" style="text-align:right">{{ a.who or 'somebody' }}{%
-                if a.at %}, {{ a.at|et('%b %-d') }}{% endif %}</td>
-              <td class="nw" style="text-align:right">
-                <form method="post" action="/cycle/done" class="signoff">
-                  <input type="hidden" name="period" value="{{ period }}">
-                  <input type="hidden" name="market" value="{{ a.market }}">
-                  <input type="hidden" name="client" value="{{ a.client }}">
-                  <input type="hidden" name="kind" value="{{ a.kind }}">
-                  <button class="iconbtn" name="action" value="clear"
-                          data-tip="Take the row back off this cycle. Nothing else changes.">
-                    <svg aria-hidden="true"><use href="#ic-undo"/></svg>
-                    <span class="sr">Remove</span></button>
-                </form></td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-    {# THE WAY IN. Partner and client are what the board is keyed on, so they
-       are the two that are required; the order number is what makes the row
-       findable by searching for the order rather than for a spelling of the
-       client's name. #}
-    <form method="post" action="/cycle/done" class="tools"
-          style="margin-top:10px;align-items:flex-end;flex-wrap:wrap">
+     NOT A LIST OF ITS OWN. The first version put every hand-added row in a
+     panel up here, which is a second board to read: the rows are ON the board
+     already, and what was actually wanted was to be able to tell them apart
+     down there. They are tagged on their own row now, with a filter beside the
+     search. #}
+  <details class="added notowed">
+    <summary>Add a row to this cycle</summary>
+    <form method="post" action="/cycle/done" class="addrow">
       <input type="hidden" name="period" value="{{ period }}">
       <input type="hidden" name="action" value="needed">
-      <label style="font-size:12px">Partner<br>
-        <input type="text" name="market" required size="16" list="dl-markets"
-               placeholder="Partner" style="font:inherit;font-size:13px;padding:6px 11px;
-               border-radius:16px;border:1px solid var(--line);
-               background:var(--surface);color:var(--ink)"></label>
-      <label style="font-size:12px">Client<br>
-        <input type="text" name="client" required size="22" placeholder="Client"
-               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
-               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>
-      <label style="font-size:12px">Report<br>
-        <select name="kind" style="font:inherit;font-size:13px;padding:6px 11px;
-                border-radius:16px;border:1px solid var(--line);
-                background:var(--surface);color:var(--ink)">
+      <label>Partner
+        <select name="market" required>
+          <option value="">Pick one</option>
+          {% for m in all_markets %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        </select></label>
+      <label>Client
+        <input type="text" name="client" required size="24" placeholder="As the report names them"></label>
+      <label>Order
+        <input type="text" name="ref" inputmode="numeric" pattern="[0-9 ,]*"
+               size="10" placeholder="53206"></label>
+      <label>Report
+        <select name="kind">
           <option value="monthly">Monthly</option>
           <option value="lifetime">Lifetime</option>
           <option value="seo">SEO</option>
         </select></label>
-      <label style="font-size:12px">Order<br>
-        <input type="text" name="ref" size="10" placeholder="53206"
-               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
-               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>
-      <label style="font-size:12px">Why<br>
-        <input type="text" name="note" size="26"
-               placeholder="Cancelled, never got a lifetime"
-               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
-               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>
-      {% if not me %}<label style="font-size:12px">You<br>
-        <input type="text" name="who" size="10" placeholder="Your name"
-               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
-               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>{% endif %}
-      <button class="mini ok" type="submit">Add the row</button>
+      {# THE PRODUCTS ARE WHAT THE CHECKS JUDGE THE PDF AGAINST. A row with
+         none reads as a blank beside a hundred that name their buy. #}
+      <label class="wide">Products
+        <select name="products" multiple size="4">
+          {% for p in all_products %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+        <span class="acct">Ctrl or cmd to pick several</span></label>
+      <label class="wide">Why
+        <input type="text" name="note" size="30"
+               placeholder="Cancelled, never got a lifetime"></label>
+      {% if not me %}<label>You
+        <input type="text" name="who" size="10" placeholder="Your name"></label>{% endif %}
+      <span class="brk" aria-hidden="true"></span>
+      <button class="mini ok" type="submit">Save the row</button>
     </form>
-    <datalist id="dl-markets">
-      {% for g in groups %}{% for m in (g.markets or []) %}<option value="{{ m }}">{% endfor %}{% endfor %}
-    </datalist>
-    <p class="sub" style="font-size:12px">This cycle only - next month starts
-      from the export again. The row behaves like any other: it waits for its
-      report, gets checked, and gets signed off.</p>
+    <p class="sub" style="font-size:12px;margin:8px 0 0">This cycle only - next
+      month starts from the export again. From here the row behaves like any
+      other: it waits for its report, gets checked, and gets signed off.</p>
   </details>
-
 </section>
 
 {% if rows or done_hidden %}
@@ -601,7 +562,9 @@
    reliably see template variables, and a silently-undefined name here
    means the box comes back on every one of a thousand rows. #}
 {% macro reportrows(items, me) %}{% for e in items %}
-      <tr>
+      {# data-hand is what the "Added by hand" filter beside the search reads.
+         The tag beside the client is the same fact for the eye. #}
+      <tr{% if e.forced_by %} data-hand="1"{% endif %}>
         {# The row's own checkbox. data-clear says this report has nothing
            open, which is what "Select the ones that passed" acts on. #}
         <td class="pick">{% if e.report %}
@@ -610,7 +573,8 @@
                  aria-label="Select {{ e.client }}">
         {% endif %}</td>
         <td class="nw">{{ e.market }}</td>
-        <td><b>{{ e.client }}</b>
+        <td><b>{{ e.client }}</b>{% if e.forced_by %}<span class="byhand"
+            data-tip="Put on this cycle by hand by {{ e.forced_by }}{% if e.forced_note %} - {{ e.forced_note }}{% endif %}. The order export did not ask for it.">by hand</span>{% endif %}
           {# The order id is what gets quoted when raising this with anyone,
              so it sits with the client rather than only inside the PDF. #}
           {# AND IT LINKS TO THE ORDER. The board says a campaign is owed a
@@ -714,11 +678,11 @@
             {% if e.done_note %}<br>
               <span class="notetag" title="{{ e.done_note }}">note</span>{% endif %}
           {% elif e.forced_by %}
-            {# The rules took this off and somebody put it back. Saying so
-               matters: otherwise it reads as a row the board asked for, and
-               the next person spends an afternoon working out why. #}
-            <span class="empty">Not received</span><br>
-            <span class="pendtag" title="{{ e.forced_note or 'kept on the board by hand' }}">kept on by hand</span>
+            {# ONCE, NOT TWICE. This said "kept on by hand" under Not received,
+               and the client cell now carries a BY HAND tag with the same fact
+               and the same note in it - on every row, not only the ones with
+               no report yet. Two tags saying one thing read as two things. #}
+            <span class="empty">Not received</span>
           {% else %}<span class="empty">Not received</span>{% endif %}
         </td>
         <td class="nw">{{ e.reporter }}
@@ -910,6 +874,11 @@
            data-filter="tbl-cycle" data-count="cnt-cycle"
            placeholder="Search everything... (Enter to search all {{ row_total }})">
     <span class="count" id="cnt-cycle"></span>
+    {# ROWS SOMEBODY PUT ON THIS CYCLE THEMSELVES. They are ordinary rows and
+       belong in the table with the rest; this is how you look at just yours. #}
+    <button type="button" class="mini toggle" data-rowflag="hand"
+            data-rowflag-for="tbl-cycle"
+            data-tip="Only the rows somebody put on this cycle by hand - approved from the list check, or added here. They are marked BY HAND beside the client.">Added by hand</button>
     {% if q %}
       <a class="chip" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}"
          title="Drop this search">{{ q }} &times;</a>

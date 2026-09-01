@@ -230,6 +230,28 @@ button[data-tip],a[data-tip]{cursor:pointer}
 .notowed{margin-top:12px;font-size:13px}
 .notowed summary{cursor:pointer;color:var(--muted)}
 .notowed table td{padding:4px 10px 4px 0}
+/* ADD A ROW. Six controls that have to read as one thought - a grid rather
+   than a line of boxes, so the labels sit over their fields and the wide two
+   are allowed to be wide. */
+.addrow{display:flex;flex-wrap:wrap;gap:10px 14px;margin-top:10px;
+ align-items:flex-start}
+.addrow label{display:flex;flex-direction:column;gap:4px;font-size:12px;
+ color:var(--muted);font-weight:600;flex:0 0 auto}
+.addrow label.wide{flex:1 1 220px;min-width:200px}
+.addrow input,.addrow select{font:inherit;font-size:13px;padding:6px 11px;
+ border-radius:16px;border:1px solid var(--line);background:var(--surface);
+ color:var(--ink);width:100%}
+/* A TALL BOX IN A ROW OF SHORT ONES stretched the whole line and pushed the
+   field after it off the end. Fixed height, and the row wraps around it. */
+.addrow select[multiple]{border-radius:10px;padding:4px;height:92px}
+.addrow .brk{flex-basis:100%;height:0}
+.addrow button{align-self:flex-start}
+/* PUT ON BY HAND. Small, on the row itself, and the same mark wherever the
+   row appears - it is the answer to "is this one of mine?". */
+.byhand{display:inline-block;font-family:'GT Walsheim Pro',sans-serif;
+ font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+ color:var(--velocity);border:1px solid var(--velocity);border-radius:9px;
+ padding:0 5px;margin-left:6px;vertical-align:2px;cursor:help}
 /* A LIST THAT IS WORTH HAVING AND NOT WORTH READING PAST. */
 .fold{margin:-4px 0 14px;font-size:13px}
 .fold summary{cursor:pointer;color:var(--muted)}
@@ -1241,6 +1263,16 @@ body.fit .pdfwrap object{height:100%}
     });
     var total = rows.length, t, selects = [];
 
+    // A TOGGLE THAT NARROWS TO ROWS CARRYING A FLAG.
+    //
+    // The dropdowns above are built from a column's values, which only works
+    // for a fact that IS a column. "Somebody put this row here themselves" is
+    // not one - it is a mark on the row - and a separate handler that hid rows
+    // on its own would be undone by the next keystroke in the search box,
+    // because run() sets hidden on every row every time. So it runs here.
+    var flags = Array.prototype.slice.call(document.querySelectorAll(
+      '[data-rowflag][data-rowflag-for="' + box.dataset.filter + '"]'));
+
     var run = function () {
       // Space-separated words all have to match, in any order, so
       // "7 mountains ctv" narrows instead of finding nothing.
@@ -1250,6 +1282,10 @@ body.fit .pdfwrap object{height:100%}
       var shown = 0;
       rows.forEach(function (r) {
         var hit = terms.every(function (w) { return r.hay.indexOf(w) !== -1; })
+          && flags.every(function (b) {
+            return !b.classList.contains('on')
+              || r.tr.dataset[b.dataset.rowflag] === '1';
+          })
           && picks.every(function (s) {
             var want = s.el.chosen;                     // a set of picks, any of which counts
             return (r.cells[s.i] || '').split(/\s*,\s*/)
@@ -1296,11 +1332,33 @@ body.fit .pdfwrap object{height:100%}
           // ever reached - so Clear on a table simply did nothing.
           box.value = '';
           selects.forEach(function (s) { s.el.reset(); });
+          flags.forEach(function (b) {
+            b.classList.remove('on');
+            b.setAttribute('aria-pressed', 'false');
+          });
           run();
         });
         wrap.appendChild(clear);
       }
     }
+
+    flags.forEach(function (b) {
+      b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        b.classList.toggle('on');
+        b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false');
+        run();
+      });
+      // How many there are, so the button says whether pressing it is worth it.
+      var n = rows.filter(function (r) {
+        return r.tr.dataset[b.dataset.rowflag] === '1';
+      }).length;
+      if (!n) { b.hidden = true; return; }
+      var tag = document.createElement('b');
+      tag.style.marginLeft = '5px';
+      tag.textContent = n;
+      b.appendChild(tag);
+    });
 
     box.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 90); });
     run();

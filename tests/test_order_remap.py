@@ -1395,3 +1395,37 @@ def test_a_line_that_ended_before_a_live_order_is_still_dropped(db):
     import_io_export(db, (head + rows).encode(), period="2026-08")
     got = {l.product for l in db.query(OrderLine).all()}
     assert got == {"Display"}, f"kept a stale line off a live order: {got}"
+
+
+def test_a_cancelled_line_is_out_of_the_lifetime_goal(db):
+    """Paragon Casino Resort, order 55583.
+
+    Two Social Mirror line items: 134958 cancelled at 97,500 and 134957 live at
+    85,000. The monthly panel has taken cancelled lines out for a while; the
+    lifetime panel was still reading the rolled-up row, which is every line
+    item added together - so the lifetime was paced against 182,500 and read
+    "53% short" of a goal more than half of which was called off.
+    """
+    from app.orders_io import import_io_export
+    from app.roster import ordered_for
+
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    rows = (
+        "Lotus Las Vegas,IO Live,Paragon Casino Resort,55583,Social Mirror Ads,"
+        "134958,Cancelled,2026-07-14,2026-07-14,2026-07-31,2026-08-29,97500\n"
+        "Lotus Las Vegas,IO Live,Paragon Casino Resort,55583,Social Mirror Ads,"
+        "134957,IO Live,2026-08-06,2026-08-06,2026-08-29,2026-08-29,85000\n")
+    import_io_export(db, (head + rows).encode(), period="2026-08")
+
+    life = ordered_for(db, "Paragon Casino Resort", "55583", "2026-08",
+                       lifetime=True)
+    assert life["Social Mirror"]["impressions"] == 85_000, (
+        f"the cancelled 97,500 is still in the goal: {life}")
+    # And the derived basis names the months actually multiplied, not the
+    # merged span across a cancelled July line and a live August one.
+    assert life["Social Mirror"]["basis"].startswith("1 month "), life
+
+    month = ordered_for(db, "Paragon Casino Resort", "55583", "2026-08")
+    assert month["Social Mirror"]["impressions"] == 85_000

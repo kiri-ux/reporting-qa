@@ -1092,6 +1092,12 @@ def expected_for(db: Session, period: str,
             # The order number off the row that was approved, so the board
             # shows it and a search by order id can find it.
             account_ids=(getattr(m, "ref", "") or ""),
+            # AND WHAT IT IS A REPORT FOR. These rows used to carry no products
+            # at all - nothing knew them - so the board showed a blank in the
+            # column every other row fills in, and the product checks had
+            # nothing to judge the PDF against. Whoever added the row said.
+            products=[x.strip() for x in
+                      (getattr(m, "products", "") or "").split(",") if x.strip()],
             reporter=first_name(p.reporting_team if p else "", reporter_pool),
             buyer=(p.buyer if p else ""),
             forced_by=m.marked_by or "put on by hand",

@@ -536,6 +536,31 @@ def ordered_for(db: Session, client: str, account_ids: str,
         # figure and the page says so, rather than quietly presenting it as
         # something the order stated.
         months = _months_of(l)
+        # THE CANCELLED HALF IS NOT PART OF THE CAMPAIGN'S GOAL EITHER.
+        #
+        # Read off the line items when the row has them, exactly as the monthly
+        # branch above does. The rolled-up row is every line item added
+        # together, cancelled ones included - see _campaign_totals.
+        whole_live = _campaign_totals(l)
+        if whole_live is not None:
+            # Only when the line items are actually known. A row loaded before
+            # they were kept falls back below to the merged figures, which is
+            # the answer this always gave.
+            for key in ("budget", "impressions"):
+                v = whole_live[key]
+                if v is None:
+                    continue
+                row[key] = float(v) if row[key] is None else row[key] + float(v)
+                if whole_live["months"]:
+                    n = whole_live["months"]
+                    row["basis"] = (f"{n} month{'s' if n != 1 else ''} "
+                                    f"at the monthly figure on the order")
+            # One cancelled line beside a live one is not a campaign that was
+            # called off, and marking it so silences the finding on the half
+            # still delivering.
+            if whole_live["any"]:
+                row["stopped"] = False
+            continue
         for src, key in (("total_budget", "budget"),
                          ("total_impressions", "impressions")):
             v = getattr(l, src, None)
@@ -578,6 +603,63 @@ def _month_window(line, period: str | None):
         if best_days is None or days > best_days:
             best_days, best_start = days, lo
     return best_start, best_days
+
+
+def _campaign_totals(line) -> dict | None:
+    """The whole campaign's figures with the CANCELLED line items taken out.
+
+    {"budget": float|None, "impressions": float|None, "any": bool}, or None
+    when the row carries no line-item detail and there is nothing to take out.
+
+    A CANCELLED BUY IS NOT PART OF WHAT THE CAMPAIGN WAS ASKED TO DELIVER.
+    The monthly panel has taken them out for a while; the lifetime panel was
+    still reading the rolled-up row, which is every line item added together.
+    Paragon Casino Resort is one order with two Social Mirror line items -
+    134958 cancelled at 97,500 and 134957 live at 85,000 - so the lifetime was
+    paced against 182,500 and read "53% short" of a goal more than half of
+    which was called off. Against the 85,000 still being asked for, the
+    report's 86,573 is slightly over.
+
+    None stays None inside it: "the order does not say" is not "the order says
+    nothing", and a pacing line that treats the two the same reads 100% under
+    on a column that is simply absent.
+    """
+    detail = getattr(line, "detail", None)
+    if not detail:
+        return None
+    out = {"budget": None, "impressions": None, "any": False, "months": 0}
+    for d in detail:
+        if not isinstance(d, dict) or d.get("canceled"):
+            continue
+        out["any"] = True
+        # This line item's own flight, not the rolled-up row's - the whole
+        # point here is that the two line items are different. A row's merged
+        # span across a cancelled July line and a live August one is two
+        # months, and neither line ran for two.
+        months = _months_between(d.get("order_starts") or d.get("starts"),
+                                 d.get("order_ends") or d.get("ends"))
+        for whole, monthly in (("total_budget", "budget"),
+                               ("total_impressions", "impressions")):
+            v = d.get(whole)
+            if v is None:
+                per = d.get(monthly)
+                if per is None or not months:
+                    continue
+                v = float(per) * months
+                # What the "x months at the monthly figure" line has to say,
+                # or it names a span nothing was multiplied by.
+                out["months"] = max(out["months"], months)
+            out[monthly] = (float(v) if out[monthly] is None
+                            else out[monthly] + float(v))
+    return out
+
+
+def _months_between(start, end) -> int:
+    """Months between two dates as the export writes them, at least one."""
+    s, e = _as_date(start), _as_date(end)
+    if not s or not e or e < s:
+        return 0
+    return max(1, round(((e - s).days + 1) / 30.44))
 
 
 def _months_of(line) -> int:

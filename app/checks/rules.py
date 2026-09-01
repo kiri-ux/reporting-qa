@@ -1006,7 +1006,23 @@ def check_impression_pacing(ctx) -> list[dict]:
     ordered = {k: v for k, v in ordered.items() if not v.get("stopped")}
     if not ordered:
         return []
-    from .served import MIN_DAYS_TO_PACE, pacing_rows
+    from .served import MIN_DAYS_TO_PACE, is_paced, pacing_rows
+
+    # THE SAME SENTENCE TWICE.
+    #
+    # On a lifetime the campaign check reports the whole campaign and this one
+    # reports a product, and when the campaign IS one product those are one
+    # fact: Paragon Casino Resort's lifetime carried "Social Mirror is 53%
+    # short - 86,573 against 182,500" directly above "Campaign finished 53%
+    # under its goal - 86,573 against 182,500". Two warnings, one number, and
+    # a reader counting findings sees two problems.
+    #
+    # The campaign line is the one that keeps its ground: it is the point of a
+    # lifetime, it carries the goal's basis, and it says which page. Only when
+    # it is going to fire - it only ever reports UNDER, so an over-delivering
+    # product still gets said here.
+    one_product = (bool(ctx.get("is_lifetime"))
+                   and len([p for p in ordered if is_paced(p)]) == 1)
 
     out = []
     for row in pacing_rows(ctx.get("text") or "", ordered):
@@ -1015,6 +1031,8 @@ def check_impression_pacing(ctx) -> list[dict]:
             continue
         if row["unit"] == "money":
             continue                        # check_pacing already has the money
+        if one_product and pace < 0:
+            continue                        # the campaign line already said it
         # A WEEK OR LESS OF THE MONTH IS NOT OFF PACE, IT IS NEW.
         days = row.get("days")
         if days is not None and days <= MIN_DAYS_TO_PACE:

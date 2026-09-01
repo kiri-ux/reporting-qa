@@ -374,6 +374,20 @@ NOT_ON_A_REPORT = {"Website Visitor ID", "Additional Billing"}
 RIDES_ALONG = {"Live Chat"}
 
 
+def every_product() -> list[str]:
+    """Every product name this tool knows, for a person to pick from.
+
+    Derived rather than typed out again: the one list that goes stale is the
+    one somebody has to remember to add to, and a product missing from a picker
+    is a report that cannot be described properly by the person who knows what
+    is on it.
+    """
+    names = set(ORDER_PRODUCT_MAP.values())
+    names |= {n for n, _rx in PRODUCT_LEADS}
+    names |= NOT_ON_A_REPORT | RIDES_ALONG
+    return sorted(names)
+
+
 def on_a_report(product: str) -> bool:
     """Should this product appear on the client's report at all?"""
     return bool(product) and product not in NOT_ON_A_REPORT

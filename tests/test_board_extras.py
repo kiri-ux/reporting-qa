@@ -2896,10 +2896,10 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     that - the order export has nothing running in August to build a row out of
     - and there does not need to be one. There needs to be somewhere to say it.
 
-    And somewhere to SEE it afterwards. Approving on the list check already
-    wrote this same override, and there was no page that listed them, so an
-    approve that worked and an approve that silently did nothing looked exactly
-    alike.
+    The row carries what the report is FOR, too. The first cut wrote no
+    products, because nothing knew them, so the row read as a blank beside a
+    hundred that name their buy and the product checks had nothing to judge the
+    PDF against.
     """
     import importlib
     from fastapi.testclient import TestClient
@@ -2912,14 +2912,18 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     from app import main as mmod; importlib.reload(mmod)
     c = TestClient(mmod.app)
 
-    # The panel is there on an empty board too - which is the case it exists
-    # for. It used to sit inside "if there are any reports", so the one board
-    # with nothing on it had no way to put anything on it.
-    assert "added by hand this cycle" in c.get("/cycle?period=2026-08").text
+    page = c.get("/cycle?period=2026-08").text
+    assert "Add a row to this cycle" in page
+    # The partner is picked, not typed: the board is keyed on the partner's
+    # real name, and one spelled a hair differently groups with nothing.
+    assert '<select name="market" required>' in page
+    assert '<select name="products" multiple' in page
+    assert ">Mobile Conquesting<" in page, "the product list has to be offered"
 
     c.post("/cycle/done", data={
         "period": "2026-08", "market": "MOXII", "client": "C & W Roofing",
         "kind": "lifetime", "action": "needed", "ref": "53206", "who": "k",
+        "products": ["Social Mirror", "Display"],
         "note": "cancelled, never got a lifetime"}, follow_redirects=False)
 
     db = dbm.SessionLocal()
@@ -2927,18 +2931,24 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     assert mark.reason == "needed" and mark.kind == "lifetime"
     assert mark.ref == "53206", "the order number has to ride along or the row "\
                                "is findable only by the client's spelling"
+    assert mark.products == "Social Mirror, Display"
 
-    # It reaches the board as an ordinary row.
+    # It reaches the board as an ordinary row, carrying its products.
     from app.board import expected_for
-    assert [(e.market, e.client, e.kind) for e in expected_for(db, "2026-08")] \
-        == [("MOXII", "C & W Roofing", "lifetime")]
+    got = expected_for(db, "2026-08")
+    assert [(e.market, e.client, e.kind, tuple(e.products)) for e in got] == [
+        ("MOXII", "C & W Roofing", "lifetime", ("Social Mirror", "Display"))]
+    assert got[0].forced_by == "k"
 
     page = c.get("/cycle?period=2026-08").text
-    assert "1 row added by hand this cycle" in page
-    assert "53206" in page
-    assert "cancelled, never got a lifetime" in page
+    assert 'class="byhand"' in page, "the row has to say it was put there by hand"
+    assert 'data-hand="1"' in page, "and the filter has to be able to find it"
+    assert 'data-rowflag="hand"' in page
+    # NOT A SECOND BOARD. The first cut listed every hand-added row in a panel
+    # of its own, which is another table to read for rows that are already on
+    # the one below it.
+    assert "added by hand this cycle" not in page
 
-    # And it can be taken back off.
     c.post("/cycle/done", data={"period": "2026-08", "market": "MOXII",
                                 "client": "C & W Roofing", "kind": "lifetime",
                                 "action": "clear"}, follow_redirects=False)
@@ -2946,8 +2956,29 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     db.close()
 
 
-def test_an_approve_from_the_list_check_shows_up_where_it_landed(audit_client):
-    """Same override, same list. "Where do I see the ones I approved" had no
+def test_a_row_flag_filter_survives_a_keystroke_in_the_search(): 
+    """The dropdowns are built from a column's values, and "somebody put this
+    row here" is not a column - it is a mark on the row. A separate handler
+    hiding rows on its own would be undone by the next keystroke, because the
+    search sets hidden on every row every time it runs."""
+    base = (TPL / "base.html").read_text()
+    i = base.index("var flags = Array.prototype.slice.call")
+    assert "data-rowflag-for=" in base[i:i + 400]
+    # Inside the same predicate as the search terms and the dropdowns.
+    j = base.index("var hit = terms.every", base.index("[data-filter]"))
+    assert "flags.every(function (b)" in base[j:j + 400]
+    # Clear clears it too, or the board stays narrowed with nothing saying so.
+    k = base.index("selects.forEach(function (s) { s.el.reset(); });",
+                   base.index("[data-filter]"))
+    assert "flags.forEach" in base[k:k + 300]
+    # And the card filter's own Clear is left alone - it resets `toggles`,
+    # which does not exist in the table's scope and would throw before run()
+    # was ever reached.
+    assert base.count("selects.forEach(function (s) { s.el.reset(); });") == 2
+
+
+def test_an_approve_from_the_list_check_is_marked_on_its_row(audit_client):
+    """Same override, same mark. "Where do I see the ones I approved" had no
     answer, and the honest one was "search the board for the client's name" -
     which is the spelling the two tools disagree about in the first place."""
     c, db, dbm = audit_client
@@ -2956,7 +2987,7 @@ def test_an_approve_from_the_list_check_shows_up_where_it_landed(audit_client):
         "client": "Some Client", "market_hint": "LOCK AUG",
         "call": "approved", "who": "Kiri", "note": "runs, not in the export"})
     page = c.get("/cycle?period=2026-08").text
-    assert "1 row added by hand this cycle" in page
+    assert 'class="byhand"' in page
     assert "Some Client" in page
     assert "53872" in page, "the order number the approve was made on"
 
@@ -2976,3 +3007,44 @@ def test_the_report_search_lands_on_the_reports_and_keeps_the_cursor():
     assert "scrollIntoView()" in tail, "it has to re-aim after the scripts run"
     assert "#cyclesearch input[name=\"q\"]" in tail, "and put the caret back"
     assert "setTimeout(land," in tail, "once now and once after it settles"
+
+
+def test_one_product_lifetime_does_not_say_it_twice():
+    """"Social Mirror is 53% short - 86,573 against 182,500" sat directly above
+    "Campaign finished 53% under its goal - 86,573 against 182,500". Two
+    warnings, one number, and a reader counting findings sees two problems.
+
+    The campaign line keeps its ground: it is the point of a lifetime, it
+    carries the goal's basis and it says which page. It only ever reports
+    UNDER, so an over-delivering product still gets said."""
+    from app.checks.rules import check_impression_pacing
+
+    text = (" Line Item Performance\n"
+            " Paragon - Keyword Social Mirror   86,573   100  0.12%\n")
+    ordered = {"Social Mirror": {"impressions": 182_500, "budget": None,
+                                 "stopped": False}}
+    assert check_impression_pacing({"text": text, "ordered": ordered,
+                                    "is_lifetime": True}) == []
+    # A monthly still says it - there is no campaign line above it.
+    out = check_impression_pacing({"text": text, "ordered": ordered,
+                                   "is_lifetime": False})
+    assert len(out) == 1 and "53% short" in out[0]["title"]
+    # And over-delivery is still said on a lifetime, because the campaign
+    # check has nothing to say about it.
+    over = {"Social Mirror": {"impressions": 20_000, "budget": None,
+                              "stopped": False}}
+    out = check_impression_pacing({"text": text, "ordered": over,
+                                   "is_lifetime": True})
+    assert len(out) == 1 and "over" in out[0]["title"]
+
+
+def test_cancelled_line_items_fold_away_on_the_order_panel():
+    """A cancelled line is out of every goal on the report, so a red pill in
+    the middle of the list reads as the finding when it is the one row nothing
+    is being decided from."""
+    page = (TPL / "report_orders_body.html").read_text()
+    assert "{% if dead %}" in page
+    assert "cancelled line item" in page
+    main = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    i = main.index("dead = regroup([r for r in rows if r[\"canceled\"]])")
+    assert 'rows = regroup([r for r in rows if not r["canceled"]])' in main[i:i + 200]
