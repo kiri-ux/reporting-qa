@@ -68,15 +68,22 @@ def served_impressions(text: str) -> dict:
     by_product: dict[str, float] = {}
     total = 0.0
     unattributed = 0.0
+    flat = 0.0
     for name, imps, _clicks in line_item_totals(text or ""):
-        total += imps
         product = report_product(name)
+        # A FLAT PRODUCT'S IMPRESSIONS ARE NOT PART OF THE DELIVERY TOTAL.
+        # It has no goal and no row, so counting what it served put delivery
+        # in the numerator that had nothing under it in the denominator.
+        if product and not is_paced(product):
+            flat += imps
+            continue
+        total += imps
         if product:
             by_product[product] = by_product.get(product, 0.0) + imps
         else:
             unattributed += imps
     return {"by_product": by_product, "total": total,
-            "unattributed": unattributed}
+            "unattributed": unattributed, "flat": flat}
 
 
 def pacing_pct(served: float | None, ordered: float | None) -> float | None:
@@ -103,8 +110,26 @@ SPEND_PRODUCTS = ("Performance Max", "PPC", "LinkedIn")
 
 # Bought by the month, not by delivery: there is no impression count to pace
 # and no spend on the report to compare, so a row for them is a row of dashes.
+#
+# THESE NAMES HAVE TO BE THE PRODUCT NAMES. This was a hand-written list and
+# "Visitor ID" is not what the product is called - the mapping calls it
+# "Website Visitor ID" - so the one entry meant to keep it out never matched
+# it, and every order carrying it got a row reading "-/- no comparison".
+# Additional Billing was not in the list at all. Matching is on the flattened
+# name now, so a near-miss like that cannot come back silently.
 NOT_PACED = ("Live Chat", "SEO", "Website Video", "Reputation Management",
-             "Visitor ID", "Geo-Framing")
+             "Website Visitor ID", "Additional Billing", "Geo-Framing")
+_NOT_PACED = {_flat(p) for p in NOT_PACED}
+
+
+def is_paced(product: str) -> bool:
+    """False for anything sold flat - it has no delivery number to pace on.
+
+    A grouped buy - "CTV, Video" - is one line item with one goal, so a flat
+    product anywhere in it takes the whole row out, the same as before.
+    """
+    names = [product] + [x.strip() for x in (product or "").split(",")]
+    return not any(_flat(p) in _NOT_PACED for p in names if p)
 
 # A line with a week or less of the month behind it is not off pace, it is new.
 # Pacing a three-day-old campaign against a month's goal says 99% short, every
@@ -125,8 +150,7 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
     rows: list[dict] = []
 
     for product in sorted(ordered):
-        if any(p == product or p in [x.strip() for x in product.split(",")]
-               for p in NOT_PACED):
+        if not is_paced(product):
             continue
         want = ordered[product]
         # When the line went live, and how much of the month it had. A line
@@ -155,15 +179,21 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
     # where the eye lands first and making it look like a missing order figure.
     bought_impressions = any(r["unit"] != "money" for r in rows)
 
+    # AND THE TOTAL COUNTS WHAT THE ROWS COUNT. It was summing every product
+    # in the order, so a goal that had no row above it - a flat product - was
+    # still in the denominator, and the total did not add up to the list it sat
+    # under.
     want_total = sum(v["impressions"] for p, v in ordered.items()
-                     if p not in SPEND_PRODUCTS and v.get("impressions") is not None)
+                     if p not in SPEND_PRODUCTS and is_paced(p)
+                     and v.get("impressions") is not None)
     if bought_impressions and (want_total or served["total"]):
         rows.append({"product": "All impressions", "unit": "impressions",
                      "served": served["total"] or None,
                      "ordered": want_total or None,
                      "pace": pacing_pct(served["total"] or None, want_total or None),
                      "total": True,
-                     "unattributed": served["unattributed"]})
+                     "unattributed": served["unattributed"],
+                     "flat": served.get("flat") or 0.0})
 
     # IMPRESSIONS AND DOLLARS ARE TWO DIFFERENT QUESTIONS, so an order carrying
     # both gets two lists rather than one where the reader has to notice which

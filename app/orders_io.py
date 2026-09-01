@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .checks.products import map_order_product, map_order_products
-from .cycle import month_label
+from .cycle import cycle_for, month_label
 from .db import OrderLine
 
 SIGNATURE = {"client_business_unit", "orders_status", "product", "orders_end_date"}
@@ -343,6 +343,22 @@ def import_io_export(db: Session, sources, period: str | None = None,
     y2, m2 = (p_end.year + (p_end.month == 12), p_end.month % 12 + 1)
     horizon = period_bounds(f"{y2:04d}-{m2:02d}")[1]
 
+    # AN ORDER CLOSING OUT THIS CYCLE BRINGS ITS FINISHED LINE ITEMS WITH IT.
+    #
+    # A lifetime is a report on a whole campaign, and the import was throwing
+    # away the half of it that had already stopped. Grav's order 51430 ends
+    # 15 August: its SEO line runs to that date, its Social Mirror Ads and
+    # Website Visitor ID lines stopped on 15 June. Only the SEO line survived
+    # the import, so the only thing left to build a lifetime out of was the one
+    # product that is never owed one - and the board said "SEO is not owed a
+    # lifetime" about an order that is owed one for everything else on it.
+    #
+    # So a line item that ended before the month is kept anyway when the ORDER
+    # it belongs to ends inside this cycle's lifetime window. It still does not
+    # earn a monthly: the board decides that off the line's own dates, and
+    # these did not run in the month. It is on the board to be reported on.
+    life_end = cycle_for(period).lifetime_cutoff
+
     if not isinstance(sources, list):
         sources = [sources]
 
@@ -580,7 +596,10 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # canceled ones were kept, and the board then said "every line on
             # this order is canceled" about an order whose only live line had
             # simply finished.
-            if end and end < p_start:
+            # The order is closing out in this cycle, so this line item is part
+            # of the campaign the lifetime reports on. See life_end above.
+            closes_out = bool(order_end and p_start <= order_end <= life_end)
+            if end and end < p_start and not closes_out:
                 # THE LAST DAY IT RAN, NOT THE FIRST ONE SEEN.
                 #
                 # Every reason here is kept first-wins, which is right for a

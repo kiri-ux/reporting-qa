@@ -1,37 +1,74 @@
-build 2026.09.01-157
+build 2026.09.01-158
 Changed files only. Everything since 130 - install this one.
 
+app/checks/rules.py
+app/checks/served.py
 app/main.py
+app/orders_io.py
 app/templates/cycle.html
 app/templates/viewer.html
 app/version.py
+tests/test_order_remap.py
 tests/test_rules.py
 
 
-UNDOING A REVIEWED
-==================
-There was no way to take a verdict off. The buttons were Reviewed, Needs fix
-and Waive, so undoing a Reviewed meant pressing Needs fix - which is not
-"never mind", it is "this report is wrong", and it holds the report out of the
-partner's folder.
+PACING: WEBSITE VISITOR ID, ADDITIONAL BILLING, SEO AND LIVE CHAT ARE OUT
+=========================================================================
+There was already a list of products not to pace. It was hand-written, and one
+entry read "Visitor ID" - which is not what the product is called. The mapping
+calls it "Website Visitor ID", so the line meant to keep it out never matched
+it, and every order carrying it got a row reading "-/- no comparison".
+Additional Billing was not in the list at all. Matching is on the flattened
+name now, so a near-miss like that cannot come back quietly.
 
-Clear verdict does what you asked for: the row goes back to unlooked-at. No
-state, no name, no timestamp. It is not marked wrong and nothing is held back.
+The total was the worse half. It summed every product in the order, so a goal
+with no row above it was still in the denominator - and the served side
+counted a flat product's impressions with nothing under them to compare to.
+Your 5,414,666/180,000 had a million impressions in it that no row on the
+panel was about.
 
-Three places:
+Both sides now count the same products. Where a flat product did print
+impressions, the panel says so underneath rather than dropping them silently:
 
-  - the report page, beside Reviewed / Needs fix / Waive
-  - each cycle row, as the same undo arrow the row overrides use, showing only
-    on a row that already carries a verdict
-  - the bulk bar at the top of the cycle list, for a batch of them
+  A further 1,048,919 impressions are on products sold by the month - SEO,
+  Live Chat, Website Visitor ID and Additional Billing. They are bought flat,
+  with nothing to deliver against, so they are not paced and are not in this
+  total.
 
-Clearing does not need a name typed in. Every other state records who said so;
-this one is the absence of anybody having said anything, and leaving a name on
-a row with no verdict reads as signed by somebody.
+The lifetime "finished under its goal" warning uses the same rule, so it stops
+counting flat products on both sides too.
 
-One thing it deliberately does NOT do: it will not produce the "Jacob signed
-this off, then a re-check found a failure" line. That message is for a
-sign-off the system pulled on its own, which is a different event, and it
-turns up on exactly the same fields.
 
-810 tests pass.
+GRAV 51430 - AN ORDER CLOSING OUT BRINGS ITS FINISHED LINES WITH IT
+===================================================================
+Order 51430 ends 15 August. Its SEO line runs to that date; its Social Mirror
+Ads and Website Visitor ID lines stopped on 15 June.
+
+The import drops a line item that ended before the month - which is right for
+a monthly and exactly wrong for a lifetime, because a lifetime is a report on
+a whole campaign. So the only line of 51430 that survived was SEO, and SEO is
+the one product never owed a lifetime. That is where "SEO is not owed a
+lifetime" came from: a true sentence about the only line left standing.
+
+A line item that ended before the month is kept now when the ORDER it belongs
+to ends inside this cycle's lifetime window. It still does not earn a monthly
+- the board decides that off the line's own dates and these did not run in
+August. It is there to be reported on.
+
+Grav now reads:
+
+  LIFETIME   Social Mirror   2026-02-15 to 2026-08-15
+  SEO        SEO             August, its own file
+
+Which is the two reports you said were owed.
+
+Scope, measured on your export: 167 line items across 64 orders come back.
+Not every old line - only the ones on an order that finishes this cycle. A
+line that stopped in March under an order running to December is still
+dropped, and there is a test holding that.
+
+The orders will re-read themselves on the next sync (the mapping fingerprint
+moved), and every report will re-check itself in the background (the rules
+fingerprint moved). Nothing to press.
+
+813 tests pass.

@@ -181,6 +181,18 @@
                 line items whose name maps to more than one product, so they count
                 in the total but not against a single product.</td></tr>
             {% endif %}
+            {# THE NUMBER IS NOT MISSING, IT IS NOT BEING ASKED ABOUT. A flat
+               product can still print impressions on the report, and dropping
+               them out of the total silently would read as the total being
+               wrong. #}
+            {% if p.total and p.flat %}
+              <tr class="sub2"><td colspan="3" class="acct">
+                A further {{ '{:,.0f}'.format(p.flat) }} impressions are on products
+                sold by the month - SEO, Live Chat, Website Visitor ID and
+                Additional Billing. They are bought flat, with nothing to
+                deliver against, so they are not paced and are not in this
+                total.</td></tr>
+            {% endif %}
           {% endfor %}
         </tbody>
       </table>

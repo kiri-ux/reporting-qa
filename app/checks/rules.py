@@ -928,9 +928,14 @@ def check_lifetime_goal(ctx) -> list[dict]:
     # served against 2,400,000 sold (20 months at the monthly figure on the
     # order)" - twenty months it was never going to run.
     ordered = {k: v for k, v in ordered.items() if not v.get("stopped")}
+    # AND A FLAT PRODUCT HAS NO DELIVERY GOAL. SEO, Live Chat, Website Visitor
+    # ID and Additional Billing are sold by the month, so a figure in their
+    # impressions column is derived, not something the campaign was asked to
+    # deliver - and the served side does not count them either.
+    from .served import is_paced, served_impressions
+    ordered = {k: v for k, v in ordered.items() if is_paced(k)}
     if not ordered:
         return []
-    from .served import served_impressions
 
     served = served_impressions(ctx.get("text") or "")
     goal = sum(v["impressions"] for v in ordered.values()

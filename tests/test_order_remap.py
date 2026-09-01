@@ -1292,3 +1292,106 @@ def test_an_order_header_that_cannot_contain_its_line_item_is_set_aside(db):
     row = pull_range_why(db, "Manning Media", today=D(2026, 8, 26))[0]
     assert row["odd"] is True
     assert row["starts"] == D(2026, 6, 29) and row["order_starts"] == D(2018, 3, 21)
+
+
+def test_flat_products_are_out_of_the_pacing_panel_entirely(db):
+    """Website Visitor ID and Additional Billing are sold by the month.
+
+    NOT_PACED was a hand-written list and one of its entries read "Visitor ID"
+    - which is not what the product is called - so the line meant to keep it
+    out never matched, and every order carrying it got a row saying
+    "-/- no comparison". Additional Billing was not in the list at all.
+
+    And the total has to count what the rows count. It was summing every
+    product in the order, so a goal with no row above it was still in the
+    denominator and a flat product's delivery was still in the numerator.
+    """
+    from app.checks.served import is_paced, pacing_rows
+
+    for flat in ("Website Visitor ID", "Additional Billing", "SEO",
+                 "Live Chat", "Geo-Framing"):
+        assert not is_paced(flat), f"{flat} is being paced"
+    for real in ("Meta", "Mobile Conquesting", "Social Mirror", "CTV, Video"):
+        assert is_paced(real), f"{real} stopped being paced"
+
+    text = (" Line Item Performance\n"
+            " Acme - Meta Ads                 90,000   100  0.11%\n"
+            " Acme - Website Visitor ID       25,000    10  0.04%\n")
+    rows = pacing_rows(text, {
+        "Meta": {"impressions": 100_000, "budget": None},
+        "Website Visitor ID": {"impressions": 40_000, "budget": None},
+        "Additional Billing": {"impressions": None, "budget": 600},
+        "SEO": {"impressions": None, "budget": 2660},
+        "Live Chat": {"impressions": None, "budget": 300}})
+    assert [r["product"] for r in rows if not r.get("total")] == ["Meta"]
+    total = next(r for r in rows if r.get("total"))
+    assert total["ordered"] == 100_000, "a flat product's goal is in the total"
+    assert total["served"] == 90_000, "a flat product's delivery is in the total"
+    # Not silently: 25,000 impressions vanishing from a total reads as the
+    # total being broken.
+    assert total["flat"] == 25_000
+
+
+def test_an_order_closing_out_brings_its_finished_lines_with_it(db):
+    """Grav order 51430 - a lifetime is a report on a whole campaign.
+
+    The order ends 15 August. Its SEO line runs to that date; its Social Mirror
+    Ads and Website Visitor ID lines stopped on 15 June, so the import threw
+    them away as "ended before August" and the only thing left to build a
+    lifetime out of was the one product that is never owed one. The board then
+    said "SEO is not owed a lifetime" about an order owed one for everything
+    else on it.
+
+    What is owed here is two reports: a lifetime for Social Mirror, and a
+    separate August SEO report, which is a different file pulled by hand.
+    """
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+    from app.board import expected_for
+
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    rows = (
+        "Mobile 1st,IO Complete,Grav,51430,SEO,121309,IO Complete,"
+        "2026-02-15,2026-02-15,2026-08-15,2026-08-15,\n"
+        "Mobile 1st,IO Complete,Grav,51430,Social Mirror Ads,121307,IO Complete,"
+        "2026-02-15,2026-02-15,2026-06-15,2026-08-15,375000\n"
+        "Mobile 1st,IO Complete,Grav,51430,Website Visitor ID,121850,IO Complete,"
+        "2026-02-15,2026-02-15,2026-06-15,2026-08-15,\n")
+    import_io_export(db, (head + rows).encode(), period="2026-08")
+
+    got = {l.product for l in db.query(OrderLine).all()}
+    assert "Social Mirror" in got, (
+        "the finished half of an order that closes out this cycle was dropped, "
+        "so there is nothing to write its lifetime about")
+
+    board = [(e.kind, tuple(e.products)) for e in expected_for(db, "2026-08")
+             if e.client == "Grav"]
+    assert ("lifetime", ("Social Mirror",)) in board
+    assert ("seo", ("SEO",)) in board
+    assert not any(k == "lifetime" and "SEO" in p for k, p in board), (
+        "SEO is bought by the month - there is no campaign to close out")
+
+
+def test_a_line_that_ended_before_a_live_order_is_still_dropped(db):
+    """The rescue is for orders CLOSING OUT, not for every old line item.
+
+    An order still running into next year has no lifetime coming, so its line
+    items that finished months ago are exactly the ones that put a Social
+    Mirror on a July report a year after it stopped.
+    """
+    from app.db import OrderLine
+    from app.orders_io import import_io_export
+
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    rows = (
+        "BU,IO Live,Acme,60001,Display,700001,IO Live,"
+        "2026-01-01,2026-01-01,2026-12-31,2026-12-31,100000\n"
+        "BU,IO Live,Acme,60001,Social Mirror Ads,700002,IO Complete,"
+        "2026-01-01,2026-01-01,2026-03-31,2026-12-31,50000\n")
+    import_io_export(db, (head + rows).encode(), period="2026-08")
+    got = {l.product for l in db.query(OrderLine).all()}
+    assert got == {"Display"}, f"kept a stale line off a live order: {got}"

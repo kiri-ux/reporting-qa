@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-157"
-BUILD_NOTES = ("A verdict can be taken back - cleared off entirely, rather "
-               "than replaced with the opposite verdict.")
+BUILD = "2026.09.01-158"
+BUILD_NOTES = ("Flat products are out of pacing, and an order closing out "
+               "brings its finished line items with it.")
 
 # ---------------------------------------------------------------------------
 
