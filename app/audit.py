@@ -64,7 +64,21 @@ def parse_list(text: str) -> list[dict]:
         # cells, and the half carrying the id is "LLC #53106 SEO". The id is
         # still right; the name is a fragment, so its other half is glued back.
         i = cells.index(best)
-        while i and len(re.sub(r"[^A-Za-z]", "", ORDER_ID.sub("", best))) < 8:
+
+        def _name_letters(cell: str) -> int:
+            """How much of this cell is actually the client's name.
+
+            THE MARKERS ARE NOT PART OF THE NAME. This counted every letter in
+            the cell, so "Inc. #51944 LIFETIME" scored eleven - over the
+            threshold - and the half of the name in front of the comma was
+            never glued back. The board showed a client called "Inc.".
+            """
+            rest = ORDER_ID.sub("", cell)
+            rest = LIFETIME.sub("", rest)
+            rest = SEO.sub("", rest)
+            return len(re.sub(r"[^A-Za-z]", "", rest))
+
+        while i and _name_letters(best) < 8:
             i -= 1
             if ORDER_ID.search(cells[i]):
                 break
@@ -319,10 +333,17 @@ def _order_status(db, row) -> dict:
                 seen.append(st)
     # The order's own status, and its line items' separately - they are two
     # different facts and running them together names neither.
-    return {"order": order_st,
-            # Two is a mixed order, which is worth seeing. Six is the whole
-            # status vocabulary and says nothing.
-            "lines": [st for st in seen if st != order_st][:3]}
+    # EVERY DISTINCT LINE STATUS, INCLUDING ONES THAT MATCH THE ORDER'S.
+    #
+    # Dropping those was meant to save a repetition and instead hid the fact
+    # that mattered: order 51944 is IO Live with one cancelled line and one
+    # live one, and filtering out the live one left "line items: Cancelled",
+    # which reads as a dead order. The only thing worth suppressing is a list
+    # that says nothing at all - one line item whose status is the order's.
+    lines = seen[:4]
+    if len(lines) == 1 and lines[0] == order_st:
+        lines = []
+    return {"order": order_st, "lines": lines}
 
 
 def _sync_statuses(db) -> dict:

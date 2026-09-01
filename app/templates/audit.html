@@ -177,6 +177,10 @@
                 <input type="hidden" name="ref" value="{{ ref }}">
                 <input type="hidden" name="kind" value="{{ r.kind }}">
                 <input type="hidden" name="client" value="{{ r.client }}">
+                {# The market code off the tracker row. It is the only thing
+                   naming the partner when the export has never heard of this
+                   client, and an approve has to work in exactly that case. #}
+                <input type="hidden" name="market_hint" value="{{ r.prefix }}">
                 {% if not me %}<input type="text" name="who" placeholder="Your name"
                    size="10" style="font:inherit;font-size:12px;padding:4px 8px;
                    border-radius:12px;border:1px solid var(--line);

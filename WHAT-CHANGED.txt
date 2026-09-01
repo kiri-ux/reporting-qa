@@ -1,4 +1,4 @@
-build 2026.09.01-148
+build 2026.09.01-150
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -19,50 +19,71 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-THE STATUS COLUMN - BOTH FAULTS WERE MINE, AND YOU DIAGNOSED THE SECOND ONE
-===========================================================================
-"IO Complete, IO Pending Launch: Element Missing" is not the status of
-anything. It is two LINE ITEMS' statuses with the order's own nowhere in sight,
-because I recorded "whichever of the two this row happened to carry" and then
-listed the distinct ones. You are right that they are different facts.
+53872 - NO, AND IT WAS DOING NOTHING SILENTLY
+=============================================
+You approved it, the page said APPROVED, and nothing was added. Here is the
+whole of why, because it is worth knowing.
 
-The order has ONE status. Its line items have their own. The column shows the
-order's, and underneath it, quieter, "line items: ..." when they differ:
+The approve writes a "needed" override, and that override could only ever KEEP
+a row the rules were about to remove. It could not create one. So for every
+client the export DOES have, approving worked - and for a client the export has
+never heard of, it recorded your decision and changed nothing at all. Which is
+exactly the case the button is for: 53872 is on that list PRECISELY because the
+export does not have it.
 
-  IO Live
-  line items: IO Complete, IO Pending Launch: Element Missing
+It also never got as far as writing the override, because it looks the partner
+up off the order lines and there are none, so it had no market and quietly
+stopped. Two failures stacked, and neither said a word.
 
-Which reads as the true thing it is - a live order whose lines are in two
-different states - rather than as one status of nothing in particular.
+Both fixed. The market code from your tracker row - NAV, WHIT, 7MOU ALT - is
+the fallback when there is no order line to read a real partner name from, and
+the board now materializes a "needed" override into a row of its own when
+nothing else built one.
 
-AND THE TEXT WAS WALKING OVER THE COLUMN NEXT TO IT. I had put no-wrap on a
-20-character column, so anything longer than that ran straight across the
-reason beside it. That is why the screen looked like two rows printed on top of
-each other. It wraps now.
+Approving 53872 now puts Navigate Marketing on the August cycle as an SEO row,
+tagged as put on by hand with your note on it. Undo takes it back off.
+
+THOSE ROWS CARRY NO PRODUCTS AND NO DATES, because nothing knows them - the
+export is where those come from. They exist so the client is on the cycle and a
+report can be uploaded against them, which is what approving one is asking for.
+
+Windber, Jay Gerber and WarePak are the same shape and will behave the same
+way. Your four existing approvals were recorded, so they should take effect on
+this deploy without you re-doing them.
 
 
-FROM 147, IF YOU HAVE NOT DEPLOYED IT
-=====================================
-CK FRANCHISING said "every line on it ended 2023-05-31" about an order whose
-last line item ran to 30 June this year. Drop reasons are kept first-wins,
-which is right for a status and wrong for a date - CK has line items back to
-2022 and the row read first ended in 2023. The latest end date wins now, worked
-out once the whole file has been read. It reads 2026-06-30.
+SOUTHEASTERN COOLING - THE LIFETIME IS OWED
+===========================================
+51648 ran to 31 August, 51649 starts 1 September. They do not overlap, so the
+rule you confirmed does not apply and 51648 is owed a lifetime.
 
-SEO PLUS LIVE CHAT IS TWO REPORTS. Alegre Construction 53167 has an SEO row
-carrying SEO and a monthly carrying Live Chat. Live Chat on its own is still no
-report, and Live Chat does not land on the SEO row.
+Three places were reading the rolled-up row instead of the orders inside it. A
+row is one client and one product across every order carrying it, and its dates
+are the WIDEST of them - so this client's row ran May to the end of September:
 
-THE ROLL-UP. Whether a report is owed is read off the line items rather than
-the widest window they roll up into. Todd's Jewelry reads "no line item was
-running in August 2026"; Roof Top Services adds "and nothing served for this
-client that month either".
+  * whether a lifetime was owed at all asked the row's end date, 30 September,
+    outside the window, so no lifetime row was ever built
+  * which order it would be ABOUT took the biggest end date - 51649, which is
+    not owed one
+  * the overlap test got one window spanning both orders and compared it
+    against itself
 
-YOUR CANCELLATION RULE, order-level against line-level.
+All three read per-order now. NORTH BAY TIP still waits, which is the rule you
+picked, and the reason names 55433 rather than a merged pair of ids.
 
-NORTH BAY TIP quotes its own order's end date.
 
-PARTNERS WITH NO ORDERS AT ALL are named on the Orders page - the check for
-whether a whole export file is missing.
+THE TWO SMALL ONES
+==================
+"ONLY LISTS CANCELLED WHEN THERE IS ONE LIVE" was my own filter - I dropped any
+line status matching the order's to save a repetition, so an IO Live order with
+one cancelled line and one live one showed "line items: Cancelled". Every
+distinct status is shown now; the only list still suppressed is a single line
+item whose status is the order's own.
 
-796 tests pass.
+"IT SPLIT THE CLIENT NAME". "Family Centered Resources, Inc." arrives from a
+CSV as two cells and the half with the id is "Inc. #51944 LIFETIME". The rule
+that glues the front half back counted LIFETIME as part of the name - eleven
+letters, over the threshold - so it never fired. The markers are stripped
+before that count now.
+
+803 tests pass.

@@ -184,6 +184,35 @@ class Expected:
 # buy IS served, and is still judged.
 
 
+def _order_windows(l) -> list:
+    """(order id, its own start, its own end) for every order behind this row.
+
+    A row is one client and one product across every order that carries it, and
+    its dates are the widest of them - so "when did this campaign end" asked of
+    the row gives the LAST order's end, about a campaign that may have finished
+    weeks ago. Southeastern Cooling finished 51648 on 31 August and has 51649
+    running through September; rolled up, the row ends 30 September and no
+    lifetime was owed for the campaign that actually ended.
+    """
+    out = []
+    for d in (getattr(l, "detail", None) or []):
+        if not isinstance(d, dict):
+            continue
+        try:
+            st = dt.date.fromisoformat(str(d.get("order_starts") or d.get("starts"))[:10])
+        except (ValueError, TypeError):
+            st = None
+        try:
+            en = dt.date.fromisoformat(str(d.get("order_ends") or d.get("ends"))[:10])
+        except (ValueError, TypeError):
+            en = None
+        out.append((str(d.get("order") or ""), st, en))
+    if not out:
+        out.append((l.account_ids or "", l.order_starts_on or l.starts_on,
+                    l.order_ends_on or l.ends_on))
+    return out
+
+
 def _live_in_month(cyc, l, open_only: bool = False) -> bool:
     """Is any LINE ITEM behind this row still open and running in the month?
 
@@ -426,6 +455,8 @@ def expected_for(db: Session, period: str,
     # every window a client has, so an ending campaign can be tested against
     # the ones still running.
     life_order: dict[tuple[str, str, str], str] = {}
+    # That order's OWN window, for the overlap test - see life_end above.
+    life_span: dict[tuple[str, str, str], tuple] = {}
     windows: dict[tuple[str, str], list[tuple]] = {}
     # Products that belong on a report but never earn one - see below.
     ride_along: dict[tuple[str, str], set] = {}
@@ -493,9 +524,16 @@ def expected_for(db: Session, period: str,
     for l in cols:
         if excluded(l.market):
             continue
-        windows.setdefault((_key(l.market), _key(l.client)), []).append(
-            (l.account_ids or "", l.order_starts_on or l.starts_on,
-             l.order_ends_on or l.ends_on, l.product or ""))
+        # ONE WINDOW PER ORDER, not one per rolled-up row.
+        #
+        # This is what the overlap test reads, and a row carrying two orders
+        # was offering it a single window spanning both - so the test compared
+        # "51648, 51649" against itself and found, correctly, that it overlaps.
+        # Southeastern Cooling's two orders do not overlap at all: 51648 ran to
+        # 31 August and 51649 starts on 1 September.
+        for _oid, _ws, _we in _order_windows(l):
+            windows.setdefault((_key(l.market), _key(l.client)), []).append(
+                (_oid, _ws, _we, l.product or ""))
         # EVERY ORDER'S STATUS, OFF EVERY LINE, BEFORE ANYTHING IS FILTERED.
         #
         # This was being read further down, inside the loop that builds the
@@ -603,8 +641,11 @@ def expected_for(db: Session, period: str,
         # dates stand on their own, exactly as before.
         ran = (not served_now
                or served_now.get((_key(l.market), _key(l.client)), 0) > 0)
+        # ANY ORDER BEHIND THIS ROW ENDING IN THE WINDOW, not the widest of
+        # them. See _order_windows.
         life = (not is_seo(l.product)) and ran and (
-            finished or cyc.needs_lifetime(l.order_ends_on or l.ends_on))
+            finished or any(cyc.needs_lifetime(en)
+                            for _o, _s, en in _order_windows(l) if en))
         if not live and not life:
             continue
         # A PRODUCT THAT DOES NOT BRING A REPORT WITH IT.
@@ -676,10 +717,35 @@ def expected_for(db: Session, period: str,
                 ran_days[k] = max(ran_days.get(k, 0),
                                   days_in_cycle(cyc, l.starts_on, l.ends_on))
             else:
-                ends = l.order_ends_on or l.ends_on
-                if ends and (k not in life_end or ends > life_end[k]):
+                # THE ORDER THAT ENDED IN THIS CYCLE, not the client's latest.
+                #
+                # This took the biggest end date across everything the client
+                # runs, so a client with one campaign finishing and another
+                # sold to start later had a lifetime row about the LATER order
+                # - which is not owed a lifetime and is not what anybody asked
+                # about. Southeastern Cooling finished 51648 on 31 August and
+                # has 51649 running through September; the row was about 51649
+                # and its overlap test compared September against September.
+                #
+                # An end inside the lifetime window always beats one outside
+                # it, and within each of those the later date wins - so a
+                # client with two campaigns finishing this cycle still gets the
+                # last one, and a client with none keeps the old answer for the
+                # "runs past the window" message.
+                for _oid, _ost, ends in _order_windows(l):
+                    if not ends:
+                        continue
+                    inside = cyc.needs_lifetime(ends)
+                    held = life_end.get(k)
+                    held_inside = bool(held) and cyc.needs_lifetime(held)
+                    better = (held is None
+                              or (inside and not held_inside)
+                              or (inside == held_inside and ends > held))
+                    if not better:
+                        continue
                     life_end[k] = ends
-                    life_order[k] = l.account_ids or ""
+                    life_order[k] = _oid or l.account_ids or ""
+                    life_span[k] = (_ost, ends)
                     # WHICH RULE PUT IT HERE. "Order 54169 ends 2026-08-31"
                     # on a row for a campaign that is plainly still live reads
                     # as the tool being wrong, and there is no way to tell from
@@ -689,10 +755,10 @@ def expected_for(db: Session, period: str,
                                "complete")
                         if last_day:
                             why += f", and it last delivered {last_day}"
-                        e.life_note = (f"Order {l.account_ids or '?'} is dated "
+                        e.life_note = (f"Order {life_order[k] or '?'} is dated "
                                        f"to {ends.isoformat()}, but {why}")
                     else:
-                        e.life_note = (f"Order {l.account_ids or '?'} ends "
+                        e.life_note = (f"Order {life_order[k] or '?'} ends "
                                        f"{ends.isoformat()}")
             if l.product and l.product not in e.products:
                 e.products.append(l.product)
@@ -938,9 +1004,15 @@ def expected_for(db: Session, period: str,
         # simply changed shape, and a campaign-to-date report in the middle of
         # a live campaign is not what a lifetime is for.
         if kind == "lifetime" and e.report is None:
+            # AGAINST THE ENDING ORDER'S OWN WINDOW, not the client's whole
+            # flight. Southeastern Cooling's 51648 ran to 31 August and 51649
+            # starts on 1 September: they do not overlap, so the lifetime is
+            # owed. Compared against the client's widest dates - May to the end
+            # of September - everything overlaps everything.
+            _own_start, _own_end = life_span.get(k, (e.starts_on, e.ends_on))
             overlap = _running_overlap(windows.get((mk, ck), []),
                                        life_order.get(k, ""),
-                                       e.starts_on, e.ends_on,
+                                       _own_start, _own_end,
                                        cyc.lifetime_cutoff)
             if overlap:
                 if skipped is not None:
@@ -993,6 +1065,34 @@ def expected_for(db: Session, period: str,
                                 "kind": "monthly", "days": days,
                                 "starts": life.starts_on, "ends": life.ends_on})
             del rows[(mk, ck, kind)]
+
+    # A ROW SOMEBODY PUT ON BY HAND WHEN THE EXPORT HAS NEVER HEARD OF IT.
+    #
+    # The "needed" override has always been able to KEEP a row the rules would
+    # have removed, and that covers most of what it is for. It could not create
+    # one - so approving a client whose orders are not in the export at all
+    # recorded a decision and changed nothing, silently, which is the worst of
+    # the three things it could have done. 53872 is exactly that case: it is on
+    # the list precisely BECAUSE the export does not have it.
+    #
+    # These rows carry no products and no dates, because nothing knows them.
+    # They exist so the client is on the cycle and a report can be uploaded
+    # against them, which is what approving one is asking for.
+    for ident, m in overrides(db, period).items():
+        if getattr(m, "reason", "") != "needed":
+            continue
+        mk, _, rest = (ident or "").partition("|")
+        ck, _, kind = rest.partition("|")
+        if not mk or not ck or (mk, ck, kind) in rows:
+            continue
+        p = _match_partner(idx, m.market or "")
+        rows[(mk, ck, kind)] = Expected(
+            market=m.market or "", group=(p.group if p and p.group else m.market) or "",
+            client=m.client or "", kind=kind or "monthly",
+            reporter=first_name(p.reporting_team if p else "", reporter_pool),
+            buyer=(p.buyer if p else ""),
+            forced_by=m.marked_by or "put on by hand",
+            forced_note=m.note or "")
 
     out = list(rows.values())
     _stamp_done(db, period, out)

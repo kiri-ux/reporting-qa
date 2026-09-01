@@ -984,6 +984,138 @@ def test_the_end_date_quoted_is_the_last_day_it_ran(live):
     assert "2023-05-31" not in why
 
 
+def test_two_orders_that_do_not_overlap_do_not_hold_each_other_up(live):
+    """Southeastern Cooling finished 51648 on 31 August and 51649 starts on
+    1 September. Rolled up, the row runs May to the end of September and
+    everything overlaps everything, so no lifetime was ever owed."""
+    _c, db, _dbm, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("LDS,IO Live,SC,51648,Display Ads,1,IO Live,2026-05-01,2026-05-01,"
+            "2026-08-31,2026-08-31\n"
+            "LDS,IO Live,SC,51649,Display Ads,2,IO Live,2026-09-01,2026-09-01,"
+            "2026-09-30,2026-09-30\n")
+    orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    from app import board
+    rows_ = {(e.client, e.kind): e for e in board.expected_for(db, "2026-08")}
+    assert ("SC", "lifetime") in rows_, "51648 finished and owes a lifetime"
+    life = rows_[("SC", "lifetime")]
+    # AND IT IS ABOUT THE ORDER THAT ENDED, dated to its own window.
+    assert life.ends_on.isoformat() == "2026-08-31"
+    assert "51648" in life.life_note
+
+
+def test_two_orders_that_do_overlap_still_wait(live):
+    """The rule she confirmed: a lifetime means the client's campaign is over.
+    North Bay TIP has 54783 finished and 55433 running through its flight."""
+    _c, db, _dbm, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("BAY,IO Complete,NB,54783,Meta Display & Video Ads,1,IO Complete,"
+            "2026-06-15,2026-07-01,2026-08-13,2026-08-13\n"
+            "BAY,IO Live,NB,55433,Meta Display & Video Ads,2,IO Live,"
+            "2026-06-15,2026-07-01,2026-09-26,2026-09-26\n")
+    orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    from app import board
+    skipped = []
+    kinds = {(e.client, e.kind)
+             for e in board.expected_for(db, "2026-08", skipped=skipped)}
+    assert ("NB", "lifetime") not in kinds
+    # AND IT NAMES THE ORDER THAT IS RUNNING, not a merged pair of ids.
+    assert any("55433" in x["why"] for x in skipped if x["kind"] == "lifetime")
+
+
+def test_a_live_line_item_is_not_hidden_by_the_status_column(live):
+    """Order 51944 is IO Live with one cancelled line and one live one.
+    Filtering out statuses matching the order's left "line items: Cancelled",
+    which reads as a dead order."""
+    _c, db, db_mod, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("M,IO Live,Mixed Inc,51944,Social Mirror Ads,1,Cancelled,"
+            "2026-01-01,2026-01-01,2026-08-31,2026-08-31\n"
+            "M,IO Live,Mixed Inc,51944,Online Audio Ads,2,IO Live,"
+            "2026-01-01,2026-01-01,2026-08-31,2026-08-31\n")
+    res = orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    db.add(db_mod.OrderSync(source="s3://b/orders/", ok=True, state="done",
+                            dropped=res["dropped"],
+                            dropped_orders=res["dropped_orders"],
+                            order_statuses=res["order_statuses"]))
+    db.commit()
+    from app.audit import _order_status
+    got = _order_status(db, {"client": "Mixed Inc", "ids": ["51944"]})
+    assert got["order"] == "IO Live"
+    assert set(got["lines"]) == {"Cancelled", "IO Live"}
+
+
+def test_one_line_item_matching_the_order_says_nothing_twice(live):
+    """The only list worth suppressing is one that repeats the order."""
+    _c, db, db_mod, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("M,IO Live,Plain Co,51945,Social Mirror Ads,1,IO Live,"
+            "2026-01-01,2026-01-01,2026-08-31,2026-08-31\n")
+    res = orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    db.add(db_mod.OrderSync(source="s3://b/orders/", ok=True, state="done",
+                            dropped=res["dropped"],
+                            dropped_orders=res["dropped_orders"],
+                            order_statuses=res["order_statuses"]))
+    db.commit()
+    from app.audit import _order_status
+    got = _order_status(db, {"client": "Plain Co", "ids": ["51945"]})
+    assert got == {"order": "IO Live", "lines": []}
+
+
+def test_a_comma_in_the_name_does_not_leave_just_the_suffix():
+    """"Family Centered Resources, Inc. #51944 LIFETIME" comes out of a CSV as
+    two cells, and the half carrying the id is "Inc. #51944 LIFETIME". The
+    glue-back guard counted LIFETIME as part of the name - eleven letters, over
+    the threshold - so the front half was never put back and the board showed a
+    client called "Inc.".
+    """
+    from app.audit import parse_list
+    got = parse_list("FCR - Family Centered Resources, Inc. #51944 LIFETIME")[0]
+    assert got["client"] == "Family Centered Resources, Inc."
+    assert got["kind"] == "lifetime"
+    seo = parse_list("WHIT - Altiery Gingerich Insurance Agency, LLC #53106 SEO")[0]
+    assert seo["client"] == "Altiery Gingerich Insurance Agency, LLC"
+    assert seo["kind"] == "seo"
+
+
+def test_approving_a_client_the_export_never_had_still_puts_it_on(live):
+    """The "needed" override could KEEP a row the rules removed but not create
+    one - so approving a client whose orders are not in the export recorded a
+    decision and changed nothing, silently. 53872 is on that list precisely
+    BECAUSE the export does not have it."""
+    client, db, db_mod, _t = live
+    client.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "53872", "kind": "seo",
+        "client": "Navigate Marketing", "market_hint": "NAV",
+        "call": "approved", "note": "missing from orders list", "who": "k"},
+        follow_redirects=False)
+    db.expire_all()
+    from app import board
+    rows = {(e.client, e.kind): e for e in board.expected_for(db, "2026-08")}
+    assert ("Navigate Marketing", "seo") in rows
+    assert rows[("Navigate Marketing", "seo")].forced_by == "k"
+
+
+def test_undoing_that_approve_takes_the_hand_made_row_off_again(live):
+    client, db, _dbm, _t = live
+    for call in ("approved", "clear"):
+        client.post("/cycle/audit/call", data={
+            "period": "2026-08", "ref": "53872", "kind": "seo",
+            "client": "Navigate Marketing", "market_hint": "NAV",
+            "call": call, "who": "k"}, follow_redirects=False)
+    db.expire_all()
+    from app import board
+    assert board.expected_for(db, "2026-08") == []
+
+
 def test_the_rail_has_a_way_in():
     from pathlib import Path
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"

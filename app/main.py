@@ -1916,6 +1916,7 @@ def cycle_audit(request: Request, period: str = Form(""), group: str = Form(""),
 def cycle_audit_call(request: Request, period: str = Form(""),
                      ref: str = Form(""), kind: str = Form("monthly"),
                      client: str = Form(""), market: str = Form(""),
+                     market_hint: str = Form(""),
                      call: str = Form(""), note: str = Form(""),
                      who: str = Form(""), db: Session = Depends(get_db)):
     """Approve or reject one row of the pasted list.
@@ -2025,6 +2026,19 @@ def cycle_audit_call(request: Request, period: str = Form(""),
             if ref in ids or (client and _ident_key(l.client) == _ident_key(client)):
                 market, client = l.market, l.client
                 break
+    # AN APPROVE HAS TO WORK WHEN THE EXPORT HAS NEVER HEARD OF THE CLIENT.
+    #
+    # That is the case it exists for. 53872 is not in the order export, which
+    # is exactly why it is on this table - and the approve found no order line,
+    # so it set no market, wrote nothing, and said APPROVED. Silently doing
+    # nothing is the worst of the three possible behaviors.
+    #
+    # The market code off the tracker row is the fallback. It is not the
+    # partner's real name, but it names them well enough to group the row, and
+    # the board materializes the override into a row of its own - see
+    # expected_for.
+    if call == "approved" and client and not market:
+        market = (market_hint or "").strip() or "(not in the export)"
     if call == "approved" and market and client:
         ident = f"{_ident_key(market)}|{_ident_key(client)}|{kind}"
         mark = db.scalars(select(CycleDone).where(
