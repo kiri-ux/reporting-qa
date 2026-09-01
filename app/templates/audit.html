@@ -115,8 +115,8 @@
        the tracker by mistake. Both need somebody who knows the client to say
        which - and to say it ONCE. #}
     <div class="tw"><table>
-      <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>Why not</th>
-        <th>Call</th></tr></thead>
+      <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>Order says</th>
+        <th>Why not</th><th>Call</th></tr></thead>
       <tbody>{% for r in result.missing %}
         {% set ref = (r.ids|first) if r.ids else r.client %}
         {% set c = calls.get((ref, r.kind)) %}
@@ -124,6 +124,10 @@
           <td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
           <td class="nw"><span class="pill p-{{ 'month' if r.kind == 'monthly' else 'info' }}">{{ 'SEO' if r.kind == 'seo' else r.kind }}</span></td>
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
+          {# THE ORDER'S OWN STATUS, so a reject can be made here rather than
+             in another tab. "Nothing served this month" and "IO Paused"
+             together are a decision; either one alone is a question. #}
+          <td class="nw acct" style="max-width:18ch">{{ r.status or '' }}</td>
           {# THE CATCH-ALL IS THE ONLY "I DO NOT KNOW" ON THIS PAGE, and it
              looked exactly like the forty answers that are the rules working.
              Tagging it is the difference between a list to read and a list to

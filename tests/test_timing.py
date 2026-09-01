@@ -891,6 +891,73 @@ def test_a_partner_with_no_orders_at_all_is_named(live):
     assert _partners_with_no_orders(db) == ["Nothing Loaded"]
 
 
+def _seo_chat(db):
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("WHL,IO Live,Alegre,53167,SEO,1,IO Live,2026-04-01,2026-04-01,"
+            "2026-09-30,2026-09-30\n"
+            "WHL,IO Live,Alegre,53167,Live Chat,2,IO Live,2026-04-01,"
+            "2026-04-02,2026-09-30,2026-09-30\n"
+            "WHL,IO Live,Chat Only Co,53999,Live Chat,3,IO Live,2026-04-01,"
+            "2026-04-02,2026-09-30,2026-09-30\n")
+    orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+
+
+def test_seo_and_live_chat_is_two_reports(live):
+    """Live Chat appears on the report of whatever it was sold with. When that
+    is SEO, the SEO report is a separate file pulled outside TapClicks - so
+    there was nowhere for the Live Chat to go and it quietly vanished."""
+    _c, db, _dbm, _t = live
+    _seo_chat(db)
+    from app import board
+    rows = {(e.client, e.kind): e for e in board.expected_for(db, "2026-08")}
+    assert rows[("Alegre", "seo")].products == ["SEO"]
+    assert rows[("Alegre", "monthly")].products == ["Live Chat"]
+
+
+def test_live_chat_on_its_own_is_still_no_report(live):
+    """The test Live Chat has always had is whether the client is running
+    something else. A client running only Live Chat is not."""
+    _c, db, _dbm, _t = live
+    _seo_chat(db)
+    from app import board
+    assert "Chat Only Co" not in {e.client for e in board.expected_for(db, "2026-08")}
+
+
+def test_live_chat_does_not_land_on_the_seo_report(live):
+    """SEO is pulled outside TapClicks. Live Chat is not on it."""
+    _c, db, _dbm, _t = live
+    _seo_chat(db)
+    from app import board
+    seo = next(e for e in board.expected_for(db, "2026-08")
+               if (e.client, e.kind) == ("Alegre", "seo"))
+    assert "Live Chat" not in seo.products
+
+
+def test_the_list_check_shows_what_the_order_says(live):
+    """So a reject can be made on that page rather than in another tab.
+    "Nothing served this month" and "IO Paused" together are a decision."""
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    # Her real one: paused, and its only line ended 21 July.
+    rows = ("HON,IO Paused,All American Glass,51808,SEO,1,IO Paused,"
+            "2026-01-20,2026-01-20,2026-07-21,2026-07-21\n")
+    res = orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    db.add(db_mod.OrderSync(source="s3://b/orders/", ok=True, state="done",
+                            dropped=res["dropped"],
+                            dropped_orders=res["dropped_orders"],
+                            order_statuses=res["order_statuses"]))
+    db.commit()
+    from app.audit import audit
+    out = audit(db, "2026-08", "HON - All American Glass #51808 SEO")
+    assert out["missing"], "the row should be on the list and not the board"
+    assert "Paused" in out["missing"][0]["status"]
+
+
 def test_the_rail_has_a_way_in():
     from pathlib import Path
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"

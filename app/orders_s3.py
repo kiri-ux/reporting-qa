@@ -563,6 +563,8 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
                     guidance=(result.get("guidance") or {}) if isinstance(result, dict) else {},
                     dropped=(result.get("dropped") or {}) if isinstance(result, dict) else {},
                     dropped_orders=(result.get("dropped_orders") or {})
+                    if isinstance(result, dict) else {},
+                    order_statuses=(result.get("order_statuses") or {})
                     if isinstance(result, dict) else {})
     db.add(rec); db.commit()
     if tmpdir:

@@ -1,4 +1,4 @@
-build 2026.09.01-145
+build 2026.09.01-146
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -19,85 +19,76 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-THE ROLL-UP CHANGE - THIS IS THE ONE
-====================================
-An order line row is one client and one product rolled up across every line
-item behind it, and its date window is the widest of them. Everything asked
-that window whether the client ran this month, which is the wrong question, and
-it is behind most of what you have sent me today.
+SEO PLUS LIVE CHAT IS TWO REPORTS
+=================================
+Alegre Construction 53167: SEO live, Live Chat live, nothing else.
 
-The per-line detail has been on the row since build 109 and nothing read it for
-this. It does now. Three cases, all yours:
+Live Chat never brings a report with it - it appears on the report of whatever
+it was sold alongside. When that something is SEO, the SEO report is a separate
+file pulled outside TapClicks, so there was nowhere for the Live Chat to go. It
+attached to nothing, no monthly row existed, and the board could only say
+"worth a closer look".
 
-TODD'S JEWELRY 47117. Eight line items, every one IO Complete and finished by
-31 July, plus one "IO Pending Launch: Element Missing" dated 24 August. Rolled
-up, the window spanned August. A line waiting on creative has its flight dates
-set already, so on dates alone it reads as delivering - and it was the only
-thing holding that row on the board. Pending Launch is not running, whatever
-the dates say. The row is gone and reads "no line item was running in August
-2026".
+The client IS running another product, which is the test Live Chat has always
+had. So Alegre now has two rows: an SEO row carrying SEO, and a monthly row
+carrying Live Chat. Two files, as you said.
 
-ROOF TOP SERVICES 43005. One complete Meta, one cancelled dated to 30 August,
-one starting in September. Something is "running" in August only if you count
-the cancelled one - and a cancelled line is not a reason to pull a report. Your
-words, and now the tool's:
-
-  no line item was running in August 2026, and nothing served for this client
-  that month either
-
-It only mentions the serving file when one was actually loaded. Silence from a
-file that does not exist is not evidence.
-
-AND WHAT DID NOT CHANGE, deliberately: "IO Complete" on a line that finished on
-31 August means it delivered the whole month and is still owed a report. There
-is a test for that, because excluding completed lines would have quietly lost
-every campaign that ended tidily on the last of the month.
-
-LOTUS DIGITAL CORP 48620 should already read "Live Chat does not earn a report
-on its own" - that message went in yesterday and fires whenever the order line
-is loaded. If it still says "not in the export" after this deploy, then 48620
-is genuinely not in the file the sync read, and the sync line will now tell you
-which files those were.
+Two things that did not change, both tested: Live Chat on its own is still no
+report at all, and Live Chat does not land on the SEO row - SEO is pulled
+outside TapClicks and Live Chat is not on it.
 
 
-"DO I NEED TO DO ANYTHING DIFFERENTLY SO ORDERS AREN'T MISSED?"
-===============================================================
-Not to the exports themselves - but you had no way to check, and now you do.
+THE ORDER'S STATUS IS ON THE LIST CHECK
+=======================================
+New column, "Order says", between the order id and the reason. "Nothing served
+this month" beside "IO Paused" is a decision you can make on that page; either
+one on its own is a question that used to mean opening the IO tool.
 
-The order export arrives as several files: one per partner for some of them,
-and one "all" file covering everybody else. Woof Boom Muncie has no file of its
-own, so order 52600 can only come from "all". If a per-partner file stops
-arriving, or a partner is in none of the files, their clients simply are not on
-the board. No error, no empty table - the cycle is just quietly smaller, which
-is the worst way for this to fail.
-
-THE ORDERS PAGE NOW NAMES THEM. The reporting breakout sheet knows every
-partner there is; anything on it with not one order line loaded is listed at
-the top of that page:
-
-  N partners on the reporting breakout sheet have no orders loaded at all.
-
-Some will be genuinely dormant this month. Some will be a missing file. Those
-two look identical from here, which is exactly why they need naming rather than
-guessing - and it is a list you can read in ten seconds after each morning's
-sync.
-
-(On 52600 specifically: its only line item is Website Visitor ID, which never
-appears on a report, so even when it is loaded it correctly earns no row.)
+It needed one thing behind it. The statuses worth reading there are exactly the
+ones that got a row DROPPED at import - paused, complete, ended - and by then
+there is no order line left to read a status off. So the import now writes down
+what the export said every order was, whether or not its rows survived, and the
+column reads from that. All American Glass 51808 shows "IO Paused" beside "the
+export has this order and every line on it ended 2026-07-21".
 
 
-ALSO IN THIS ZIP
-================
-UNDO IS FINDABLE. "undo" is now "Undo approval" / "Undo rejection", with a
-tooltip saying what it does to the board.
+54666, AND THE OTHER SEO ONES
+=============================
+I cannot reproduce them, and here is exactly why, so you can judge it.
 
-YOUR CANCELLATION RULE. Line-level and order-level cancellation were one flag.
-A cancelled line under a live order still owes the monthly and still appears on
-it; the whole order cancelled gets a lifetime and no monthly.
+Windber Medical Center 54666, Jay Gerber 45513, WarePak 51704 and Navigate
+Marketing 53872 do not appear ANYWHERE in the file I have - not under those
+order ids, not under those client names. The 148 MB copy I have been working
+from is one part of one export run; the 830 MB file is the real one.
 
-NORTH BAY TIP quotes order 54783's own end date now instead of the client's
-widest, and says plainly that the lifetime waits because another order is
-running - which is the rule you confirmed you want - with the Approve route on
-the same row for the exceptions.
+WHAT I COULD CHECK IS WHETHER SEO IS BEING LOST SYSTEMATICALLY, and it is not:
+80 SEO line items survive the import from my copy and 67 of them reach the
+board as SEO rows. So the SEO handling is working, and those four are missing
+from my copy rather than mishandled by the tool.
 
-791 tests pass.
+Two things will settle it on your box. The sync line now names every file it
+read with its size - check the 830 MB one is in there. And the Orders page now
+lists any partner on the breakout sheet with no orders loaded at all, which is
+the check for "is a whole file missing".
+
+51808 and 53167, which ARE in my copy, both behave correctly now.
+
+
+ALSO IN THIS ZIP, FROM TODAY
+============================
+THE ROLL-UP. Whether a report is owed is read off the line items now rather
+than the widest window they roll up into. Todd's Jewelry reads "no line item
+was running in August 2026"; Roof Top Services adds "and nothing served for
+this client that month either". A Pending Launch line is not running whatever
+its dates say; an IO Complete line that finished on 31 August still is.
+
+YOUR CANCELLATION RULE, order-level against line-level, and a cancelled line
+can no longer ask for a report by itself.
+
+NORTH BAY TIP quotes its own order's end date instead of the client's widest.
+
+PARTNERS WITH NO ORDERS AT ALL are named on the Orders page.
+
+UNDO IS FINDABLE - "Undo approval" rather than "undo".
+
+795 tests pass.

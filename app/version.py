@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-145"
-BUILD_NOTES = ("Whether a report is owed is read off the line items now, not "
-               "off the widest window they roll up into.")
+BUILD = "2026.09.01-146"
+BUILD_NOTES = ("SEO plus Live Chat is two reports, and the list check shows "
+               "what the order says so a reject can be made there.")
 
 # ---------------------------------------------------------------------------
 

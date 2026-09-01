@@ -775,10 +775,40 @@ def expected_for(db: Session, period: str,
     # without it is missing something - but a client running Live Chat and
     # nothing else is not owed a report at all. Added here, after the rows are
     # built, which is the difference between the two.
-    for (mk, ck, _kind), e in rows.items():
+    # AND THEY GO ON THE MONTHLY, NOT ON THE SEO ROW. SEO is a separate file
+    # pulled outside TapClicks; Live Chat does not appear on it.
+    for (mk, ck, kind), e in list(rows.items()):
+        if kind == "seo":
+            continue
         for product in sorted(ride_along.get((mk, ck), ())):
             if product not in e.products:
                 e.products.append(product)
+
+    # SEO AND LIVE CHAT AND NOTHING ELSE IS TWO REPORTS, NOT ONE.
+    #
+    # Live Chat never brings a report with it - it is sold alongside something
+    # else and appears on that something's report. When the something else is
+    # SEO, that report is a separate file pulled outside TapClicks, so there is
+    # nowhere for the Live Chat to go: Alegre Construction had an SEO row, a
+    # live Live Chat line, and no monthly at all, so the Live Chat quietly
+    # vanished and the board could only say "worth a closer look".
+    #
+    # The client IS running another product, which is the test Live Chat has
+    # always had. So they are owed a monthly, and it carries the Live Chat.
+    for (mk, ck), products in ride_along.items():
+        if not products or (mk, ck, "monthly") in rows:
+            continue
+        seo_row = rows.get((mk, ck, "seo"))
+        if seo_row is None:
+            continue                     # nothing else running: no report owed
+        rows[(mk, ck, "monthly")] = Expected(
+            market=seo_row.market, group=seo_row.group, client=seo_row.client,
+            kind="monthly", account_ids=seo_row.account_ids,
+            line_ids=seo_row.line_ids, buyer=seo_row.buyer,
+            reporter=seo_row.reporter, products=sorted(products),
+            starts_on=seo_row.starts_on, ends_on=seo_row.ends_on,
+            statuses=list(seo_row.statuses),
+            order_status=dict(seo_row.order_status))
 
     # AND EVERY PILL GETS ITS COLOR.
     #

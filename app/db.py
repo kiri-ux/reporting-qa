@@ -789,6 +789,10 @@ class OrderSync(Base):
     # theirs. A reason about the client printed as a reason about the order is
     # worse than no reason: it is wrong in a way that reads authoritative.
     dropped_orders: Mapped[dict] = mapped_column(JSON, default=dict)
+    # {"51808": "IO Paused"} for every order the export carried, kept whether
+    # or not its rows survived the import - the statuses worth reading on the
+    # list check are exactly the ones that got a row dropped.
+    order_statuses: Mapped[dict] = mapped_column(JSON, default=dict)
     # running | done. A sync downloads ~850 MB and parses a couple of million
     # rows; holding a browser request open for that is what made the page hang.
     state: Mapped[str] = mapped_column(String(16), default="done")
@@ -845,6 +849,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "checks_skipped", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("reports", "is_seo", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_sync", "dropped_orders", "JSON"),
+    ("order_sync", "order_statuses", "JSON"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_lines", "order_canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),

@@ -351,6 +351,12 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # AND THE SAME THING KEYED ON THE ORDER, which is the question people
     # actually ask. See note_drop.
     dropped_orders: dict[str, str] = {}
+    # WHAT THE EXPORT SAID EVERY ORDER WAS, kept whether or not the row
+    # survived the import. The statuses worth seeing on the list check are
+    # precisely the ones that got a row dropped - "IO Paused" beside "nothing
+    # served this month" is a decision somebody can make without opening the
+    # IO tool - and by then there is no order line left to read it off.
+    order_statuses: dict[str, str] = {}
 
     def note_drop(market, client, reason, order_id=""):
         """WHICH CLIENT WAS DROPPED, not just how many rows.
@@ -409,6 +415,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
 
             order_id = _txt(r.get("orders_id"))
             line_id = _txt(r.get("id"))
+            _st = (_txt(r.get("status")) or _txt(r.get("orders_status"))).strip()
+            if order_id and _st and len(order_statuses) < 30000:
+                order_statuses.setdefault(order_id, _st)
             # A LINE ITEM CAN HAVE MORE THAN ONE FLIGHT, and the export carries
             # a row per flight. Deduping on the line item alone kept whichever
             # flight came first and dropped the rest - so River Valley Builders'
@@ -850,6 +859,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             "order_end_is_a_window": window_end,
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
             "dropped": dropped, "dropped_orders": dropped_orders,
+            "order_statuses": order_statuses,
             "unmapped_products": dict(sorted(unmapped.items(),
                                              key=lambda kv: -kv[1])[:20]),
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,

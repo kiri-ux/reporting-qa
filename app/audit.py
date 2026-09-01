@@ -145,7 +145,8 @@ def audit(db, period: str, text: str, group: str = "") -> dict:
                 hit.add(id(e))
             matched.append({**row, "board": found[0]})
         else:
-            missing.append({**row, "why": _why(db, period, row, not_owed)})
+            missing.append({**row, "why": _why(db, period, row, not_owed),
+                            "status": _order_status(db, row)})
 
     # THE LIST SCOPES ITSELF.
     #
@@ -272,6 +273,68 @@ def _dropped_reason(db, names: set, ids=()) -> str:
             # answer a different question each time the file changed.
             return ", and ".join(why[:2])
     return ""
+
+
+def _order_status(db, row) -> str:
+    """What the export says this order's line items are, in its own words.
+
+    ASKED FOR SO A REJECT CAN BE MADE WITHOUT OPENING ANOTHER TAB. "Nothing
+    served this month" and "IO Paused" together are a decision; either one on
+    its own is a question, and the second half was in the IO tool.
+    """
+    if db is None:
+        return ""
+    try:
+        by_id, by_client = _order_index(db)
+    except Exception:                                        # noqa: BLE001
+        return ""
+    lines = []
+    for oid in row.get("ids") or ():
+        lines.extend(by_id.get(str(oid).strip(), ()))
+    if not lines:
+        lines = list(by_client.get(_key(row.get("client", "")), ()))
+    want = {str(i).strip() for i in (row.get("ids") or ()) if str(i).strip()}
+    seen = []
+    # THE IMPORT'S OWN RECORD FIRST, because a row that was dropped has no
+    # order line left to read a status off - and those are the rows on this
+    # table. See order_statuses in orders_io.
+    for oid in want:
+        st = (_sync_statuses(db) or {}).get(oid)
+        if st and st not in seen:
+            seen.append(st)
+    for l in lines:
+        for d in (getattr(l, "detail", None) or []):
+            if not isinstance(d, dict):
+                continue
+            if want and str(d.get("order") or "").strip() not in want:
+                continue
+            st = (d.get("status") or d.get("order_status") or "").strip()
+            if st and st not in seen:
+                seen.append(st)
+    # Two is a mixed order, which is worth seeing. Six is the whole status
+    # vocabulary and says nothing.
+    return ", ".join(seen[:3])
+
+
+def _sync_statuses(db) -> dict:
+    """{order id: status} off the last sync, read once per request."""
+    cached = getattr(db, "_qa_order_statuses", None)
+    if cached is not None:
+        return cached
+    out = {}
+    try:
+        from sqlalchemy import desc, select
+        from .db import OrderSync
+        sync = db.scalars(select(OrderSync).where(OrderSync.ok.is_(True))
+                          .order_by(desc(OrderSync.id)).limit(1)).first()
+        out = dict(getattr(sync, "order_statuses", None) or {})
+    except Exception:                                        # noqa: BLE001
+        out = {}
+    try:
+        db._qa_order_statuses = out
+    except Exception:                                        # noqa: BLE001
+        pass
+    return out
 
 
 def _order_end_dates(lines, ids) -> list:
