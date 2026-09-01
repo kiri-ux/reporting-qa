@@ -258,7 +258,45 @@ def _resolve_keys(client) -> list[str]:
             + "; ".join(seen[:8]) + (" ..." if len(seen) > 8 else ""))
     # Newest first, then by name so the order is stable when two files carry
     # the same timestamp.
-    return [k for _when, k in sorted(set(out))]
+    return [k for _when, k in _this_mornings_run(sorted(set(out)))]
+
+
+# HOW FAR BACK A FILE CAN BE AND STILL BE PART OF THE SAME EXPORT.
+#
+# One run writes several files minutes apart - 07:32 and 07:34 on 1 September,
+# 227 MB and 830 MB - so this cannot just take the newest file. But nothing
+# ever deleted the older days either, and "every CSV under the prefix" meant
+# every export ever dropped in that folder was downloaded and merged on every
+# sync. Gigabytes an hour on a box that is already slow, and worse than slow: a
+# run from three weeks ago is a picture of the orders as they were three weeks
+# ago, and the merge keeps whatever line item the newest file did not happen to
+# carry. Half an answer from today and half from a fortnight back, with nothing
+# on screen to say which half was which.
+STALE_HOURS = 12
+
+# How many older exports the last resolve walked past, so the sync record can
+# say so on screen rather than only in a log nobody reads.
+_LAST_SKIPPED = [0]
+
+
+def _this_mornings_run(ordered: list) -> list:
+    """Keep the newest export and anything alongside it. Drop older runs.
+
+    Entries are (-timestamp, key), newest first. A key named explicitly rather
+    than found under a prefix carries no timestamp and is always kept -
+    somebody asked for that file by name.
+    """
+    dated = [t for t in ordered if t[0] < 0]
+    if not dated:
+        _LAST_SKIPPED[0] = 0
+        return ordered
+    cutoff = -dated[0][0] - STALE_HOURS * 3600
+    kept = [t for t in ordered if t[0] >= 0 or -t[0] >= cutoff]
+    _LAST_SKIPPED[0] = len(ordered) - len(kept)
+    if _LAST_SKIPPED[0]:
+        log.info("skipped %d order export(s) more than %d hours older than the "
+                 "newest one", _LAST_SKIPPED[0], STALE_HOURS)
+    return kept
 
 
 def head() -> tuple[str, dt.datetime | None]:
@@ -402,11 +440,14 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
         # and parse it row by row rather than holding it in memory.
         tmpdir = tempfile.mkdtemp(prefix="orders-", dir=str(settings.data_dir))
         paths = []
+        read_note = []
         for i, k in enumerate(keys):
             dest = Path(tmpdir) / f"{i:03d}-{Path(k).name}"
             with open(dest, "wb") as fh:
                 client.download_fileobj(settings.orders_s3_bucket, k, fh)
             paths.append(dest)
+            read_note.append(f"{Path(k).name} "
+                             f"({dest.stat().st_size / 1048576:.0f} MB)")
         result = import_orders(db, paths, filename=keys[0] if keys else "orders.csv",
                                sheet=settings.orders_s3_sheet or None, replace=True)
     except Exception as exc:
@@ -426,6 +467,17 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     msg = f"Imported {n} order lines"
     if isinstance(result, dict):
         msg += f" from {result.get('files', 1)} file(s), {result.get('rows_read', 0):,} rows read"
+        # WHICH FILES, AND HOW BIG. One run writes several files minutes apart
+        # and they are not the same size - 227 MB then 830 MB - so "3 file(s)"
+        # is not enough to tell a complete export from half of one.
+        if read_note:
+            msg += " - " + ", ".join(read_note[:6])
+            if len(read_note) > 6:
+                msg += f" and {len(read_note) - 6} more"
+        if _LAST_SKIPPED[0]:
+            msg += (f". {_LAST_SKIPPED[0]} older export(s) in that folder were "
+                    f"not read - anything more than {STALE_HOURS} hours behind "
+                    f"the newest file is a picture of a different day")
         if result.get("duplicate_rows"):
             msg += f", {result['duplicate_rows']:,} duplicate rows ignored"
         if result.get("header_overruled"):

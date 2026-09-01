@@ -1,10 +1,11 @@
-build 2026.09.01-135
-Changed files only. Includes 131 through 134 - install this one, not all five.
+build 2026.09.01-136
+Changed files only. Includes 131 through 135 - install this one, not all six.
 
 app/audit.py
 app/db.py
 app/main.py
 app/orders_io.py
+app/orders_s3.py
 app/partners.py
 app/templates/audit.html
 app/templates/base.html
@@ -15,76 +16,77 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-BROWN BAG NY AND AUDIOGO - THE TOOL IS RIGHT, AND THAT IS THE BAD NEWS
-======================================================================
-I searched your Aug 31 export for both. 460,784 rows.
+THAT S3 SCREENSHOT CHANGES THINGS, AND NOT IN MY FAVOR
+======================================================
+  orders-db-all-1_20260901_0734_0.csv   830.0 MB   07:34:58
+  orders-db-all-1_20260901_0732_0.csv   227.8 MB   07:32:35
 
-  49943 / Brown Bag NY   zero rows. The string "Brown Bag" is not in the file.
-  52029 / AudioGo        zero rows. Neither is "AudioGo", or "ROI SAM".
+One export run, two files, two minutes apart, and one of them nearly four times
+the size of the other. The file I have been running all my answers against is
+orders-db-all-1_20260831_1445_0.csv at 148 MB. That is not the whole of
+anything - it is one part of one run, and it is the part I happened to be sent.
 
-Neither order is in the export under any status. So it is not Live Chat being
-filtered and it is not paused orders being dropped - the tool has never seen
-these orders at all, and "not in the export" is the honest answer.
+SO TREAT WHAT I TOLD YOU ABOUT AUDIOGO, BROWN BAG NY AND ROI SAM AS UNPROVEN.
+"Not in the export" was true of the 148 MB file in front of me. You can see both
+of them in the 830 MB one. What I was actually entitled to say is that they were
+not in my copy, and I said something stronger than that.
 
-I CHECKED BOTH OF THOSE CLAIMS RATHER THAN ASSUMING THEM.
+AND THE CODE HAD A REAL FAULT UNDERNEATH IT. The sync treats the S3 folder as
+"every CSV under this prefix, merged, newest first". Nothing ever removed the
+older days, so every export ever dropped in that folder was downloaded and
+merged on every single sync. Two problems, and the second is the bad one:
 
-Paused orders are kept. "IO Paused" is in the export 1,000 times at the order
-level and 1,465 at the line level, and the import keeps them - a campaign
-paused on the 20th delivered for nineteen days and owes a report for them.
+  * It is gigabytes an hour of downloading and parsing on a box you have been
+    telling me is slow. Your load average of 7 has a candidate now.
+  * A run from three weeks ago is a picture of the orders as they were three
+    weeks ago. The merge keeps whatever line item today's file did not happen
+    to carry, so the board could be half today and half a fortnight back, with
+    nothing on screen saying which half was which.
 
-Live Chat is kept. 4,218 rows in the export across 170 orders; 57 order lines
-land in the August window, and six clients have Live Chat and nothing else.
-I ran the audit's explanation over one of those six and it reads "Live Chat
-does not earn a report on its own", which is the new message working. It only
-fires when the tool has the order - and for Brown Bag it does not have it.
+It now reads the newest run and anything within twelve hours of it - which
+keeps 07:32 and 07:34 together, and keeps the small stephens file from 07:28 -
+and skips everything older. A file you name outright is never skipped.
 
-THE DIFFERENCE BETWEEN THE TWO, WHICH MATTERS. VICI is in the export, 123 rows.
-So Brown Bag NY is one order missing from a partner that is otherwise fine.
-ROI SAM is not in the export at all - not one row, under any client. That is
-not a missing order, it is a missing partner, and every client they have is
-invisible to the board this cycle and every cycle.
+AND IT SAYS WHAT IT READ. The sync record now lists each file with its size,
+and how many older exports it walked past:
 
+  Imported 2,427 order lines from 3 file(s), 213,394 rows read -
+  orders-db-all-1_20260901_0734_0.csv (830 MB),
+  orders-db-all-1_20260901_0732_0.csv (228 MB),
+  orders-db-stephens-1_20260901_0728_0.csv (0 MB). 4 older export(s) in that
+  folder were not read.
 
-SO THE PAGE SAYS THAT NOW
-=========================
-When every row on your list carrying one market code is missing, and missing
-because the export has never heard of it, the page says so in a panel above the
-table instead of leaving you to notice that six unrelated-looking rows all
-start with the same three letters:
+"3 file(s)" was never enough to tell a complete export from half of one.
 
-  A whole partner is missing from the order export.
-  Every row on your list from ROI SAM - 6 of them - is missing, and missing
-  because the export has no order line for it at all. One order not in the
-  export is an order. All of them is the partner.
-
-It needs two rows before it will say it. With one row under a code there is no
-way to tell a missing order from a missing partner, and a panel that cries
-partner at every missing order is one people stop reading - which costs the
-one time it is real.
-
-AND THE PAGE NOW SAYS WHEN THE EXPORT WAS READ. Half the answers on it end with
-"or the export is out of date" and there was nothing on the page that said
-whether that was even possible. It is in the line under the title.
-
-Neither of these two is out of date, by the way. Both orders are absent from a
-file read on the 31st.
+WHEN THIS DEPLOYS it will re-read the orders from scratch, because the import
+code changed. That is the fingerprint doing its job - it is the only thing that
+makes a fix reach the orders already loaded. Give it a few minutes, then look
+at the sync line and check the file sizes against what you can see in S3.
 
 
-FROM 134, IF YOU SKIPPED IT
-===========================
-THE VSCU ROWS ran one day in August - Aug 31 to Sep 13 - and the board's
-seven-day rule left them off, correctly. The list check threw that reason away
-and printed the catch-all. Two faults: your tracker writes a one-word market
-code ("ADM - ") and the code that strips it wanted two words, and it only ever
-looked the board's reason up by name on a page that exists because the two
-tools spell clients differently. It uses the order id now. Those rows read
-"ran 1 day this month". Rows the board genuinely has no answer for are tagged
-"look" so they stop hiding among the forty that are the rules working.
+BUFFALO WINGS & RINGS - THE TOOL SAID CANCELED ABOUT A PAUSED LINE
+==================================================================
+Order 50236 in your Aug 31 export, three line items:
 
-REJECTING A ROW YOU HAD APPROVED did not take it back off the board. The list
-said Rejected and the override stayed put. Fixed, and clearing too.
+  117590  Mobile Conquesting   IO Paused     5 Nov 25 -> 31 Jul 26
+  117591  Social Mirror Ads    Cancelled     1 Jan 26 -> 31 Dec 26
+  117592  Online Audio Ads     Cancelled     1 Jan 26 -> 31 Dec 26
 
-APPROVING WORKS - I built your Roto Rooter case to confirm it rather than
-reading the code and telling you what it looked like it did.
+The paused one ends 31 July, so the import dropped it as out of this cycle. The
+two canceled ones run to December, so they were kept. The audit then looked at
+what was left, found all of it canceled, and told you every line on the order
+was canceled - about the one order whose only non-canceled line had simply
+finished. The IO tool on your screen said Paused, and it was right.
 
-767 tests pass.
+That claim is scoped now, and carries the missing half:
+
+  every line on this order that reaches this cycle is canceled - and a line
+  item ended before 2026-08 started
+
+The import records why it drops each client's rows and only the lookup page
+ever read it. It is the missing half of several answers on the audit page: the
+line that would explain the row is precisely the one not in the table to look
+at. (The drop reason also said "every line item ended before..." when it is
+decided one row at a time. It says "a line item" now.)
+
+771 tests pass.

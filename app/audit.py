@@ -187,6 +187,31 @@ def _partners_missing_entirely(listed: list, missing: list) -> list:
         key=lambda d: (-d["rows"], d["prefix"]))
 
 
+def _dropped_reason(db, names: set) -> str:
+    """What the last sync said about rows it threw away for this client.
+
+    The import records why each client's rows were dropped, and until now only
+    the lookup page ever read it. It is the missing half of several answers on
+    this page: the line that would have explained the row is precisely the one
+    that is not in the table to be looked at.
+    """
+    if db is None:
+        return ""
+    try:
+        from sqlalchemy import desc, select
+        from .db import OrderSync
+        sync = db.scalars(select(OrderSync)
+                          .where(OrderSync.ok.is_(True))
+                          .order_by(desc(OrderSync.id)).limit(1)).first()
+    except Exception:                                        # noqa: BLE001
+        return ""
+    for pair, why in (getattr(sync, "dropped", None) or {}).items():
+        _market, _, client = pair.partition("|")
+        if _key(client) in names:
+            return why
+    return ""
+
+
 def _order_index(db):
     """Every order line, indexed by order id and by client, built once.
 
@@ -267,7 +292,23 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
                 + (", ".join(row["ids"]) if row["ids"] else "this client")
                 + " - it is not in the export, or the export is out of date")
 
+    # "EVERY LINE ON THIS ORDER IS CANCELED" WAS A CLAIM ABOUT THE SURVIVORS.
+    #
+    # The import keeps the lines that touch this cycle and throws the rest
+    # away, so "every line" here means every line that got through - and order
+    # 50236 proved how badly that reads. Its Mobile Conquesting was PAUSED and
+    # ended on 31 July, so it was dropped for being out of the window; its two
+    # canceled lines run to December, so they were kept. The board then told
+    # her every line was canceled about an order whose only live line had
+    # simply finished, and the IO tool on screen said Paused.
+    #
+    # So the claim is scoped to what it is actually about, and the reason the
+    # others went is added when the last sync recorded one.
     if all(getattr(l, "canceled", False) for l in lines):
+        gone = _dropped_reason(db, {_key(l.client or "") for l in lines} | {want})
+        if gone:
+            return ("every line on this order that reaches this cycle is "
+                    "canceled - and " + gone)
         return "every line on this order is canceled"
 
     # THE ORDER IS THERE AND NOTHING ON IT EARNS A REPORT.

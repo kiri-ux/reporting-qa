@@ -512,13 +512,24 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # that ask "was this ever owed" get theirs.
             canceled = bool(DEAD_LINE_STATUS.match(line_status)
                             or DEAD_ORDER_STATUS.match(order_status))
+            # "A LINE ITEM", NOT "EVERY LINE ITEM.
+            #
+            # This is decided one row at a time and only the first reason per
+            # client is kept, so "every" was a claim the code was in no
+            # position to make - and it is wrong exactly when it matters. Order
+            # 50236 has a paused line that ended on 31 July and two canceled
+            # ones running to December: the paused one was dropped here, the
+            # canceled ones were kept, and the board then said "every line on
+            # this order is canceled" about an order whose only live line had
+            # simply finished.
             if end and end < p_start:
                 note_drop(market, client,
-                          f"every line item ended before {period} started")
+                          f"a line item ended before {period} started")
                 skip("ended before the period"); continue
             if start and start > horizon:
                 note_drop(market, client,
-                          f"it starts after {period} and the month after it")
+                          f"a line item starts after {period} and the month "
+                          f"after it")
                 skip("starts after the period"); continue
             paused = bool(PAUSED_STATUS.match(line_status)
                           or (not line_status

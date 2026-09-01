@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-135"
-BUILD_NOTES = ("A whole partner missing from the order export now says so "
-               "instead of reading as six unrelated missing orders.")
+BUILD = "2026.09.01-136"
+BUILD_NOTES = ("The sync stops merging old exports into today's, and "
+               "\"every line is canceled\" stopped being said about paused ones.")
 
 # ---------------------------------------------------------------------------
 

@@ -454,6 +454,67 @@ def test_the_market_code_survives_parsing():
     assert rows[1]["prefix"] == ""
 
 
+def test_one_export_run_is_several_files_and_yesterday_is_not_one_of_them():
+    """07:32 and 07:34 on the same morning, 227 MB then 830 MB, are one export.
+    A file from last week is a picture of a different day, and merging it keeps
+    whatever line item today's file did not happen to carry."""
+    from app.orders_s3 import _this_mornings_run, _LAST_SKIPPED
+    now = 1788000000.0
+    run = sorted([(-now, "a_0734.csv"), (-(now - 120), "a_0732.csv"),
+                  (-(now - 400), "stephens.csv"), (-(now - 86400), "yesterday.csv"),
+                  (-(now - 8 * 86400), "lastweek.csv")])
+    assert [k for _w, k in _this_mornings_run(run)] == [
+        "a_0734.csv", "a_0732.csv", "stephens.csv"]
+    assert _LAST_SKIPPED[0] == 2
+
+
+def test_a_file_named_outright_is_never_skipped_for_being_old():
+    """Somebody asked for that file by name."""
+    from app.orders_s3 import _this_mornings_run
+    assert [k for _w, k in _this_mornings_run([(0.0, "named.csv")])] == ["named.csv"]
+
+
+def test_a_paused_line_out_of_window_is_not_called_canceled(live):
+    """Order 50236: a paused Mobile Conquesting that ended 31 July, and two
+    canceled lines running to December. The paused one is dropped for being out
+    of the window, the canceled ones survive, and the board then said every line
+    was canceled about an order the IO tool showed as Paused."""
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    D = dt.date.fromisoformat
+    db.add(db_mod.Partner(partner="Kaizen Digital Marketing Group"))
+    for prod in ("Online Audio", "Social Mirror Ads"):
+        db.add(db_mod.OrderLine(
+            market="Kaizen Digital Marketing Group", client="Buffalo Wings & Rings",
+            account_ids="50236", product=prod, canceled=True,
+            starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.add(db_mod.OrderSync(
+        source="s3://bucket/orders/", ok=True, state="done",
+        dropped={"Kaizen Digital Marketing Group|Buffalo Wings & Rings":
+                 "a line item ended before 2026-08 started"}))
+    db.commit()
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Buffalo Wings & Rings",
+                               "ids": ["50236"], "kind": "monthly"}, [])
+    assert "that reaches this cycle is canceled" in why
+    assert "ended before 2026-08 started" in why
+
+
+def test_with_no_drop_recorded_the_plain_answer_is_still_given(live):
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    D = dt.date.fromisoformat
+    db.add(db_mod.OrderLine(
+        market="M", client="Gone Client", account_ids="50999",
+        product="Online Audio", canceled=True,
+        starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.commit()
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Gone Client", "ids": ["50999"],
+                               "kind": "monthly"}, [])
+    assert why == "every line on this order is canceled"
+
+
 def test_the_rail_has_a_way_in():
     from pathlib import Path
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"
