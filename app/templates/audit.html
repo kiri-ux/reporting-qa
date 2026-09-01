@@ -126,8 +126,20 @@
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
           {# THE ORDER'S OWN STATUS, so a reject can be made here rather than
              in another tab. "Nothing served this month" and "IO Paused"
-             together are a decision; either one alone is a question. #}
-          <td class="nw acct" style="max-width:18ch">{{ r.status or '' }}</td>
+             together are a decision; either one alone is a question.
+
+             THE ORDER'S AND ITS LINE ITEMS' ARE TWO DIFFERENT FACTS. Run
+             together they read as one status of nothing in particular - "IO
+             Complete, IO Pending Launch: Element Missing" names neither the
+             order nor any one line. And no-wrap on a column this wide walked
+             the text straight over the reason beside it. #}
+          <td style="max-width:20ch">
+            {% if r.status and r.status.order %}{{ r.status.order }}{% endif %}
+            {% if r.status and r.status.lines %}
+              <div class="acct" style="margin-top:2px">
+                line items: {{ r.status.lines|join(', ') }}</div>
+            {% endif %}
+          </td>
           {# THE CATCH-ALL IS THE ONLY "I DO NOT KNOW" ON THIS PAGE, and it
              looked exactly like the forty answers that are the rules working.
              Tagging it is the difference between a list to read and a list to

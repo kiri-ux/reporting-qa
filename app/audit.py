@@ -275,7 +275,7 @@ def _dropped_reason(db, names: set, ids=()) -> str:
     return ""
 
 
-def _order_status(db, row) -> str:
+def _order_status(db, row) -> dict:
     """What the export says this order's line items are, in its own words.
 
     ASKED FOR SO A REJECT CAN BE MADE WITHOUT OPENING ANOTHER TAB. "Nothing
@@ -283,37 +283,46 @@ def _order_status(db, row) -> str:
     its own is a question, and the second half was in the IO tool.
     """
     if db is None:
-        return ""
+        return {}
     try:
         by_id, by_client = _order_index(db)
     except Exception:                                        # noqa: BLE001
-        return ""
+        return {}
     lines = []
     for oid in row.get("ids") or ():
         lines.extend(by_id.get(str(oid).strip(), ()))
     if not lines:
         lines = list(by_client.get(_key(row.get("client", "")), ()))
     want = {str(i).strip() for i in (row.get("ids") or ()) if str(i).strip()}
-    seen = []
+    order_st, seen = "", []
     # THE IMPORT'S OWN RECORD FIRST, because a row that was dropped has no
     # order line left to read a status off - and those are the rows on this
     # table. See order_statuses in orders_io.
     for oid in want:
-        st = (_sync_statuses(db) or {}).get(oid)
-        if st and st not in seen:
-            seen.append(st)
+        rec = (_sync_statuses(db) or {}).get(oid)
+        if isinstance(rec, dict):
+            order_st = order_st or (rec.get("order") or "")
+            for st in rec.get("lines") or ():
+                if st and st not in seen:
+                    seen.append(st)
+        elif rec:                       # the flat shape an older sync wrote
+            order_st = order_st or str(rec)
     for l in lines:
         for d in (getattr(l, "detail", None) or []):
             if not isinstance(d, dict):
                 continue
             if want and str(d.get("order") or "").strip() not in want:
                 continue
-            st = (d.get("status") or d.get("order_status") or "").strip()
+            order_st = order_st or (d.get("order_status") or "").strip()
+            st = (d.get("status") or "").strip()
             if st and st not in seen:
                 seen.append(st)
-    # Two is a mixed order, which is worth seeing. Six is the whole status
-    # vocabulary and says nothing.
-    return ", ".join(seen[:3])
+    # The order's own status, and its line items' separately - they are two
+    # different facts and running them together names neither.
+    return {"order": order_st,
+            # Two is a mixed order, which is worth seeing. Six is the whole
+            # status vocabulary and says nothing.
+            "lines": [st for st in seen if st != order_st][:3]}
 
 
 def _sync_statuses(db) -> dict:

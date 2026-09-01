@@ -955,7 +955,33 @@ def test_the_list_check_shows_what_the_order_says(live):
     from app.audit import audit
     out = audit(db, "2026-08", "HON - All American Glass #51808 SEO")
     assert out["missing"], "the row should be on the list and not the board"
-    assert "Paused" in out["missing"][0]["status"]
+    assert out["missing"][0]["status"]["order"] == "IO Paused"
+
+
+def test_the_end_date_quoted_is_the_last_day_it_ran(live):
+    """Drop reasons are kept first-wins, which is right for a status and wrong
+    for a date. CK Franchising has line items back to 2022, and the row read
+    first ended 2023-05-31 - so the board said the campaign ended three years
+    ago when its last line item ran to 30 June this year."""
+    _c, db, db_mod, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("ROI,IO Live,CK Franchising Inc,25416,Social Mirror Ads,52135,"
+            "IO Complete,2022-05-03,2022-05-03,2023-05-31,2026-06-30\n"
+            "ROI,IO Live,CK Franchising Inc,25416,Social Mirror Ads,101038,"
+            "IO Complete,2022-05-03,2025-02-03,2026-06-30,2026-06-30\n")
+    res = orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    db.add(db_mod.OrderSync(source="s3://b/orders/", ok=True, state="done",
+                            dropped=res["dropped"],
+                            dropped_orders=res["dropped_orders"],
+                            order_statuses=res["order_statuses"]))
+    db.commit()
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "CK Franchising Inc",
+                               "ids": ["25416"], "kind": "monthly"}, [])
+    assert "2026-06-30" in why
+    assert "2023-05-31" not in why
 
 
 def test_the_rail_has_a_way_in():

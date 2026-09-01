@@ -356,7 +356,11 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # precisely the ones that got a row dropped - "IO Paused" beside "nothing
     # served this month" is a decision somebody can make without opening the
     # IO tool - and by then there is no order line left to read it off.
-    order_statuses: dict[str, str] = {}
+    order_statuses: dict[str, dict] = {}
+    # The LATEST end date among the rows dropped for ending before the cycle,
+    # per order and per client. See the note where they are filled in.
+    ended_at: dict[str, dt.date] = {}
+    ended_client: dict[str, dt.date] = {}
 
     def note_drop(market, client, reason, order_id=""):
         """WHICH CLIENT WAS DROPPED, not just how many rows.
@@ -415,9 +419,21 @@ def import_io_export(db: Session, sources, period: str | None = None,
 
             order_id = _txt(r.get("orders_id"))
             line_id = _txt(r.get("id"))
-            _st = (_txt(r.get("status")) or _txt(r.get("orders_status"))).strip()
-            if order_id and _st and len(order_statuses) < 30000:
-                order_statuses.setdefault(order_id, _st)
+            # THE ORDER'S STATUS AND ITS LINE ITEMS' ARE TWO DIFFERENT THINGS.
+            #
+            # Recording "whichever of the two this row had" produced a column
+            # reading "IO Complete, IO Pending Launch: Element Missing", which
+            # is not a status of anything - it is two line items' statuses with
+            # the order's own nowhere in sight. The order has ONE status. Its
+            # line items have their own, and they are worth seeing separately.
+            if order_id and len(order_statuses) < 30000:
+                _o = _txt(r.get("orders_status")).strip()
+                _l = _txt(r.get("status")).strip()
+                slot = order_statuses.setdefault(order_id, {"order": "", "lines": []})
+                if _o and not slot["order"]:
+                    slot["order"] = _o
+                if _l and _l not in slot["lines"] and len(slot["lines"]) < 4:
+                    slot["lines"].append(_l)
             # A LINE ITEM CAN HAVE MORE THAN ONE FLIGHT, and the export carries
             # a row per flight. Deduping on the line item alone kept whichever
             # flight came first and dropped the rest - so River Valley Builders'
@@ -557,6 +573,20 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # this order is canceled" about an order whose only live line had
             # simply finished.
             if end and end < p_start:
+                # THE LAST DAY IT RAN, NOT THE FIRST ONE SEEN.
+                #
+                # Every reason here is kept first-wins, which is right for a
+                # status and exactly wrong for a date: CK Franchising has line
+                # items going back to 2022, and the row that happened to be
+                # read first ended 2023-05-31. So the board told her the
+                # campaign ended three years ago when its last line item ran to
+                # 30 June this year. The one useful fact about a finished
+                # campaign is when it actually stopped.
+                if end > ended_at.get(order_id, dt.date.min):
+                    ended_at[order_id] = end
+                k_client = f"{(market or '').strip()}|{(client or '').strip()}"
+                if end > ended_client.get(k_client, dt.date.min):
+                    ended_client[k_client] = end
                 note_drop(market, client, f"ended {end.isoformat()}, before "
                                           f"{month_label(period)}", order_id)
                 skip("ended before the period"); continue
@@ -853,6 +883,19 @@ def import_io_export(db: Session, sources, period: str | None = None,
     db.commit()
 
     restamped = _restamp_changed_clients(db, before)
+
+    # THE LATEST END DATE WINS, now that every row has been read.
+    #
+    # These reasons are recorded first-wins, which is right for a status and
+    # wrong for a date - see where ended_at is filled in. Rewritten here rather
+    # than at the point of the drop, because "the last day this campaign ran"
+    # is not knowable until the whole file has gone past.
+    _when = month_label(period)
+    for _oid, _end in ended_at.items():
+        dropped_orders[_oid] = f"ended {_end.isoformat()}, before {_when}"
+    for _ck, _end in ended_client.items():
+        if _ck in dropped and dropped[_ck].startswith("ended "):
+            dropped[_ck] = f"ended {_end.isoformat()}, before {_when}"
 
     guidance = _export_guidance(_date(date_min), _date(date_max), order_start_min)
     return {"kept": len(kept), "clients": len({c for c, _ in kept}),
