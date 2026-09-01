@@ -605,6 +605,27 @@ class AuditCall(Base):
     at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
+class WorkerBoot(Base):
+    """One row every time a worker process starts.
+
+    THE EVIDENCE THAT IS DESTROYED BY THE THING IT EXPLAINS. A restart is the
+    most likely reason for "every page takes a minute" - a cold start is thirty
+    to sixty seconds and whoever asks first pays for it - and a restart is also
+    exactly what wipes anything held in memory. So it goes in the database.
+
+    Two workers, so two rows a deploy is normal and expected. Six rows in an
+    hour is not a deploy; it is something getting killed.
+    """
+    __tablename__ = "worker_boots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, index=True,
+                                            default=dt.datetime.utcnow)
+    pid: Mapped[int] = mapped_column(Integer, default=0)
+    build: Mapped[str] = mapped_column(String(64), default="")
+    service: Mapped[str] = mapped_column(String(64), default="")
+
+
 class SavedView(Base):
     """A named set of filters on the cycle board.
 

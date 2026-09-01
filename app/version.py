@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-130"
-BUILD_NOTES = ("The board says when a re-check sweep is what is making it "
-               "slow, and stopped asking the same question 800 times.")
+BUILD = "2026.09.01-131"
+BUILD_NOTES = ("The tool times itself: what each page cost the server, and "
+               "every restart. And an upload no longer eats the whole box.")
 
 # ---------------------------------------------------------------------------
 

@@ -1,63 +1,77 @@
-build 2026.09.01-130
+build 2026.09.01-131
 Changed files only.
 
-app/board.py
-app/recheck.py
+app/db.py
+app/main.py
+app/orders_io.py
 app/templates/base.html
-app/templates/cycle.html
-app/templates/orders.html
+app/templates/why_slow.html      (new)
+app/timing.py                    (new)
 app/version.py
-tests/test_board_extras.py
+tests/test_timing.py             (new)
 
 
-THE MINUTE
-=============
-I loaded your export into a local copy and timed the pages. The board came back
-in 1.4 seconds with 2,427 order lines, so the code is not a minute slow - your
-box is busy, and I am fairly sure I am what made it busy.
+I STOPPED GUESSING
+==================
+Build 130 shipped a fix for the slowness. So did 129. Neither was measured
+against the box that is actually slow, and you told me it was still slow, which
+means at least one of them was a fix for something that was not the problem.
 
-BUILDS 121 AND 122 BOTH CHANGED THE CHECKING CODE. Every report on the board is
-stamped with the fingerprint of the rules that judged it, and when that changes
-they all queue for a re-check - which is the feature working: it is how the
-LinkedIn fix reaches the reports it already got wrong. But that is eight
-hundred PDFs through pdftotext on a box that is also trying to draw pages, and
-on a small instance the pages lose.
+I have timed the pages locally against your real export four separate ways now.
+The board comes back in 1.4 seconds. The query count is 26, so it is not the
+database being asked the same thing over and over. The JSON payload theory I
+was about to ship a fix for works out to about a tenth of a second. None of
+that explains a minute, and I do not have your box to look at.
 
-Three things.
-
-IT SAYS SO NOW. Over 200 in the queue and the board carries:
-
-  842 reports are being re-checked in the background. A deploy changed the
-  checking rules, so every report on the board is being read again with them -
-  and while that runs this box is doing two things at once, so pages will be
-  slower than usual. It works through on its own and the number comes down.
-  Nothing is wrong and nothing needs pressing.
-
-A slow tool with a reason and a number coming down is a different thing from a
-slow tool.
-
-IT TREADS MORE CAREFULLY WHEN THE QUEUE IS LONG. The sweep rested for as long
-as each batch took, capped at twenty seconds - about half the box. Over two
-hundred reports it now rests twice as long as it works, capped at forty-five.
-It takes longer and nobody is waiting on it: those reports have been on the
-board for hours already.
-
-AND ONE REAL FAULT, MINE, FROM BUILD 125. Shortening a reporter's name needs to
-know the other reporters, and I had it asking the database - cached on a COUNT
-of the partner table, which meant a COUNT QUERY PER ROW. Eight hundred queries
-to answer one question. It reads the partner list the board already has in
-hand. That is 1.4 seconds down to 0.9 here, and more than that on Postgres.
-
-If the board is still slow once the number is gone, tell me and I will look
-again - /healthz/deep gives the queue length as awaiting_recheck.
+So this build does not fix the slowness. It measures it.
 
 
-THE TWO SMALL ONES
-=====================
-"Narrowing the pull" is collapsed. It is three screens of instructions for a
-job done once a month, sitting on top of the panels people open that page to
-read. The summary says what is inside it.
+THE NEW PAGE - "Why is it slow"
+===============================
+New icon in the left rail, under "Check a list". It shows:
 
-"Check a list" moved under "Lifetimes delivered" in the rail.
+  * HOW LONG THIS WORKER HAS BEEN RUNNING. This is the number I want. A cold
+    start on Render is thirty to sixty seconds and it is charged to whoever
+    loads the next page. If you open that page during a slow spell and it says
+    the worker started forty seconds ago, that is the entire answer and none of
+    my other theories matter.
+  * EVERY RESTART IN THE LAST 24 HOURS, from the database, because a restart
+    erases anything held in memory - including the evidence that it happened.
+    Two rows at the same second is a deploy. Rows arriving on their own, four
+    or five an hour, is something getting killed.
+  * WHAT EACH OF THE LAST 60 REQUESTS COST THE SERVER - total seconds, how much
+    of that was waiting on the database, and how many queries. If that column
+    says 0.4 and your browser sat there for a minute, the time is not being
+    spent in this code and I have been looking in the wrong place all week.
+  * Memory held against the box's ceiling, and the load average.
 
-734 tests pass.
+It writes a plain sentence at the top when the numbers say something obvious -
+"the service has restarted 6 times in the last hour, that is the reason for the
+wait" - rather than leaving you to read a table of milliseconds.
+
+Same numbers as JSON at /healthz/slow if it is easier to paste.
+
+WHAT I NEED: open it the next time a page takes a minute, and send me a
+screenshot. Not before, not after - during.
+
+
+AND ONE REAL FAULT, FOUND ON THE WAY
+====================================
+Uploading an order export through the page reads it into memory three times.
+Measured on your actual file: 1,046 MB of peak memory. The box has 512.
+
+The S3 sync does not do this - it writes to a temp file and streams, 92 MB -
+and that is why this has never shown up as a sync failure. It only bites the
+manual upload, which is the one you used on Sunday with the 148 MB export.
+
+The box does not survive that. The worker is killed mid-import, the platform
+brings it back, and the next page load pays for a cold start. If the sweep was
+running at the time it starts again from the top.
+
+An upload over 8 MB now goes to disk first and takes the same streaming path.
+Same file, same 2,427 lines, same 1,217 clients - 233 MB instead of 1,046.
+
+I am not claiming this is the minute. It is a real bug, it is in the right
+neighborhood, and it would have stayed invisible.
+
+745 tests pass.

@@ -15,7 +15,9 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import io
+import os
 import re
+import tempfile
 from pathlib import Path
 
 from dateutil import parser as dp
@@ -227,6 +229,34 @@ def _open_source(src):
         fh = open(src, "r", encoding="utf-8-sig", errors="replace", newline="")
         close = True
     else:
+        # A BLOB THIS SIZE IS THREE COPIES BY THE TIME IT IS READABLE.
+        #
+        # The S3 sync writes the export to a temp file and hands over the path,
+        # which streams: 92 MB of memory to read the real 148 MB export. The
+        # same file uploaded through the page arrives as bytes, and decoding it
+        # to text and wrapping that in a StringIO makes a second and a third
+        # copy - measured at 1,046 MB of peak memory on a box that has 512.
+        #
+        # The box does not survive that. The worker is killed, the platform
+        # brings it back, and the cold start is charged to whoever loads the
+        # next page. So an upload big enough to matter goes to disk first and
+        # takes the streaming path like everything else.
+        if len(src) > 8 * 1024 * 1024:
+            from .config import settings as _cfg
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".csv", delete=False,
+                dir=str(_cfg.data_dir) if getattr(_cfg, "data_dir", None) else None)
+            try:
+                tmp.write(src)
+                tmp.close()
+                del src
+                yield from _open_source(tmp.name)
+            finally:
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+            return
         fh = io.StringIO(src.decode("utf-8-sig", errors="replace"))
         close = False
     try:

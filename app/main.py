@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import time as _time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,7 +19,7 @@ from sqlalchemy.orm import Session
 from . import brand, selfcheck, version
 from .config import settings
 from .db import (Batch, Delivery, Inbound, KnownLogo, OrderLine, OrderSync,
-                 Partner, Report, SessionLocal, init_db)
+                 Partner, Report, SessionLocal, WorkerBoot, init_db)
 from .ingest import (finish_batch, parse_postmark, process_batch,
                     prune_old_pdfs, sweep_stale)
 from .lookup import find as _find
@@ -34,6 +35,51 @@ app = FastAPI(title="Report QA")
 # next to building the page in the first place.
 from fastapi.middleware.gzip import GZipMiddleware      # noqa: E402
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+# WHAT THE SERVER ITSELF SAW. Every guess at why the pages felt slow was made
+# without a single server-side number to check it against - see app/timing.py.
+from . import timing                                    # noqa: E402
+from sqlalchemy import event as _sa_event               # noqa: E402
+from sqlalchemy.engine import Engine as _SAEngine       # noqa: E402
+
+
+# ON THE ENGINE CLASS, NOT ON ONE ENGINE.
+#
+# The tests rebuild app.db against a temporary sqlite file, which makes a new
+# engine object - and a listener attached to the engine this module imported at
+# start-up would then be watching something nobody uses. The count would come
+# back zero and read exactly like a page that runs no queries.
+def _qa_query_start(conn, cursor, statement, params, context, many):
+    context._qa_started = _time.perf_counter()
+
+
+def _qa_query_end(conn, cursor, statement, params, context, many):
+    started = getattr(context, "_qa_started", None)
+    if started is not None:
+        timing.note_query(_time.perf_counter() - started)
+
+
+# ONCE, however many times this module is imported. The tests reload it, and a
+# listener registered twice counts every query twice - which would have the
+# board reporting fifty-two queries it never ran.
+if not timing.LISTENING:
+    _sa_event.listen(_SAEngine, "before_cursor_execute", _qa_query_start)
+    _sa_event.listen(_SAEngine, "after_cursor_execute", _qa_query_end)
+    timing.LISTENING = True
+
+
+@app.middleware("http")
+async def _stopwatch(request: Request, call_next):
+    box = timing.start_counting()
+    started = _time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        timing.record(request.url.path, request.method, status,
+                      _time.perf_counter() - started, box[0], box[1])
 
 
 # ------------------------------------------------------------ when it breaks
@@ -407,6 +453,23 @@ def _startup():
     except Exception:
         import traceback; traceback.print_exc()
 
+    # THIS WORKER CAME UP. Written down because a restart is the likeliest
+    # reason for a slow page and the only one that erases its own evidence.
+    db = SessionLocal()
+    try:
+        db.add(WorkerBoot(pid=os.getpid(), build=version.BUILD,
+                          service=version.service()))
+        db.commit()
+        # Two workers restarting a few times a day for a year is still only a
+        # few thousand rows, but there is no reason to keep last month's.
+        cutoff = dt.datetime.utcnow() - dt.timedelta(days=14)
+        db.query(WorkerBoot).filter(WorkerBoot.at < cutoff).delete()
+        db.commit()
+    except Exception:                                        # noqa: BLE001
+        db.rollback()
+    finally:
+        db.close()
+
 
 @app.get("/healthz")
 def healthz():
@@ -440,6 +503,53 @@ def healthz_deep():
     finally:
         db.close()
     return out
+
+
+def _boot_rows(db: Session, hours: int = 24) -> list[WorkerBoot]:
+    since = dt.datetime.utcnow() - dt.timedelta(hours=hours)
+    return db.scalars(select(WorkerBoot).where(WorkerBoot.at >= since)
+                      .order_by(desc(WorkerBoot.at)).limit(80)).all()
+
+
+@app.get("/why-slow", response_class=HTMLResponse)
+def why_slow(request: Request, db: Session = Depends(get_db)):
+    """What the server thinks it is spending its time on.
+
+    Every theory about the slowness so far has been argued from local timings
+    against a copy of the data, which said 1.4 seconds while the real thing
+    said a minute. This is the page that settles it from the box itself.
+    """
+    boots = _boot_rows(db)
+    hour_ago = dt.datetime.utcnow() - dt.timedelta(hours=1)
+    boots_hour = sum(1 for b in boots if b.at >= hour_ago)
+    try:
+        from .recheck import running_jobs, stale_count
+        queue = stale_count(db)
+        jobs = running_jobs(db)
+    except Exception:                                        # noqa: BLE001
+        queue, jobs = None, {}
+    return templates.TemplateResponse(request, "why_slow.html", {
+        "request": request, "nav": "whyslow",
+        "summary": timing.summary(),
+        "verdict": timing.verdict(boots_hour),
+        "recent": timing.recent(60),
+        "boots": boots, "boots_hour": boots_hour,
+        "queue": queue, "jobs": jobs,
+        "last_sync": last_sync(db),
+        "now": dt.datetime.utcnow(),
+    })
+
+
+@app.get("/healthz/slow")
+def healthz_slow(db: Session = Depends(get_db)):
+    """The same numbers as JSON, for pasting into a message."""
+    boots = _boot_rows(db)
+    hour_ago = dt.datetime.utcnow() - dt.timedelta(hours=1)
+    boots_hour = sum(1 for b in boots if b.at >= hour_ago)
+    return {"ok": True, **version.info(), **timing.summary(),
+            "boots_last_hour": boots_hour, "boots_last_24h": len(boots),
+            "verdict": timing.verdict(boots_hour),
+            "recent": timing.recent(25)}
 
 
 @app.get("/favicon.ico", include_in_schema=False)

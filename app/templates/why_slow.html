@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Why is it slow · Report QA{% endblock %}
+{% block where %}<a href="/cycle">Cycle</a> / Why is it slow{% endblock %}
+{% block body %}
+
+<div>
+  <h1>Why is it slow</h1>
+  <p class="sub">
+    What the server itself measured, rather than what it feels like from the
+    browser. The two are not the same thing, and the difference between them is
+    the answer: if the numbers below are small and the page still took a minute
+    to appear, the time is not being spent in this code.
+  </p>
+</div>
+
+{% if verdict %}
+<section>
+  <div class="alert">
+    {% for line in verdict %}<p>{{ line }}</p>{% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h2>This worker</h2>
+  <p class="sub">
+    There are two of these and your page was answered by one of them, so the
+    request list further down is only half the traffic. The restart list is
+    both.
+  </p>
+  <div class="tw"><table>
+    <tbody>
+      <tr><th>Build</th><td>{{ build_label }}</td></tr>
+      <tr><th>Process</th><td>{{ summary.pid }}</td></tr>
+      <tr><th>Running for</th>
+        <td>
+          {% set u = summary.uptime_seconds %}
+          {% if u < 120 %}{{ u|int }} seconds
+          {% elif u < 7200 %}{{ (u / 60)|int }} minutes
+          {% else %}{{ (u / 3600)|round(1) }} hours{% endif %}
+        </td></tr>
+      <tr><th>Memory held</th>
+        <td>
+          {% if summary.rss_mb %}{{ summary.rss_mb }} MB{% if summary.memory_limit_mb %}
+            of {{ summary.memory_limit_mb }} MB{% endif %}
+          {% else %}not readable here{% endif %}
+        </td></tr>
+      {% if summary.load %}
+      <tr><th>Box load</th>
+        <td>{{ summary.load[0]|round(2) }} over the last minute</td></tr>
+      {% endif %}
+      <tr><th>Requests recorded</th><td>{{ summary.requests_seen }}</td></tr>
+      <tr><th>Typical request</th>
+        <td>{{ summary.median_seconds }}s, slowest {{ summary.slowest_seconds }}s</td></tr>
+      <tr><th>Restarts in the last hour</th><td>{{ boots_hour }}</td></tr>
+      {% if queue is not none %}
+      <tr><th>Reports awaiting a re-check</th><td>{{ queue }}</td></tr>
+      {% endif %}
+      {% if last_sync %}
+      <tr><th>Last order sync</th>
+        <td>{{ last_sync.synced_at.strftime('%b %d, %H:%M') }} UTC
+          ({{ last_sync.state }})</td></tr>
+      {% endif %}
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>The last requests this worker answered</h2>
+  <p class="sub">
+    Seconds are the time inside the process, from the request arriving to the
+    answer leaving. "In the database" is how much of that was spent waiting on
+    a query, so the rest of it was this code doing work.
+  </p>
+  {% if recent %}
+    <div class="tw"><table id="tbl-req">
+      <thead><tr><th>When</th><th>Page</th><th>Seconds</th>
+        <th>In the database</th><th>Queries</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for r in recent %}
+          <tr>
+            <td class="nw">{{ ((now.timestamp() - r.at) / 60)|int }} min ago</td>
+            <td>{{ r.method }} {{ r.path }}</td>
+            <td class="nw">{{ r.seconds }}</td>
+            <td class="nw">{{ r.db_seconds }}</td>
+            <td class="nw">{{ r.queries }}</td>
+            <td class="nw">{{ r.status }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="empty">Nothing recorded yet. Load a page or two and come back.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Restarts</h2>
+  <p class="sub">
+    Two rows close together is a deploy - both workers come up at once. Rows
+    arriving on their own, several times an hour, is something being killed,
+    and every one of those costs the next page load a cold start of thirty
+    seconds or more.
+  </p>
+  {% if boots %}
+    <div class="tw"><table>
+      <thead><tr><th>When</th><th>Process</th><th>Build</th></tr></thead>
+      <tbody>
+        {% for b in boots %}
+          <tr>
+            <td class="nw">{{ b.at.strftime('%b %d, %H:%M:%S') }} UTC</td>
+            <td class="nw">{{ b.pid }}</td>
+            <td class="nw">{{ b.build }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="empty">No restart has been recorded in the last 24 hours.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
