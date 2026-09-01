@@ -49,6 +49,23 @@
   </form>
 </div>
 
+{# WHY THE BOX IS SLOW, WHEN IT IS SLOW.
+   A deploy that changes the checking code queues EVERY report for a re-check,
+   and eight hundred PDFs through pdftotext is a box with no attention left for
+   drawing pages. That is a known state with an end, and it looked exactly like
+   the tool being broken. It says so now, with a number that comes down. #}
+{% if stale.total > 200 %}
+  <div class="note" style="border-left-color:var(--gold);background:var(--warn-bg);
+       margin:0 0 14px">
+    <b>{{ stale.total }} reports are being re-checked in the background.</b>
+    A deploy changed the checking rules, so every report on the board is being
+    read again with them - and while that runs this box is doing two things at
+    once, so pages will be slower than usual. It works through on its own and
+    the number comes down. Nothing is wrong and nothing needs pressing; reports
+    already signed off are left alone.
+  </div>
+{% endif %}
+
 <section>
   {# data-tiles marks these as re-addable from the partner cards below. #}
   {# data-narrowed says the SERVER already filtered - ?group= or ?state=.

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-129"
-BUILD_NOTES = ("Approve and reject save in place - no reload, no minute, no "
-               "scrolling back. And a scheduled sync every half hour.")
+BUILD = "2026.09.01-130"
+BUILD_NOTES = ("The board says when a re-check sweep is what is making it "
+               "slow, and stopped asking the same question 800 times.")
 
 # ---------------------------------------------------------------------------
 

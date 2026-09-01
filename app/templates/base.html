@@ -647,6 +647,14 @@ body.fit .pdfwrap object{height:100%}
       <path d="M10 13.5a4.5 4.5 0 006.4.4l3-3a4.5 4.5 0 00-6.3-6.4l-1.7 1.7"/>
       <path d="M14 10.5a4.5 4.5 0 00-6.4-.4l-3 3a4.5 4.5 0 006.3 6.4l1.7-1.7"/>
     </svg></a>
+  {# The record of which campaigns have had their lifetime. #}
+  <a href="/lifetimes" class="{% if nav == 'lifetimes' %}on{% endif %}"
+     title="Lifetimes delivered" aria-label="Lifetimes delivered"
+     data-label="Lifetimes delivered">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 21s-7-4.6-7-10a4 4 0 017-2.6A4 4 0 0119 11c0 5.4-7 10-7 10z"/>
+    </svg></a>
   {# The board against a list somebody keeps by hand. #}
   <a href="/cycle/audit" class="{% if nav == 'audit' %}on{% endif %}"
      title="Check a list" aria-label="Check a list" data-label="Check a list">
@@ -655,14 +663,6 @@ body.fit .pdfwrap object{height:100%}
       <path d="M9 5h9a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h1"/>
       <rect x="9" y="3" width="6" height="4" rx="1"/>
       <path d="M8.5 12.5l2 2 4-4"/>
-    </svg></a>
-  {# The record of which campaigns have had their lifetime. #}
-  <a href="/lifetimes" class="{% if nav == 'lifetimes' %}on{% endif %}"
-     title="Lifetimes delivered" aria-label="Lifetimes delivered"
-     data-label="Lifetimes delivered">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M12 21s-7-4.6-7-10a4 4 0 017-2.6A4 4 0 0119 11c0 5.4-7 10-7 10z"/>
     </svg></a>
   <a href="/batches" class="{% if nav == 'batches' %}on{% endif %}" title="Batches"
      aria-label="Batches" data-label="Batch history">

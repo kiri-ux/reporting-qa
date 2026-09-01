@@ -47,6 +47,23 @@ log = logging.getLogger("report-qa.recheck")
 BATCH = 10
 MAX_REST_SECONDS = 20.0
 
+# HOW HARD THE SWEEP IS ALLOWED TO LEAN ON THE BOX.
+#
+# Every batch is ten PDFs through pdftotext, and the rest between batches was
+# "however long that batch took, capped at twenty seconds" - a rough half of
+# the box for as long as the queue lasts. That is fine for the fifty reports a
+# rule fix usually touches. It is not fine for eight hundred, which is what a
+# change to the checking code queues, and on a small instance the difference
+# between half a box and a third of one is the difference between a page that
+# feels slow and a page that feels broken.
+#
+# So the rest is longer than the work when the queue is long. The sweep takes
+# more wall-clock time and nobody is waiting on it - the reports it is
+# correcting have already been on the board for hours.
+REST_MULTIPLIER = 2.0
+LONG_QUEUE = 200                 # more than this and it treads carefully
+MAX_REST_LONG = 45.0
+
 # ONE HEAVY JOB AT A TIME, ACROSS THE WHOLE SERVICE.
 #
 # There are two gunicorn workers and each used to start its own sweeper, so two
@@ -542,7 +559,18 @@ def start_sweeper() -> None:
                         break
                     finally:
                         db.close()
-                    time.sleep(min(time.monotonic() - started, MAX_REST_SECONDS))
+                    # REST IN PROPORTION TO THE QUEUE. A long queue is a
+                    # deploy that changed the rules, and the board being usable
+                    # while that works itself through matters more than it
+                    # finishing quickly.
+                    took = time.monotonic() - started
+                    left = stale_count(db_count := SessionLocal(),
+                                       scoped=True, skip_signed=True)
+                    db_count.close()
+                    if left > LONG_QUEUE:
+                        time.sleep(min(took * REST_MULTIPLIER, MAX_REST_LONG))
+                    else:
+                        time.sleep(min(took, MAX_REST_SECONDS))
         finally:
             db2 = SessionLocal()
             try:

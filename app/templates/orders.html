@@ -240,9 +240,17 @@
   </div>
 </section>
 
+{# COLLAPSED. This is a page of instructions for a job that is done once a
+   month, sitting above the panels somebody opens this page to read. Open it
+   when it is time to pull; the rest of the time it is three screens of
+   scrolling. #}
 <section>
-  <h2>Narrowing the pull</h2>
-  <div class="panel">
+  <details>
+    <summary style="cursor:pointer"><h2 style="display:inline;border:0;
+      padding:0;margin:0">Narrowing the pull</h2>
+      <span class="acct" style="margin-left:8px">what to type into TapClicks,
+        and why</span></summary>
+  <div class="panel" style="margin-top:12px">
     <p class="sub" style="font-size:13.5px;margin:0 0 10px">
       TapClicks filters the export on the line item's <b>start date</b>, not on
       delivery, so one campaign that began in 2018 and is still running forces
@@ -399,6 +407,7 @@
         Nothing loaded yet, so there is no range to work out.</p>
     {% endif %}
   </div>
+  </details>
 </section>
 
 <section>

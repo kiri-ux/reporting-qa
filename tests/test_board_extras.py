@@ -2731,3 +2731,49 @@ def test_the_audit_page_updates_the_row_in_place():
     # And when the fetch fails it falls back to the form rather than losing the
     # decision.
     assert "form.submit()" in page
+
+
+def test_the_board_does_not_ask_the_same_question_once_per_row():
+    """Shortening a reporter's name needs to know the other reporters, and the
+    first cut asked the database for them - cached on a COUNT of the partner
+    table, so a board of eight hundred rows ran eight hundred COUNT queries to
+    answer one question. That is the kind of thing that turns a fast page slow
+    without ever looking wrong."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "board.py").read_text()
+    i = src.index("def expected_for(")
+    j = src.index("def _stamp_done(")
+    body = src[i:j]
+    assert "reporter_pool = _reporter_names(idx)" in body
+    assert "_reporter_names(db)" not in body, "no per-row database question"
+    assert body.count("_reporter_names(") == 1
+
+
+def test_a_long_recheck_queue_says_why_the_board_is_slow():
+    """A deploy that changes the checking code queues EVERY report, and eight
+    hundred PDFs through pdftotext is a box with nothing left over for drawing
+    pages. That is a known state with an end, and it looked exactly like the
+    tool being broken."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert "{% if stale.total > 200 %}" in cycle
+    assert "are being re-checked in the background" in cycle
+    assert "pages will be slower than usual" in cycle
+    assert "Nothing is wrong and nothing needs pressing" in cycle
+
+    # And the sweep actually treads more carefully on a long queue.
+    rc = (Path(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
+    assert "LONG_QUEUE" in rc and "REST_MULTIPLIER" in rc
+
+
+def test_check_a_list_sits_under_lifetimes_delivered():
+    base = (TPL / "base.html").read_text()
+    assert base.index('data-label="Lifetimes delivered"') < \
+        base.index('data-label="Check a list"')
+
+
+def test_narrowing_the_pull_is_collapsed():
+    """Three screens of instructions for a job done once a month, above the
+    panels people open this page to read."""
+    page = (TPL / "orders.html").read_text()
+    i = page.index("Narrowing the pull")
+    before = page[max(0, i - 400):i]
+    assert "<details>" in before and "<summary" in before

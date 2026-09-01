@@ -166,21 +166,17 @@ class Expected:
         return f"{_key(self.market)}|{_key(self.client)}|{self.kind}"
 
 
-_REPORTERS: tuple[set, int] | None = None
+def _reporter_names(idx: dict) -> set:
+    """Every reporter on the roster, off the partner index already in hand.
 
+    THIS USED TO ASK THE DATABASE. It cached on a COUNT of the partner table -
+    so building a board of eight hundred rows ran eight hundred COUNT queries
+    to answer the same question, which is the sort of thing that turns a fast
+    page into a slow one without ever looking wrong.
 
-def _reporter_names(db: Session) -> set:
-    """Every reporter on the roster, cached for one board build.
-
-    Shortening a name needs to know the others, and asking the database once
-    per expected row is a few hundred queries to answer the same question.
+    The index is built once at the top of the board and holds every partner.
     """
-    global _REPORTERS
-    n = db.query(Partner).count()
-    if _REPORTERS is None or _REPORTERS[1] != n:
-        _REPORTERS = ({p.reporting_team or "" for p in db.scalars(
-            select(Partner)).all()}, n)
-    return _REPORTERS[0]
+    return {(p.reporting_team or "") for p in idx.values()}
 
 
 def overrides(db: Session, period: str) -> dict:
@@ -273,6 +269,9 @@ def expected_for(db: Session, period: str,
     # lifetime window has nothing to say about this cycle. A missing date is
     # open-ended, so NULL stays in.
     from sqlalchemy import or_
+    # Every reporter on the roster, once, for the first-name shortening below.
+    reporter_pool = _reporter_names(idx)
+
     cols = db.execute(select(
         OrderLine.market, OrderLine.client, OrderLine.account_ids,
         OrderLine.line_ids, OrderLine.buyer, OrderLine.product,
@@ -539,7 +538,7 @@ def expected_for(db: Session, period: str,
                     # talk. Judged across every reporter, so two of them
                     # sharing a first name keep their surnames.
                     reporter=first_name(p.reporting_team if p else "",
-                                        _reporter_names(db)))
+                                        reporter_pool))
             # SEO belongs to a different person, and whichever line happened to
             # be read first decided the buyer - so a client with one SEO line
             # showed its SEO manager as the buyer for everything it ran.
