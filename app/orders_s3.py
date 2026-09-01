@@ -537,6 +537,13 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
             msg += (f". {_LAST_SKIPPED[0]} older export(s) in that folder were "
                     f"not read - anything more than {STALE_HOURS} hours behind "
                     f"the newest file is a picture of a different day")
+        if result.get("months_disagree"):
+            # ONE OF TWO FIELDS IS WRONG ON THAT LINE. months_running says the
+            # campaign runs one length and the budgets say another, and the
+            # campaign total is built on the first of them.
+            msg += (f", {result['months_disagree']:,} line item(s) where the "
+                    f"months on the order and the budgets disagree about how "
+                    f"long the campaign runs")
         if result.get("header_overruled"):
             # Silent, this would just look like the numbers moving. It is the
             # only sign that somebody's order headers are out of date.

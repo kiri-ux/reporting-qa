@@ -1128,19 +1128,18 @@ def test_the_rail_has_a_way_in():
     assert '/why-slow' in base
 
 
-def test_the_campaign_total_is_the_months_the_money_proves():
-    """The export's own total_campaign_impressions column holds "1" - a share
-    of goal, not a count. The order form computes the total as the monthly
-    impressions times the months the line item runs, and the months do not have
-    to be guessed: the ratio of total budget to monthly budget IS that count,
-    and it is a whole number in 199,870 of the 208,140 rows carrying both.
+def test_the_campaign_total_comes_from_the_months_on_the_order():
+    """months_running is a required field on the order form and the export
+    carries it - populated on all 213,394 rows of the real file. Deriving the
+    month count from the budgets instead only reached 1,837 of 2,427 order
+    lines, because it needed both budgets present and their ratio whole.
     """
     import os, tempfile, importlib
     from app import orders_io
     hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
            "status,orders_start_date,start_date,end_date,orders_end_date,"
            "monthly_campaign_impressions,total_campaign_impressions,"
-           "monthly_campaign_budget,total_campaign_budget\n")
+           "monthly_campaign_budget,total_campaign_budget,months_running\n")
 
     def _load(rows):
         d = tempfile.mkdtemp()
@@ -1152,28 +1151,54 @@ def test_the_campaign_total_is_the_months_the_money_proves():
         dbm.init_db()
         importlib.reload(orders_io)
         db = dbm.SessionLocal()
-        orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+        res = orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
         out = [(l.impressions, l.total_impressions)
                for l in db.query(dbm.OrderLine).all()]
         db.close()
-        return out
+        return out, res
 
     line = ("M,IO Live,Cali Grow,54425,Social Mirror Ads,{lid},IO Complete,"
-            "2026-06-05,{s},{e},2026-08-31,{i},1,{mb},{tb}\n")
-    # Her own example: $3,000 of $1,500 a month is two months.
+            "2026-06-05,{s},{e},2026-08-31,{i},1,{mb},{tb},{mo}\n")
     two = line.format(lid=131447, s="2026-06-05", e="2026-08-05", i=88235,
-                      mb=1500, tb=3000)
-    assert _load(two) == [(88235.0, 176470.0)]
-    # One month buys nothing extra.
-    one = line.format(lid=134907, s="2026-08-05", e="2026-08-31", i=100000,
-                      mb=1500, tb=1500)
-    assert _load(one) == [(100000.0, 100000.0)]
-    # NO BUDGETS, NO MULTIPLIER, NO GUESS. Without the money there is nothing
-    # proving the month count, and a total is not invented from the dates.
-    blank = ("M,IO Live,Cali Grow,54425,Social Mirror Ads,9,IO Complete,"
-             "2026-06-05,2026-06-05,2026-08-05,2026-08-31,88235,1,,\n")
-    assert _load(blank) == [(88235.0, None)]
-    # AND A RATIO THAT IS NOT A WHOLE NUMBER OF MONTHS IS NOT ONE.
+                      mb=1500, tb=3000, mo=2)
+    rows, res = _load(two)
+    assert rows == [(88235.0, 176470.0)]
+    assert res["months_disagree"] == 0
+
+    # NO BUDGETS AT ALL, and it still works - the months are on the row.
+    nomoney = ("M,IO Live,Cali Grow,54425,Social Mirror Ads,9,IO Complete,"
+               "2026-06-05,2026-06-05,2026-08-05,2026-08-31,88235,1,,,2\n")
+    assert _load(nomoney)[0] == [(88235.0, 176470.0)]
+
+    # AND THE MONEY IS THE VALIDATOR. Three months on the order, two months of
+    # budget: one of the two fields is wrong and the sync says how many.
     odd = line.format(lid=7, s="2026-06-05", e="2026-08-05", i=88235,
-                      mb=1500, tb=2300)
-    assert _load(odd) == [(88235.0, None)]
+                      mb=1500, tb=3000, mo=3)
+    rows, res = _load(odd)
+    assert rows == [(88235.0, 264705.0)], "the order's own month count is used"
+    assert res["months_disagree"] == 1, "and the disagreement is counted"
+
+
+def test_a_line_with_no_monthly_impressions_gets_no_total():
+    """Spend products report money, not impressions. Nothing to multiply."""
+    import os, tempfile, importlib
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date,"
+           "monthly_campaign_impressions,monthly_campaign_budget,"
+           "total_campaign_budget,months_running\n")
+    d = tempfile.mkdtemp()
+    os.environ["DATABASE_URL"] = f"sqlite:///{d}/t.db"
+    from app import config as cfg
+    importlib.reload(cfg)
+    from app import db as dbm
+    importlib.reload(dbm)
+    dbm.init_db()
+    importlib.reload(orders_io)
+    db = dbm.SessionLocal()
+    orders_io.import_io_export(db, (hdr +
+        "M,IO Live,C,54425,Pay-Per-Click Ads,1,IO Live,2026-01-01,2026-01-01,"
+        "2026-12-31,2026-12-31,,1500,18000,12\n").encode(), period="2026-08")
+    assert [(l.impressions, l.total_impressions)
+            for l in db.query(dbm.OrderLine).all()] == [(None, None)]
+    db.close()

@@ -191,6 +191,11 @@ WANTED = ("orders_id", "id", "orders_status", "status", "orders_type",
           "client", "product",
           "client_business_unit", "orders_start_date", "orders_end_date",
           "start_date", "end_date", "date",
+          # HOW MANY MONTHS THE LINE ITEM RUNS, straight off the order form
+          # where it is a required field. The export repeats this header 34
+          # times and the first-non-empty rule below picks the one that is
+          # filled in; it is populated on every row of the real export.
+          "months_running",
           "campaign_manager",
           # Money. Not on the report and not derivable from it - pacing is the
           # comparison of what the order says to spend against what it spent.
@@ -357,6 +362,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # served this month" is a decision somebody can make without opening the
     # IO tool - and by then there is no order line left to read it off.
     order_statuses: dict[str, dict] = {}
+    # Line items where months_running and the budgets disagree about how long
+    # the campaign runs. See where it is filled in.
+    months_disagree: set = set()
     # The LATEST end date among the rows dropped for ending before the cycle,
     # per order and per client. See the note where they are filled in.
     ended_at: dict[str, dt.date] = {}
@@ -723,6 +731,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # adding it to both halves would say the client is spending
                 # twice what the order says.
                 money = imps = whole = all_imps = None
+                months_running = _num(r.get("months_running"))
+                if months_running is not None and not (1 <= months_running <= 600):
+                    months_running = None
                 if product == products[0]:
                     # A product with its own money column falls back to the
                     # campaign budget when that column is empty: Performance
@@ -768,10 +779,25 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     # Nothing is extrapolated. If either budget is missing, or
                     # the ratio is not a whole number of months, the campaign
                     # total stays empty rather than becoming a guess.
-                    if all_imps is None and imps and money and whole:
-                        months = whole / money
-                        if 1 <= months <= 60 and abs(months - round(months)) < 0.02:
-                            all_imps = imps * round(months)
+                    # THE MONTH COUNT IS ON THE ROW. It is a required field
+                    # on the order form and the export carries it - populated
+                    # on all 213,394 rows of the real file - so there is
+                    # nothing to derive and nothing to guess.
+                    #
+                    # Deriving it from the money was the previous attempt and
+                    # it only reached 1,837 of 2,427 order lines, because it
+                    # needed BOTH budgets present and their ratio to come out
+                    # whole. The money is the validator now, not the source.
+                    if all_imps is None and imps and months_running:
+                        all_imps = imps * months_running
+                    # AND THE MONEY CHECKS IT. total budget over monthly budget
+                    # is the same number, on 208,082 of the 208,140 rows that
+                    # carry both. The 58 that disagree are worth counting: one
+                    # of the two fields is wrong on that line and neither this
+                    # code nor anybody reading the board would otherwise know.
+                    if months_running and money and whole:
+                        if abs(whole / money - months_running) > 0.02:
+                            months_disagree.add(order_id + "/" + line_id)
                     if all_imps is not None:
                         cur = kept[k]["total_impressions"]
                         kept[k]["total_impressions"] = (
@@ -921,6 +947,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             "period": period, "rows_read": rows_read, "duplicate_rows": dupes,
             "dropped": dropped, "dropped_orders": dropped_orders,
             "order_statuses": order_statuses,
+            "months_disagree": len(months_disagree),
             "unmapped_products": dict(sorted(unmapped.items(),
                                              key=lambda kv: -kv[1])[:20]),
             "files": len(sources), "guidance": guidance, "roster_fallbacks": fallbacks,
