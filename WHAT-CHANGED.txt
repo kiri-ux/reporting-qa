@@ -1,4 +1,4 @@
-build 2026.09.01-162
+build 2026.09.01-163
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -21,70 +21,33 @@ tests/test_order_remap.py
 tests/test_rules.py
 
 
-PARAGON CASINO RESORT - A GOAL MORE THAN HALF OF WHICH WAS CALLED OFF
-=====================================================================
-Order 55583 is two Social Mirror line items: 134958 cancelled at 97,500 and
-134957 live at 85,000. The monthly panel has taken cancelled lines out for a
-while. The lifetime panel had not - it was still reading the rolled-up row,
-which is every line item added together - so it paced 86,573 against 182,500
-and called it 53% short.
+CLINTON PARKWAY NURSERY - THE DATE WAS OFF SOMEBODY ELSE'S ORDER
+================================================================
+Order 55048 is one Meta line, IO Live, 25 August to 31 October. The page said
 
-Against the 85,000 still being asked for, that report is slightly over.
+  nothing starts until 2026-09-12, after this cycle
 
-Cancelled lines are out of the goal on lifetimes now, the same as on monthlies,
-and the "N months at the monthly figure" line names the months actually
-multiplied rather than the merged span across a cancelled July line and a live
-August one.
+with the IO tool open on screen saying 25 August. That date was never 55048's.
 
+Two things put it there, and both are the same mistake in different places.
 
-AND THE SAME SENTENCE WAS BEING SAID TWICE
-==========================================
-  Social Mirror is 53% short - 86,573 served against 182,500 ordered
-  Campaign finished 53% under its goal - 86,573 against 182,500 sold
+An order line row is one client and one product rolled up across every order
+that sells it, and its dates are the WIDEST of them - so quoting them at
+somebody asking about ONE order gives a date that may belong to a different
+one. The lifetime reasons were fixed for this a few builds back; the two date
+reasons had not been. They read each order's own line items now.
 
-Two warnings, one number. On a lifetime the campaign check reports the whole
-campaign and the product check reports a product, and when the campaign IS one
-product those are the same fact. The campaign line keeps it - it is the point
-of a lifetime, it carries the goal's basis and it says which page. It only ever
-reports UNDER, so a product that over-delivers still gets its own line.
+And when the order id matches nothing loaded at all, the lookup falls back to
+the client's other orders. That is the right thing to do - it is how a client
+whose orders spell their name differently still gets an answer - but every
+sentence after it still said "this order" about somebody else's. It says which
+now:
 
+  no order line carries 55048 - the client's other orders do not start until
+  2026-09-12, after this cycle
 
-CANCELLED LINES FOLD AWAY ON THE ORDER PANEL
-============================================
-A cancelled line is out of every goal on the report and is not owed on it, so a
-red pill in the middle of the list reads as the finding when it is the one row
-nothing is being decided from. It is behind "N cancelled line items" now, with
-its money still on it - which half was called off is exactly what somebody
-opens that panel to find out.
+Which is a different thing to go and check, and true.
 
 
-ADDED BY HAND, ON THE ROW ITSELF
-================================
-The panel listing every hand-added row is gone. You were right that it is a
-second board to read: those rows are already on the board below it.
-
-Instead:
-
-  * every row somebody put on the cycle carries a BY HAND tag beside the
-    client, with who and why on hover - on every row, not only the ones still
-    waiting for a report
-  * a filter beside the report search, "Added by hand N", narrows to just them
-    and works alongside the search and the column dropdowns rather than
-    fighting them
-  * "Add a row to this cycle" is a fold-down above the reports:
-
-      Partner (dropdown) | Client | Order | Report (monthly/lifetime/SEO)
-      Products (multi-select) | Why | Save
-
-The partner is picked, not typed - the board is keyed on the partner's real
-name and one spelled a hair differently groups with nothing. The products go
-onto the row, so it names its buy like every other row and the product checks
-have something to judge the PDF against. The order number too, so searching it
-finds the row.
-
-Approving from the list check writes the same thing, so your approves carry the
-same tag and appear in the same filter.
-
-
-823 tests pass. The orders re-read themselves on the next sync and the reports
+824 tests pass. The orders re-read themselves on the next sync and the reports
 re-check in the background - both fingerprints moved.

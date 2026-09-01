@@ -469,6 +469,48 @@ def _order_end_dates(lines, ids) -> list:
     return out
 
 
+def _order_line_dates(lines, ids) -> tuple:
+    """(starts, ends) for the line items of the orders asked about.
+
+    THE ROW'S OWN DATES ARE THE WIDEST ACROSS EVERY ORDER BEHIND IT, which is
+    the wrong pair to quote at somebody asking about one of them. Clinton
+    Parkway Nursery's order 55048 is one Meta line running 25 August to 31
+    October, and the page said "nothing starts until 2026-09-12, after this
+    cycle" - a date off a different order of theirs, printed as a fact about
+    55048 with the IO tool open on screen saying 25 August.
+
+    Falls back to the row's merged dates only for rows written before the line
+    items were kept, which is the answer this always gave.
+    """
+    import datetime as _dt
+    want = {str(i).strip() for i in (ids or ()) if str(i).strip()}
+
+    def as_date(raw):
+        try:
+            return _dt.date.fromisoformat(str(raw)[:10]) if raw else None
+        except ValueError:
+            return None
+
+    starts, ends = [], []
+    for l in lines:
+        detail = [d for d in (getattr(l, "detail", None) or [])
+                  if isinstance(d, dict)
+                  and (not want or str(d.get("order") or "").strip() in want)]
+        if not detail:
+            if getattr(l, "starts_on", None):
+                starts.append(l.starts_on)
+            if getattr(l, "ends_on", None):
+                ends.append(l.ends_on)
+            continue
+        for d in detail:
+            s, e = as_date(d.get("starts")), as_date(d.get("ends"))
+            if s:
+                starts.append(s)
+            if e:
+                ends.append(e)
+    return starts, ends
+
+
 def _order_index(db):
     """Every order line, indexed by order id and by client, built once.
 
@@ -524,10 +566,17 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
     # every row it had to explain - 2,400 lines rebuilt 150 times over, on a
     # page that already takes its time.
     lines = []
+    # WHETHER THESE LINES ARE THE ORDER'S OR ONLY THE CLIENT'S.
+    #
+    # When the id matches nothing the lookup falls back to the client's other
+    # orders, which is the right thing to do - and every sentence below then
+    # said "this order" about somebody else's. Kept so they can say which.
+    by_order = False
     if db is not None:
         by_id, by_client = _order_index(db)
         for oid in row["ids"]:
             lines.extend(by_id.get(oid, ()))
+        by_order = bool(lines)
         if not lines:
             lines = list(by_client.get(want, ()))
 
@@ -629,12 +678,25 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
                 + ", ".join(what))
 
     cyc = cycle_for(period)
-    ends = [l.ends_on for l in lines if l.ends_on]
-    starts = [l.starts_on for l in lines if l.starts_on]
+    # THE LINE ITEMS OF THE ORDER ASKED ABOUT, not the row's merged span. See
+    # _order_line_dates: Clinton Parkway Nursery's 55048 runs 25 August to 31
+    # October and this said "nothing starts until 2026-09-12" off a date that
+    # belonged to a different order of theirs.
+    starts, ends = _order_line_dates(lines, row["ids"] if by_order else ())
+    whose = f"order {', '.join(row['ids'])}" if by_order and row["ids"] else "this order"
     if ends and max(ends) < cyc.starts_on:
-        return f"every line ended by {max(ends)}, before this cycle"
+        if by_order:
+            return f"every line on {whose} ended by {max(ends)}, before this cycle"
+        return (f"no order line carries {', '.join(row['ids']) or 'this client'}"
+                f" - the client's other orders all ended by {max(ends)}, "
+                f"before this cycle")
     if starts and min(starts) > cyc.ends_on:
-        return f"nothing starts until {min(starts)}, after this cycle"
+        if by_order:
+            return (f"nothing on {whose} starts until {min(starts)}, "
+                    "after this cycle")
+        return (f"no order line carries {', '.join(row['ids']) or 'this client'}"
+                f" - the client's other orders do not start until "
+                f"{min(starts)}, after this cycle")
 
     if row["kind"] == "lifetime":
         from .partners import is_seo

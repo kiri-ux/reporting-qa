@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-162"
-BUILD_NOTES = ("Cancelled lines are out of every pacing goal, and a "
-               "hand-added row is tagged and filterable on the board.")
+BUILD = "2026.09.01-163"
+BUILD_NOTES = ("A date in a reason belongs to the order it is about, not to "
+               "the client's widest span.")
 
 # ---------------------------------------------------------------------------
 

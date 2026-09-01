@@ -3048,3 +3048,52 @@ def test_cancelled_line_items_fold_away_on_the_order_panel():
     main = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
     i = main.index("dead = regroup([r for r in rows if r[\"canceled\"]])")
     assert 'rows = regroup([r for r in rows if not r["canceled"]])' in main[i:i + 200]
+
+
+def test_a_date_answer_is_about_the_order_that_was_asked_about():
+    """Clinton Parkway Nursery, order 55048.
+
+    One Meta line item, IO Live, 25 August to 31 October. The page said
+    "nothing starts until 2026-09-12, after this cycle" - a date off a
+    different order of theirs, printed as a fact about 55048 with the IO tool
+    open on screen saying 25 August.
+
+    Two ways that happened. The row's own dates are the widest across every
+    order behind it, and when the order id matches nothing at all the lookup
+    falls back to the client's other orders - which is right, but every
+    sentence after it still said "this order".
+    """
+    from app.audit import _order_line_dates
+
+    class L:
+        def __init__(self, detail, starts=None, ends=None):
+            self.detail, self.starts_on, self.ends_on = detail, starts, ends
+
+    # One rolled-up Meta row covering two orders. 55048 runs from 25 August;
+    # the September date belongs to 55311.
+    row = L([{"order": "55048", "starts": "2026-08-25", "ends": "2026-10-31"},
+             {"order": "55311", "starts": "2026-09-12", "ends": "2026-12-31"}],
+            starts=dt.date(2026, 8, 25), ends=dt.date(2026, 12, 31))
+    starts, ends = _order_line_dates([row], ["55048"])
+    assert starts == [dt.date(2026, 8, 25)], starts
+    assert ends == [dt.date(2026, 10, 31)], ends
+
+    # No ids asked about - the client's whole picture, which is what the
+    # fallback is for.
+    starts, _ = _order_line_dates([row], ())
+    assert min(starts) == dt.date(2026, 8, 25)
+
+    # A row written before the line items were kept still answers, off its
+    # merged span, which is the answer this always gave.
+    old = L(None, starts=dt.date(2026, 9, 12), ends=dt.date(2026, 12, 31))
+    starts, _ = _order_line_dates([old], ["55048"])
+    assert starts == [dt.date(2026, 9, 12)]
+
+    # And when the lookup fell back to the client, the sentence says so rather
+    # than blaming the order that was asked about.
+    src = (Path(__file__).resolve().parents[1] / "app" / "audit.py").read_text()
+    i = src.index("starts, ends = _order_line_dates(")
+    tail = src[i:i + 1200]
+    assert "by_order" in tail
+    assert "the client\'s other orders do not start until" in tail
+
