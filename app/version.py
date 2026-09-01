@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-134"
-BUILD_NOTES = ("The list check gives the real reason instead of the catch-all, "
-               "and a reject now reaches the board.")
+BUILD = "2026.09.01-135"
+BUILD_NOTES = ("A whole partner missing from the order export now says so "
+               "instead of reading as six unrelated missing orders.")
 
 # ---------------------------------------------------------------------------
 

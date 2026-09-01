@@ -13,7 +13,11 @@
      rather than a decision about August. #}
   <p class="sub"><b>Everything on this page is {{ period|month }}.</b> The list
   you paste, and every approve and reject on it, applies to this cycle only -
-  next month starts clean.</p>
+  next month starts clean.
+  {% if synced and synced.synced_at %}
+    The board here is the order export as it was read
+    {{ synced.synced_at|et('%b %-d at %-I:%M %p') }}.
+  {% endif %}</p>
 </div>
 
 <section>
@@ -78,6 +82,25 @@
       <summary>Which partners</summary>
       <p class="sub">{{ result.covered|join(', ') }}</p>
     </details>
+  {% endif %}
+
+  {# A PARTNER MISSING FROM THE FEED IS NOT SIX MISSING ORDERS, and one row at
+     a time it reads exactly like six missing orders. #}
+  {% if result.gone %}
+    <div class="alert" style="margin-top:16px">
+      <p><b>A whole partner is missing from the order export.</b></p>
+      {% for g in result.gone %}
+        <p>Every row on your list from <b>{{ g.prefix }}</b> -
+          {{ g.rows }} of them - is missing, and missing because the export has
+          no order line for it at all. One order not in the export is an order.
+          All of them is the partner: their orders are not reaching the feed,
+          so every client they have is invisible to the board, this cycle and
+          every cycle, and nothing else here would ever mention it.</p>
+      {% endfor %}
+      <p class="acct">Worth checking at the source before approving these one
+        by one - an approve puts one client on this cycle, and the rest of that
+        partner stays gone.</p>
+    </div>
   {% endif %}
 
   <h2 style="margin-top:22px">On the list, not on the board ({{ result.missing|length }})</h2>

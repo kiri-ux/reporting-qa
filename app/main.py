@@ -1877,6 +1877,10 @@ def cycle_audit(request: Request, period: str = Form(""), group: str = Form(""),
     return templates.TemplateResponse(request, "audit.html", {
         "nav": "audit", "period": period, "group": group, "saved": saved,
         "rows_text": rows, "result": result, "state_label": STATE_LABEL,
+        # WHEN THE EXPORT WAS READ. Half the answers on this page end with "or
+        # the export is out of date", and there was nothing on the page that
+        # said whether that was even a possibility.
+        "synced": last_sync(db),
         "calls": calls, "me": whoami(request)})
 
 

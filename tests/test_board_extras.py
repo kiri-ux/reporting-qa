@@ -397,7 +397,8 @@ def test_a_pasted_row_gives_up_its_client_kind_and_orders():
     from app.audit import parse_list
     assert parse_list("7MOU SG - Benton Rodeo #53915 LIFETIME") == [
         {"raw": "7MOU SG - Benton Rodeo #53915 LIFETIME",
-         "client": "Benton Rodeo", "ids": ["53915"], "kind": "lifetime"}]
+         "client": "Benton Rodeo", "ids": ["53915"], "prefix": "7MOU SG",
+         "kind": "lifetime"}]
 
 
 def test_several_order_ids_on_one_campaign_are_all_read():
@@ -420,7 +421,7 @@ def test_a_tab_pasted_sheet_reads_the_column_with_the_ids_in_it():
     line = "7 Mountains PA Selinsgrove\tLive Campaigns\t7MOU SG - Salem RV #52793\t8/31/2026"
     got = parse_list(line)
     assert got == [{"raw": "7MOU SG - Salem RV #52793", "client": "Salem RV",
-                    "ids": ["52793"], "kind": "monthly"}]
+                    "ids": ["52793"], "prefix": "7MOU SG", "kind": "monthly"}]
 
 
 def test_the_audit_matches_on_order_id_and_reports_both_directions():

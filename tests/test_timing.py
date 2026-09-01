@@ -409,6 +409,51 @@ def test_the_board_reason_is_found_under_the_name_the_board_uses(live):
     assert "1 day" in whys[0]
 
 
+def test_a_whole_partner_missing_from_the_export_is_called_out(live):
+    """One row at a time it reads as six unrelated missing orders. It is one
+    problem, it is much worse, and nothing else here would mention it."""
+    _c, db, _dbm, _t = live
+    from app.audit import audit
+    out = audit(db, "2026-08",
+                "ROI SAM - AudioGo #52029\nROI SAM - Something Else #52030")
+    assert out["gone"] == [{"prefix": "ROI SAM", "rows": 2}]
+
+
+def test_one_missing_order_is_not_called_a_missing_partner(live):
+    """With one row under a code there is no way to tell the two apart, and a
+    panel that cries partner every time is one people stop reading."""
+    _c, db, _dbm, _t = live
+    from app.audit import audit
+    out = audit(db, "2026-08", "ROI SAM - AudioGo #52029")
+    assert out["gone"] == []
+
+
+def test_a_partner_with_one_real_reason_is_not_called_gone(live):
+    """The claim is about the export never having heard of them, not about
+    rows the board has perfectly good answers for."""
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    D = dt.date.fromisoformat
+    db.add(db_mod.Partner(partner="Adlytics Digital Marketing LLC"))
+    db.add(db_mod.OrderLine(
+        market="Adlytics Digital Marketing LLC", client="VSCU KC",
+        account_ids="52263", product="Online Audio",
+        starts_on=D("2026-08-31"), ends_on=D("2026-09-13")))
+    db.commit()
+    from app.audit import audit
+    out = audit(db, "2026-08", "ADM - VSCU KC #52263\nADM - VSCU SC #52265")
+    assert out["gone"] == []
+
+
+def test_the_market_code_survives_parsing():
+    """It is the only thing on the row that says which partner it belongs to."""
+    from app.audit import parse_list
+    rows = parse_list("ROI SAM - AudioGo #52029\nBenton Rodeo #53915")
+    assert rows[0]["prefix"] == "ROI SAM"
+    assert rows[0]["client"] == "AudioGo"
+    assert rows[1]["prefix"] == ""
+
+
 def test_the_rail_has_a_way_in():
     from pathlib import Path
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"

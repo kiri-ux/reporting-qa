@@ -74,6 +74,13 @@ def parse_list(text: str) -> list[dict]:
         head = LIFETIME.split(best)[0]
         head = re.split(r"\bSEO\b", head)[0]
         name = ORDER_ID.sub("", head)
+        # THE MARKET CODE IS KEPT, NOT JUST REMOVED.
+        #
+        # It is the only thing on the row that says which partner it belongs
+        # to, and a whole partner missing from the order export reads exactly
+        # like six unrelated missing orders when you cannot group them.
+        m = PREFIX.match(name)
+        prefix = (m.group(0).strip(" -") if m else "").strip()
         name = PREFIX.sub("", name)
         name = re.sub(r"[\\/\s]+", " ", name).strip(" -/\\")
         if not name and not ids:
@@ -81,7 +88,7 @@ def parse_list(text: str) -> list[dict]:
         # A header row names columns, not campaigns.
         if _key(name) in ("campaign", "client", "market", "list", "campaigns"):
             continue
-        out.append({"raw": best, "client": name, "ids": ids,
+        out.append({"raw": best, "client": name, "ids": ids, "prefix": prefix,
                     "kind": "lifetime" if LIFETIME.search(best) else "monthly"})
     return out
 
@@ -140,7 +147,44 @@ def audit(db, period: str, text: str, group: str = "") -> dict:
              and (not covered or e.group in covered)]
     return {"listed": listed, "board": board, "matched": matched,
             "missing": missing, "extra": extra,
+            "gone": _partners_missing_entirely(listed, missing),
             "covered": sorted(covered)}
+
+
+NOT_IN_EXPORT = "not in the export"
+
+
+def _partners_missing_entirely(listed: list, missing: list) -> list:
+    """Market codes whose every row is missing because the export never had it.
+
+    ONE MISSING ORDER AND A MISSING PARTNER LOOK THE SAME ONE ROW AT A TIME.
+    "no order line carries 52029" is a fair thing to say about one campaign and
+    a very unfair thing to say six times about a partner whose orders are not
+    in the feed at all - which is a far worse problem, because every client
+    they have is invisible to the board and nothing else would ever mention it.
+
+    Worked out from the codes on the pasted list, so it needs no way of turning
+    "ROI SAM" into a partner name: if every row carrying a code is missing, and
+    missing for that reason, the code is the thing that is gone.
+    """
+    total: dict[str, int] = {}
+    for row in listed:
+        p = (row.get("prefix") or "").strip()
+        if p:
+            total[p] = total.get(p, 0) + 1
+    lost: dict[str, int] = {}
+    for row in missing:
+        p = (row.get("prefix") or "").strip()
+        if p and NOT_IN_EXPORT in (row.get("why") or ""):
+            lost[p] = lost.get(p, 0) + 1
+    # TWO ROWS BEFORE SAYING IT. With one row on the list under a code there is
+    # no way to tell a missing order from a missing partner, and a panel that
+    # cries partner at every single missing order is a panel people stop
+    # reading - which costs the one time it is real.
+    return sorted(
+        ({"prefix": p, "rows": n} for p, n in lost.items()
+         if n >= 2 and total.get(p) == n),
+        key=lambda d: (-d["rows"], d["prefix"]))
 
 
 def _order_index(db):

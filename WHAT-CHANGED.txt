@@ -1,5 +1,5 @@
-build 2026.09.01-134
-Changed files only. Includes 131, 132 and 133 - install this one, not all four.
+build 2026.09.01-135
+Changed files only. Includes 131 through 134 - install this one, not all five.
 
 app/audit.py
 app/db.py
@@ -11,99 +11,80 @@ app/templates/base.html
 app/templates/why_slow.html      (new)
 app/timing.py                    (new)
 app/version.py
+tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-THE VSCU ROWS - YOU WERE RIGHT, AND THE TOOL WAS LYING ABOUT WHY
-================================================================
-I loaded your Aug 31 export and ran those four order numbers through it.
+BROWN BAG NY AND AUDIOGO - THE TOOL IS RIGHT, AND THAT IS THE BAD NEWS
+======================================================================
+I searched your Aug 31 export for both. 460,784 rows.
 
-  52263 VSCU KC       Online Audio   Aug 31 -> Sep 13   IO Live
-  52265 VSCU SC       same
-  52267 VSCU SJC      same
-  52268 VSCU TC KC    same
+  49943 / Brown Bag NY   zero rows. The string "Brown Bag" is not in the file.
+  52029 / AudioGo        zero rows. Neither is "AudioGo", or "ROI SAM".
 
-One day in August. The 31st. The board's rule is that a campaign running fewer
-than seven days in a month is not owed a monthly - a page of near-zero numbers
-that reads as a broken report - so it left all four off, correctly, and it knew
-exactly why.
+Neither order is in the export under any status. So it is not Live Chat being
+filtered and it is not paused orders being dropped - the tool has never seen
+these orders at all, and "not in the export" is the honest answer.
 
-The list check then threw that reason away and printed the catch-all: "the
-order is loaded and looks live, worth a closer look." It sent you to check four
-order screens for something the tool already knew.
+I CHECKED BOTH OF THOSE CLAIMS RATHER THAN ASSUMING THEM.
 
-TWO FAULTS, BOTH MINE.
+Paused orders are kept. "IO Paused" is in the export 1,000 times at the order
+level and 1,465 at the line level, and the import keeps them - a campaign
+paused on the 20th delivered for nineteen days and owes a report for them.
 
-Your tracker writes "ADM - VSCU KC" and the code that strips the market code
-off the front wanted TWO words - it was written against "7MOU SG - Benton
-Rodeo" and never saw a one-word code. So the client came out as "ADM - VSCU KC"
-instead of "VSCU KC", matched no board row by name, and fell past the real
-answer. (Also made case sensitive now, so it cannot eat a real client name like
-"Bliss - Digital Innovations".)
+Live Chat is kept. 4,218 rows in the export across 170 orders; 57 order lines
+land in the August window, and six clients have Live Chat and nothing else.
+I ran the audit's explanation over one of those six and it reads "Live Chat
+does not earn a report on its own", which is the new message working. It only
+fires when the tool has the order - and for Brown Bag it does not have it.
 
-And it only ever looked the board's reason up BY NAME - on a page whose entire
-purpose is that the two tools spell clients differently. It has the order id,
-which is the one thing they agree on, so it now asks again under whatever name
-the board uses. Even if a name never lines up, the reason comes through.
-
-Those four rows now read: ran 1 day this month. Nothing to do about them.
-
-AND THE ONES THAT ARE ACTUALLY WORTH YOUR TIME ARE TAGGED. The catch-all is the
-only "I do not know" on that page and it looked identical to the forty answers
-that are the rules working. It carries a "look" tag now. Everything untagged
-has a real reason behind it.
+THE DIFFERENCE BETWEEN THE TWO, WHICH MATTERS. VICI is in the export, 123 rows.
+So Brown Bag NY is one order missing from a partner that is otherwise fine.
+ROI SAM is not in the export at all - not one row, under any client. That is
+not a missing order, it is a missing partner, and every client they have is
+invisible to the board this cycle and every cycle.
 
 
-YOUR OTHER QUESTION: YES, THE ROTO ROOTER APPROVE WORKED
-========================================================
-I built your case rather than reading the code and telling you what it looked
-like it did. Order 52290, live all year, taken off August for not being in the
-serving file. Before the approve, no row. After it, the August monthly is on
-the board tagged kept on by hand, with "client wasn't linked up" and your
-initial against it. August only - September asks again.
+SO THE PAGE SAYS THAT NOW
+=========================
+When every row on your list carrying one market code is missing, and missing
+because the export has never heard of it, the page says so in a panel above the
+table instead of leaving you to notice that six unrelated-looking rows all
+start with the same three letters:
 
-AND ONE THING I FOUND WHILE CHECKING, WHICH IS WORSE THAN IT LOOKS. Rejecting a
-row you had already approved did not take it back off. The word on the list
-changed to Rejected and the override stayed put, so the board still carried the
-row somebody had just rejected. Two screens, two answers, and the one nobody
-was looking at was the one the reporters work from. Clearing had the same hole.
-Both reach the board now, and only that one client's - a sweep that cleared the
-cycle's overrides would be a very quiet way to lose somebody else's work.
+  A whole partner is missing from the order export.
+  Every row on your list from ROI SAM - 6 of them - is missing, and missing
+  because the export has no order line for it at all. One order not in the
+  export is an order. All of them is the partner.
 
+It needs two rows before it will say it. With one row under a code there is no
+way to tell a missing order from a missing partner, and a panel that cries
+partner at every missing order is one people stop reading - which costs the
+one time it is real.
 
-LIVE CHAT - NEITHER
-===================
-Not filtered. 26734 is not in your Aug 31 export at all; Live Chat generally is
-(4,218 lines, 170 orders). But the message was wrong: "not in the export" is
-what it says when it cannot find the order AT ALL, so a Live Chat only client
-got that sentence with the line sitting right there. It now says "Live Chat
-does not earn a report on its own", which is your rule working.
+AND THE PAGE NOW SAYS WHEN THE EXPORT WAS READ. Half the answers on it end with
+"or the export is out of date" and there was nothing on the page that said
+whether that was even possible. It is in the line under the title.
 
-
-THE TWO YOU ASKED FOR
-=====================
-The wall of 137 partner names is folded into "Which partners".
-
-Check a list carries the cycle in its title, and says under it that the list
-and every approve and reject on it apply to that cycle only.
+Neither of these two is out of date, by the way. Both orders are absent from a
+file read on the 31st.
 
 
-THE SLOWNESS
-============
-Memory ruled out (196 MB of 2,048 - I had 512 from a stale comment). Restarts
-ruled out (two boots in 24 hours, both mine). What is left is load 7.1/7.4/7.5
-with the fifteen-minute figure highest, and `/` at 3.9 seconds with 0.18 of a
-second of it in the database. Not the database - a box taking turns with six
-other things, and inside a container that load figure is usually the whole host.
+FROM 134, IF YOU SKIPPED IT
+===========================
+THE VSCU ROWS ran one day in August - Aug 31 to Sep 13 - and the board's
+seven-day rule left them off, correctly. The list check threw that reason away
+and printed the catch-all. Two faults: your tracker writes a one-word market
+code ("ADM - ") and the code that strips it wanted two words, and it only ever
+looked the board's reason up by name on a page that exists because the two
+tools spell clients differently. It uses the order id now. Those rows read
+"ran 1 day this month". Rows the board genuinely has no answer for are tagged
+"look" so they stop hiding among the forty that are the rules working.
 
-Slow pages (over 3 seconds) now write themselves down from both workers, and
-every page is timed in two halves - working it out against drawing it. Bottom
-of "Why is it slow" in the rail. You do not have to catch one happening.
+REJECTING A ROW YOU HAD APPROVED did not take it back off the board. The list
+said Rejected and the override stayed put. Fixed, and clearing too.
 
-Three things got cheaper: the board stopped re-working out which first names
-clash (1,964 times a page, a third of its build), the list check stopped
-reading the whole order table twice per row (300 passes for a list of 150), and
-an upload over 8 MB streams from disk instead of holding three copies in memory
-(1,046 MB down to 233 on your real file).
+APPROVING WORKS - I built your Roto Rooter case to confirm it rather than
+reading the code and telling you what it looked like it did.
 
-763 tests pass.
+767 tests pass.
