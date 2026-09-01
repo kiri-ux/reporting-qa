@@ -1004,6 +1004,8 @@ def orders_view(request: Request, view: str = Query("clients"),
         .order_by(OrderSync.id.desc()).limit(1)).first()
     return templates.TemplateResponse(request, "orders.html", {
         "lines": lines, "sync": sync_rec, "guidance": guidance, "running": running,
+        # PARTNERS ON THE ROSTER WITH NO ORDERS AT ALL. See _partners_with_no_orders.
+        "no_orders": _partners_with_no_orders(db),
         "s3": settings.s3_configured,
         "served": served, "min_days": MIN_DAYS_IN_MONTH, "serve_log": serve_log,
         "nav": "orders", "view": view, "legend": legend,
@@ -1043,6 +1045,32 @@ def _csv_response(filename: str, header: list[str], rows) -> Response:
         content="\ufeff" + buf.getvalue(),        # BOM, so Excel reads UTF-8
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _partners_with_no_orders(db: Session) -> list[str]:
+    """Roster partners the loaded order list has never heard of.
+
+    "AM I MISSING ORDERS?" HAD NO ANSWER BEFORE THIS. The order export is split
+    across several files - one per partner for some, and one "all" file
+    covering everybody else - and if one of those stops arriving, or a partner
+    is in none of them, their clients simply are not on the board. No error, no
+    empty table, nothing: the cycle is just quietly smaller.
+
+    The reporting breakout sheet knows every partner there is. Anything on it
+    with not one order line loaded is either genuinely dormant this month or
+    missing from the export, and those two are worth telling apart by hand.
+    """
+    from .board import excluded
+    from .partners import all_partners
+    have = {_ident_key(m) for (m,) in
+            db.execute(select(OrderLine.market).distinct()).all() if m}
+    out = []
+    for p in all_partners(db):
+        name = (p.partner or "").strip()
+        if not name or excluded(name) or _ident_key(name) in have:
+            continue
+        out.append(name)
+    return sorted(out)
 
 
 def _unmapped_products(db: Session) -> list[tuple[str, int]]:

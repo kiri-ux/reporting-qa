@@ -474,7 +474,11 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
                     f"window (to {cyc.lifetime_cutoff})")
         return "no line ends inside this cycle's lifetime window"
 
-    if not any(cyc.was_live(l.starts_on, l.ends_on) for l in lines):
+    # THE SAME TEST THE BOARD USES, off the per-line detail rather than the
+    # rolled-up window - otherwise this page and the board disagree about the
+    # same order, which is worse than either being wrong on its own.
+    from .board import _live_in_month
+    if not any(_live_in_month(cyc, l, open_only=True) for l in lines):
         # BOTH HALVES, WHEN BOTH ARE TRUE.
         #
         # "No line was live" is the order export's answer and the serving file

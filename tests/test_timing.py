@@ -812,6 +812,85 @@ def test_the_order_level_flag_is_actually_selected_by_the_board():
     assert "OrderLine.order_canceled" in src
 
 
+def test_a_pending_launch_line_is_not_running(live):
+    """"IO Pending Launch: Element Missing" is a buy waiting on creative. Its
+    flight dates are set, so on dates alone it reads as delivering - and on
+    Todd's Jewelry it was the only thing keeping the row alive, on an order
+    whose eight real line items all finished by 31 July."""
+    _c, db, _dbm, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("WHL,IO Live,Todd's Jewelry,47117,Meta Display & Video Ads,100,"
+            "IO Complete,2025-06-17,2026-06-03,2026-07-31,2026-12-31\n"
+            "WHL,IO Live,Todd's Jewelry,47117,Meta Display & Video Ads,300,"
+            "IO Pending Launch: Element Missing,2025-06-17,2026-08-24,"
+            "2026-09-20,2026-12-31\n")
+    orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    from app import board
+    assert board.expected_for(db, "2026-08") == []
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Todd's Jewelry", "ids": ["47117"],
+                               "kind": "monthly"}, [])
+    assert why.startswith("no line item was running in August 2026")
+
+
+def test_a_cancelled_line_is_not_a_reason_to_pull_a_report(live):
+    """Roof Top Services: one complete Meta, one cancelled dated to 30 August,
+    one starting in September. Something is "running" in August only if you
+    count the cancelled one."""
+    _c, db, db_mod, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("AFA,IO Live,Roof Top,43005,Meta Display & Video Ads,1,IO Complete,"
+            "2024-12-01,2024-12-01,2025-08-31,2027-08-31\n"
+            "AFA,IO Live,Roof Top,43005,Meta Display & Video Ads,2,Cancelled,"
+            "2024-12-01,2025-09-16,2026-08-30,2027-08-31\n"
+            "AFA,IO Live,Roof Top,43005,Meta Display & Video Ads,3,"
+            "IO Pending Launch,2024-12-01,2026-09-01,2027-08-31,2027-08-31\n")
+    orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    db.add(db_mod.ServedDays(period="2026-08", market_key="afa",
+                             client_key="someoneelse", market="AFA",
+                             client="Someone Else", days=25))
+    db.commit()
+    from app import board
+    assert board.expected_for(db, "2026-08") == []
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Roof Top", "ids": ["43005"],
+                               "kind": "monthly"}, [])
+    assert why == ("no line item was running in August 2026, and nothing "
+                   "served for this client that month either")
+
+
+def test_a_completed_line_that_ran_all_month_still_owes_a_report(live):
+    """"IO Complete" on a line that finished on 31 August means it delivered
+    the whole month. Excluding completed lines would have lost every campaign
+    that ended tidily."""
+    _c, db, _dbm, _t = live
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date\n")
+    rows = ("M,IO Live,Ran All Month,70001,Social Mirror Ads,1,IO Complete,"
+            "2026-01-01,2026-01-01,2026-08-31,2026-08-31\n")
+    orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+    from app import board
+    kinds = {(e.client, e.kind) for e in board.expected_for(db, "2026-08")}
+    assert ("Ran All Month", "monthly") in kinds
+
+
+def test_a_partner_with_no_orders_at_all_is_named(live):
+    """Their whole cycle is quietly absent and no table is empty."""
+    _c, db, db_mod, _t = live
+    db.add(db_mod.Partner(partner="Has Orders"))
+    db.add(db_mod.Partner(partner="Nothing Loaded"))
+    db.add(db_mod.OrderLine(market="Has Orders", client="A Client",
+                            account_ids="1", product="Social Mirror Ads"))
+    db.commit()
+    from app.main import _partners_with_no_orders
+    assert _partners_with_no_orders(db) == ["Nothing Loaded"]
+
+
 def test_the_rail_has_a_way_in():
     from pathlib import Path
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"

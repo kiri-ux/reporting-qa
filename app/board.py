@@ -20,6 +20,9 @@ from .partners import first_name, is_seo
 
 ACC = re.compile(r"\b\d{4,6}\b")
 
+# "IO Pending Launch", with or without the ": Element Missing" that follows it.
+PENDING_LAUNCH = re.compile(r"pending\s+launch", re.I)
+
 # Test rows that must never appear on a board, block a delivery, or count
 # toward anyone's workload.
 EXCLUDED_PARTNERS = {"dummy partner", "test partner", "test", "zzz test"}
@@ -179,6 +182,58 @@ class Expected:
 # Splitting SEO onto its own row is what makes that true, and it is a better
 # answer than exempting a mixed client's whole row - the digital half of that
 # buy IS served, and is still judged.
+
+
+def _live_in_month(cyc, l, open_only: bool = False) -> bool:
+    """Is any LINE ITEM behind this row still open and running in the month?
+
+    THE ROLLED-UP WINDOW IS THE WIDEST OF EVERY LINE, and asking it whether the
+    client ran this month is asking the wrong question. Todd's Jewelry has
+    eight line items, every one of them IO Complete and finished by 31 July,
+    and four more that are Pending Launch with elements missing. Rolled up, the
+    row spans August and the board asked for a report on a campaign where
+    nothing was running.
+
+    The per-line detail has been on the row since build 109 and nothing read it
+    for this. A line counts when its OWN dates touch the month - nothing here
+    looks at status. "IO Complete" on a line that finished on 31 August means
+    it delivered the whole month and is owed a report; cancellation is judged
+    further down, where a cancelled line joins a monthly without creating one.
+    Rows imported before that detail existed fall back to the old test, which
+    is the same answer they have always given.
+    """
+    detail = [d for d in (getattr(l, "detail", None) or []) if isinstance(d, dict)]
+    if not detail:
+        return cyc.was_live(l.starts_on, l.ends_on) and not (
+            open_only and bool(getattr(l, "canceled", False)))
+
+    def _d(v):
+        try:
+            return dt.date.fromisoformat(str(v)[:10]) if v else None
+        except ValueError:
+            return None
+
+    # A LINE THAT HAS NOT LAUNCHED IS NOT RUNNING, whatever its dates say.
+    #
+    # "IO Pending Launch: Element Missing" is a buy waiting on creative. Its
+    # flight dates are already set, so on dates alone it reads as delivering -
+    # and on Todd's Jewelry it was the only thing keeping the row alive, on an
+    # order whose eight real line items all finished by 31 July. The import
+    # already drops these when the ORDER is pending too; under a live order
+    # header they survive, and they should not be the reason for a report.
+    # `open_only` asks the stricter question: is any line that is STILL OPEN
+    # running this month? That is what decides whether a report is owed. The
+    # looser question - any line at all, cancelled included - decides whether a
+    # product belongs on a report that is being pulled anyway.
+    #
+    # Roof Top Services is the difference. Its three Meta line items are one
+    # complete, one cancelled dated to 30 August, and one starting in
+    # September. Something is "running" in August only if you count the
+    # cancelled one, and a cancelled line is not a reason to pull a report.
+    return any(cyc.was_live(_d(d.get("starts")), _d(d.get("ends")))
+               and not PENDING_LAUNCH.search(str(d.get("status") or ""))
+               and not (open_only and d.get("canceled"))
+               for d in detail)
 
 
 def _reporter_names(idx: dict) -> set:
@@ -477,7 +532,7 @@ def expected_for(db: Session, period: str,
         # These were one flag, so a single cancelled line took the whole
         # client's monthly off the board.
         order_gone = bool(getattr(l, "order_canceled", False))
-        live = (not order_gone) and cyc.was_live(l.starts_on, l.ends_on)
+        live = (not order_gone) and _live_in_month(cyc, l)
         # A CANCELLED LINE JOINS A MONTHLY. IT DOES NOT CREATE ONE.
         #
         # Both halves of that come from the same place: nothing in the export
@@ -492,7 +547,8 @@ def expected_for(db: Session, period: str,
         # them dated into September. Letting that one cancelled line ask for a
         # report produced a monthly for a client with nothing to report on, and
         # the board could only say "this is worth a closer look".
-        creates_monthly = live and not gone
+        creates_monthly = (not order_gone) and _live_in_month(cyc, l,
+                                                              open_only=True)
         # A lifetime is owed when the ORDER ends inside the window. The line
         # item ending is not the campaign ending - River Valley Builders'
         # Performance Max was re-flighted to run to the end of the year, and

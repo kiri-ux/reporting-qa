@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-144"
-BUILD_NOTES = ("A cancelled line is not a cancelled campaign, and an order's "
-               "own end date is no longer reported as the client's widest.")
+BUILD = "2026.09.01-145"
+BUILD_NOTES = ("Whether a report is owed is read off the line items now, not "
+               "off the widest window they roll up into.")
 
 # ---------------------------------------------------------------------------
 

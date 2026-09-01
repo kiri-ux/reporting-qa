@@ -107,6 +107,25 @@
   </details>
 </section>
 
+{# A PARTNER WITH NO ORDERS AT ALL is the failure nothing else here shows:
+   their whole cycle is quietly absent and no table is empty. #}
+{% if no_orders %}
+<section>
+  <div class="alert">
+    <p><b>{{ no_orders|length }} partner{{ 's' if no_orders|length != 1 }} on the
+      reporting breakout sheet {{ 'have' if no_orders|length != 1 else 'has' }}
+      no orders loaded at all.</b></p>
+    <p>Either they are genuinely dormant this month, or their orders are not
+      reaching the export - and those two look identical from here, so they are
+      worth telling apart by hand. The order export arrives as several files:
+      one per partner for some, and one "all" file covering everybody else. A
+      partner in none of them has no cycle at all, and nothing else in this
+      tool would mention it.</p>
+    <p class="acct">{{ no_orders|join(', ') }}</p>
+  </div>
+</section>
+{% endif %}
+
 {% if guidance %}
 {% set g = guidance %}
 <section>

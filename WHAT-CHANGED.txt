@@ -1,4 +1,4 @@
-build 2026.09.01-144
+build 2026.09.01-145
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -11,6 +11,7 @@ app/partners.py
 app/templates/audit.html
 app/templates/base.html
 app/templates/cycle.html
+app/templates/orders.html
 app/templates/why_slow.html      (new)
 app/timing.py                    (new)
 app/version.py
@@ -18,80 +19,85 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-HOW TO REVERSE AN APPROVE
-=========================
-The small link under the name and date in the Call column. It said "undo",
-which was not findable - you asked - so it now says "Undo approval" or "Undo
-rejection" and its tooltip says what that does to the board. As of yesterday
-it also reaches the board properly: undoing an approve takes the row back off
-this cycle.
+THE ROLL-UP CHANGE - THIS IS THE ONE
+====================================
+An order line row is one client and one product rolled up across every line
+item behind it, and its date window is the widest of them. Everything asked
+that window whether the client ran this month, which is the wrong question, and
+it is behind most of what you have sent me today.
+
+The per-line detail has been on the row since build 109 and nothing read it for
+this. It does now. Three cases, all yours:
+
+TODD'S JEWELRY 47117. Eight line items, every one IO Complete and finished by
+31 July, plus one "IO Pending Launch: Element Missing" dated 24 August. Rolled
+up, the window spanned August. A line waiting on creative has its flight dates
+set already, so on dates alone it reads as delivering - and it was the only
+thing holding that row on the board. Pending Launch is not running, whatever
+the dates say. The row is gone and reads "no line item was running in August
+2026".
+
+ROOF TOP SERVICES 43005. One complete Meta, one cancelled dated to 30 August,
+one starting in September. Something is "running" in August only if you count
+the cancelled one - and a cancelled line is not a reason to pull a report. Your
+words, and now the tool's:
+
+  no line item was running in August 2026, and nothing served for this client
+  that month either
+
+It only mentions the serving file when one was actually loaded. Silence from a
+file that does not exist is not evidence.
+
+AND WHAT DID NOT CHANGE, deliberately: "IO Complete" on a line that finished on
+31 August means it delivered the whole month and is still owed a report. There
+is a test for that, because excluding completed lines would have quietly lost
+every campaign that ended tidily on the last of the month.
+
+LOTUS DIGITAL CORP 48620 should already read "Live Chat does not earn a report
+on its own" - that message went in yesterday and fires whenever the order line
+is loaded. If it still says "not in the export" after this deploy, then 48620
+is genuinely not in the file the sync read, and the sync line will now tell you
+which files those were.
 
 
-YOUR CANCELLATION RULE
-======================
-Cancelled at the LINE ITEM and cancelled at the ORDER were one flag, so a
-single cancelled line took the whole client's monthly off the board. They are
-two flags now and the rule is yours:
+"DO I NEED TO DO ANYTHING DIFFERENTLY SO ORDERS AREN'T MISSED?"
+===============================================================
+Not to the exports themselves - but you had no way to check, and now you do.
 
-  * a cancelled line under a live order - the monthly is still owed, and the
-    cancelled product still appears on it, because it ran for part of the month
-  * the whole order cancelled, having run in the month - lifetime, no monthly
+The order export arrives as several files: one per partner for some of them,
+and one "all" file covering everybody else. Woof Boom Muncie has no file of its
+own, so order 52600 can only come from "all". If a per-partner file stops
+arriving, or a partner is in none of the files, their clients simply are not on
+the board. No error, no empty table - the cycle is just quietly smaller, which
+is the worst way for this to fail.
 
-AND A CANCELLED LINE CANNOT ASK FOR A REPORT BY ITSELF. Both halves of that
-come from the same place: nothing in the export says WHEN somebody hit cancel,
-only what the line was sold to run to. So a cancelled line dated across the
-month may have delivered all of it or none of it. Joining a report that is
-being pulled anyway is safe; being the sole reason to pull one is not.
+THE ORDERS PAGE NOW NAMES THEM. The reporting breakout sheet knows every
+partner there is; anything on it with not one order line loaded is listed at
+the top of that page:
 
-Order 51378 is exactly why. One live product (Website Visitor ID, which never
-appears on a report), one starting in September, and seven cancelled or
-complete lines - one of them dated to 15 September. That one cancelled line was
-asking for a monthly for a client with nothing to report on, and the board could
-only say "worth a closer look". It now asks for nothing.
+  N partners on the reporting breakout sheet have no orders loaded at all.
 
+Some will be genuinely dormant this month. Some will be a missing file. Those
+two look identical from here, which is exactly why they need naming rather than
+guessing - and it is a list you can read in ten seconds after each morning's
+sync.
 
-NORTH BAY TIP - THE DATE IN THAT MESSAGE WAS NOT THAT ORDER'S
-=============================================================
-You were right, and it is worth knowing why, because it is structural.
-
-An order line row is one client and one product rolled up across every order
-behind it, and its end date is the LATEST of them. North Bay TIP has:
-
-  54783  IO Complete  ends 13 August      <- the one you asked about
-  55433  IO Live      ends 26 September
-
-So the row said 26 September, and the message reported that as "the campaign"
-about an order that finished six weeks earlier. The per-order detail is on the
-row all along; it just was not being asked. That row now reads:
-
-  order 54783 ends 2026-08-13, inside this cycle's lifetime window - but
-  another order for this client is still running, so the lifetime waits until
-  the campaign is finished. Approve it here if this one should be reported now.
-
-A QUESTION FOR YOU, AND I HAVE DELIBERATELY NOT GUESSED AT IT. There is a rule
-that an ended order overlapping a running one waits - the reasoning being that
-the client is not dark, the buy just changed shape. That is what is holding
-54783 back. If a finished ORDER should get its lifetime regardless of whether
-another order is running, say so and I will change it. It is a one-line rule
-and it moves a lot of rows, so I would rather you told me than have me decide.
+(On 52600 specifically: its only line item is Website Visitor ID, which never
+appears on a report, so even when it is loaded it correctly earns no row.)
 
 
-ROOF TOP SERVICES - HALF FIXED, AND I WILL SAY WHICH HALF
-=========================================================
-You asked for "no serving in August AND no line item running in August". The
-second half the tool cannot honestly say yet, for the same roll-up reason: this
-client's three Meta line items - one complete, one cancelled to 30 August, one
-starting in September - collapse into a single row whose window spans August.
-The tool believes a Meta line ran in August because the roll-up says so.
+ALSO IN THIS ZIP
+================
+UNDO IS FINDABLE. "undo" is now "Undo approval" / "Undo rejection", with a
+tooltip saying what it does to the board.
 
-The fix is to make the board read per-order and per-line detail rather than the
-rolled-up window, which is the same change North Bay needs. It is the right
-next thing and I would rather do it carefully than at the end of today.
+YOUR CANCELLATION RULE. Line-level and order-level cancellation were one flag.
+A cancelled line under a live order still owes the monthly and still appears on
+it; the whole order cancelled gets a lifetime and no monthly.
 
-What did land: where the tool CAN see that no line was live, it now says both
-halves - "no line item was running in August 2026, and nothing served for this
-client that month either" - and only mentions the serving file when one was
-actually loaded, because silence from a file that does not exist is not
-evidence.
+NORTH BAY TIP quotes order 54783's own end date now instead of the client's
+widest, and says plainly that the lifetime waits because another order is
+running - which is the rule you confirmed you want - with the Approve route on
+the same row for the exceptions.
 
-787 tests pass.
+791 tests pass.
