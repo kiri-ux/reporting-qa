@@ -122,7 +122,9 @@
          style="display:inline-block;text-decoration:none;margin-left:10px">Open the sheet</a>
     {% endif %}
     <p class="sub" style="font-size:13px;margin-top:12px">
-      Read on every order sync, and only when the sheet has actually changed.
+      <b>Read every {{ sync_every }} minutes</b>, and on every order sync -
+      whichever comes first - and only re-loaded when the sheet has actually
+      changed, so an untouched sheet costs one request and no writes.
       It is read-only - nothing here is ever written back, so the sheet stays
       the source of truth for who owns what.<br>
       <b>Two guards.</b> Where a partner takes delivery is set here, not always

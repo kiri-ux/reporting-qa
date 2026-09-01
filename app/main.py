@@ -8,7 +8,8 @@ from urllib.parse import quote
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, File, Form, HTTPException,
                      Query, Request, UploadFile)
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, desc, func, select
@@ -398,6 +399,11 @@ def _startup():
     try:
         from .recheck import start_sweeper
         start_sweeper()
+        # AND THE HEARTBEAT. The order export, the daily serve file and the
+        # breakout sheet are all read on this, so none of them depends on
+        # somebody pressing something.
+        from .clock import start as start_clock
+        start_clock()
     except Exception:
         import traceback; traceback.print_exc()
 
@@ -1720,11 +1726,31 @@ def cycle_audit_call(request: Request, period: str = Form(""),
     from .db import AuditCall, CycleDone
     from .cycle import current_period
 
+    # ANSWERED IN PLACE, NOT BY REDRAWING THE PAGE.
+    #
+    # A redirect back here re-runs the whole comparison - the board is rebuilt
+    # from every order line and the pasted list is parsed again - to change one
+    # cell. That was the best part of a minute per decision, and it threw away
+    # the scroll position, so working down a list of forty meant scrolling back
+    # to where you were forty times.
+    #
+    # The page posts this with fetch and updates the row itself. Without
+    # JavaScript the form still submits and still redirects, which is the same
+    # slow correct behavior it had before.
+    wants_json = "application/json" in (request.headers.get("accept") or "")
+
+    def done(ok: bool = True):
+        if wants_json:
+            return JSONResponse({"ok": ok, "call": call, "note": note,
+                                 "who": name if ok else "",
+                                 "at": _eastern(dt.datetime.utcnow(), "%b %-d")})
+        return RedirectResponse("/cycle/audit", status_code=303)
+
     period = period or settings.default_period or current_period()
     ref = (ref or "").strip()[:255]
-    if not ref or call not in ("approved", "rejected", "clear"):
-        return RedirectResponse("/cycle/audit", status_code=303)
     name = (who or "").strip() or whoami(request)
+    if not ref or call not in ("approved", "rejected", "clear"):
+        return done(False)
 
     row = db.scalars(select(AuditCall).where(
         AuditCall.period == period, AuditCall.ref == ref,
@@ -1733,7 +1759,7 @@ def cycle_audit_call(request: Request, period: str = Form(""),
         if row is not None:
             db.delete(row)
         db.commit()
-        return RedirectResponse("/cycle/audit", status_code=303)
+        return done()
 
     if row is None:
         row = AuditCall(period=period, ref=ref, kind=kind)
@@ -1778,7 +1804,7 @@ def cycle_audit_call(request: Request, period: str = Form(""),
         row.note = (row.note or "")
         row.client = client[:255]
     db.commit()
-    return RedirectResponse("/cycle/audit", status_code=303)
+    return done()
 
 
 def _ident_key(s: str) -> str:
@@ -2847,6 +2873,7 @@ def partners_view(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "partners.html", {
         "partners": rows, "nav": "partners",
         "sheet_on": _sheet_on(), "sheet_log": last_read(db),
+        "sync_every": settings.sync_every_minutes,
         "sheet_url": (f"https://docs.google.com/spreadsheets/d/{sheet_id()}/edit"
                       if _sheet_on() else ""),
         "tally": sorted(tally.items()), "just_set": just_set})

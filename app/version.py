@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.08.31-127"
-BUILD_NOTES = ("The pasted list is kept, and every row on it can be approved "
-               "onto the board or rejected, with a note.")
+BUILD = "2026.08.31-129"
+BUILD_NOTES = ("Approve and reject save in place - no reload, no minute, no "
+               "scrolling back. And a scheduled sync every half hour.")
 
 # ---------------------------------------------------------------------------
 

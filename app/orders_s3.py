@@ -90,6 +90,9 @@ TRIGGERS = {
              "were answering from an older version of them",
     "batch": "a batch of reports arrived, and the order list is refreshed "
              "first so a campaign added or ended since the last run is there",
+    "clock": "the scheduled check - every half hour, whether or not anything "
+             "is arriving",
+    "sheet": "the reporting breakout sheet changed",
 }
 
 

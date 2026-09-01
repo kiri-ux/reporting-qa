@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     orders_s3_region: str = "us-east-1"
     orders_s3_sheet: str = ""            # xlsx only; blank means the first sheet
     orders_refresh_minutes: int = 60     # re-check S3 at most this often
+    # HOW OFTEN THE TOOL LOOKS, WITH NOBODY ASKING IT TO.
+    #
+    # Everything from outside - the order export, the daily serve file, the
+    # breakout sheet - used to be read on the back of something else: a batch
+    # of reports arriving, or the button. That is constant during the pull and
+    # nothing at all on the 12th, when a reporter changing hands in the sheet
+    # would reach the board whenever somebody next pressed something.
+    #
+    # An unchanged everything costs three small requests, because all three are
+    # checked by fingerprint before anything is downloaded. 0 turns it off.
+    sync_every_minutes: int = 30
 
     # passed to boto3 explicitly, so a missing one is a legible error rather
     # than boto3's unhelpful "Unable to locate credentials"

@@ -2649,3 +2649,85 @@ def test_a_rejected_row_stays_rejected(audit_client):
     c.post("/cycle/audit/call", data={"period": "2026-08", "ref": "26734",
                                       "kind": "monthly", "call": "clear"})
     assert db.query(dbm.AuditCall).count() == 0
+
+
+def test_the_sheet_is_read_on_a_clock_not_only_on_a_button():
+    """Everything from outside was read on the back of something else: a batch
+    of reports arriving, or somebody pressing the button. That is constant
+    during the pull and nothing at all on the 12th, when a reporter changing
+    hands in the sheet would reach the board whenever somebody next pressed
+    something."""
+    from app.config import Settings
+    from app import clock
+
+    assert Settings.model_fields["sync_every_minutes"].default == 30
+    assert hasattr(clock, "start")
+
+    # The heartbeat calls the same sync the button does, so it claims itself in
+    # the database and the second worker's copy finds it taken.
+    src = (Path(__file__).resolve().parents[1] / "app" / "clock.py").read_text()
+    assert "from .orders_s3 import sync as sync_orders" in src
+    assert 'trigger="clock"' in src
+    assert "daemon=True" in src, "it must not hold a worker open at shutdown"
+    # And it survives a bad answer: a heartbeat that dies silently is worse
+    # than none.
+    assert "except Exception" in src
+
+    main = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert "start_clock()" in main
+
+
+def test_all_three_outside_sources_ride_the_same_sync():
+    """The order export, the daily serve file and the breakout sheet. One
+    heartbeat, three fingerprints - and none of the three can fail the other
+    two."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "orders_s3.py").read_text()
+    i = src.index("def sync(")
+    j = src.index("def _sync(")
+    body = src[i:j]
+    assert "sync_serving(db, force=force)" in body
+    assert "sync_roster(db, force=force)" in body
+    # Each in its own try, so one failing cannot take the others down.
+    assert body.count("except Exception") >= 2
+
+
+def test_a_call_saves_without_redrawing_the_page(audit_client):
+    """A redirect back to the audit page re-runs the whole comparison - the
+    board rebuilt from every order line, the pasted list parsed again - to
+    change one cell. That was the best part of a minute per decision, and it
+    threw the scroll position away with it, so working down a list of forty
+    meant scrolling back forty times."""
+    c, db, dbm = audit_client
+    r = c.post("/cycle/audit/call",
+               data={"period": "2026-08", "ref": "26734", "kind": "monthly",
+                     "client": "A Client", "call": "rejected",
+                     "note": "no report owed", "who": "Kiri"},
+               headers={"Accept": "application/json"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] and body["call"] == "rejected"
+    assert body["note"] == "no report owed" and body["who"] == "Kiri"
+    assert body["at"], "the row can say when without asking the server again"
+    assert db.query(dbm.AuditCall).one().call == "rejected"
+
+    # AND THE SLOW PATH STILL WORKS. No JavaScript, no Accept header: the form
+    # posts and redirects exactly as it did.
+    r = c.post("/cycle/audit/call",
+               data={"period": "2026-08", "ref": "9999", "kind": "monthly",
+                     "client": "B Client", "call": "rejected"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/cycle/audit"
+
+
+def test_the_audit_page_updates_the_row_in_place():
+    page = (TPL / "audit.html").read_text()
+    assert 'class="callform"' in page
+    assert "e.preventDefault()" in page
+    assert "'Accept': 'application/json'" in page
+    # The button that was pressed has to survive preventDefault, or every call
+    # posts whichever value the browser felt like.
+    assert "form.dataset.pressed" in page
+    # And when the fetch fails it falls back to the form rather than losing the
+    # decision.
+    assert "form.submit()" in page

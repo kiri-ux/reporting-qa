@@ -596,7 +596,10 @@ def test_every_way_of_starting_a_sync_says_which_it_was():
     things can start one."""
     from pathlib import Path as _P
     from app.orders_s3 import TRIGGERS
-    assert set(TRIGGERS) == {"button", "rules", "batch"}
+    # "clock" is the scheduled check (build 128) and "sheet" is the breakout
+    # sheet changing. Every way a sync can start has to have words for itself,
+    # or a sync nobody started is a mystery on the page.
+    assert set(TRIGGERS) == {"button", "rules", "batch", "clock", "sheet"}
     assert 'trigger="button"' in _P("app/main.py").read_text()
     assert 'trigger="rules"' in _P("app/recheck.py").read_text()
     assert 'trigger="batch"' in _P("app/ingest.py").read_text()

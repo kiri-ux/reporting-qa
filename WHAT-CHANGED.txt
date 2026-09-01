@@ -1,64 +1,66 @@
-build 2026.08.31-127
+build 2026.08.31-129
 Changed files only.
 
-app/db.py
+app/clock.py            (new)
+app/config.py
 app/main.py
+app/orders_s3.py
 app/templates/audit.html
+app/templates/partners.html
 app/version.py
 tests/test_board_extras.py
+tests/test_order_remap.py
 
 
-NO, IT DID NOT SAVE. IT DOES NOW.
-====================================
-"Check a list" was a form post and nothing else. Paste four hundred rows of the
-tracker, read the comparison, refresh - and it is gone, or the browser offers to
-send the whole thing again.
+THE MINUTE, AND THE SCROLLING BACK
+=====================================
+Both had the same cause, and it was mine.
 
-The list is kept per cycle now. Come back to the page and it is there, and it
-re-runs against the board AS IT IS THEN - which is the way this actually gets
-used: read it, go and fix three rows, look again.
+Approve and reject posted the decision and then REDIRECTED BACK TO THE AUDIT
+PAGE - which re-runs the whole comparison to change one cell: the board rebuilt
+from every order line, the pasted list parsed again, every reason worked out
+from scratch. That is the minute. And a fresh page starts at the top, which is
+the scrolling.
 
-It says so under the button, because a thing that saves silently is a thing
-nobody trusts to have saved:
+The page saves the decision in place now. No reload, nothing rebuilt, the row
+turns into its answer where it sits and the page does not move. Working down a
+list of forty is forty clicks instead of forty clicks and forty scrolls.
 
-  Kept for August 2026, pasted by Kiri · Aug 31 at 4:55 PM ET. It is here when
-  you come back, and it re-runs against the board as it is then.
-
-There is a "Clear the list" button beside it. One list per cycle, overwritten -
-it is a copy of somebody else's spreadsheet, not a record.
+Without JavaScript the form still posts and still redirects, exactly as before -
+and if the save fails for any reason it falls back to that rather than losing
+what you decided.
 
 
-AND EVERY ROW ON IT IS NOW A DECISION
-========================================
-"On the list, not on the board" is a question, not a finding. Some of those
-rows belong on the board and the rules missed them; some are on the tracker by
-mistake. Both need somebody who knows the client to say which - and to say it
-ONCE, rather than working the same forty rows out again next month.
+HOW OFTEN IT SYNCS WITH THE BREAKOUT SHEET: IT WAS NOT ON A CLOCK
+====================================================================
+The honest answer about the build you are on. The sheet is read on every order
+sync, and the order sync only ever ran on two things:
 
-Each row has a note box and two buttons:
+  a batch of reports arriving
+  somebody pressing "Sync from S3 now"
 
-  APPROVE   puts the row on this cycle's board, with your note as the reason it
-            is there. It is the same override as "Needs a report" on the
-            not-owed panel, so it survives every rule underneath it and the row
-            says who kept it there.
+During the pull that is constant. On the 12th of the month, when nothing is
+arriving, it is never - so a reporter changing hands in the sheet reached the
+board whenever somebody next happened to press something. That is not a
+schedule. Same for the daily serve file, which is worse: it lands every morning
+and nothing was going to look at it until the next batch.
 
-  REJECT    settles it. The row stays on the table with the note on it rather
-            than reading as an open question the next time somebody opens the
-            page.
+NOW IT IS EVERY THIRTY MINUTES. All three outside sources ride the same
+heartbeat, and each is checked by fingerprint before anything is read:
 
-Both record who and when, and both can be undone.
+  the order export        by ETag - a HEAD request, no download
+  the daily serve file    by its own ETag, separately
+  the breakout sheet      by a checksum of its own contents
 
-ONE HONEST LIMIT. Approve can only put back a client the ORDER EXPORT knows
-about - the board is built from that export, so a client nothing in it carries
-cannot have a row created for it. Those are the rows whose reason reads "no
-order line carries 51981 - it is not in the export, or the export is out of
-date". The decision is still recorded; the row cannot appear until the order
-does. The page says that under the table rather than letting Approve look like
-it worked.
+The usual answer is "nothing has changed", which costs three small requests and
+no writes. One worker does it: the sync claims itself, so the second worker's
+heartbeat finds it taken and goes back to sleep. And it cannot die quietly - a
+failed check is logged and the next one runs half an hour later, because a
+heartbeat that stops on one bad answer is worse than none at all.
 
-The partner comes from the order line rather than from your list, because the
-list carries a partner CODE ("7MOU SG", "LOCK AUG") and the board is keyed on
-the partner's real name. Matched on the order id, which is the one thing both
-sides agree on.
+The Partners page states the interval rather than leaving you to guess.
+SYNC_EVERY_MINUTES changes it, 0 turns it off, and the sync log now says "the
+scheduled check - every half hour, whether or not anything is arriving" so a
+sync nobody started is not a mystery.
 
-726 tests pass.
+730 tests pass.

@@ -80,7 +80,7 @@
       <tbody>{% for r in result.missing %}
         {% set ref = (r.ids|first) if r.ids else r.client %}
         {% set c = calls.get((ref, r.kind)) %}
-        <tr{% if c and c.call == 'rejected' %} style="opacity:.55"{% endif %}>
+        <tr data-ref="{{ ref }}"{% if c and c.call == 'rejected' %} style="opacity:.55"{% endif %}>
           <td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
           <td class="nw"><span class="pill p-{{ 'info' if r.kind == 'lifetime' else 'month' }}">{{ r.kind }}</span></td>
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
@@ -92,7 +92,8 @@
               <div class="acct" style="margin-top:4px">
                 {{ c.who or 'somebody' }}, {{ c.at|et('%b %-d') }}
                 {%- if c.note %}<br>{{ c.note }}{% endif %}</div>
-              <form method="post" action="/cycle/audit/call" style="margin-top:6px">
+              <form method="post" action="/cycle/audit/call" class="callform"
+                    style="margin-top:6px">
                 <input type="hidden" name="period" value="{{ period }}">
                 <input type="hidden" name="ref" value="{{ ref }}">
                 <input type="hidden" name="kind" value="{{ r.kind }}">
@@ -100,7 +101,7 @@
                 <button class="linkish" type="submit">undo</button>
               </form>
             {% else %}
-              <form method="post" action="/cycle/audit/call">
+              <form method="post" action="/cycle/audit/call" class="callform">
                 <input type="hidden" name="period" value="{{ period }}">
                 <input type="hidden" name="ref" value="{{ ref }}">
                 <input type="hidden" name="kind" value="{{ r.kind }}">
@@ -150,4 +151,57 @@
   {% else %}<p class="empty">Nothing. Every row on the board is on the list.</p>{% endif %}
 </section>
 {% endif %}
+
+
+{# SAVED WITHOUT REDRAWING THE PAGE.
+   A redirect back here re-runs the whole comparison - the board rebuilt from
+   every order line, the pasted list parsed again - to change one cell. That
+   was the best part of a minute per decision, and it threw the scroll position
+   away with it, so working down a list of forty meant scrolling back forty
+   times. Without JavaScript the form still posts and still redirects, exactly
+   as it did. #}
+<script>
+(function () {
+  function settled(cell, data) {
+    var word = data.call === 'approved' ? 'Approved' : 'Rejected';
+    var pill = data.call === 'approved' ? 'ready' : 'info';
+    var who = (data.who || 'you') + ', ' + (data.at || 'just now');
+    cell.innerHTML =
+      '<span class="pill p-' + pill + '">' + word + '</span>' +
+      '<div class="acct" style="margin-top:4px">' + who +
+      (data.note ? '<br>' + data.note.replace(/</g, '&lt;') : '') + '</div>';
+    var row = cell.closest('tr');
+    if (row && data.call === 'rejected') row.style.opacity = '.55';
+  }
+
+  document.addEventListener('submit', function (e) {
+    var form = e.target.closest && e.target.closest('.callform');
+    if (!form) return;
+    e.preventDefault();
+    var body = new FormData(form);
+    // Which button was pressed - a submit button's value is not in FormData
+    // unless the browser put it there, and preventDefault means it did not.
+    var btn = form.dataset.pressed;
+    if (btn) body.set('call', btn);
+    var cell = form.closest('td');
+    cell.style.opacity = '.5';
+    fetch(form.action, {method: 'POST', body: body,
+                        headers: {'Accept': 'application/json'}})
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        cell.style.opacity = '';
+        if (!data.ok) { form.submit(); return; }   // fall back to the slow path
+        if (data.call === 'clear') { location.reload(); return; }
+        settled(cell, data);
+      })
+      .catch(function () { cell.style.opacity = ''; form.submit(); });
+  });
+
+  // Remember which button was pressed, since preventDefault loses it.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.callform button[value]');
+    if (b && b.form) b.form.dataset.pressed = b.value;
+  }, true);
+})();
+</script>
 {% endblock %}
