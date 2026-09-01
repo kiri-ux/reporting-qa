@@ -2917,7 +2917,7 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     # The partner is picked, not typed: the board is keyed on the partner's
     # real name, and one spelled a hair differently groups with nothing.
     assert '<select name="market" required>' in page
-    assert '<select name="products" multiple' in page
+    assert 'type="checkbox" name="products"' in page
     assert ">Mobile Conquesting<" in page, "the product list has to be offered"
 
     c.post("/cycle/done", data={
@@ -2943,7 +2943,7 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     page = c.get("/cycle?period=2026-08").text
     assert 'class="byhand"' in page, "the row has to say it was put there by hand"
     assert 'data-hand="1"' in page, "and the filter has to be able to find it"
-    assert 'data-rowflag="hand"' in page
+    assert "Added by hand <b>1</b>" in page
     # NOT A SECOND BOARD. The first cut listed every hand-added row in a panel
     # of its own, which is another table to read for rows that are already on
     # the one below it.
@@ -2956,25 +2956,58 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     db.close()
 
 
-def test_a_row_flag_filter_survives_a_keystroke_in_the_search(): 
-    """The dropdowns are built from a column's values, and "somebody put this
-    row here" is not a column - it is a mark on the row. A separate handler
-    hiding rows on its own would be undone by the next keystroke, because the
-    search sets hidden on every row every time it runs."""
-    base = (TPL / "base.html").read_text()
-    i = base.index("var flags = Array.prototype.slice.call")
-    assert "data-rowflag-for=" in base[i:i + 400]
-    # Inside the same predicate as the search terms and the dropdowns.
-    j = base.index("var hit = terms.every", base.index("[data-filter]"))
-    assert "flags.every(function (b)" in base[j:j + 400]
-    # Clear clears it too, or the board stays narrowed with nothing saying so.
-    k = base.index("selects.forEach(function (s) { s.el.reset(); });",
-                   base.index("[data-filter]"))
-    assert "flags.forEach" in base[k:k + 300]
-    # And the card filter's own Clear is left alone - it resets `toggles`,
-    # which does not exist in the table's scope and would throw before run()
-    # was ever reached.
-    assert base.count("selects.forEach(function (s) { s.el.reset(); });") == 2
+def test_the_added_by_hand_filter_counts_the_whole_cycle(tmp_path, monkeypatch):
+    """The table is fifty rows a page.
+
+    The first cut filtered in the browser, over the rows that had been
+    rendered, so a cycle with thirteen hand-added rows on it found the one on
+    page one and said "Added by hand 1" with a straight face. The same trap the
+    search box was in - and the same answer: it is a filter the server applies,
+    over the whole cycle.
+    """
+    import importlib
+    import re as _re
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'hf.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+    c = TestClient(mmod.app)
+
+    for i in range(3):
+        c.post("/cycle/done", data={
+            "period": "2026-08", "market": "MOXII", "client": f"Client {i}",
+            "kind": "lifetime", "action": "needed", "ref": f"5300{i}",
+            "products": ["Display", "Meta"], "who": "k"},
+            follow_redirects=False)
+
+    page = c.get("/cycle?period=2026-08").text
+    assert _re.search(r"Added by hand <b>3</b>", page), "the count is off the cycle"
+    assert "&hand=1" in page, "the chip has to be a link, not browser state"
+
+    on = c.get("/cycle?period=2026-08&hand=1").text
+    assert on.count('data-hand="1"') == 3
+    assert "mini toggle on" in on, "the chip has to look pressed"
+
+    # And no client-side row-flag machinery left behind pretending to do this.
+    assert "data-rowflag" not in (TPL / "cycle.html").read_text()
+    assert "data-rowflag" not in (TPL / "base.html").read_text()
+
+
+def test_the_product_picker_is_chips_not_a_multi_select():
+    """A native multiple select is a scrolling box of mostly empty space that
+    needs a modifier key held down to pick a second thing - and picking several
+    is the normal case here, not the exception."""
+    page = (TPL / "cycle.html").read_text()
+    assert 'name="products" value=' in page
+    assert 'type="checkbox" name="products"' in page
+    assert "multiple" not in page.split("Products")[1][:400]
+    assert "Ctrl or cmd" not in page, "no modifier key to explain any more"
+    # And the client field says where the spelling has to come from.
+    assert 'placeholder="Exactly as listed on RZ"' in page
 
 
 def test_an_approve_from_the_list_check_is_marked_on_its_row(audit_client):

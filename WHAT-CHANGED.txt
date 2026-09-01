@@ -1,4 +1,4 @@
-build 2026.09.01-163
+build 2026.09.01-164
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -21,33 +21,29 @@ tests/test_order_remap.py
 tests/test_rules.py
 
 
-CLINTON PARKWAY NURSERY - THE DATE WAS OFF SOMEBODY ELSE'S ORDER
-================================================================
-Order 55048 is one Meta line, IO Live, 25 August to 31 October. The page said
+ADDED BY HAND SAID 1 OF 13
+==========================
+The table is fifty rows a page. I built that filter in the browser, over the
+rows that had been rendered - so it found the one hand-added row on page one
+and reported it as the total, with a straight face.
 
-  nothing starts until 2026-09-12, after this cycle
+That is exactly the trap the search box was in before, and it has the same
+answer: the server applies it, over the whole cycle. The chip is a link now,
+the count is off all 1,247 rows, and pressing it shows all thirteen.
 
-with the IO tool open on screen saying 25 August. That date was never 55048's.
-
-Two things put it there, and both are the same mistake in different places.
-
-An order line row is one client and one product rolled up across every order
-that sells it, and its dates are the WIDEST of them - so quoting them at
-somebody asking about ONE order gives a date that may belong to a different
-one. The lifetime reasons were fixed for this a few builds back; the two date
-reasons had not been. They read each order's own line items now.
-
-And when the order id matches nothing loaded at all, the lookup falls back to
-the client's other orders. That is the right thing to do - it is how a client
-whose orders spell their name differently still gets an answer - but every
-sentence after it still said "this order" about somebody else's. It says which
-now:
-
-  no order line carries 55048 - the client's other orders do not start until
-  2026-09-12, after this cycle
-
-Which is a different thing to go and check, and true.
+I should have caught this. The pagination is the reason the search moved to the
+server in the first place, and I put a new filter back on the wrong side of it.
 
 
-824 tests pass. The orders re-read themselves on the next sync and the reports
+THE PRODUCT PICKER
+==================
+Chips you click once, instead of a scrolling box that needs a modifier key held
+down to pick a second thing - which is the normal case here, not the exception.
+They wrap onto two lines and the picked ones fill in.
+
+
+  Client:  Exactly as listed on RZ
+
+
+825 tests pass. The orders re-read themselves on the next sync and the reports
 re-check in the background - both fingerprints moved.

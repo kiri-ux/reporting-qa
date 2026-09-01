@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-163"
-BUILD_NOTES = ("A date in a reason belongs to the order it is about, not to "
-               "the client's widest span.")
+BUILD = "2026.09.01-164"
+BUILD_NOTES = ("The added-by-hand filter counts the whole cycle, and the "
+               "product picker is chips you click once.")
 
 # ---------------------------------------------------------------------------
 

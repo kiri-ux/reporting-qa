@@ -526,7 +526,8 @@
           {% for m in all_markets %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
         </select></label>
       <label>Client
-        <input type="text" name="client" required size="24" placeholder="As the report names them"></label>
+        <input type="text" name="client" required size="24"
+               placeholder="Exactly as listed on RZ"></label>
       <label>Order
         <input type="text" name="ref" inputmode="numeric" pattern="[0-9 ,]*"
                size="10" placeholder="53206"></label>
@@ -537,12 +538,18 @@
           <option value="seo">SEO</option>
         </select></label>
       {# THE PRODUCTS ARE WHAT THE CHECKS JUDGE THE PDF AGAINST. A row with
-         none reads as a blank beside a hundred that name their buy. #}
-      <label class="wide">Products
-        <select name="products" multiple size="4">
-          {% for p in all_products %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
-        </select>
-        <span class="acct">Ctrl or cmd to pick several</span></label>
+         none reads as a blank beside a hundred that name their buy.
+
+         CHIPS, NOT A MULTI-SELECT. A native multiple select is a scrolling box
+         of mostly empty space that needs a modifier key held down to pick a
+         second thing - and picking several is the normal case here, not the
+         exception. These are checkboxes; clicking one toggles it. #}
+      <span class="wide prodpick">Products
+        <span class="chips">
+          {% for p in all_products %}
+            <label><input type="checkbox" name="products" value="{{ p }}"><span>{{ p }}</span></label>
+          {% endfor %}
+        </span></span>
       <label class="wide">Why
         <input type="text" name="note" size="30"
                placeholder="Cancelled, never got a lifetime"></label>
@@ -875,10 +882,17 @@
            placeholder="Search everything... (Enter to search all {{ row_total }})">
     <span class="count" id="cnt-cycle"></span>
     {# ROWS SOMEBODY PUT ON THIS CYCLE THEMSELVES. They are ordinary rows and
-       belong in the table with the rest; this is how you look at just yours. #}
-    <button type="button" class="mini toggle" data-rowflag="hand"
-            data-rowflag-for="tbl-cycle"
-            data-tip="Only the rows somebody put on this cycle by hand - approved from the list check, or added here. They are marked BY HAND beside the client.">Added by hand</button>
+       belong in the table with the rest; this is how you look at just yours.
+
+       A LINK, NOT A BROWSER TOGGLE. The table is fifty rows a page, so a
+       filter that could only see what is rendered found one of thirteen and
+       said so with a straight face - the same trap the search box was in. #}
+    {% if hand_total or hand_on %}
+      <a class="mini toggle{{ ' on' if hand_on }}"
+         href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}{% if not hand_on %}&hand=1{% endif %}#reports"
+         data-tip="{% if hand_on %}Showing only the rows somebody put on this cycle by hand. Click to show the rest again.{% else %}Only the rows somebody put on this cycle by hand - approved from the list check, or added here. They are marked BY HAND beside the client.{% endif %}"
+        >Added by hand <b>{{ hand_total }}</b></a>
+    {% endif %}
     {% if q %}
       <a class="chip" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}"
          title="Drop this search">{{ q }} &times;</a>

@@ -1306,6 +1306,12 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                partner: str = Query(""), buyer: str = Query(""),
                reporter: str = Query(""), trainer: str = Query(""),
                status: str = Query(""), only: str = Query(""),
+               # ROWS SOMEBODY PUT ON THIS CYCLE THEMSELVES. Read HERE and not
+               # in the browser, for the same reason the search is: the table
+               # is fifty rows a page, so a filter that only sees what is
+               # rendered found one of thirteen and said so with a straight
+               # face.
+               hand: str = Query(""),
                db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
@@ -1387,6 +1393,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # other 613 are.
     if q.strip():
         rows = [e for e in rows if _matches(e, q)]
+    # Counted before the filter, so the chip can say how many there are even
+    # while it is on and the rest are hidden.
+    hand_total = sum(1 for e in rows if e.forced_by)
+    if hand:
+        rows = [e for e in rows if e.forced_by]
     # ONE GRID, WITH THE FINISHED WORK FILTERED OUT RATHER THAN MOVED AWAY.
     #
     # Signed-off reports used to live in their own collapsed section at the
@@ -1484,6 +1495,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "all_markets": sorted({m for g in groups for m in (g.markets or [])}
                               | {g.group for g in groups if g.group}),
         "all_products": every_product(),
+        # The hand-added chip beside the search: how many there are, and
+        # whether it is on.
+        "hand_total": hand_total, "hand_on": bool(hand),
         "min_days": MIN_DAYS_IN_MONTH,
         "orders_stale": _orders_stale(db),
         "orders_syncing": _orders_syncing(db),
