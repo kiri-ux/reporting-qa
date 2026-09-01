@@ -1,4 +1,4 @@
-build 2026.09.01-160
+build 2026.09.01-161
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -15,64 +15,49 @@ tests/test_order_remap.py
 tests/test_rules.py
 
 
-CHECK A LIST NOW FILTERS, AND STARTS WITH THE REJECTIONS PUT AWAY
-=================================================================
-Rejecting a row is supposed to settle it. A hundred and twenty-five settled
-rows were still sitting above the ones nobody has answered yet.
+ADD A ROW BY HAND - AND SEE THE ONES YOU ADDED
+==============================================
+New panel on the cycle page, just above Reports: "N rows added by hand this
+cycle."
 
-  Show  [Undecided 8]  [Approved 3]  [Rejected 114]  |  [Worth a look 6]
+It answers both questions at once. Every row somebody put on this cycle
+themselves is listed there - partner, client, kind, order number, who and when,
+the note, and whether the report has come in yet - with an undo arrow on each.
+Approving from the list check has always written exactly this override, so your
+approves show up here too. That was the missing half: an approve that worked
+and an approve that silently did nothing looked identical, and the only way to
+check was to already know the client's spelling and search for it.
 
-Rejected starts off. The chip says how many and puts them back. "Worth a look"
-is a second, independent narrowing - the rows the board has no good answer for
-- so you can point it at those regardless of what has been decided.
+Under the list is the form:
 
-It filters in the browser, not on the server. Every decision on that page is
-already saved without redrawing it, because redrawing means rebuilding the
-board off every order line and re-parsing your pasted list - the best part of
-a minute. A filter that reloaded would give that back.
+  Partner | Client | Report (monthly / lifetime / SEO) | Order | Why
 
-One deliberate exception: a row you have just decided stays on screen. Rejected
-is hidden, so rejecting one would make it vanish under the cursor, which reads
-as the click having gone somewhere else. It stays until you touch the filter
-or reload.
+That is the spot for 53206. C & W Roofing is cancelled, ran earlier in the
+year, and is owed a lifetime nobody has pulled - there is no rule that finds
+that from an export with nothing running in August, and there does not need to
+be one. There needs to be somewhere to say it.
 
+The row behaves like any other from then on: it waits for its report, gets
+checked, gets signed off, and counts toward the partner being ready. This cycle
+only - next month starts from the export again.
 
-VICTORINO'S PIZZERIA 52819 - THE NOTE WAS MAKING A CLAIM IT COULD NOT MAKE
-==========================================================================
-It said:
-
-  the export has this order and every line on it ended 2026-07-15, before
-  August 2026
-
-There are two lines on that order. One ended 15 July. The other is the Social
-Mirror pending launch dated 1 September, sitting right there in the IO tool.
-
-The import recorded ONE reason per order and then, at the end of the file,
-rewrote it with the latest end date - so the second line's reason was
-overwritten by the first line's date, and a sentence saying "every line on it"
-was built out of one of them.
-
-Every distinct reason is kept now, the date rewrite happens in place instead of
-replacing the entry, and when there is more than one the sentence says the
-thing that is true of the whole order:
-
-  no line on this order was running in August 2026 - one ended 2026-07-15,
-  another is IO Pending Launch: Element(s) Missing, starting 2026-09-01
-
-A pending line also says WHEN it starts now. "IO Paused, IO Pending Launch"
-leaves you wondering whether it might have run anyway; "starting 2026-09-01"
-does not.
+The order number rides along now, so searching 53206 finds the row. Without it
+a hand-added row is findable only by the client's name, which is the spelling
+the two tools disagree about in the first place.
 
 
-THE REPORT SEARCH COMES BACK TO THE REPORTS
-===========================================
-There are two search boxes on the cycle page and both are named q. Enter in the
-lower one reloaded to the TOP of the page - where the partner box, now carrying
-your term because it is the same q, is the first thing under the cursor. It
-reads as the typing having jumped into the other box and the search having done
-nothing. What actually happened was a search that worked, four screens down.
+THE REPORT SEARCH, PROPERLY THIS TIME
+=====================================
+Pointing the form at #reports was not enough, and I should have checked rather
+than trusted it. The browser jumps to the anchor while it is still parsing, and
+then this page's own scripts run - hiding partner cards, injecting the column
+filter dropdowns - which changes the height of everything above the anchor and
+leaves you back at the top. Where the partner box is holding your term, because
+it is the same q. So it still read as the typing jumping into the other box.
 
-It lands on the reports section now.
+It re-aims after the scripts have settled, and puts the caret back in the box
+you typed in, at the end of the word. Enter now leaves you looking at the
+reports with the cursor where you left it.
 
 
-816 tests pass.
+819 tests pass.

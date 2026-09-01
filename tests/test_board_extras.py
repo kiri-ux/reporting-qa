@@ -2887,3 +2887,92 @@ def test_the_report_search_comes_back_to_the_reports():
     page = (TPL / "cycle.html").read_text()
     assert '<form method="get" action="/cycle#reports" class="tools" id="cyclesearch">' in page
     assert '<section id="reports">' in page, "the anchor it lands on"
+
+
+def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
+    """C & W Roofing, order 53206.
+
+    Cancelled, ran earlier in the year, never got its lifetime. No rule finds
+    that - the order export has nothing running in August to build a row out of
+    - and there does not need to be one. There needs to be somewhere to say it.
+
+    And somewhere to SEE it afterwards. Approving on the list check already
+    wrote this same override, and there was no page that listed them, so an
+    approve that worked and an approve that silently did nothing looked exactly
+    alike.
+    """
+    import importlib
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'add.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+    c = TestClient(mmod.app)
+
+    # The panel is there on an empty board too - which is the case it exists
+    # for. It used to sit inside "if there are any reports", so the one board
+    # with nothing on it had no way to put anything on it.
+    assert "added by hand this cycle" in c.get("/cycle?period=2026-08").text
+
+    c.post("/cycle/done", data={
+        "period": "2026-08", "market": "MOXII", "client": "C & W Roofing",
+        "kind": "lifetime", "action": "needed", "ref": "53206", "who": "k",
+        "note": "cancelled, never got a lifetime"}, follow_redirects=False)
+
+    db = dbm.SessionLocal()
+    mark = db.query(dbm.CycleDone).one()
+    assert mark.reason == "needed" and mark.kind == "lifetime"
+    assert mark.ref == "53206", "the order number has to ride along or the row "\
+                               "is findable only by the client's spelling"
+
+    # It reaches the board as an ordinary row.
+    from app.board import expected_for
+    assert [(e.market, e.client, e.kind) for e in expected_for(db, "2026-08")] \
+        == [("MOXII", "C & W Roofing", "lifetime")]
+
+    page = c.get("/cycle?period=2026-08").text
+    assert "1 row added by hand this cycle" in page
+    assert "53206" in page
+    assert "cancelled, never got a lifetime" in page
+
+    # And it can be taken back off.
+    c.post("/cycle/done", data={"period": "2026-08", "market": "MOXII",
+                                "client": "C & W Roofing", "kind": "lifetime",
+                                "action": "clear"}, follow_redirects=False)
+    assert db.query(dbm.CycleDone).count() == 0
+    db.close()
+
+
+def test_an_approve_from_the_list_check_shows_up_where_it_landed(audit_client):
+    """Same override, same list. "Where do I see the ones I approved" had no
+    answer, and the honest one was "search the board for the client's name" -
+    which is the spelling the two tools disagree about in the first place."""
+    c, db, dbm = audit_client
+    c.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "53872", "kind": "monthly",
+        "client": "Some Client", "market_hint": "LOCK AUG",
+        "call": "approved", "who": "Kiri", "note": "runs, not in the export"})
+    page = c.get("/cycle?period=2026-08").text
+    assert "1 row added by hand this cycle" in page
+    assert "Some Client" in page
+    assert "53872" in page, "the order number the approve was made on"
+
+
+def test_the_report_search_lands_on_the_reports_and_keeps_the_cursor():
+    """The form's #reports was not enough on its own.
+
+    The browser jumps to the anchor while parsing, and then this page's own
+    scripts run - hiding partner cards, injecting the column filters - which
+    changes the height of everything above it and leaves the view back at the
+    top, where the partner box now holds the same q.
+    """
+    page = (TPL / "cycle.html").read_text()
+    assert '<form method="get" action="/cycle#reports" class="tools" id="cyclesearch">' in page
+    i = page.index("if (location.hash !== '#reports') return;")
+    tail = page[i:i + 1400]
+    assert "scrollIntoView()" in tail, "it has to re-aim after the scripts run"
+    assert "#cyclesearch input[name=\"q\"]" in tail, "and put the caret back"
+    assert "setTimeout(land," in tail, "once now and once after it settles"

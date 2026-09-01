@@ -1476,6 +1476,15 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "views": _saved_views(db),
         "not_owed": sorted(not_owed, key=lambda r: (r["market"] or "",
                                                     r["client"] or "")),
+        # ROWS SOMEBODY PUT ON THIS CYCLE BY HAND, all in one place.
+        #
+        # Approving from the list check writes one of these and the board grows
+        # a row - and then there was nowhere to see WHICH rows those were, so
+        # "did my approve actually work?" could only be answered by already
+        # knowing the client's name and searching for it. This is the list, and
+        # it is where a row gets added without going through a pasted list at
+        # all.
+        "added": _added_by_hand(db, period),
         "min_days": MIN_DAYS_IN_MONTH,
         "orders_stale": _orders_stale(db),
         "orders_syncing": _orders_syncing(db),
@@ -1731,11 +1740,45 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     return resp
 
 
+def _added_by_hand(db: Session, period: str) -> list:
+    """Every row somebody put on this cycle themselves, newest first.
+
+    Two ways in and they write the same override: Approve on the list check,
+    and Add a row here. Both are somebody overruling the order export, which is
+    a thing worth being able to look at afterward - and until this there was
+    no page that listed them, so an approve that had worked and an approve that
+    had silently done nothing looked identical.
+    """
+    from .db import CycleDone, Report
+    marks = db.scalars(select(CycleDone).where(
+        CycleDone.period == period, CycleDone.reason == "needed")).all()
+    if not marks:
+        return []
+    # Whether the report has since turned up, so the list says what happened
+    # next rather than only what was asked for.
+    from .board import _key as board_key
+    here = {(board_key(r.market or ""), board_key(r.client or ""))
+            for r in db.scalars(select(Report).where(
+                Report.period == period)).all()}
+    out = []
+    for m in marks:
+        out.append({
+            "market": m.market or "", "client": m.client or "",
+            "kind": m.kind or "monthly", "ref": (m.ref or ""),
+            "who": m.marked_by or "", "at": m.marked_at, "note": m.note or "",
+            "arrived": (board_key(m.market or ""),
+                        board_key(m.client or "")) in here,
+        })
+    out.sort(key=lambda r: (r["at"] or dt.datetime.min), reverse=True)
+    return out
+
+
 @app.post("/cycle/done")
 def mark_row_done(request: Request, period: str = Form(...),
                   market: str = Form(""), client: str = Form(""),
                   kind: str = Form("monthly"), action: str = Form("done"),
                   who: str = Form(""), note: str = Form(""),
+                  ref: str = Form(""),
                   db: Session = Depends(get_db)):
     """Check a row off for this cycle with no PDF behind it.
 
@@ -1777,6 +1820,12 @@ def mark_row_done(request: Request, period: str = Form(...),
     #   needed  the rules took it off and they are wrong about this one
     row.reason = action if action in {"done", "none", "needed"} else "done"
     row.note = note.strip()[:255]
+    # THE ORDER NUMBER, so the row that gets built carries it and a search for
+    # the order finds the row. A hand-added row with no order id on it is
+    # findable only by the client's name, which is the spelling the two tools
+    # disagree about in the first place.
+    if ref.strip():
+        row.ref = ref.strip()[:64]
     row.marked_by = name
     row.marked_at = dt.datetime.utcnow()
     db.commit()

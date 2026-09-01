@@ -503,6 +503,99 @@
   {{ cardpager() }}
 </section>
 
+<section id="added">
+  {# ROWS SOMEBODY PUT HERE THEMSELVES.
+     Approving on the list check writes one of these and the board grows a row,
+     and there was nowhere to see WHICH rows those were - so an approve that
+     worked and an approve that silently did nothing looked identical, and the
+     only way to check was to already know the client's name and search for it.
+
+     It is also the way in for a report the export will never ask for: 53206 is
+     a cancelled order that ran earlier in the year and is owed a lifetime
+     nobody has pulled. There is no rule that finds that, and there does not
+     need to be - there needs to be somewhere to say it. #}
+  <details class="added notowed" {% if added %}open{% endif %}>
+    <summary>{{ added|length }} row{{ 's' if added|length != 1 }} added by hand this cycle</summary>
+    {% if added %}
+      <table class="pacing" style="margin-top:8px">
+        <tbody>
+          {% for a in added %}
+            <tr>
+              <td>{{ a.market }}</td>
+              <td style="text-align:left"><b>{{ a.client }}</b>
+                {%- if a.note %}<br><span class="acct">{{ a.note }}</span>{% endif %}</td>
+              <td class="nw"><span class="pill p-{{ 'month' if a.kind == 'monthly' else 'info' }}">{{ 'SEO' if a.kind == 'seo' else a.kind }}</span></td>
+              <td class="mono nw" style="text-align:left">{{ a.ref or '—' }}</td>
+              <td class="nw"><span class="pill p-{{ 'ready' if a.arrived else 'info' }}"
+                    data-tip="{% if a.arrived %}The report has come in - the row is on the board above with the rest.{% else %}The row is on the board above, waiting for its report like any other.{% endif %}"
+                  >{{ 'arrived' if a.arrived else 'waiting' }}</span></td>
+              <td class="acct nw" style="text-align:right">{{ a.who or 'somebody' }}{%
+                if a.at %}, {{ a.at|et('%b %-d') }}{% endif %}</td>
+              <td class="nw" style="text-align:right">
+                <form method="post" action="/cycle/done" class="signoff">
+                  <input type="hidden" name="period" value="{{ period }}">
+                  <input type="hidden" name="market" value="{{ a.market }}">
+                  <input type="hidden" name="client" value="{{ a.client }}">
+                  <input type="hidden" name="kind" value="{{ a.kind }}">
+                  <button class="iconbtn" name="action" value="clear"
+                          data-tip="Take the row back off this cycle. Nothing else changes.">
+                    <svg aria-hidden="true"><use href="#ic-undo"/></svg>
+                    <span class="sr">Remove</span></button>
+                </form></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+    {# THE WAY IN. Partner and client are what the board is keyed on, so they
+       are the two that are required; the order number is what makes the row
+       findable by searching for the order rather than for a spelling of the
+       client's name. #}
+    <form method="post" action="/cycle/done" class="tools"
+          style="margin-top:10px;align-items:flex-end;flex-wrap:wrap">
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="action" value="needed">
+      <label style="font-size:12px">Partner<br>
+        <input type="text" name="market" required size="16" list="dl-markets"
+               placeholder="Partner" style="font:inherit;font-size:13px;padding:6px 11px;
+               border-radius:16px;border:1px solid var(--line);
+               background:var(--surface);color:var(--ink)"></label>
+      <label style="font-size:12px">Client<br>
+        <input type="text" name="client" required size="22" placeholder="Client"
+               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
+               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>
+      <label style="font-size:12px">Report<br>
+        <select name="kind" style="font:inherit;font-size:13px;padding:6px 11px;
+                border-radius:16px;border:1px solid var(--line);
+                background:var(--surface);color:var(--ink)">
+          <option value="monthly">Monthly</option>
+          <option value="lifetime">Lifetime</option>
+          <option value="seo">SEO</option>
+        </select></label>
+      <label style="font-size:12px">Order<br>
+        <input type="text" name="ref" size="10" placeholder="53206"
+               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
+               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>
+      <label style="font-size:12px">Why<br>
+        <input type="text" name="note" size="26"
+               placeholder="Cancelled, never got a lifetime"
+               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
+               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>
+      {% if not me %}<label style="font-size:12px">You<br>
+        <input type="text" name="who" size="10" placeholder="Your name"
+               style="font:inherit;font-size:13px;padding:6px 11px;border-radius:16px;
+               border:1px solid var(--line);background:var(--surface);color:var(--ink)"></label>{% endif %}
+      <button class="mini ok" type="submit">Add the row</button>
+    </form>
+    <datalist id="dl-markets">
+      {% for g in groups %}{% for m in (g.markets or []) %}<option value="{{ m }}">{% endfor %}{% endfor %}
+    </datalist>
+    <p class="sub" style="font-size:12px">This cycle only - next month starts
+      from the export again. The row behaves like any other: it waits for its
+      report, gets checked, and gets signed off.</p>
+  </details>
+
+</section>
+
 {% if rows or done_hidden %}
 {# `me` is passed in rather than read from the context: a macro does not
    reliably see template variables, and a silently-undefined name here
@@ -1147,6 +1240,41 @@
   if (document.querySelector('[data-packing]')) {
     setTimeout(function () { location.reload(); }, 6000);
   }
+})();
+
+// A SEARCH THAT LANDS WHERE YOU WERE, WITH THE CURSOR STILL IN THE BOX.
+//
+// There are two search boxes on this page and both are named q. Enter in the
+// lower one reloads the whole page, and #reports on the form was not enough:
+// the browser jumps to the anchor while parsing, and then this page's own
+// scripts run - hiding partner cards, injecting the column filters - which
+// changes the height of everything above the anchor and leaves the view back
+// at the top. Where the partner box now holds the term, because it is the same
+// q. So it reads as the typing having jumped into the other box and the search
+// having done nothing, when what happened is a search that worked, four
+// screens down.
+//
+// Re-aimed after the scripts have settled, and the caret put back in the box
+// that was typed in, at the end of the word.
+(function () {
+  if (location.hash !== '#reports') return;
+  var land = function () {
+    var sec = document.getElementById('reports');
+    if (sec) sec.scrollIntoView();
+    var box = document.querySelector('#cyclesearch input[name="q"]');
+    if (box) {
+      box.focus({preventScroll: true});
+      var v = box.value;
+      box.value = '';
+      box.value = v;                       // caret to the end
+    }
+  };
+  // Twice: once when the DOM is ready, once after the filters have run and
+  // the page has stopped changing height under it.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', land);
+  } else { land(); }
+  setTimeout(land, 120);
 })();
 </script>
 {% endblock %}

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-160"
-BUILD_NOTES = ("The check-a-list page filters, an order's second drop reason "
-               "survives, and the report search comes back to the reports.")
+BUILD = "2026.09.01-161"
+BUILD_NOTES = ("Rows can be added to a cycle by hand, and there is one place "
+               "that lists every row somebody added.")
 
 # ---------------------------------------------------------------------------
 
