@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-155"
-BUILD_NOTES = ("The month count is read off the order rather than derived, "
-               "so every line with impressions gets a campaign total.")
+BUILD = "2026.09.01-156"
+BUILD_NOTES = ("A lifetime row gets a lifetime's reason, and spend products "
+               "get their campaign total from the same months.")
 
 # ---------------------------------------------------------------------------
 

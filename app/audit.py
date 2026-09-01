@@ -367,6 +367,45 @@ def _sync_statuses(db) -> dict:
     return out
 
 
+def _overlapping_order(lines, ids) -> str:
+    """Another order on these rows whose flight overlaps the one asked about.
+
+    "Runs past the window" says why no lifetime is owed and not what happens
+    instead. When a second order is running across the same dates the client is
+    still on the cycle - on that order's report - and saying so is the
+    difference between an answer and half of one.
+    """
+    import datetime as _dt
+
+    def _d(v):
+        try:
+            return _dt.date.fromisoformat(str(v)[:10]) if v else None
+        except ValueError:
+            return None
+
+    want = {str(i).strip() for i in (ids or ()) if str(i).strip()}
+    mine, others = [], []
+    for l in lines:
+        for d in (getattr(l, "detail", None) or []):
+            if not isinstance(d, dict):
+                continue
+            oid = str(d.get("order") or "").strip()
+            win = (_d(d.get("order_starts") or d.get("starts")),
+                   _d(d.get("order_ends") or d.get("ends")))
+            if want and oid in want:
+                mine.append(win)
+            elif oid:
+                others.append((oid, win, bool(d.get("canceled"))))
+    for start, end in mine:
+        for oid, (o_start, o_end), gone in others:
+            if gone:
+                continue
+            if (o_start is None or end is None or o_start <= end) and \
+                    (o_end is None or start is None or o_end >= start):
+                return oid
+    return ""
+
+
 def _order_end_dates(lines, ids) -> list:
     """Each ORDER's own end date behind these rows, for the ids asked about.
 
@@ -521,9 +560,15 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
     # explained with the reason belonging to an order that is not in the
     # export, which sends somebody off to check a feed for a line that is
     # sitting right there. "#26734 LIVE CHAT ONLY" is exactly this shape.
+    # NOT FOR A LIFETIME. Whether a product earns a report of its own is a
+    # question about the monthly. A lifetime is about a campaign finishing, and
+    # answering it with "Live Chat does not earn a report on its own" - which
+    # is what Texoma Roofing's lifetime row said - is a true sentence about the
+    # wrong question. The lifetime branch below has the real answer.
     from .checks.products import earns_a_report
     live = [l for l in lines if not getattr(l, "canceled", False)]
-    if live and not any(earns_a_report(l.product or "") for l in live):
+    if row["kind"] != "lifetime" and live and not any(
+            earns_a_report(l.product or "") for l in live):
         what = sorted({(l.product or "").strip() for l in live if l.product})
         if len(what) == 1:
             return f"{what[0]} does not earn a report on its own"
@@ -552,17 +597,29 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
         # order that ended six weeks earlier. The per-order detail is on the
         # row; asked properly it gives the right date for the order in hand.
         own = _order_end_dates(lines, row["ids"])
+        oid = ", ".join(row["ids"]) or "this one"
         if own and any(cyc.needs_lifetime(e) for e in own):
-            return ("order " + (", ".join(row["ids"]) or "this one")
-                    + f" ends {max(e for e in own if cyc.needs_lifetime(e))}, "
-                      "inside this cycle's lifetime window - but another order "
-                      "for this client is still running, so the lifetime waits "
-                      "until the campaign is finished. Approve it here if this "
-                      "one should be reported now.")
+            return (f"order {oid} ends "
+                    f"{max(e for e in own if cyc.needs_lifetime(e))}, "
+                    "inside this cycle's lifetime window - but another order "
+                    "for this client is still running, so the lifetime waits "
+                    "until the campaign is finished. Approve it here if this "
+                    "one should be reported now.")
         if ends and not any(cyc.needs_lifetime(e) for e in (own or [
                 (l.order_ends_on or l.ends_on) for l in lines])):
             last = max(own or [(l.order_ends_on or l.ends_on) for l in lines
                                if (l.order_ends_on or l.ends_on)])
+            # AND WHETHER SOMETHING ELSE IS RUNNING ALONGSIDE IT, because that
+            # is the half that says what happens instead: the client is on the
+            # cycle anyway, on the other order's report. Texoma Roofing's 54263
+            # runs to 31 December and overlaps another live order, and the row
+            # said only that Live Chat earns nothing.
+            other = _overlapping_order(lines, row["ids"])
+            if other:
+                return (f"order {oid} does not end until {last} and overlaps "
+                        f"order {other}, which is still running - so this "
+                        f"client is reported on that order rather than closed "
+                        f"out here")
             return (f"the campaign runs to {last}, past this cycle's lifetime "
                     f"window (to {cyc.lifetime_cutoff})")
         return "no line ends inside this cycle's lifetime window"

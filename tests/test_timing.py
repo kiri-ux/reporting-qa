@@ -1202,3 +1202,67 @@ def test_a_line_with_no_monthly_impressions_gets_no_total():
     assert [(l.impressions, l.total_impressions)
             for l in db.query(dbm.OrderLine).all()] == [(None, None)]
     db.close()
+
+
+def _texoma(db):
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date,"
+           "months_running\n")
+    rows = ("LOCK,IO Live,Texoma,54263,Live Chat,1,IO Live,2026-01-01,"
+            "2026-01-01,2026-12-31,2026-12-31,12\n"
+            "LOCK,IO Live,Texoma,54263,Social Mirror Ads,2,Cancelled,"
+            "2026-01-01,2026-01-01,2026-12-31,2026-12-31,12\n"
+            "LOCK,IO Live,Texoma,54900,Social Mirror Ads,3,IO Live,2026-06-01,"
+            "2026-06-01,2026-11-30,2026-11-30,6\n")
+    orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+
+
+def test_a_lifetime_is_not_explained_with_a_monthlys_reason(live):
+    """"Live Chat does not earn a report on its own" is a true sentence about
+    the wrong question. A lifetime is about a campaign finishing."""
+    _c, db, _dbm, _t = live
+    _texoma(db)
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Texoma", "ids": ["54263"],
+                               "kind": "lifetime"}, [])
+    assert "does not earn a report" not in why
+
+
+def test_it_says_the_order_runs_on_and_names_what_it_overlaps(live):
+    """"Runs past the window" says why no lifetime is owed and not what happens
+    instead - the client is still reported, on the other order."""
+    _c, db, _dbm, _t = live
+    _texoma(db)
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Texoma", "ids": ["54263"],
+                               "kind": "lifetime"}, [])
+    assert "does not end until 2026-12-31" in why
+    assert "overlaps order 54900" in why
+
+
+def test_a_spend_product_gets_its_campaign_total_from_the_months_too():
+    """PPC and Meta are bought on ad spend, not impressions - there is no
+    monthly impressions figure on those lines at all, so the spend is the
+    number that matters and its total is the monthly times the months."""
+    import os, tempfile, importlib
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date,"
+           "monthly_ppc_ad_spend,months_running\n")
+    d = tempfile.mkdtemp()
+    os.environ["DATABASE_URL"] = f"sqlite:///{d}/t.db"
+    from app import config as cfg
+    importlib.reload(cfg)
+    from app import db as dbm
+    importlib.reload(dbm)
+    dbm.init_db()
+    importlib.reload(orders_io)
+    db = dbm.SessionLocal()
+    orders_io.import_io_export(db, (hdr +
+        "M,IO Live,C,54425,Pay-Per-Click Ads,1,IO Live,2026-01-01,2026-01-01,"
+        "2026-12-31,2026-12-31,1750,12\n").encode(), period="2026-08")
+    got = [(l.budget, l.total_budget, l.impressions, l.total_impressions)
+           for l in db.query(dbm.OrderLine).all()]
+    assert got == [(1750.0, 21000.0, None, None)]
+    db.close()

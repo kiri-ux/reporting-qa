@@ -1,4 +1,4 @@
-build 2026.09.01-155
+build 2026.09.01-156
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -20,59 +20,49 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-WHY ONLY 1,837 - BECAUSE I WAS DERIVING A FIELD THAT WAS ALREADY THERE
-======================================================================
-You were right. months_running is in the export: 34 columns of that name, and
-the first-non-empty rule already in the reader picks the one that is filled in.
-It is populated on ALL 213,394 rows of your file.
+TEXOMA ROOFING - A LIFETIME ROW WAS GETTING A MONTHLY'S REASON
+==============================================================
+"Live Chat does not earn a report on its own" is a true sentence about the
+wrong question. Whether a product earns a report of its own decides a MONTHLY.
+A lifetime is about a campaign finishing, and that check was running first and
+answering for it.
 
-I had been computing the month count from total budget over monthly budget,
-which needed both budgets present and their ratio to come out whole. That is
-what capped it at 1,837. Reading the field costs nothing and covers everything:
+It does not run on a lifetime row now. And the lifetime answer says the second
+half, which was the part you actually wanted:
 
-  1,846 order lines carry a monthly impressions figure
-  1,846 of them now carry a campaign total
+  order 54263 does not end until 2026-12-31 and overlaps order 54900, which is
+  still running - so this client is reported on that order rather than closed
+  out here
 
-The remaining 581 have no monthly impressions at all - PPC, Meta and the other
-spend products report money rather than impressions, so there is nothing to
-multiply. Those keep a dash, which is correct rather than missing.
-
-Order 54425 is unchanged: 88,235 x 2 = 176,470 and 100,000 x 1 = 100,000.
-
-AND THE MONEY IS THE VALIDATOR NOW, WHICH IS WHERE YOU PUT IT. total budget
-over monthly budget is the same number as months_running on 208,082 of the
-208,140 rows that carry both. The 58 that disagree mean one of the two fields
-is wrong on that line, and the sync record now says how many:
-
-  ... 3 line item(s) where the months on the order and the budgets disagree
-  about how long the campaign runs
-
-The campaign total is built on months_running - the order's own field - and the
-budgets only ever get to raise a hand.
-
-WHEN IT STAYS EMPTY: no monthly impressions, or no month count. It does not
-guess from the dates, and there are tests for both.
+"Runs past the window" said why no lifetime is owed and not what happens
+instead. The client IS on the cycle; they are on the other order's report. It
+names that order.
 
 
-INNOVISION - SAME PARTIAL FILE, I THINK
-=======================================
-Innovision Advertising IS in the export I have - 478 rows - but The Brooklyn
-Hospital Center is not among its clients, so order 1463 is not in my copy. The
-"Narrowing the pull" list is built from the order lines actually loaded, so a
-partner whose 2018 line item is missing looks like a partner with nothing older
-than 2021.
+SPEND PRODUCTS USE THE AD SPEND FIELDS
+======================================
+They already did for the monthly figure - PPC, Meta, LinkedIn and Performance
+Max each have their own spend column and the reader has always preferred it.
+What was missing was the campaign total on those lines, for the same reason
+impressions were missing: nothing was multiplying by the months.
 
-On your box, with the whole file, that panel should list Innovision from
-2018-10-01. If it does not after this deploy, tell me and it is a real bug in
-that panel rather than my copy - and the Orders page will also now be listing
-any partner with no orders loaded at all, which is the other half of that check.
+Now it is. 425 of the 440 spend-only order lines carry a campaign total spend
+where they had none, worked out the same way - monthly spend times
+months_running - and only ever filling a blank, never replacing a total the
+export gave.
+
+  PEO Brokers Network-SE   SEO        $700/mo    x51    $35,700
+  Blessing Health System   LinkedIn   $1,750/mo  x44    $77,000
+
+Impressions and spend now both come from the order's own month count.
 
 
-ALSO IN THIS ZIP
-================
-THE ROGUE COMMA AND SEMICOLON were one bug: that bar is display:flex, so every
-bare run of text and every <code> was its own flex item and wrapped alone. The
-prose is one element now, and the stale-code panel is rewritten so the two
-fingerprints sit on their own line as reference rather than grammar.
+WHERE THE NUMBERS STAND
+=======================
+  2,427  order lines
+  1,846  have a monthly impressions figure - all 1,846 now have a campaign total
+  2,286  have a monthly spend figure - 2,271 now have a campaign total
+      3  line items where months_running and the budgets disagree, named on the
+         sync record so somebody can look
 
-805 tests pass.
+808 tests pass.

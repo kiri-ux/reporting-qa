@@ -790,6 +790,20 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     # whole. The money is the validator now, not the source.
                     if all_imps is None and imps and months_running:
                         all_imps = imps * months_running
+                    # AND THE SAME FOR THE MONEY ON A SPEND PRODUCT.
+                    #
+                    # PPC, Meta, LinkedIn and Performance Max are bought on ad
+                    # spend rather than impressions - there is no monthly
+                    # impressions figure on those lines at all - so the spend
+                    # is the number that matters and its campaign total is the
+                    # monthly spend times the same months. Where the export
+                    # already carries a total it is left alone; this only fills
+                    # a blank.
+                    if whole is None and money and months_running:
+                        whole = money * months_running
+                        cur = kept[k]["total_budget"]
+                        kept[k]["total_budget"] = (
+                            whole if cur is None else cur + whole)
                     # AND THE MONEY CHECKS IT. total budget over monthly budget
                     # is the same number, on 208,082 of the 208,140 rows that
                     # carry both. The 58 that disagree are worth counting: one
