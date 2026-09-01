@@ -518,6 +518,14 @@ class CycleDone(Base):
     # place. Both take the row off the board for this cycle; only one of them
     # means somebody did the work.
     reason: Mapped[str] = mapped_column(String(16), default="done")
+    # THE ORDER ID, when this row was put on the board by hand.
+    #
+    # A row the export has never heard of has no order line to take an id from,
+    # so it arrived on the board with a blank order column - and searching the
+    # board by order number, which is how anybody looks for one, could never
+    # find it. The id is on the tracker row that was approved; it just was not
+    # being kept.
+    ref: Mapped[str] = mapped_column(String(64), default="")
     note: Mapped[str] = mapped_column(String(255), default="")
     marked_by: Mapped[str] = mapped_column(String(128), default="")
     marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
@@ -850,6 +858,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "is_seo", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_sync", "dropped_orders", "JSON"),
     ("order_sync", "order_statuses", "JSON"),
+    ("cycle_done", "ref", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
     ("order_lines", "order_canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),

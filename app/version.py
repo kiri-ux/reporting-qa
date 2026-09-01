@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-150"
-BUILD_NOTES = ("Approving a client the export has never heard of now puts it "
-               "on the cycle, which is the whole point of approving it.")
+BUILD = "2026.09.01-152"
+BUILD_NOTES = ("A hand-made row carries its order number, and a campaign "
+               "total is only claimed when there were months to add up.")
 
 # ---------------------------------------------------------------------------
 

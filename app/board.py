@@ -1089,6 +1089,9 @@ def expected_for(db: Session, period: str,
         rows[(mk, ck, kind)] = Expected(
             market=m.market or "", group=(p.group if p and p.group else m.market) or "",
             client=m.client or "", kind=kind or "monthly",
+            # The order number off the row that was approved, so the board
+            # shows it and a search by order id can find it.
+            account_ids=(getattr(m, "ref", "") or ""),
             reporter=first_name(p.reporting_team if p else "", reporter_pool),
             buyer=(p.buyer if p else ""),
             forced_by=m.marked_by or "put on by hand",

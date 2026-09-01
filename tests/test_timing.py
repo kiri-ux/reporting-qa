@@ -1101,7 +1101,12 @@ def test_approving_a_client_the_export_never_had_still_puts_it_on(live):
     from app import board
     rows = {(e.client, e.kind): e for e in board.expected_for(db, "2026-08")}
     assert ("Navigate Marketing", "seo") in rows
-    assert rows[("Navigate Marketing", "seo")].forced_by == "k"
+    row = rows[("Navigate Marketing", "seo")]
+    assert row.forced_by == "k"
+    # AND IT CARRIES THE ORDER NUMBER. Searching the board by order id is how
+    # anybody looks for a row, and a hand-made one arrived with that column
+    # blank - so it was on the board and could not be found.
+    assert row.account_ids == "53872"
 
 
 def test_undoing_that_approve_takes_the_hand_made_row_off_again(live):
@@ -1121,3 +1126,45 @@ def test_the_rail_has_a_way_in():
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"
             / "base.html").read_text()
     assert '/why-slow' in base
+
+
+def test_a_campaign_total_is_only_claimed_when_months_were_summed():
+    """The export's own total_campaign_impressions column holds "1" - a share
+    of goal, not a count - so the campaign total has to come from adding the
+    months up. For most line items the export carries ONE dated row, and
+    printing that under "campaign total" would claim a figure nobody computed:
+    it reads as the whole flight and is one month of it.
+    """
+    import os, tempfile
+    from app import orders_io
+    hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
+           "status,orders_start_date,start_date,end_date,orders_end_date,date,"
+           "monthly_campaign_impressions,total_campaign_impressions\n")
+
+    def _load(rows):
+        d = tempfile.mkdtemp()
+        os.environ["DATABASE_URL"] = f"sqlite:///{d}/t.db"
+        import importlib
+        from app import config as cfg
+        importlib.reload(cfg)
+        from app import db as dbm
+        importlib.reload(dbm)
+        dbm.init_db()
+        importlib.reload(orders_io)
+        db = dbm.SessionLocal()
+        orders_io.import_io_export(db, (hdr + rows).encode(), period="2026-08")
+        out = [(l.impressions, l.total_impressions)
+               for l in db.query(dbm.OrderLine).all()]
+        db.close()
+        return out
+
+    line = ("M,IO Live,C,54425,Social Mirror Ads,131447,IO Complete,"
+            "2026-06-05,2026-06-05,2026-08-31,2026-08-31,{m}-01,{i},1\n")
+    # Three months, each row repeated as the real export repeats them.
+    many = "".join(line.format(m=m, i=i) * 2
+                   for m, i in (("2026-06", 40000), ("2026-07", 60000),
+                                ("2026-08", 88235)))
+    assert _load(many) == [(40000.0, 188235.0)]
+    # One month, twice. No total is claimed - and the duplicate is not summed.
+    one = line.format(m="2026-08", i=88235) * 2
+    assert _load(one) == [(88235.0, None)]

@@ -1,4 +1,4 @@
-build 2026.09.01-150
+build 2026.09.01-152
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -19,71 +19,72 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-53872 - NO, AND IT WAS DOING NOTHING SILENTLY
-=============================================
-You approved it, the page said APPROVED, and nothing was added. Here is the
-whole of why, because it is worth knowing.
+WHERE TO SEE 53872 - TWO THINGS, AND ONE OF THEM IS MINE
+========================================================
+The search box in your screenshot says 52876. The order is 53872. Same digits,
+transposed. That alone would find nothing.
 
-The approve writes a "needed" override, and that override could only ever KEEP
-a row the rules were about to remove. It could not create one. So for every
-client the export DOES have, approving worked - and for a client the export has
-never heard of, it recorded your decision and changed nothing at all. Which is
-exactly the case the button is for: 53872 is on that list PRECISELY because the
-export does not have it.
+But it would not have found it anyway, and that part is mine. A row put on the
+board by hand has no order line to take an order number from, so it arrived
+with the Order column blank - on a board where searching by order number is how
+anybody looks for a row. It was there and could not be found.
 
-It also never got as far as writing the override, because it looks the partner
-up off the order lines and there are none, so it had no market and quietly
-stopped. Two failures stacked, and neither said a word.
+The order id from the tracker row you approved is kept now and shown on the
+row, so a search finds it.
 
-Both fixed. The market code from your tracker row - NAV, WHIT, 7MOU ALT - is
-the fallback when there is no order line to read a real partner name from, and
-the board now materializes a "needed" override into a row of its own when
-nothing else built one.
-
-Approving 53872 now puts Navigate Marketing on the August cycle as an SEO row,
-tagged as put on by hand with your note on it. Undo takes it back off.
-
-THOSE ROWS CARRY NO PRODUCTS AND NO DATES, because nothing knows them - the
-export is where those come from. They exist so the client is on the cycle and a
-report can be uploaded against them, which is what approving one is asking for.
-
-Windber, Jay Gerber and WarePak are the same shape and will behave the same
-way. Your four existing approvals were recorded, so they should take effect on
-this deploy without you re-doing them.
+WHERE IT APPEARS: the REPORTS table at the bottom of the cycle page, partner
+NAV, client Navigate Marketing, kind SEO, tagged as put on by hand with your
+note. Not in the partner cards above it - those are built from the export and
+this client is not in the export, which is the whole reason it needed approving.
 
 
-SOUTHEASTERN COOLING - THE LIFETIME IS OWED
-===========================================
-51648 ran to 31 August, 51649 starts 1 September. They do not overlap, so the
-rule you confirmed does not apply and 51648 is owed a lifetime.
+TOTAL IMPRESSIONS PER LINE ITEM - THE EXPORT DOES NOT HAVE IT
+=============================================================
+Short answer: the number is not in the file, and I checked two ways before
+saying so.
 
-Three places were reading the rolled-up row instead of the orders inside it. A
-row is one client and one product across every order carrying it, and its dates
-are the WIDEST of them - so this client's row ran May to the end of September:
+The export HAS a total_campaign_impressions column. Four of them, in fact - the
+header repeats - and the one that is populated holds "1". It is a share of
+goal, not a count. There is already a guard throwing that away, which is why
+the Campaign total column has only ever shown money: the money column is real,
+the impressions one is not.
 
-  * whether a lifetime was owed at all asked the row's end date, 30 September,
-    outside the window, so no lifetime row was ever built
-  * which order it would be ABOUT took the biggest end date - 51649, which is
-    not owed one
-  * the overlap test got one window spanning both orders and compared it
-    against itself
+So the only other route is adding up the months, and I built that: the monthly
+impressions figure IS real, and summing it across a line item's months gives a
+campaign total. It is careful about the two traps - it counts before the
+duplicate test, because that test discards the rows carrying the other months,
+and it keys on the month, because 95% of your file is rows repeated verbatim.
 
-All three read per-order now. NORTH BAY TIP still waits, which is the rule you
-picked, and the reason names 55433 rather than a merged pair of ids.
+THEN I RAN IT OVER YOUR EXPORT AND IT PRODUCED NOTHING, for a reason worth
+knowing: of the 10,597 line items in that file, NOT ONE has more than a single
+dated row. Every line item's date is pinned to the month it started, which is
+the same thing that makes narrowing the date range so dangerous. There are no
+months to add up.
+
+The code is in and it is honest about this: a campaign total is only claimed
+where more than one month actually contributed. One month gets a dash rather
+than a number that would read as the whole flight and be a twelfth of it. If a
+wider export ever carries per-month rows, the column fills in on its own.
+
+If that figure exists somewhere else - TapClicks itself, or a different export
+- point me at it and I will read it from there.
 
 
-THE TWO SMALL ONES
-==================
-"ONLY LISTS CANCELLED WHEN THERE IS ONE LIVE" was my own filter - I dropped any
-line status matching the order's to save a repetition, so an IO Live order with
-one cancelled line and one live one showed "line items: Cancelled". Every
-distinct status is shown now; the only list still suppressed is a single line
-item whose status is the order's own.
+ALSO IN THIS ZIP, FROM TODAY
+============================
+APPROVING A CLIENT THE EXPORT NEVER HAD now puts it on the cycle. The override
+could only KEEP a row the rules removed, never create one, so approving a
+client with no order lines recorded a decision and changed nothing, silently.
+Your four existing approvals were recorded and take effect on this deploy.
 
-"IT SPLIT THE CLIENT NAME". "Family Centered Resources, Inc." arrives from a
-CSV as two cells and the half with the id is "Inc. #51944 LIFETIME". The rule
-that glues the front half back counted LIFETIME as part of the name - eleven
-letters, over the threshold - so it never fired. The markers are stripped
-before that count now.
+SOUTHEASTERN COOLING's lifetime is owed - 51648 ran to 31 August, 51649 starts
+1 September, they do not overlap. Three places were reading the rolled-up row
+instead of the orders inside it. North Bay TIP still waits, which is the rule
+you picked.
 
-803 tests pass.
+"ONLY LISTS CANCELLED WHEN THERE IS ONE LIVE" was my own filter.
+
+"IT SPLIT THE CLIENT NAME" - the glue-back rule counted LIFETIME as part of the
+name, so "Family Centered Resources, Inc." came out as "Inc.".
+
+804 tests pass.

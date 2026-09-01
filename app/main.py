@@ -2050,6 +2050,8 @@ def cycle_audit_call(request: Request, period: str = Form(""),
         mark.client = client[:255]
         mark.kind = kind
         mark.reason = "needed"
+        # So the board can show the order number and a search can find it.
+        mark.ref = (ref or "")[:64]
         mark.marked_by = name[:128]
         mark.note = (note or "Approved from the list check")[:255]
         mark.marked_at = dt.datetime.utcnow()
