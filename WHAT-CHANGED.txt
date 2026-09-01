@@ -1,7 +1,8 @@
-build 2026.09.01-136
-Changed files only. Includes 131 through 135 - install this one, not all six.
+build 2026.09.01-139
+Changed files only. Includes 131 through 138 - install this one, not all nine.
 
 app/audit.py
+app/board.py
 app/db.py
 app/main.py
 app/orders_io.py
@@ -16,77 +17,85 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-THAT S3 SCREENSHOT CHANGES THINGS, AND NOT IN MY FAVOR
-======================================================
-  orders-db-all-1_20260901_0734_0.csv   830.0 MB   07:34:58
-  orders-db-all-1_20260901_0732_0.csv   227.8 MB   07:32:35
+SEO WAS BEING JUDGED BY A FILE IT CAN NEVER BE IN
+=================================================
+The serving file is ad delivery - impressions against days. SEO is not served,
+so an SEO client is absent from that file every month, for ever. And the rule
+that reads absence as "it did not run" then took the whole of Whitley's SEO
+list off the board with:
 
-One export run, two files, two minutes apart, and one of them nearly four times
-the size of the other. The file I have been running all my answers against is
-orders-db-all-1_20260831_1445_0.csv at 148 MB. That is not the whole of
-anything - it is one part of one run, and it is the part I happened to be sent.
+  not in the serving file at all - either it did not run, or the serving file
+  spells this client differently to the order export
 
-SO TREAT WHAT I TOLD YOU ABOUT AUDIOGO, BROWN BAG NY AND ROI SAM AS UNPROVEN.
-"Not in the export" was true of the 148 MB file in front of me. You can see both
-of them in the 830 MB one. What I was actually entitled to say is that they were
-not in my copy, and I said something stronger than that.
+Fourteen rows of one wrong answer, and the answer blamed the file for being
+misspelled. Those reports are pulled by hand and uploaded; the row on the cycle
+list is the only thing telling anybody they are owed, and it was being deleted.
 
-AND THE CODE HAD A REAL FAULT UNDERNEATH IT. The sync treats the S3 folder as
-"every CSV under this prefix, merged, newest first". Nothing ever removed the
-older days, so every export ever dropped in that folder was downloaded and
-merged on every single sync. Two problems, and the second is the bad one:
+ANY SEO ON THE ROW, NOT ONLY SEO. A client running SEO beside a digital product
+should be in the serving file on the strength of the digital half - but if they
+are not, taking the row off loses the SEO report they are still owed too, and
+losing a report is the expensive mistake here. The row stays and somebody looks.
 
-  * It is gigabytes an hour of downloading and parsing on a box you have been
-    telling me is slow. Your load average of 7 has a candidate now.
-  * A run from three weeks ago is a picture of the orders as they were three
-    weeks ago. The merge keeps whatever line item today's file did not happen
-    to carry, so the board could be half today and half a fortnight back, with
-    nothing on screen saying which half was which.
-
-It now reads the newest run and anything within twelve hours of it - which
-keeps 07:32 and 07:34 together, and keeps the small stephens file from 07:28 -
-and skips everything older. A file you name outright is never skipped.
-
-AND IT SAYS WHAT IT READ. The sync record now lists each file with its size,
-and how many older exports it walked past:
-
-  Imported 2,427 order lines from 3 file(s), 213,394 rows read -
-  orders-db-all-1_20260901_0734_0.csv (830 MB),
-  orders-db-all-1_20260901_0732_0.csv (228 MB),
-  orders-db-stephens-1_20260901_0728_0.csv (0 MB). 4 older export(s) in that
-  folder were not read.
-
-"3 file(s)" was never enough to tell a complete export from half of one.
-
-WHEN THIS DEPLOYS it will re-read the orders from scratch, because the import
-code changed. That is the fingerprint doing its job - it is the only thing that
-makes a fix reach the orders already loaded. Give it a few minutes, then look
-at the sync line and check the file sizes against what you can see in S3.
+WHAT DID NOT CHANGE: a client the file DOES mention, with two days served, is a
+fact, and that rule is still on for everybody including SEO. Absence is the
+ambiguous signal; a number is not.
 
 
-BUFFALO WINGS & RINGS - THE TOOL SAID CANCELED ABOUT A PAUSED LINE
-==================================================================
-Order 50236 in your Aug 31 export, three line items:
+AND THE BIG ONE - IT WAS BLAMING THE EXPORT FOR ORDERS THAT ARE IN IT
+=====================================================================
+53437 is in your export. Three line items, all IO Paused, all ended 30 June.
+54338 is in it too, complete. The tool said "it is not in the export, or the
+export is out of date" about both.
 
-  117590  Mobile Conquesting   IO Paused     5 Nov 25 -> 31 Jul 26
-  117591  Social Mirror Ads    Cancelled     1 Jan 26 -> 31 Dec 26
-  117592  Online Audio Ads     Cancelled     1 Jan 26 -> 31 Dec 26
+Here is why, and it explains most of what you have shown me today. The import
+keeps the line items that touch the cycle and throws the rest away. The list
+check then looked at what survived, found nothing, and concluded the export had
+never heard of the order. An empty table read as an empty feed.
 
-The paused one ends 31 July, so the import dropped it as out of this cycle. The
-two canceled ones run to December, so they were kept. The audit then looked at
-what was left, found all of it canceled, and told you every line on the order
-was canceled - about the one order whose only non-canceled line had simply
-finished. The IO tool on your screen said Paused, and it was right.
+That is the worst shape a wrong answer can take here, because it accuses
+somebody else's system and sends whoever is on the page to go and check a file
+that is perfectly correct. You have now done that several times today.
 
-That claim is scoped now, and carries the missing half:
+The import already writes down why it drops each client's rows - 2,337 of them
+on your Aug 31 file - and only the lookup page ever read it. The list check
+asks now. Against your real export those rows read:
 
-  every line on this order that reaches this cycle is canceled - and a line
-  item ended before 2026-08 started
+  RegistryAZ           the export has this order and every line on it ended
+                       2026-06-30, before August 2026
+  Dive Into Space      the export has this order and every line on it ended
+                       2026-07-31, before August 2026
+  Buffalo Wings        the only lines on this order that reach this cycle are
+                       canceled. The other one is not canceled - it ended
+                       2026-07-31, before August 2026
 
-The import records why it drops each client's rows and only the lookup page
-ever read it. It is the missing half of several answers on the audit page: the
-line that would explain the row is precisely the one not in the table to look
-at. (The drop reason also said "every line item ended before..." when it is
-decided one row at a time. It says "a line item" now.)
+"Not in the export" is now only said when nothing was recorded about the client
+at all - which is what it always meant.
 
-771 tests pass.
+THE NOTE THAT DID NOT MAKE SENSE was mine, and you were right. I had bolted the
+drop reason onto the end with a dash and it read as two half-sentences that had
+never met. Every reason is written as a predicate now so the sentence around it
+holds together, and there is a test that fails if a new one is added that does
+not. Dates read as August 2026 rather than 2026-08.
+
+
+STILL OUTSTANDING: AUDIOGO AND BROWN BAG NY
+===========================================
+Those two are still "not in the export", and against the 148 MB file I have
+that is all I can honestly say - neither string appears in it anywhere. You can
+see them in the 830 MB file. Deploy this, let the sync run, and look at the
+sync line: it now names every file it read with its size. If it lists the
+830 MB one and those rows still say "not in the export", send me that line and
+it is a real bug rather than my copy being half an export.
+
+
+FROM 136 AND 137
+================
+The sync was merging every export ever dropped in that S3 folder into today's -
+gigabytes an hour of downloading and parsing, and a board that could be half
+today and half a fortnight back. It reads the newest run and anything within
+twelve hours of it now, which keeps 07:32 and 07:34 together and drops
+yesterday. It says which files it read, with sizes, and how many older ones it
+walked past. And it checks the disk has room before it starts, rather than
+dying halfway through with an error about the file.
+
+778 tests pass.

@@ -491,13 +491,14 @@ def test_a_paused_line_out_of_window_is_not_called_canceled(live):
     db.add(db_mod.OrderSync(
         source="s3://bucket/orders/", ok=True, state="done",
         dropped={"Kaizen Digital Marketing Group|Buffalo Wings & Rings":
-                 "a line item ended before 2026-08 started"}))
+                 "ended 2026-07-31, before August 2026"}))
     db.commit()
     from app.audit import _why
     why = _why(db, "2026-08", {"client": "Buffalo Wings & Rings",
                                "ids": ["50236"], "kind": "monthly"}, [])
-    assert "that reaches this cycle is canceled" in why
-    assert "ended before 2026-08 started" in why
+    assert why == ("the only lines on this order that reach this cycle are "
+                   "canceled. The other one is not canceled - it ended "
+                   "2026-07-31, before August 2026")
 
 
 def test_with_no_drop_recorded_the_plain_answer_is_still_given(live):
@@ -513,6 +514,140 @@ def test_with_no_drop_recorded_the_plain_answer_is_still_given(live):
     why = _why(db, "2026-08", {"client": "Gone Client", "ids": ["50999"],
                                "kind": "monthly"}, [])
     assert why == "every line on this order is canceled"
+
+
+def test_an_order_dropped_on_the_way_in_is_not_blamed_on_the_export(live):
+    """"It is not in the export" was said about orders plainly IN the export.
+
+    53437 has three paused line items that all ended on 30 June; 54338 is
+    complete. The import drops everything outside the cycle and the audit only
+    ever looked at the survivors, so an empty table read as an empty feed - and
+    the answer accused somebody else's system and sent whoever was on this page
+    to check a file that was perfectly correct.
+    """
+    _c, db, db_mod, _t = live
+    db.add(db_mod.OrderSync(
+        source="s3://bucket/orders/", ok=True, state="done",
+        dropped={"evolve media|RegistryAZ": "ended 2026-06-30, before August 2026"}))
+    db.commit()
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "RegistryAZ", "ids": ["53437"],
+                               "kind": "monthly"}, [])
+    assert why == ("the export has this order and every line on it ended "
+                   "2026-06-30, before August 2026")
+
+
+def test_an_order_that_really_is_absent_still_says_so_after_that(live):
+    """The drop log is checked first, not instead. A client nothing was ever
+    recorded about has to keep the honest answer."""
+    _c, db, db_mod, _t = live
+    db.add(db_mod.OrderSync(
+        source="s3://bucket/orders/", ok=True, state="done",
+        dropped={"somewhere|Someone Else": "ended 2026-06-30, before August 2026"}))
+    db.commit()
+    from app.audit import _why
+    why = _why(db, "2026-08", {"client": "Nobody At All", "ids": ["99999"],
+                               "kind": "monthly"}, [])
+    assert "not in the export" in why
+
+
+def test_two_reasons_are_given_and_a_third_is_not(live):
+    """A client can be dropped for more than one thing, and picking whichever
+    the export listed first answers a different question each time."""
+    _c, db, db_mod, _t = live
+    db.add(db_mod.OrderSync(
+        source="s3://bucket/orders/", ok=True, state="done",
+        dropped={"a|Mixed Co": "is an RFP in the export, not a live order",
+                 "b|Mixed Co": "ended 2026-06-30, before August 2026",
+                 "c|Mixed Co": "starts 2026-11-01, after August 2026"}))
+    db.commit()
+    from app.audit import _dropped_reason
+    got = _dropped_reason(db, {"mixedco"})
+    assert got.count(", and ") == 1
+    assert "RFP" in got and "ended 2026-06-30" in got
+
+
+def test_every_drop_reason_reads_as_a_sentence_about_the_line():
+    """They are glued to "every line on it ...", so each one has to be a
+    predicate. "the order status is X" reads as gibberish there."""
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "app" / "orders_io.py").read_text()
+    reasons = re.findall(r'note_drop\([^,]+,\s*[^,]+,\s*\n?\s*f?"([^"]+)"', src)
+    assert reasons, "no drop reasons found - has note_drop been renamed?"
+    for r in reasons:
+        first = r.split()[0].rstrip(",")
+        assert first in {"is", "has", "ended", "starts"}, \
+            f"{r!r} does not read after 'every line on it'"
+
+
+def _seo_world(db, db_mod):
+    import datetime as dt
+    D = dt.date.fromisoformat
+    db.add(db_mod.Partner(partner="Whitley Media", reporting_team="Dana"))
+    db.add(db_mod.OrderLine(
+        market="Whitley Media", client="Jefferson Hospital", account_ids="54153",
+        product="Search Engine Optimization",
+        starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    # A serving file that was loaded and mentions somebody else entirely.
+    db.add(db_mod.ServedDays(
+        period="2026-08", market_key="whitleymedia", client_key="someoneelse",
+        market="Whitley Media", client="Someone Else", days=25))
+    db.commit()
+
+
+def test_an_seo_row_is_not_judged_by_the_serving_file(live):
+    """The serving file is ad delivery. SEO is not served, so it is absent from
+    that file for every SEO client every month - and the rule that reads
+    absence as "it did not run" took Whitley's whole SEO list off the board,
+    with a reason that blamed the file for spelling the client differently.
+    """
+    _c, db, db_mod, _t = live
+    _seo_world(db, db_mod)
+    from app import board
+    skipped = []
+    rows = board.expected_for(db, "2026-08", skipped=skipped)
+    assert [e.client for e in rows] == ["Jefferson Hospital"]
+    assert not [s for s in skipped if s["client"] == "Jefferson Hospital"]
+
+
+def test_seo_beside_a_digital_product_also_keeps_its_row(live):
+    """ANY SEO, not ALL. Taking the row off loses the SEO report they are still
+    owed, and losing a report is the expensive mistake here."""
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    _seo_world(db, db_mod)
+    D = dt.date.fromisoformat
+    for prod in ("Search Engine Optimization", "Social Mirror Ads"):
+        db.add(db_mod.OrderLine(
+            market="Whitley Media", client="Mixed Client", account_ids="54154",
+            product=prod, starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.commit()
+    from app import board
+    rows = board.expected_for(db, "2026-08")
+    assert "Mixed Client" in {e.client for e in rows}
+
+
+def test_a_client_the_serving_file_does_mention_is_still_judged_by_it(live):
+    """Absence is the ambiguous signal. Two days served is a fact, and that
+    rule stays on for everybody - SEO included."""
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    _seo_world(db, db_mod)
+    D = dt.date.fromisoformat
+    db.add(db_mod.OrderLine(
+        market="Whitley Media", client="Barely Ran", account_ids="54155",
+        product="Social Mirror Ads",
+        starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    db.add(db_mod.ServedDays(
+        period="2026-08", market_key="whitleymedia", client_key="barelyran",
+        market="Whitley Media", client="Barely Ran", days=2))
+    db.commit()
+    from app import board
+    skipped = []
+    rows = board.expected_for(db, "2026-08", skipped=skipped)
+    assert "Barely Ran" not in {e.client for e in rows}
+    assert any("2 days" in s["why"] for s in skipped if s["client"] == "Barely Ran")
 
 
 def test_the_rail_has_a_way_in():

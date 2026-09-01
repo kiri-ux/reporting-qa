@@ -166,6 +166,19 @@ class Expected:
         return f"{_key(self.market)}|{_key(self.client)}|{self.kind}"
 
 
+def _has_seo(e) -> bool:
+    """Is there any SEO on this row?
+
+    Deliberately ANY and not ALL. A client running SEO beside a digital product
+    should be in the serving file on the strength of the digital half - but if
+    they are not, taking the row off loses the SEO report they are still owed,
+    and losing a report is the expensive mistake here. The row stays and
+    somebody looks at it.
+    """
+    from .partners import is_seo
+    return any(is_seo(p) for p in (getattr(e, "products", None) or []) if p)
+
+
 def _reporter_names(idx: dict) -> set:
     """Every reporter on the roster, off the partner index already in hand.
 
@@ -711,11 +724,32 @@ def expected_for(db: Session, period: str,
     for k, n in ran_days.items():
         if k not in rows:
             continue
+        # SEO IS NOT IN THE SERVING FILE AND NEVER WILL BE.
+        #
+        # The serving file is ad delivery - impressions against days. SEO is
+        # not served, so it is absent from that file for every SEO client every
+        # month, and the rule that reads absence as "it did not run" took the
+        # whole of Whitley's SEO list off the board: "not in the serving file
+        # at all - either it did not run, or the serving file spells this
+        # client differently to the order export". Fourteen rows of one wrong
+        # answer, and the answer accused the file of being misspelled.
+        #
+        # These reports are pulled by hand and uploaded, so the row has to
+        # stay. It is the only thing telling anybody they are owed.
         if not served:
             days = n
         else:
             days = served.get((k[0], k[1]), 0)
             if (k[0], k[1]) not in served:
+                # ABSENCE IS NOT A NUMBER, AND FOR SEO IT IS NOT EVEN A HINT.
+                #
+                # A client the file DOES mention with two days served is a
+                # fact, and that rule stays on for everybody. Absence is the
+                # ambiguous one, and for a row carrying SEO it is not even
+                # ambiguous - SEO is never in that file, so its absence says
+                # nothing at all about whether the work was done.
+                if _has_seo(rows[k]):
+                    continue
                 unmatched.add((k[0], k[1]))
         if days < MIN_DAYS_IN_MONTH:
             short[k] = days

@@ -438,6 +438,30 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
         keys = _resolve_keys(client)
         # These exports run to hundreds of megabytes, so stream each one to disk
         # and parse it row by row rather than holding it in memory.
+        # WILL IT FIT, BEFORE ANY OF IT IS DOWNLOADED.
+        #
+        # One run is over a gigabyte now - 830 MB and 228 MB two minutes apart
+        # on 1 September - and a download that runs out of disk halfway through
+        # comes back as "OSError [Errno 28]" on whichever file was unlucky.
+        # That reads as a broken export and sends somebody to look at the file,
+        # which is fine. Asking first costs one HEAD per object.
+        need = 0
+        for k in keys:
+            try:
+                need += client.head_object(
+                    Bucket=settings.orders_s3_bucket, Key=k).get("ContentLength", 0)
+            except Exception:                                # noqa: BLE001
+                pass
+        free, _total = disk_free()
+        # Twice the download, because the files land on the same disk they are
+        # read from and nothing here is deleted until the import is finished.
+        if need and free and free < need * 1.2:
+            return _fail(db, source,
+                         f"Not enough room to download the export: it is "
+                         f"{need / 1048576:.0f} MB across {len(keys)} file(s) "
+                         f"and the disk has {disk_note()}. Nothing was "
+                         f"downloaded and the orders already loaded are "
+                         f"untouched.", prev, etag, lm)
         tmpdir = tempfile.mkdtemp(prefix="orders-", dir=str(settings.data_dir))
         paths = []
         read_note = []

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-136"
-BUILD_NOTES = ("The sync stops merging old exports into today's, and "
-               "\"every line is canceled\" stopped being said about paused ones.")
+BUILD = "2026.09.01-139"
+BUILD_NOTES = ("SEO is no longer judged by a serving file it can never be "
+               "in, and the list check stopped blaming the export.")
 
 # ---------------------------------------------------------------------------
 

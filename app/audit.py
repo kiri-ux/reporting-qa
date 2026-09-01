@@ -197,18 +197,36 @@ def _dropped_reason(db, names: set) -> str:
     """
     if db is None:
         return ""
-    try:
-        from sqlalchemy import desc, select
-        from .db import OrderSync
-        sync = db.scalars(select(OrderSync)
-                          .where(OrderSync.ok.is_(True))
-                          .order_by(desc(OrderSync.id)).limit(1)).first()
-    except Exception:                                        # noqa: BLE001
-        return ""
-    for pair, why in (getattr(sync, "dropped", None) or {}).items():
-        _market, _, client = pair.partition("|")
-        if _key(client) in names:
-            return why
+    # INDEXED ONCE. The last sync's drop log runs to a couple of thousand
+    # clients on the real export, and this is asked for every missing row.
+    idx = getattr(db, "_qa_drop_index", None)
+    if idx is None:
+        idx = {}
+        try:
+            from sqlalchemy import desc, select
+            from .db import OrderSync
+            sync = db.scalars(select(OrderSync)
+                              .where(OrderSync.ok.is_(True))
+                              .order_by(desc(OrderSync.id)).limit(1)).first()
+            for pair, why in (getattr(sync, "dropped", None) or {}).items():
+                _market, _, client = pair.partition("|")
+                k = _key(client)
+                if k and why not in idx.setdefault(k, []):
+                    idx[k].append(why)
+        except Exception:                                    # noqa: BLE001
+            idx = {}
+        try:
+            db._qa_drop_index = idx      # for the life of this request only
+        except Exception:                                    # noqa: BLE001
+            pass
+    for name in names:
+        why = idx.get(name)
+        if why:
+            # TWO REASONS IS INFORMATION, THREE IS NOISE. A client can be
+            # dropped for more than one thing - some rows an RFP, some ended -
+            # and picking whichever the export happened to list first would
+            # answer a different question each time the file changed.
+            return ", and ".join(why[:2])
     return ""
 
 
@@ -288,6 +306,21 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
         if said:
             return said
     if not lines:
+        # ASK WHY IT IS NOT HERE BEFORE SAYING IT WAS NEVER SENT.
+        #
+        # "It is not in the export" was said about orders that are plainly IN
+        # the export - 53437 has three paused line items that ended on 30 June,
+        # 54338 is complete - because the import drops everything outside the
+        # cycle and this only ever looked at what survived. An empty table
+        # therefore read as an empty feed.
+        #
+        # That is the worst kind of wrong answer here: it accuses the export,
+        # which is somebody else's system, and sends whoever is on this page to
+        # go and check a file that is perfectly correct. The import already
+        # writes down why it threw each client's rows away. This asks.
+        gone = _dropped_reason(db, {want})
+        if gone:
+            return ("the export has this order and every line on it " + gone)
         return ("no order line carries "
                 + (", ".join(row["ids"]) if row["ids"] else "this client")
                 + " - it is not in the export, or the export is out of date")
@@ -307,8 +340,14 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
     if all(getattr(l, "canceled", False) for l in lines):
         gone = _dropped_reason(db, {_key(l.client or "") for l in lines} | {want})
         if gone:
-            return ("every line on this order that reaches this cycle is "
-                    "canceled - and " + gone)
+            # WRITTEN, NOT GLUED. The first version of this bolted the drop
+            # reason onto the end with a dash and read as two half-sentences
+            # that had never met - "canceled - and a line item ended before
+            # 2026-08 started". The reader has to end up knowing one thing:
+            # there was another line, it was not canceled, and here is why it
+            # is not on this cycle.
+            return ("the only lines on this order that reach this cycle are "
+                    "canceled. The other one is not canceled - it " + gone)
         return "every line on this order is canceled"
 
     # THE ORDER IS THERE AND NOTHING ON IT EARNS A REPORT.

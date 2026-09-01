@@ -2425,8 +2425,8 @@ def test_a_dropped_client_is_recorded_by_name():
     res = import_io_export(db, (header + rfp + old).encode(), period="2026-08")
     dropped = res["dropped"]
     assert dropped["Zoey Advertising|Safe Harbor- Auburn Workshop"] == \
-        "the export has it as an RFP, not a live order"
-    assert "ended before 2026-08 started" in \
+        "is an RFP in the export, not a live order"
+    assert "before August 2026" in \
         dropped["Zoey Advertising|An Old Client"]
     db.close(); eng.dispose()
 
@@ -2442,7 +2442,7 @@ def test_the_lookup_says_it_was_read_and_dropped():
     db = sessionmaker(bind=eng)()
     db.add(OrderSync(source="s3://bucket/orders-db-all-1.csv", ok=True, rows=10,
                      dropped={"Zoey Advertising|Safe Harbor- Auburn Workshop":
-                              "the export has it as an RFP, not a live order"}))
+                              "is an RFP in the export, not a live order"}))
     db.commit()
 
     got = find(db, "Safe Harbor- Auburn Workshop", "2026-08")

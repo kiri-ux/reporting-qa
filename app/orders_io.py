@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .checks.products import map_order_product, map_order_products
+from .cycle import month_label
 from .db import OrderLine
 
 SIGNATURE = {"client_business_unit", "orders_status", "product", "orders_end_date"}
@@ -451,7 +452,8 @@ def import_io_export(db: Session, sources, period: str | None = None,
             if (RFP.search(order_status) or RFP.search(line_status)
                     or RFP.search(order_type)
                     or "request for proposal" in order_type.lower()):
-                note_drop(market, client, "the export has it as an RFP, not a live order")
+                note_drop(market, client,
+                          "is an RFP in the export, not a live order")
                 skip("RFP"); continue
 
             order_end = _date(r.get("orders_end_date"))
@@ -523,13 +525,13 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # this order is canceled" about an order whose only live line had
             # simply finished.
             if end and end < p_start:
-                note_drop(market, client,
-                          f"a line item ended before {period} started")
+                note_drop(market, client, f"ended {end.isoformat()}, before "
+                                          f"{month_label(period)}")
                 skip("ended before the period"); continue
             if start and start > horizon:
-                note_drop(market, client,
-                          f"a line item starts after {period} and the month "
-                          f"after it")
+                note_drop(market, client, f"starts {start.isoformat()}, after "
+                                          f"{month_label(period)} and the "
+                                          f"month after it")
                 skip("starts after the period"); continue
             paused = bool(PAUSED_STATUS.match(line_status)
                           or (not line_status
@@ -539,10 +541,10 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     header_overruled += 1        # the line item rescued it
                 else:
                     note_drop(market, client,
-                              f"the order status is {order_status or 'blank'}"
-                              + (f" and the line item {line_status}"
+                              f"has order status {order_status or 'blank'}"
+                              + (f" and line item status {line_status}"
                                  if line_status else "")
-                              + " - not a live order")
+                              + ", which is not a live order")
                     skip(f"order status {order_status or 'blank'}"
                          + (f", line item {line_status}" if line_status else ""))
                     continue
