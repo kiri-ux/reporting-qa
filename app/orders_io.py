@@ -370,8 +370,10 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # this rides on the sync record.
     dropped: dict[str, str] = {}
     # AND THE SAME THING KEYED ON THE ORDER, which is the question people
-    # actually ask. See note_drop.
-    dropped_orders: dict[str, str] = {}
+    # actually ask. Every distinct reason, in the order they were met, because
+    # one reason gets read as the reason for the whole order. See note_drop.
+    order_drops: dict[str, list[str]] = {}
+    dropped_orders: dict[str, list[str]] = {}
     # WHAT THE EXPORT SAID EVERY ORDER WAS, kept whether or not the row
     # survived the import. The statuses worth seeing on the list check are
     # precisely the ones that got a row dropped - "IO Paused" beside "nothing
@@ -402,9 +404,20 @@ def import_io_export(db: Session, sources, period: str | None = None,
         printed as a reason about the order, is worse than no reason: it is
         wrong in a way that reads authoritative.
         """
+        # EVERY DISTINCT REASON, NOT THE FIRST ONE.
+        #
+        # One reason per order became "every line on it" in the sentence built
+        # from it, and that is a claim about lines this only ever saw one of.
+        # Victorino's Pizzeria order 52819 has a line that ended 15 July and a
+        # Social Mirror pending launch dated to September - two lines, two
+        # different reasons, and the page said "every line on it ended
+        # 2026-07-15", which sends somebody to an order with a September line
+        # sitting on screen.
         oid = (order_id or "").strip()
-        if oid and len(dropped_orders) < 20000:
-            dropped_orders.setdefault(oid, reason)
+        if oid and len(order_drops) < 20000:
+            got = order_drops.setdefault(oid, [])
+            if reason not in got and len(got) < 4:
+                got.append(reason)
         if len(dropped) >= 6000:
             return
         k = f"{(market or '').strip()}|{(client or '').strip()}"
@@ -629,10 +642,17 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 if line_status.lower() in LIVE_STATUS:
                     header_overruled += 1        # the line item rescued it
                 else:
+                    # AND WHEN IT IS DATED, because that is the fact that
+                    # settles it. "Order status IO Paused, line item status IO
+                    # Pending Launch" leaves the reader wondering whether the
+                    # line might have run anyway; "starting 2026-09-01" does
+                    # not. Victorino's Pizzeria 52819 is exactly this shape.
                     note_drop(market, client,
                               f"has order status {order_status or 'blank'}"
                               + (f" and line item status {line_status}"
                                  if line_status else "")
+                              + (f", starting {start.isoformat()}"
+                                 if start else "")
                               + ", which is not a live order", order_id)
                     skip(f"order status {order_status or 'blank'}"
                          + (f", line item {line_status}" if line_status else ""))
@@ -968,8 +988,19 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # than at the point of the drop, because "the last day this campaign ran"
     # is not knowable until the whole file has gone past.
     _when = month_label(period)
-    for _oid, _end in ended_at.items():
-        dropped_orders[_oid] = f"ended {_end.isoformat()}, before {_when}"
+    for _oid, _reasons in order_drops.items():
+        _end = ended_at.get(_oid)
+        out = []
+        for _r in _reasons:
+            # ONLY THE DATE REASON IS REWRITTEN, and only in place. It used to
+            # replace the order's whole entry, so an order with a line that
+            # ended in July and another dropped for being a September pending
+            # launch came out reading as though the July line were all of it.
+            if _r.startswith("ended ") and _end:
+                _r = f"ended {_end.isoformat()}, before {_when}"
+            if _r not in out:
+                out.append(_r)
+        dropped_orders[_oid] = out
     for _ck, _end in ended_client.items():
         if _ck in dropped and dropped[_ck].startswith("ended "):
             dropped[_ck] = f"ended {_end.isoformat()}, before {_when}"

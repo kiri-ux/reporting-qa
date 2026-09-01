@@ -2778,3 +2778,112 @@ def test_narrowing_the_pull_is_collapsed():
     i = page.index("Narrowing the pull")
     before = page[max(0, i - 400):i]
     assert "<details>" in before and "<summary" in before
+
+
+def test_the_audit_hides_settled_rejections_by_default():
+    """A rejected row is a question somebody already answered.
+
+    That is the whole point of Reject - it stops being asked - and a hundred
+    and twenty-five of them were still sitting above the rows nobody has
+    answered yet. Hidden by default, with the chip saying how many and putting
+    them back.
+
+    In the browser, not on the server: every decision on this page is saved
+    without redrawing it, because redrawing means rebuilding the board off
+    every order line and re-parsing the pasted list. A filter that reloaded
+    would give that back.
+    """
+    page = (TPL / "audit.html").read_text()
+
+    # Rejected starts OFF and the other two start ON. `.on` is what the shared
+    # toggle style paints, so it is also what the filter reads.
+    assert 'class="mini toggle on" data-show="open"' in page
+    assert 'class="mini toggle on" data-show="approved"' in page
+    assert 'class="mini toggle" data-show="rejected"' in page, (
+        "rejected rows are showing by default again")
+
+    # Every row says what has been decided about it, so the filter has
+    # something to read - including the ones with no decision.
+    assert "data-call=\"{{ c.call if c and c.call else 'open' }}\"" in page
+    assert "{% if 'worth a closer look' in r.why %}data-look=\"1\"{% endif %}" in page
+
+    # No form, no navigation: this is the same page with rows hidden.
+    i = page.index("function refilter()")
+    j = page.index("if (bar) {")
+    assert "location" not in page[i:j] and "fetch(" not in page[i:j]
+    assert "tr.hidden = !ok" in page
+
+    # A ROW YOU JUST DECIDED STAYS PUT. Rejecting one while rejected is hidden
+    # would make it vanish under the cursor, which reads as the click having
+    # gone somewhere else entirely.
+    assert "row.dataset.just = '1'" in page
+    assert "if (tr.dataset.just === '1') ok = true;" in page
+
+    # And the filter is applied after a decision, or the counts go stale the
+    # moment somebody uses the page.
+    k = page.index("function settled(")
+    assert "refilter();" in page[k:page.index("// FILTERING THE MISSING TABLE")]
+
+
+def test_two_drop_reasons_are_not_one_claim_about_the_whole_order():
+    """Victorino's Pizzeria, order 52819.
+
+    One line item ended 15 July; a Social Mirror pending launch is dated 1
+    September. The import recorded one reason per order and then rewrote it
+    with the latest end date, so the page said "the export has this order and
+    every line on it ended 2026-07-15" - a claim about every line, made off one
+    of them, while the IO tool on screen showed a September line item.
+
+    What is true of the whole order is that none of it ran in the month.
+    """
+    import tempfile, importlib, os
+    d = tempfile.mkdtemp()
+    os.environ["DATABASE_URL"] = f"sqlite:///{d}/v.db"
+    os.environ["DATA_DIR"] = d
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app.orders_io import import_io_export
+
+    s = dbm.SessionLocal()
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    rows = (
+        "LCL SAN,IO Paused,Victorino's Pizzeria,52819,Social Mirror Ads,126162,"
+        "IO Complete,2026-01-01,2026-01-01,2026-07-15,2026-09-30,100000\n"
+        "LCL SAN,IO Paused,Victorino's Pizzeria,52819,Social Mirror Ads,135253,"
+        "IO Pending Launch: Element(s) Missing,2026-01-01,2026-09-01,"
+        "2026-09-30,2026-09-30,100000\n")
+    res = import_io_export(s, (head + rows).encode(), period="2026-08")
+    s.close()
+
+    why = res["dropped_orders"]["52819"]
+    assert isinstance(why, list) and len(why) == 2, (
+        f"both reasons have to survive: {why}")
+    assert why[0].startswith("ended 2026-07-15"), why
+    # The date rewrite is in place now, not a replacement of the whole entry.
+    assert "IO Pending Launch" in why[1], why
+    # And a pending line says WHEN, which is the fact that settles it.
+    assert "starting 2026-09-01" in why[1], why
+
+    from app.audit import _short_reason
+    parts = [_short_reason(r, "2026-08") for r in why]
+    line = ("no line on this order was running in August 2026 - one "
+            + ", another ".join(parts))
+    assert line == ("no line on this order was running in August 2026 - "
+                    "one ended 2026-07-15, another is IO Pending Launch: "
+                    "Element(s) Missing, starting 2026-09-01"), line
+
+
+def test_the_report_search_comes_back_to_the_reports():
+    """There are two search boxes on the cycle page and both are named q.
+
+    Enter in the lower one reloaded to the TOP of the page, where the partner
+    box - now carrying the term, because it is the same q - is the first thing
+    under the cursor. It reads as the typing having jumped into the other box
+    and the search having done nothing, when what happened is a search that
+    worked, four screens down.
+    """
+    page = (TPL / "cycle.html").read_text()
+    assert '<form method="get" action="/cycle#reports" class="tools" id="cyclesearch">' in page
+    assert '<section id="reports">' in page, "the anchor it lands on"

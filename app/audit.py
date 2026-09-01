@@ -277,7 +277,7 @@ def _dropped_reason(db, names: set, ids=()) -> str:
     for oid in (ids or ()):
         why = (getattr(db, "_qa_drop_orders", None) or {}).get(str(oid).strip())
         if why:
-            return why
+            return why if isinstance(why, str) else ", and ".join(why[:3])
     for name in names:
         why = idx.get(name)
         if why:
@@ -287,6 +287,44 @@ def _dropped_reason(db, names: set, ids=()) -> str:
             # answer a different question each time the file changed.
             return ", and ".join(why[:2])
     return ""
+
+
+_LIVE_TAIL = re.compile(r",\s*which is not a live order\s*$", re.I)
+_ORDER_HEAD = re.compile(r"^has order status .*? and line item status ", re.I)
+
+
+def _short_reason(reason: str, period: str) -> str:
+    """One drop reason, trimmed to sit in a list under a lead sentence.
+
+    Each reason was written to stand alone, which is right when it is the whole
+    answer and repetitive when three of them are stacked under "no line on this
+    order was running in August 2026": the month is already said, "not a live
+    order" is already implied, and the order's own status is in its own column
+    two inches to the left.
+    """
+    r = (reason or "").strip()
+    r = _LIVE_TAIL.sub("", r)
+    r = r.replace(f", before {month_label(period)}", "")
+    r = _ORDER_HEAD.sub("is ", r)
+    return r
+
+
+def _dropped_list(db, ids=()) -> list:
+    """The import's reasons for this order, one per distinct reason.
+
+    Separate from `_dropped_reason` because the sentence built from one reason
+    and the sentence built from three are not the same sentence: "every line on
+    it ended 2026-07-15" is a claim, and it is wrong the moment there was a
+    second line that went for some other cause.
+    """
+    if db is None:
+        return []
+    _dropped_reason(db, set(), ids)          # builds the index if it is cold
+    for oid in (ids or ()):
+        why = (getattr(db, "_qa_drop_orders", None) or {}).get(str(oid).strip())
+        if why:
+            return [why] if isinstance(why, str) else list(why)
+    return []
 
 
 def _order_status(db, row) -> dict:
@@ -519,6 +557,21 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
         # which is somebody else's system, and sends whoever is on this page to
         # go and check a file that is perfectly correct. The import already
         # writes down why it threw each client's rows away. This asks.
+        # ONE REASON IS A REASON. TWO ARE A DIFFERENT SENTENCE.
+        #
+        # "Every line on it ended 2026-07-15" is a claim, and it was being made
+        # off the one reason that happened to be recorded. Victorino's Pizzeria
+        # order 52819 has a line that ended 15 July and a Social Mirror pending
+        # launch dated 1 September - so the page said the campaign ended in
+        # July while the IO tool on screen showed a September line item.
+        #
+        # What is true of the whole order is that none of it ran in the month.
+        # That is the answer; the reasons are what backs it up.
+        many = _dropped_list(db, row["ids"])
+        if len(many) > 1:
+            parts = [_short_reason(r, period) for r in many]
+            return (f"no line on this order was running in {month_label(period)}"
+                    " - one " + ", another ".join(parts))
         gone = _dropped_reason(db, {want}, row["ids"])
         if gone:
             return ("the export has this order and every line on it " + gone)

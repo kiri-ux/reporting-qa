@@ -799,8 +799,16 @@
   {% if rows or done_hidden %}
   {# TYPING FILTERS THE PAGE, ENTER SEARCHES THE CYCLE.
      The box used to do only the first, on a table capped at 150 of 763 - so it
-     said "28 of 150 rows" and looked like it had searched everything. #}
-  <form method="get" action="/cycle" class="tools" id="cyclesearch">
+     said "28 of 150 rows" and looked like it had searched everything.
+
+     AND ENTER COMES BACK HERE.
+     There are two search boxes on this page and both are named q. Enter in
+     this one reloaded to the top of the page, where the partner box - now
+     carrying the term, because it is the same q - is the first thing under the
+     cursor. It reads as the typing having jumped into the other box and the
+     search having done nothing, when what actually happened is a search that
+     worked, four screens down. #}
+  <form method="get" action="/cycle#reports" class="tools" id="cyclesearch">
     <input type="hidden" name="period" value="{{ period }}">
     {% if filter_group %}<input type="hidden" name="group" value="{{ filter_group }}">{% endif %}
     {% if filter_state %}<input type="hidden" name="state" value="{{ filter_state }}">{% endif %}

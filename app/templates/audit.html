@@ -110,17 +110,44 @@
     working: a campaign that ran a day, a lifetime already sent. The ones
     tagged <span class="pill p-warn">look</span> are the ones the board has no
     good answer for, and those are the ones worth your time.</p>
+    {# REJECTED IS A SETTLED QUESTION AND IT WAS STILL TAKING UP THE PAGE.
+       The whole point of Reject is that a row stops being asked about, and a
+       hundred and twenty-five of them sat above the ones nobody has answered
+       yet. Hidden by default; the chip says how many and puts them back.
+
+       In the browser, not on the server. Every decision on this page is saved
+       without redrawing it, because redrawing means rebuilding the board off
+       every order line and re-parsing the pasted list - the best part of a
+       minute to change one cell. A filter that reloaded would undo that. #}
+    <div class="tools audfilter" data-table="tbl-missing"
+         style="margin:10px 0;align-items:center">
+      <span class="acct">Show</span>
+      <button type="button" class="mini toggle on" data-show="open">Undecided <b></b></button>
+      <button type="button" class="mini toggle on" data-show="approved">Approved <b></b></button>
+      <button type="button" class="mini toggle" data-show="rejected"
+              data-tip="A rejected row is a settled question. It is kept, with the note on it, but it is not what this page is for.">Rejected <b></b></button>
+      {# The second axis, and it is the one the page is for. "Look" is the
+         board saying it has no answer; everything else here is a rule
+         working. #}
+      <span aria-hidden="true" style="color:var(--line)">|</span>
+      <button type="button" class="mini toggle" data-only="look"
+              data-tip="Narrow to the rows the board has no good answer for, whatever has been decided about them.">Worth a look <b></b></button>
+      <span class="acct audcount"></span>
+    </div>
     {# A DECISION, NOT A LIST TO READ AGAIN NEXT MONTH.
        Some of these belong on the board and the rules missed them; some are on
        the tracker by mistake. Both need somebody who knows the client to say
        which - and to say it ONCE. #}
-    <div class="tw"><table>
+    <div class="tw"><table id="tbl-missing">
       <thead><tr><th>Client</th><th>Kind</th><th>Order</th><th>Order says</th>
         <th>Why not</th><th>Call</th></tr></thead>
       <tbody>{% for r in result.missing %}
         {% set ref = (r.ids|first) if r.ids else r.client %}
         {% set c = calls.get((ref, r.kind)) %}
-        <tr data-ref="{{ ref }}"{% if c and c.call == 'rejected' %} style="opacity:.55"{% endif %}>
+        <tr data-ref="{{ ref }}"
+            data-call="{{ c.call if c and c.call else 'open' }}"
+            {% if 'worth a closer look' in r.why %}data-look="1"{% endif %}
+            {% if c and c.call == 'rejected' %} style="opacity:.55"{% endif %}>
           <td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
           <td class="nw"><span class="pill p-{{ 'month' if r.kind == 'monthly' else 'info' }}">{{ 'SEO' if r.kind == 'seo' else r.kind }}</span></td>
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
@@ -247,6 +274,79 @@
       (data.note ? '<br>' + data.note.replace(/</g, '&lt;') : '') + '</div>';
     var row = cell.closest('tr');
     if (row && data.call === 'rejected') row.style.opacity = '.55';
+    if (row) {
+      row.dataset.call = data.call;
+      // A ROW YOU JUST DECIDED STAYS PUT.
+      //
+      // Rejected is hidden by default, so rejecting one would make it vanish
+      // under the cursor - which reads as the click having gone somewhere
+      // else. It stays until the filter is touched or the page is reloaded,
+      // long enough to see the mark it just got.
+      row.dataset.just = '1';
+    }
+    refilter();
+  }
+
+  // FILTERING THE MISSING TABLE.
+  //
+  // Rejected is a settled question and it was still taking up the page - a
+  // hundred and twenty-five of them above the ones nobody has answered yet.
+  // Two independent axes: what has been decided, and whether the board had an
+  // answer at all.
+  var bar = document.querySelector('.audfilter');
+  function refilter() {
+    if (!bar) return;
+    var table = document.getElementById(bar.dataset.table);
+    if (!table) return;
+    var want = {};
+    bar.querySelectorAll('[data-show]').forEach(function (b) {
+      want[b.dataset.show] = b.classList.contains('on');
+    });
+    var lookOnly = !!bar.querySelector('[data-only="look"].on');
+    var rows = table.querySelectorAll('tbody tr');
+    var count = {open: 0, approved: 0, rejected: 0, look: 0};
+    var shown = 0;
+    rows.forEach(function (tr) {
+      var call = tr.dataset.call || 'open';
+      var look = tr.dataset.look === '1';
+      if (count[call] !== undefined) count[call] += 1;
+      if (look) count.look += 1;
+      var ok = (want[call] !== false) && (!lookOnly || look);
+      if (tr.dataset.just === '1') ok = true;
+      tr.hidden = !ok;
+      if (ok) shown += 1;
+    });
+    bar.querySelectorAll('[data-show]').forEach(function (b) {
+      var n = b.querySelector('b');
+      if (n) n.textContent = count[b.dataset.show] || 0;
+    });
+    var only = bar.querySelector('[data-only="look"] b');
+    if (only) only.textContent = count.look;
+    var out = bar.querySelector('.audcount');
+    if (out) {
+      out.textContent = shown === rows.length
+        ? 'all ' + rows.length
+        : shown + ' of ' + rows.length;
+    }
+  }
+
+  if (bar) {
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('button[data-show],button[data-only]');
+      if (!b) return;
+      b.classList.toggle('on');
+      b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false');
+      // Touching the filter is the moment the just-decided rows go back to
+      // being ordinary rows.
+      document.querySelectorAll('tr[data-just]').forEach(function (tr) {
+        delete tr.dataset.just;
+      });
+      refilter();
+    });
+    bar.querySelectorAll('button[data-show],button[data-only]').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false');
+    });
+    refilter();
   }
 
   document.addEventListener('submit', function (e) {

@@ -1,74 +1,78 @@
-build 2026.09.01-158
+build 2026.09.01-160
 Changed files only. Everything since 130 - install this one.
 
+app/audit.py
 app/checks/rules.py
 app/checks/served.py
 app/main.py
 app/orders_io.py
+app/templates/audit.html
 app/templates/cycle.html
 app/templates/viewer.html
 app/version.py
+tests/test_board_extras.py
 tests/test_order_remap.py
 tests/test_rules.py
 
 
-PACING: WEBSITE VISITOR ID, ADDITIONAL BILLING, SEO AND LIVE CHAT ARE OUT
-=========================================================================
-There was already a list of products not to pace. It was hand-written, and one
-entry read "Visitor ID" - which is not what the product is called. The mapping
-calls it "Website Visitor ID", so the line meant to keep it out never matched
-it, and every order carrying it got a row reading "-/- no comparison".
-Additional Billing was not in the list at all. Matching is on the flattened
-name now, so a near-miss like that cannot come back quietly.
+CHECK A LIST NOW FILTERS, AND STARTS WITH THE REJECTIONS PUT AWAY
+=================================================================
+Rejecting a row is supposed to settle it. A hundred and twenty-five settled
+rows were still sitting above the ones nobody has answered yet.
 
-The total was the worse half. It summed every product in the order, so a goal
-with no row above it was still in the denominator - and the served side
-counted a flat product's impressions with nothing under them to compare to.
-Your 5,414,666/180,000 had a million impressions in it that no row on the
-panel was about.
+  Show  [Undecided 8]  [Approved 3]  [Rejected 114]  |  [Worth a look 6]
 
-Both sides now count the same products. Where a flat product did print
-impressions, the panel says so underneath rather than dropping them silently:
+Rejected starts off. The chip says how many and puts them back. "Worth a look"
+is a second, independent narrowing - the rows the board has no good answer for
+- so you can point it at those regardless of what has been decided.
 
-  A further 1,048,919 impressions are on products sold by the month - SEO,
-  Live Chat, Website Visitor ID and Additional Billing. They are bought flat,
-  with nothing to deliver against, so they are not paced and are not in this
-  total.
+It filters in the browser, not on the server. Every decision on that page is
+already saved without redrawing it, because redrawing means rebuilding the
+board off every order line and re-parsing your pasted list - the best part of
+a minute. A filter that reloaded would give that back.
 
-The lifetime "finished under its goal" warning uses the same rule, so it stops
-counting flat products on both sides too.
+One deliberate exception: a row you have just decided stays on screen. Rejected
+is hidden, so rejecting one would make it vanish under the cursor, which reads
+as the click having gone somewhere else. It stays until you touch the filter
+or reload.
 
 
-GRAV 51430 - AN ORDER CLOSING OUT BRINGS ITS FINISHED LINES WITH IT
-===================================================================
-Order 51430 ends 15 August. Its SEO line runs to that date; its Social Mirror
-Ads and Website Visitor ID lines stopped on 15 June.
+VICTORINO'S PIZZERIA 52819 - THE NOTE WAS MAKING A CLAIM IT COULD NOT MAKE
+==========================================================================
+It said:
 
-The import drops a line item that ended before the month - which is right for
-a monthly and exactly wrong for a lifetime, because a lifetime is a report on
-a whole campaign. So the only line of 51430 that survived was SEO, and SEO is
-the one product never owed a lifetime. That is where "SEO is not owed a
-lifetime" came from: a true sentence about the only line left standing.
+  the export has this order and every line on it ended 2026-07-15, before
+  August 2026
 
-A line item that ended before the month is kept now when the ORDER it belongs
-to ends inside this cycle's lifetime window. It still does not earn a monthly
-- the board decides that off the line's own dates and these did not run in
-August. It is there to be reported on.
+There are two lines on that order. One ended 15 July. The other is the Social
+Mirror pending launch dated 1 September, sitting right there in the IO tool.
 
-Grav now reads:
+The import recorded ONE reason per order and then, at the end of the file,
+rewrote it with the latest end date - so the second line's reason was
+overwritten by the first line's date, and a sentence saying "every line on it"
+was built out of one of them.
 
-  LIFETIME   Social Mirror   2026-02-15 to 2026-08-15
-  SEO        SEO             August, its own file
+Every distinct reason is kept now, the date rewrite happens in place instead of
+replacing the entry, and when there is more than one the sentence says the
+thing that is true of the whole order:
 
-Which is the two reports you said were owed.
+  no line on this order was running in August 2026 - one ended 2026-07-15,
+  another is IO Pending Launch: Element(s) Missing, starting 2026-09-01
 
-Scope, measured on your export: 167 line items across 64 orders come back.
-Not every old line - only the ones on an order that finishes this cycle. A
-line that stopped in March under an order running to December is still
-dropped, and there is a test holding that.
+A pending line also says WHEN it starts now. "IO Paused, IO Pending Launch"
+leaves you wondering whether it might have run anyway; "starting 2026-09-01"
+does not.
 
-The orders will re-read themselves on the next sync (the mapping fingerprint
-moved), and every report will re-check itself in the background (the rules
-fingerprint moved). Nothing to press.
 
-813 tests pass.
+THE REPORT SEARCH COMES BACK TO THE REPORTS
+===========================================
+There are two search boxes on the cycle page and both are named q. Enter in the
+lower one reloaded to the TOP of the page - where the partner box, now carrying
+your term because it is the same q, is the first thing under the cursor. It
+reads as the typing having jumped into the other box and the search having done
+nothing. What actually happened was a search that worked, four screens down.
+
+It lands on the reports section now.
+
+
+816 tests pass.
