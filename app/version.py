@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-141"
-BUILD_NOTES = ("SEO gets its own row, because it is its own file - and a "
-               "much smaller export than last time now says so.")
+BUILD = "2026.09.01-144"
+BUILD_NOTES = ("A cancelled line is not a cancelled campaign, and an order's "
+               "own end date is no longer reported as the client's widest.")
 
 # ---------------------------------------------------------------------------
 

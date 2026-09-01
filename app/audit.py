@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 
+from .cycle import month_label
+
 ORDER_ID = re.compile(r"#\s*(\d{4,6})")
 LIFETIME = re.compile(r"\blifetime\b", re.I)
 SEO = re.compile(r"\bSEO\b", re.I)
@@ -164,6 +166,28 @@ def audit(db, period: str, text: str, group: str = "") -> dict:
 NOT_IN_EXPORT = "not in the export"
 
 
+def _served_nothing(db, period: str, want: str) -> bool:
+    """Was a serving file loaded for this cycle, and this client not in it?
+
+    Only worth saying when the file exists. With nothing loaded, silence about
+    a client means nothing at all - and a reason that reads like evidence when
+    it is an empty table is the kind of confident wrong answer this page is
+    supposed to be getting rid of.
+    """
+    if db is None:
+        return False
+    try:
+        from sqlalchemy import select
+        from .db import ServedDays
+        rows = db.scalars(select(ServedDays)
+                          .where(ServedDays.period == period)).all()
+    except Exception:                                        # noqa: BLE001
+        return False
+    if not rows:
+        return False
+    return not any(_key(r.client or "") == want for r in rows)
+
+
 def _partners_missing_entirely(listed: list, missing: list) -> list:
     """Market codes whose every row is missing because the export never had it.
 
@@ -248,6 +272,31 @@ def _dropped_reason(db, names: set, ids=()) -> str:
             # answer a different question each time the file changed.
             return ", and ".join(why[:2])
     return ""
+
+
+def _order_end_dates(lines, ids) -> list:
+    """Each ORDER's own end date behind these rows, for the ids asked about.
+
+    The rolled-up row carries the latest end across every order it covers,
+    which is the wrong date to quote at somebody asking about one of them.
+    """
+    import datetime as _dt
+    want = {str(i).strip() for i in (ids or ()) if str(i).strip()}
+    out = []
+    for l in lines:
+        for d in (getattr(l, "detail", None) or []):
+            if not isinstance(d, dict):
+                continue
+            if want and str(d.get("order") or "").strip() not in want:
+                continue
+            raw = d.get("order_ends") or d.get("ends")
+            if not raw:
+                continue
+            try:
+                out.append(_dt.date.fromisoformat(str(raw)[:10]))
+            except ValueError:
+                continue
+    return out
 
 
 def _order_index(db):
@@ -400,15 +449,42 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
         from .partners import is_seo
         if all(is_seo(l.product or "") for l in lines):
             return "SEO is not owed a lifetime"
-        if ends and not any(cyc.needs_lifetime(l.order_ends_on or l.ends_on)
-                            for l in lines):
-            last = max((l.order_ends_on or l.ends_on) for l in lines
-                       if (l.order_ends_on or l.ends_on))
+        # THE ORDER'S OWN END DATE, NOT THE CLIENT'S WIDEST.
+        #
+        # An order line row is one client and one product rolled up across
+        # every order behind it, and its `order_ends_on` is the LATEST of them.
+        # North Bay TIP has order 54783, IO Complete, finished 13 August, and
+        # order 55433 still running to 26 September - so the row said 26
+        # September and this sentence reported it as "the campaign", about an
+        # order that ended six weeks earlier. The per-order detail is on the
+        # row; asked properly it gives the right date for the order in hand.
+        own = _order_end_dates(lines, row["ids"])
+        if own and any(cyc.needs_lifetime(e) for e in own):
+            return ("order " + (", ".join(row["ids"]) or "this one")
+                    + f" ends {max(e for e in own if cyc.needs_lifetime(e))}, "
+                      "inside this cycle's lifetime window - but another order "
+                      "for this client is still running, so the lifetime waits "
+                      "until the campaign is finished. Approve it here if this "
+                      "one should be reported now.")
+        if ends and not any(cyc.needs_lifetime(e) for e in (own or [
+                (l.order_ends_on or l.ends_on) for l in lines])):
+            last = max(own or [(l.order_ends_on or l.ends_on) for l in lines
+                               if (l.order_ends_on or l.ends_on)])
             return (f"the campaign runs to {last}, past this cycle's lifetime "
                     f"window (to {cyc.lifetime_cutoff})")
         return "no line ends inside this cycle's lifetime window"
 
     if not any(cyc.was_live(l.starts_on, l.ends_on) for l in lines):
-        return "no line was live during the data month"
+        # BOTH HALVES, WHEN BOTH ARE TRUE.
+        #
+        # "No line was live" is the order export's answer and the serving file
+        # has its own, and they are far more convincing together than either is
+        # alone. Roof Top Services was told only that it was missing from the
+        # serving file - which invites the thought that the two tools spell the
+        # client differently - when the orders say the same thing: the one line
+        # spanning August is cancelled and the next starts in September.
+        return ("no line item was running in " + month_label(period)
+                + (", and nothing served for this client that month either"
+                   if _served_nothing(db, period, want) else ""))
     return ("the order is loaded and looks live - open the client's order lines,"
             " this is worth a closer look")

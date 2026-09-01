@@ -507,22 +507,36 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
                 f"ended at once, or this export covers less than the last one "
                 f"did - a narrower date range, or a partner's file missing from "
                 f"the folder.")
+    # "IMPORTED 2,427 OF 213,394 ROWS" READS AS A LIMIT, AND THERE IS NO LIMIT.
+    #
+    # The export is at daily grain: one line item that ran all August is 31
+    # rows. 213,394 rows are about 10,600 line items, of which 5,796 are RFPs
+    # that were never sold and 1,838 ended before the cycle - and what is left
+    # rolls up to one row per client per product. Nothing is capped and nothing
+    # is dropped for volume, but the two numbers side by side look exactly like
+    # a ceiling, which is a frightening thing to read about your own order list.
     msg = f"Imported {n} order lines"
     if isinstance(result, dict):
-        msg += f" from {result.get('files', 1)} file(s), {result.get('rows_read', 0):,} rows read"
+        dupes = result.get("duplicate_rows", 0)
+        read = result.get("rows_read", 0)
+        msg += f" from {result.get('files', 1)} file(s)"
+        if read:
+            items = read - dupes
+            msg += (f". The export is at daily grain: {read:,} rows are "
+                    f"{items:,} line items once the repeats per day are folded "
+                    f"together, and those roll up to {n} rows of one client and "
+                    f"one product. Nothing is capped")
         # WHICH FILES, AND HOW BIG. One run writes several files minutes apart
         # and they are not the same size - 227 MB then 830 MB - so "3 file(s)"
         # is not enough to tell a complete export from half of one.
         if read_note:
-            msg += " - " + ", ".join(read_note[:6])
+            msg += ". Files read: " + ", ".join(read_note[:6])
             if len(read_note) > 6:
                 msg += f" and {len(read_note) - 6} more"
         if _LAST_SKIPPED[0]:
             msg += (f". {_LAST_SKIPPED[0]} older export(s) in that folder were "
                     f"not read - anything more than {STALE_HOURS} hours behind "
                     f"the newest file is a picture of a different day")
-        if result.get("duplicate_rows"):
-            msg += f", {result['duplicate_rows']:,} duplicate rows ignored"
         if result.get("header_overruled"):
             # Silent, this would just look like the numbers moving. It is the
             # only sign that somebody's order headers are out of date.

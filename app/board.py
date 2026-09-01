@@ -292,7 +292,14 @@ def expected_for(db: Session, period: str,
         OrderLine.line_ids, OrderLine.buyer, OrderLine.product,
         OrderLine.starts_on, OrderLine.ends_on,
         OrderLine.order_starts_on, OrderLine.order_ends_on,
-        OrderLine.canceled, OrderLine.complete, OrderLine.status,
+        OrderLine.canceled,
+        # AND THE ORDER-LEVEL FLAG. Leaving a column out of this select is why
+        # every order pill on the board was gray for a week: the code reads
+        # `l.order_canceled`, and on a row selected column by column that
+        # attribute simply does not exist, so it reads False on every line and
+        # never once fails.
+        OrderLine.order_canceled,
+        OrderLine.complete, OrderLine.status,
         # THE LINE ITEMS THEMSELVES, which is where the per-order status lives.
         #
         # Leaving this out of the select is why every order pill on the board
@@ -459,7 +466,33 @@ def expected_for(db: Session, period: str,
         # the campaign still needs closing out. What it does not need is
         # another month's report on a month it was cancelled in.
         gone = bool(getattr(l, "canceled", False))
-        live = (not gone) and cyc.was_live(l.starts_on, l.ends_on)
+        # A CANCELLED LINE ITEM IS NOT A CANCELLED CAMPAIGN.
+        #
+        # One product pulled off an order that is still running delivered its
+        # part of the month, and the client is still owed their monthly - the
+        # report just has one fewer section on it. Only the ORDER being
+        # cancelled stops the monthly, and that case is owed a lifetime for
+        # what it did run instead.
+        #
+        # These were one flag, so a single cancelled line took the whole
+        # client's monthly off the board.
+        order_gone = bool(getattr(l, "order_canceled", False))
+        live = (not order_gone) and cyc.was_live(l.starts_on, l.ends_on)
+        # A CANCELLED LINE JOINS A MONTHLY. IT DOES NOT CREATE ONE.
+        #
+        # Both halves of that come from the same place: nothing in the export
+        # says WHEN somebody hit cancel, only what the line was sold to run to.
+        # So a cancelled line spanning the month may have delivered all of it
+        # or none of it, and the tool cannot tell which.
+        #
+        # Joining is safe either way - the product appears on a report that is
+        # being pulled regardless. Creating is not: order 51378 has one live
+        # product (Website Visitor ID, which never appears on a report), one
+        # starting in September, and seven cancelled or complete lines, one of
+        # them dated into September. Letting that one cancelled line ask for a
+        # report produced a monthly for a client with nothing to report on, and
+        # the board could only say "this is worth a closer look".
+        creates_monthly = live and not gone
         # A lifetime is owed when the ORDER ends inside the window. The line
         # item ending is not the campaign ending - River Valley Builders'
         # Performance Max was re-flighted to run to the end of the year, and
@@ -535,12 +568,17 @@ def expected_for(db: Session, period: str,
                 ride_along.setdefault((_key(l.market), _key(l.client)),
                                       set()).add(l.product)
             continue
+        # A cancelled line's product still belongs on the report, when one is
+        # being pulled. It just cannot be the reason for pulling it.
+        if live and not creates_monthly:
+            ride_along.setdefault((_key(l.market), _key(l.client)),
+                                  set()).add(l.product)
         if l.market in pcache:
             p = pcache[l.market]
         else:
             p = pcache[l.market] = _match_partner(idx, l.market)
         group = (p.group if p and p.group else l.market) or l.market
-        for kind, wanted in (("monthly", live), ("lifetime", life)):
+        for kind, wanted in (("monthly", creates_monthly), ("lifetime", life)):
             if not wanted:
                 continue
             # SEO GETS ITS OWN ROW. IT IS A DIFFERENT FILE.

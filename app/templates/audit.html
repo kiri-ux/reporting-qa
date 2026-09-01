@@ -146,7 +146,14 @@
                 <input type="hidden" name="ref" value="{{ ref }}">
                 <input type="hidden" name="kind" value="{{ r.kind }}">
                 <input type="hidden" name="call" value="clear">
-                <button class="linkish" type="submit">undo</button>
+                {# "undo" on its own was not findable - somebody who had just
+                   approved a row asked how to take it back. It names the thing
+                   it undoes, and says what that does to the board, because an
+                   approve puts a row ON the cycle and taking it back takes it
+                   off again. #}
+                <button class="linkish" type="submit"
+                        data-tip="{% if c.call == 'approved' %}Take back the approval. The row comes off this cycle's board again.{% else %}Take back the rejection. The row goes back to undecided.{% endif %}"
+                  >Undo {{ 'approval' if c.call == 'approved' else 'rejection' }}</button>
               </form>
             {% else %}
               <form method="post" action="/cycle/audit/call" class="callform">

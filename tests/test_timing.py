@@ -756,6 +756,62 @@ def test_the_client_reason_is_still_there_for_a_row_with_no_id(live):
     assert "ended 2026-05-15" in why
 
 
+CANCEL_HEADER = ("client_business_unit,orders_status,client,orders_id,product,"
+                 "id,status,orders_start_date,start_date,end_date,"
+                 "orders_end_date\n")
+
+
+def _cancel_world(db):
+    from app import orders_io
+    rows = [
+        # One line cancelled under a LIVE order.
+        "M,IO Live,Half Cancelled,60001,Social Mirror Ads,1,Cancelled,"
+        "2026-01-01,2026-01-01,2026-12-31,2026-12-31\n",
+        "M,IO Live,Half Cancelled,60001,Online Audio Ads,2,IO Live,"
+        "2026-01-01,2026-01-01,2026-12-31,2026-12-31\n",
+        # The WHOLE order cancelled, having run into August.
+        "M,Cancelled,All Cancelled,60002,Social Mirror Ads,3,Cancelled,"
+        "2026-01-01,2026-01-01,2026-08-20,2026-08-20\n",
+    ]
+    orders_io.import_io_export(db, (CANCEL_HEADER + "".join(rows)).encode(),
+                               period="2026-08")
+
+
+def test_a_cancelled_line_under_a_live_order_still_owes_a_monthly(live):
+    """One product pulled off a campaign that is still running delivered its
+    part of the month. The two flags were one flag, so a single cancelled line
+    took the whole client's monthly off the board."""
+    _c, db, _dbm, _t = live
+    _cancel_world(db)
+    from app import board
+    rows = {(e.client, e.kind): e for e in board.expected_for(db, "2026-08")}
+    assert ("Half Cancelled", "monthly") in rows
+    # AND THE CANCELLED PRODUCT IS STILL ON IT. It ran for part of the month,
+    # so the report covers it - it is not owed going forward, which is a
+    # different statement.
+    assert set(rows[("Half Cancelled", "monthly")].products) == {
+        "Social Mirror", "Online Audio"}
+
+
+def test_a_cancelled_order_owes_a_lifetime_and_not_a_monthly(live):
+    """The whole campaign stopping is the case a lifetime is for."""
+    _c, db, _dbm, _t = live
+    _cancel_world(db)
+    from app import board
+    kinds = {(e.client, e.kind) for e in board.expected_for(db, "2026-08")}
+    assert ("All Cancelled", "lifetime") in kinds
+    assert ("All Cancelled", "monthly") not in kinds
+
+
+def test_the_order_level_flag_is_actually_selected_by_the_board():
+    """A column left out of the board's select reads False on every row and
+    never fails - which is how every order pill was grey for a week."""
+    import inspect
+    from app import board
+    src = inspect.getsource(board.expected_for)
+    assert "OrderLine.order_canceled" in src
+
+
 def test_the_rail_has_a_way_in():
     from pathlib import Path
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"

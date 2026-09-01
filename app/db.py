@@ -420,6 +420,15 @@ class OrderLine(Base):
     # is real. These rows used to be dropped at import, so a report carrying a
     # canceled product read as carrying a product nobody ordered.
     canceled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # AND WHETHER IT WAS THE ORDER THAT WAS CANCELED, not just the line item.
+    #
+    # They mean different things and one flag could not tell them apart. A
+    # canceled LINE under a live order is one product pulled off a campaign
+    # that is still running: it delivered its part of the month and the client
+    # is still owed a monthly. A canceled ORDER is the whole campaign stopping
+    # - no monthly, but a lifetime for what it did run. Merged, the first case
+    # read as the second and the monthly was never asked for.
+    order_canceled: Mapped[bool] = mapped_column(Boolean, default=False)
     # EVERY LINE BEHIND THIS ROW IS "IO Complete". The campaign is over,
     # whatever end date the export still carries - order 45911's four line
     # items are all complete and two of them are dated to the end of 2026, so
@@ -837,6 +846,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "is_seo", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_sync", "dropped_orders", "JSON"),
     ("order_lines", "line_ids", "VARCHAR(512) DEFAULT '' NOT NULL"),
+    ("order_lines", "order_canceled", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
     ("order_sync", "started_at", "TIMESTAMP"),
     ("order_sync", "map_version", "VARCHAR(32) DEFAULT '' NOT NULL"),

@@ -1,4 +1,4 @@
-build 2026.09.01-141
+build 2026.09.01-144
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -18,77 +18,80 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-SEO IS ITS OWN ROW NOW
+HOW TO REVERSE AN APPROVE
+=========================
+The small link under the name and date in the Call column. It said "undo",
+which was not findable - you asked - so it now says "Undo approval" or "Undo
+rejection" and its tooltip says what that does to the board. As of yesterday
+it also reaches the board properly: undoing an approve takes the row back off
+this cycle.
+
+
+YOUR CANCELLATION RULE
 ======================
-A client running SEO and Social Mirror was one row expecting one PDF, and those
-are two files. Whichever one arrived first satisfied the row and the other was
-never asked for again.
+Cancelled at the LINE ITEM and cancelled at the ORDER were one flag, so a
+single cancelled line took the whole client's monthly off the board. They are
+two flags now and the rule is yours:
 
-They are two rows. The products go with the right one - the SEO row says SEO
-and the monthly row says Social Mirror Ads, rather than both saying both and
-telling the reporter to pull each file twice. The SEO row carries an SEO tag,
-its checks are skipped automatically, and both files go into the partner's
-folder as before.
+  * a cancelled line under a live order - the monthly is still owed, and the
+    cancelled product still appears on it, because it ran for part of the month
+  * the whole order cancelled, having run in the month - lifetime, no monthly
 
-Three things had to move with it:
+AND A CANCELLED LINE CANNOT ASK FOR A REPORT BY ITSELF. Both halves of that
+come from the same place: nothing in the export says WHEN somebody hit cancel,
+only what the line was sold to run to. So a cancelled line dated across the
+month may have delivered all of it or none of it. Joining a report that is
+being pulled anyway is safe; being the sole reason to pull one is not.
 
-  * YOUR TRACKER ALREADY WRITES IT. "WHIT - Jefferson Hospital #54153 SEO" is
-    read as an SEO row now, the same way LIFETIME is. Read as a monthly it
-    would hunt for a digital row that does not exist and report every SEO
-    client on your list as missing from the board.
-  * EVERY REPORT ALREADY UPLOADED predates the split and is stamped "not SEO",
-    including the SEO ones sitting on this cycle. Without a fallback they would
-    all have come off the board as never delivered, on a deploy meant to tidy.
-    A report falls back to the other row when the one it wanted is not there,
-    and only then - so a client owed both keeps their two files apart.
-  * THE SERVING FILE RULE got simpler and better. An SEO row never enters the
-    day counting at all now, so there is no special case to maintain - and a
-    mixed client's DIGITAL row is still judged by the serving file, which it
-    should be, while their SEO row is not.
+Order 51378 is exactly why. One live product (Website Visitor ID, which never
+appears on a report), one starting in September, and seven cancelled or
+complete lines - one of them dated to 15 September. That one cancelled line was
+asking for a monthly for a client with nothing to report on, and the board could
+only say "worth a closer look". It now asks for nothing.
 
 
-THE LOGAN AT DEER VALLEY - THE REASON BELONGED TO A DIFFERENT ORDER
-===================================================================
-It said "every line on it is an RFP" about order 51554, whose two lines are
-IO Complete and ended on 15 May.
+NORTH BAY TIP - THE DATE IN THAT MESSAGE WAS NOT THAT ORDER'S
+=============================================================
+You were right, and it is worth knowing why, because it is structural.
 
-The import records why it drops rows keyed on the CLIENT, and keeps the first
-reason it sees. A client with two orders has two reasons, and yesterday's fix
-printed whichever came first as though it were about the order you asked about.
-That is worse than no reason: it is wrong and it reads certain.
+An order line row is one client and one product rolled up across every order
+behind it, and its end date is the LATEST of them. North Bay TIP has:
 
-Drops are recorded per order id now, and the order's own reason wins. A row
-with no order id on it still gets the client-level answer, which is the best
-that can be said about it.
+  54783  IO Complete  ends 13 August      <- the one you asked about
+  55433  IO Live      ends 26 September
+
+So the row said 26 September, and the message reported that as "the campaign"
+about an order that finished six weeks earlier. The per-order detail is on the
+row all along; it just was not being asked. That row now reads:
+
+  order 54783 ends 2026-08-13, inside this cycle's lifetime window - but
+  another order for this client is still running, so the lifetime waits until
+  the campaign is finished. Approve it here if this one should be reported now.
+
+A QUESTION FOR YOU, AND I HAVE DELIBERATELY NOT GUESSED AT IT. There is a rule
+that an ended order overlapping a running one waits - the reasoning being that
+the client is not dark, the buy just changed shape. That is what is holding
+54783 back. If a finished ORDER should get its lifetime regardless of whether
+another order is running, say so and I will change it. It is a one-line rule
+and it moves a lot of rows, so I would rather you told me than have me decide.
 
 
-ON YOUR QUESTION ABOUT THE DATE RANGE - YES, NARROW IT
-======================================================
-The 830 MB file covers 3.6.21 to 8.26.26 at daily grain. Of the 213,394 rows in
-the copy I have, the tool keeps 2,427. Everything else is read and thrown away
-every morning.
+ROOF TOP SERVICES - HALF FIXED, AND I WILL SAY WHICH HALF
+=========================================================
+You asked for "no serving in August AND no line item running in August". The
+second half the tool cannot honestly say yet, for the same roll-up reason: this
+client's three Meta line items - one complete, one cancelled to 30 August, one
+starting in September - collapse into a single row whose window spans August.
+The tool believes a Meta line ran in August because the roll-up says so.
 
-NARROWING IT LOSES NOTHING, and the reason is worth knowing: every row carries
-its line item's real start and end dates, so a campaign running 2021 to 2026
-still reports those dates from a row dated last week. You are trimming the
-daily grain, not the campaigns.
+The fix is to make the board read per-order and per-line detail rather than the
+rolled-up window, which is the same change North Bay needs. It is the right
+next thing and I would rather do it carefully than at the end of today.
 
-WHAT IT MUST STILL COVER. A line item needs at least one day inside the range
-to appear at all, so the range has to reach back far enough to include:
+What did land: where the tool CAN see that no line was live, it now says both
+halves - "no line item was running in August 2026, and nothing served for this
+client that month either" - and only mentions the serving file when one was
+actually loaded, because silence from a file that does not exist is not
+evidence.
 
-  * campaigns that ended recently - lifetimes are owed the month a campaign
-    finishes, and "ended 30 June, before August" is only sayable if those rows
-    are in the file
-  * campaigns starting soon, for next month's headroom
-
-Six months back and two months forward covers both comfortably. For a
-1 September run that is 1 March to 31 October. On what I can see that would be
-something like a tenth of the current file.
-
-AND THE TOOL NOW SHOUTS IF YOU CUT IT TOO FAR. The import replaces the order
-list outright, so a narrower export takes clients off the board silently -
-nothing anywhere said a number went down. A sync that comes back with more than
-a quarter fewer order lines than the last one now says so on the sync record,
-in those words, with both counts. Try a narrower range and check that line.
-
-784 tests pass.
+787 tests pass.

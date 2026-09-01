@@ -528,6 +528,15 @@ def import_io_export(db: Session, sources, period: str | None = None,
             # that ask "was this ever owed" get theirs.
             canceled = bool(DEAD_LINE_STATUS.match(line_status)
                             or DEAD_ORDER_STATUS.match(order_status))
+            # AND WHICH OF THE TWO SAID SO, because they mean different things.
+            #
+            # A cancelled LINE under a live order is a product that was pulled
+            # off a campaign that is still running: it delivered its part of
+            # the month and the client is still owed a monthly report. A
+            # cancelled ORDER is the whole campaign stopping - no monthly, but
+            # a lifetime for what it did run. Merged into one flag, the first
+            # case read as the second and the report was never asked for.
+            order_canceled = bool(DEAD_ORDER_STATUS.match(order_status))
             # "A LINE ITEM", NOT "EVERY LINE ITEM.
             #
             # This is decided one row at a time and only the first reason per
@@ -619,7 +628,8 @@ def import_io_export(db: Session, sources, period: str | None = None,
                         "manager": _txt(r.get("campaign_manager")),
                         "orders": set(), "lines": set(), "flights": [],
                         "detail": [],
-                        "live": False, "canceled": True, "complete": True,
+                        "live": False, "canceled": True, "order_canceled": True,
+                        "complete": True,
                         "paused": True, "status": set(),
                         "budget": None, "impressions": None,
                         # The ORDER's own campaign window, kept apart from the
@@ -644,6 +654,9 @@ def import_io_export(db: Session, sources, period: str | None = None,
                 # Canceled only while EVERY line behind this row is. One live
                 # line and one canceled one is a product the client is running.
                 kept[k]["canceled"] = kept[k]["canceled"] and canceled
+                # Only when EVERY order behind this row is cancelled.
+                kept[k]["order_canceled"] = (kept[k].get("order_canceled", True)
+                                             and order_canceled)
                 # Paused only while EVERY line behind this row is. One live
                 # line and one paused one is a product still delivering.
                 kept[k]["paused"] = kept[k]["paused"] and paused
@@ -727,6 +740,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     "status": line_status or order_status or "",
                     "order_status": order_status or "",
                     "live": bool(line_live), "canceled": bool(canceled),
+                    "order_canceled": bool(order_canceled),
                     "complete": bool(line_done), "paused": bool(paused),
                     "budget": money, "impressions": imps,
                     "total_budget": whole, "total_impressions": all_imps,
@@ -815,6 +829,7 @@ def import_io_export(db: Session, sources, period: str | None = None,
             starts_on=v["starts_on"], ends_on=v["ends_on"],
             flights=v["flights"], detail=v["detail"], live=bool(v["live"]),
             canceled=bool(v.get("canceled")),
+            order_canceled=bool(v.get("order_canceled")),
             paused=bool(v.get("paused")),
             status=", ".join(sorted(x for x in v.get("status") or () if x))[:48],
             complete=bool(v.get("complete")),
