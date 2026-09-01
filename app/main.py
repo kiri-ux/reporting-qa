@@ -1929,7 +1929,35 @@ def cycle_audit_call(request: Request, period: str = Form(""),
     row = db.scalars(select(AuditCall).where(
         AuditCall.period == period, AuditCall.ref == ref,
         AuditCall.kind == kind)).first()
+
+    def drop_the_override():
+        """Take back the board row an earlier approve on this line put there.
+
+        CHANGING YOUR MIND HAS TO REACH THE BOARD. Approving writes a "keep
+        this on the cycle" override, and rejecting or clearing later only
+        rewrote the word on this page. The override stayed, so the list said
+        Rejected while the board still carried the row somebody had rejected.
+        Two screens, two answers, and the one nobody was looking at was the one
+        the reporters work from.
+        """
+        prev = row.client if row is not None else ""
+        for mark in db.scalars(select(CycleDone).where(
+                CycleDone.period == period, CycleDone.kind == kind,
+                CycleDone.reason == "needed")).all():
+            hit = _ident_key(mark.client) == _ident_key(client or prev)
+            if not hit and ref:
+                # The approve found the client off the order id, so a reject
+                # arriving with only the id has to find it the same way.
+                for l in db.scalars(select(OrderLine)).all():
+                    if ref in (l.account_ids or "").replace(",", " ").split():
+                        hit = _ident_key(l.client) == _ident_key(mark.client)
+                        if hit:
+                            break
+            if hit:
+                db.delete(mark)
+
     if call == "clear":
+        drop_the_override()
         if row is not None:
             db.delete(row)
         db.commit()
@@ -1955,6 +1983,10 @@ def cycle_audit_call(request: Request, period: str = Form(""),
     # the board is built from the order export, so a client the export has
     # never heard of cannot have a row. The decision is still recorded, and the
     # page says which of the two happened rather than looking like it worked.
+    # A REJECT AFTER AN APPROVE TAKES THE ROW BACK OFF.
+    if call == "rejected":
+        drop_the_override()
+
     if call == "approved" and not market:
         for l in db.scalars(select(OrderLine)).all():
             ids = (l.account_ids or "").replace(",", " ").split()

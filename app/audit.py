@@ -19,7 +19,17 @@ LIFETIME = re.compile(r"\blifetime\b", re.I)
 
 # "7MOU SG - Benton Rodeo #53915 LIFETIME" -> "Benton Rodeo". The prefix is the
 # market's own shorthand, which is not what the client is called anywhere else.
-PREFIX = re.compile(r"^\s*[A-Z0-9&']{2,8}\s+[A-Z]{2,4}\s*-\s*", re.I)
+#
+# THE SECOND WORD IS OPTIONAL. This wanted two of them - "7MOU SG" - and half
+# the tracker writes one: "ADM - VSCU KC" kept its prefix, so the client came
+# out as "ADM - VSCU KC", matched nothing on the board by name, and every one
+# of those rows was explained by the catch-all reason instead of the real one.
+#
+# AND IT IS CASE SENSITIVE NOW. These are shouted market codes, and matching
+# them case-insensitively while the second word is optional would strip the
+# front off any client whose name happens to start with a short word and a
+# dash. A code is uppercase or it is not a code.
+PREFIX = re.compile(r"^\s*[A-Z0-9&']{2,8}(?:\s+[A-Z]{2,4})?\s*-\s*")
 
 
 def _key(s: str) -> str:
@@ -168,11 +178,19 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
     from sqlalchemy import select
 
     want = _key(row["client"])
+
+    def board_said(names) -> str:
+        for s in not_owed:
+            if _key(s.get("client", "")) in names and \
+                    s.get("kind", row["kind"]) == row["kind"]:
+                return s.get("why", "not owed this cycle")
+        return ""
+
     # 1. The board looked at it and decided not to ask. That reason is the best
     #    one there is, because it is the actual rule that fired.
-    for s in not_owed:
-        if _key(s.get("client", "")) == want and s.get("kind", row["kind"]) == row["kind"]:
-            return s.get("why", "not owed this cycle")
+    said = board_said({want})
+    if said:
+        return said
 
     # 2. No order line carries these ids at all.
     #
@@ -186,6 +204,20 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
             lines.extend(by_id.get(oid, ()))
         if not lines:
             lines = list(by_client.get(want, ()))
+
+    # 1b. ASK AGAIN UNDER THE NAME THE BOARD USES.
+    #
+    # The two tools spell clients differently, which is the whole reason this
+    # page exists, and the order id is the one thing they agree on. Matching
+    # the board's reason by name alone meant a row whose name did not line up
+    # fell past the real answer and got the catch-all - "the order is loaded
+    # and looks live, worth a closer look" - for a campaign the board had
+    # perfectly good reasons about. Four VSCU orders read that way while the
+    # truth was that they ran one day in August.
+    if lines:
+        said = board_said({_key(l.client or "") for l in lines})
+        if said:
+            return said
     if not lines:
         return ("no order line carries "
                 + (", ".join(row["ids"]) if row["ids"] else "this client")

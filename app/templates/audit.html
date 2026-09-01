@@ -83,7 +83,10 @@
   <h2 style="margin-top:22px">On the list, not on the board ({{ result.missing|length }})</h2>
   {% if result.missing %}
     <p class="sub">Why, for each one - the board's own reason where it has one,
-    and the order line's where it does not.</p>
+    and the order line's where it does not. Most of these are the rules
+    working: a campaign that ran a day, a lifetime already sent. The ones
+    tagged <span class="pill p-warn">look</span> are the ones the board has no
+    good answer for, and those are the ones worth your time.</p>
     {# A DECISION, NOT A LIST TO READ AGAIN NEXT MONTH.
        Some of these belong on the board and the rules missed them; some are on
        the tracker by mistake. Both need somebody who knows the client to say
@@ -98,7 +101,15 @@
           <td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
           <td class="nw"><span class="pill p-{{ 'info' if r.kind == 'lifetime' else 'month' }}">{{ r.kind }}</span></td>
           <td class="mono nw">{{ r.ids|join(' ') }}</td>
-          <td style="max-width:44ch">{{ r.why }}</td>
+          {# THE CATCH-ALL IS THE ONLY "I DO NOT KNOW" ON THIS PAGE, and it
+             looked exactly like the forty answers that are the rules working.
+             Tagging it is the difference between a list to read and a list to
+             act on. #}
+          <td style="max-width:44ch">
+            {% if 'worth a closer look' in r.why %}
+              <span class="pill p-warn">look</span>
+            {% endif %}
+            {{ r.why }}</td>
           <td style="min-width:22ch">
             {% if c and c.call %}
               <span class="pill p-{{ 'ready' if c.call == 'approved' else 'info' }}">

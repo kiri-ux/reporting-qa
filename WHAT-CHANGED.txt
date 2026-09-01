@@ -1,5 +1,5 @@
-build 2026.09.01-132
-Changed files only. Includes everything from 131 - install this one, not both.
+build 2026.09.01-134
+Changed files only. Includes 131, 132 and 133 - install this one, not all four.
 
 app/audit.py
 app/db.py
@@ -14,84 +14,96 @@ app/version.py
 tests/test_timing.py             (new)
 
 
-WHAT YOUR NUMBERS SAID
-======================
-Three readings off /healthz/slow, in order of how much they change things.
+THE VSCU ROWS - YOU WERE RIGHT, AND THE TOOL WAS LYING ABOUT WHY
+================================================================
+I loaded your Aug 31 export and ran those four order numbers through it.
 
-MEMORY IS NOT THE PROBLEM. 196 MB of 2,048. I had it wrong at 512 - a comment
-in the code says so and the comment is out of date. Good to have ruled out.
+  52263 VSCU KC       Online Audio   Aug 31 -> Sep 13   IO Live
+  52265 VSCU SC       same
+  52267 VSCU SJC      same
+  52268 VSCU TC KC    same
 
-THE BOX IS NOT RESTARTING. Two boots in 24 hours, both mine, deploying 131. So
-the cold-start theory is dead too. That was the one I most expected to be it.
+One day in August. The 31st. The board's rule is that a campaign running fewer
+than seven days in a month is not owed a monthly - a page of near-zero numbers
+that reads as a broken report - so it left all four off, correctly, and it knew
+exactly why.
 
-THE BOX IS BURIED. Load 7.1, 7.4, 7.5 - and the fifteen-minute figure being the
-highest of the three means it has been worse than that and is coming down. Load
-of 7 means seven things want a CPU and are taking turns. Worth knowing: inside
-a container that number is usually the WHOLE HOST, so some of it may be other
-people's work on the same machine, which is not something I can fix from here.
+The list check then threw that reason away and printed the catch-all: "the
+order is loaded and looks live, worth a closer look." It sent you to check four
+order screens for something the tool already knew.
 
-And the one request you caught: `/` took 3.9 seconds inside the server, 26
-queries, only 0.18 of a second of it waiting on the database. So it is not the
-database. It is 3.7 seconds of the box doing arithmetic, and the same work here
-takes a third of a second.
+TWO FAULTS, BOTH MINE.
 
+Your tracker writes "ADM - VSCU KC" and the code that strips the market code
+off the front wanted TWO words - it was written against "7MOU SG - Benton
+Rodeo" and never saw a one-word code. So the client came out as "ADM - VSCU KC"
+instead of "VSCU KC", matched no board row by name, and fell past the real
+answer. (Also made case sensitive now, so it cannot eat a real client name like
+"Bliss - Digital Innovations".)
 
-SO: TWO THINGS THAT MAKE IT CHEAPER, AND ONE THAT MAKES IT VISIBLE
-==================================================================
-SLOW PAGES NOW WRITE THEMSELVES DOWN. Anything over 3 seconds gets a row in the
-database - both workers, kept, readable the next day. You do not have to catch
-it happening any more. It is at the bottom of "Why is it slow".
+And it only ever looked the board's reason up BY NAME - on a page whose entire
+purpose is that the two tools spell clients differently. It has the order id,
+which is the one thing they agree on, so it now asks again under whatever name
+the board uses. Even if a name never lines up, the reason comes through.
 
-AND THE SECONDS ARE SPLIT. Every page is now timed in two halves: working the
-answer out, and drawing it. A four-second page with a fifth of a second in the
-database is one of two completely different problems and the total cannot tell
-them apart - which is how the last two builds got aimed at the wrong one.
+Those four rows now read: ran 1 day this month. Nothing to do about them.
 
-THE BOARD STOPPED RE-DECIDING THE SAME NAMES. Shortening "Lauren Hunter" to
-"Lauren" has to know whether another Lauren exists, and that is a fact about
-the roster - 150 names that do not change between one label and the next. It
-was being worked out from scratch on every call: 1,964 times for one page.
-A third of the time the board spent building itself. It is worked out once now.
-
-If your box is four times slower than mine, a third off the build is real. It
-is not a minute.
+AND THE ONES THAT ARE ACTUALLY WORTH YOUR TIME ARE TAGGED. The catch-all is the
+only "I do not know" on that page and it looked identical to the forty answers
+that are the rules working. It carries a "look" tag now. Everything untagged
+has a real reason behind it.
 
 
-AND THE THREE YOU ASKED ABOUT
-=============================
-THE WALL OF PARTNER NAMES on Check a list is folded into "Which partners". You
-were right - a hundred and thirty-seven names between the heading and the
-tables you opened the page to read.
+YOUR OTHER QUESTION: YES, THE ROTO ROOTER APPROVE WORKED
+========================================================
+I built your case rather than reading the code and telling you what it looked
+like it did. Order 52290, live all year, taken off August for not being in the
+serving file. Before the approve, no row. After it, the August monthly is on
+the board tagged kept on by hand, with "client wasn't linked up" and your
+initial against it. August only - September asks again.
 
-CHECK A LIST NOW SAYS WHICH CYCLE. Title carries it, and under it: "Everything
-on this page is August 2026 - the list you paste, and every approve and reject
-on it, applies to this cycle only." That was always true and nothing said it,
-which makes a reject look like a permanent decision about a client.
-
-LIVE CHAT: NEITHER. The line is not filtered out, and the tool was answering
-the wrong question. I checked 26734 against your Aug 31 export - it is not in
-that file at all, not once. Live Chat generally is: 4,218 lines across 170
-orders, so nothing is filtering the product on the way in.
-
-But the message was still wrong, because "it is not in the export" is what it
-says when it cannot find the order AT ALL - and for a client whose only line is
-Live Chat it would have said the same thing while the line sat right there.
-That sends you to check a feed for nothing. Now it says what is actually true:
-
-  Live Chat does not earn a report on its own
-
-which is your rule, working. Website Visitor ID and Additional Billing read the
-same way. If a LIVE CHAT ONLY row still says "not in the export" after this,
-then the order really is missing from the file and that is worth chasing.
-
-(That page also read the entire order table twice for every row it had to
-explain - 300 full passes for a list of 150. Once now.)
+AND ONE THING I FOUND WHILE CHECKING, WHICH IS WORSE THAN IT LOOKS. Rejecting a
+row you had already approved did not take it back off. The word on the list
+changed to Rejected and the override stayed put, so the board still carried the
+row somebody had just rejected. Two screens, two answers, and the one nobody
+was looking at was the one the reporters work from. Clearing had the same hole.
+Both reach the board now, and only that one client's - a sweep that cleared the
+cycle's overrides would be a very quiet way to lose somebody else's work.
 
 
-FROM 131, IF YOU SKIPPED IT
-===========================
-Uploading an order export through the page read it into memory three times:
-1,046 MB peak on your real file. The S3 sync streams and never did this. Over
-8 MB it now goes to disk first - 233 MB, same 2,427 lines, same 1,217 clients.
+LIVE CHAT - NEITHER
+===================
+Not filtered. 26734 is not in your Aug 31 export at all; Live Chat generally is
+(4,218 lines, 170 orders). But the message was wrong: "not in the export" is
+what it says when it cannot find the order AT ALL, so a Live Chat only client
+got that sentence with the line sitting right there. It now says "Live Chat
+does not earn a report on its own", which is your rule working.
 
-755 tests pass.
+
+THE TWO YOU ASKED FOR
+=====================
+The wall of 137 partner names is folded into "Which partners".
+
+Check a list carries the cycle in its title, and says under it that the list
+and every approve and reject on it apply to that cycle only.
+
+
+THE SLOWNESS
+============
+Memory ruled out (196 MB of 2,048 - I had 512 from a stale comment). Restarts
+ruled out (two boots in 24 hours, both mine). What is left is load 7.1/7.4/7.5
+with the fifteen-minute figure highest, and `/` at 3.9 seconds with 0.18 of a
+second of it in the database. Not the database - a box taking turns with six
+other things, and inside a container that load figure is usually the whole host.
+
+Slow pages (over 3 seconds) now write themselves down from both workers, and
+every page is timed in two halves - working it out against drawing it. Bottom
+of "Why is it slow" in the rail. You do not have to catch one happening.
+
+Three things got cheaper: the board stopped re-working out which first names
+clash (1,964 times a page, a third of its build), the list check stopped
+reading the whole order table twice per row (300 passes for a list of 150), and
+an upload over 8 MB streams from disk instead of holding three copies in memory
+(1,046 MB down to 233 on your real file).
+
+763 tests pass.

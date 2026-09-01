@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-132"
-BUILD_NOTES = ("Slow pages are written down and split into building against "
-               "drawing, and the board stopped re-deciding the same names.")
+BUILD = "2026.09.01-134"
+BUILD_NOTES = ("The list check gives the real reason instead of the catch-all, "
+               "and a reject now reaches the board.")
 
 # ---------------------------------------------------------------------------
 

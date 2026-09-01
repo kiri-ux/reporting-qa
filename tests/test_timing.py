@@ -263,6 +263,152 @@ def test_check_a_list_says_which_cycle_it_is_deciding(live):
     assert "Everything on this page is" in text
 
 
+def _roto(db, db_mod):
+    import datetime as dt
+    D = dt.date.fromisoformat
+    db.add(db_mod.Partner(partner="7 Mountains Media", reporting_team="Dana"))
+    db.add(db_mod.OrderLine(
+        market="7 Mountains Media", client="Roto Rooter Williamsport",
+        account_ids="52290", product="Social Mirror Ads",
+        starts_on=D("2026-01-01"), ends_on=D("2026-12-31")))
+    # The serving file was loaded and this client is not in it, which is what
+    # took the row off the board in the first place.
+    db.add(db_mod.ServedDays(period="2026-08", market_key="7mountainsmedia",
+                             client_key="someoneelse", market="7 Mountains Media",
+                             client="Someone Else", days=20))
+    db.commit()
+
+
+def _rows(db):
+    from app import board
+    return [e for e in board.expected_for(db, "2026-08")
+            if e.client == "Roto Rooter Williamsport"]
+
+
+def test_approving_from_the_list_puts_the_row_back_on_the_cycle(live):
+    """It was taken off for not being in the serving file, and the serving file
+    was wrong. Somebody who knows the client gets the last word."""
+    client, db, db_mod, _t = live
+    _roto(db, db_mod)
+    assert _rows(db) == []
+    client.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "52290", "kind": "monthly",
+        "client": "Roto Rooter Williamsport", "call": "approved",
+        "note": "client wasn't linked up", "who": "k"}, follow_redirects=False)
+    db.expire_all()
+    back = _rows(db)
+    assert len(back) == 1
+    assert back[0].forced_by == "k"
+    assert back[0].forced_note == "client wasn't linked up"
+
+
+def test_rejecting_after_approving_takes_the_row_back_off(live):
+    """The list said Rejected and the board still carried the row.
+
+    Two screens, two answers, and the one nobody was looking at was the one the
+    reporters work from.
+    """
+    client, db, db_mod, _t = live
+    _roto(db, db_mod)
+    for call in ("approved", "rejected"):
+        client.post("/cycle/audit/call", data={
+            "period": "2026-08", "ref": "52290", "kind": "monthly",
+            "client": "Roto Rooter Williamsport", "call": call,
+            "note": "changed my mind", "who": "k"}, follow_redirects=False)
+    db.expire_all()
+    assert _rows(db) == []
+    assert db.query(db_mod.CycleDone).count() == 0
+
+
+def test_clearing_a_call_also_clears_what_it_did_to_the_board(live):
+    client, db, db_mod, _t = live
+    _roto(db, db_mod)
+    for call in ("approved", "clear"):
+        client.post("/cycle/audit/call", data={
+            "period": "2026-08", "ref": "52290", "kind": "monthly",
+            "client": "Roto Rooter Williamsport", "call": call,
+            "who": "k"}, follow_redirects=False)
+    db.expire_all()
+    assert _rows(db) == []
+
+
+def test_a_reject_with_only_an_order_id_still_finds_the_row(live):
+    """The approve looked the client up off the order id, so the reject has
+    to be able to as well."""
+    client, db, db_mod, _t = live
+    _roto(db, db_mod)
+    client.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "52290", "kind": "monthly",
+        "client": "Roto Rooter Williamsport", "call": "approved",
+        "who": "k"}, follow_redirects=False)
+    client.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "52290", "kind": "monthly",
+        "call": "rejected", "who": "k"}, follow_redirects=False)
+    db.expire_all()
+    assert _rows(db) == []
+
+
+def test_a_reject_leaves_other_clients_overrides_alone(live):
+    """One decision, one row. A sweep that clears the cycle's overrides would
+    be a very quiet way to lose somebody else's work."""
+    client, db, db_mod, _t = live
+    _roto(db, db_mod)
+    db.add(db_mod.CycleDone(period="2026-08", ident="other|client|monthly",
+                            market="Other", client="Client", kind="monthly",
+                            reason="needed", marked_by="someone else"))
+    db.commit()
+    client.post("/cycle/audit/call", data={
+        "period": "2026-08", "ref": "52290", "kind": "monthly",
+        "client": "Roto Rooter Williamsport", "call": "rejected",
+        "who": "k"}, follow_redirects=False)
+    db.expire_all()
+    left = db.query(db_mod.CycleDone).all()
+    assert [m.client for m in left] == ["Client"]
+
+
+def test_a_one_word_market_code_is_still_a_market_code():
+    """"ADM - VSCU KC" kept its prefix because this wanted two words, so the
+    client came out as "ADM - VSCU KC" and matched nothing on the board."""
+    from app.audit import parse_list
+    got = {r["client"]: r["ids"] for r in parse_list(
+        "ADM - VSCU KC #52263\n7MOU SG - Benton Rodeo #53915")}
+    assert got == {"VSCU KC": ["52263"], "Benton Rodeo": ["53915"]}
+
+
+def test_a_client_whose_name_starts_with_a_word_and_a_dash_keeps_it():
+    """The prefix is a shouted market code. Matching it case-insensitively
+    while the second word is optional would eat real client names."""
+    from app.audit import parse_list
+    got = [r["client"] for r in parse_list("Bliss - Digital Innovations #41000")]
+    assert got == ["Bliss - Digital Innovations"]
+
+
+def test_the_board_reason_is_found_under_the_name_the_board_uses(live):
+    """The two tools spell clients differently - that is why this page exists -
+    and the order id is the one thing they agree on.
+
+    Four VSCU orders read "the order is loaded and looks live, worth a closer
+    look" when the truth was that they ran one day in August.
+    """
+    import datetime as dt
+    _c, db, db_mod, _t = live
+    D = dt.date.fromisoformat
+    db.add(db_mod.Partner(partner="Adlytics Digital Marketing LLC",
+                          reporting_team="Dana"))
+    db.add(db_mod.OrderLine(
+        market="Adlytics Digital Marketing LLC", client="VSCU KC",
+        account_ids="52263", product="Online Audio",
+        starts_on=D("2026-08-31"), ends_on=D("2026-09-13"),
+        order_starts_on=D("2026-02-11"), order_ends_on=D("2026-11-29")))
+    db.commit()
+    from app.audit import audit
+    out = audit(db, "2026-08", "ADM - VSCU KC #52263")
+    whys = [m["why"] for m in out["missing"]]
+    assert whys, "the row should be on the list and not on the board"
+    assert "worth a closer look" not in whys[0]
+    assert "1 day" in whys[0]
+
+
 def test_the_rail_has_a_way_in():
     from pathlib import Path
     base = (Path(__file__).resolve().parents[1] / "app" / "templates"
