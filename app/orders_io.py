@@ -361,9 +361,6 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # per order and per client. See the note where they are filled in.
     ended_at: dict[str, dt.date] = {}
     ended_client: dict[str, dt.date] = {}
-    # (order, line item, month) -> that month's impressions. See where it is
-    # filled in: the campaign total has to be built before the duplicate test.
-    imps_by_month: dict[tuple, float] = {}
 
     def note_drop(market, client, reason, order_id=""):
         """WHICH CLIENT WAS DROPPED, not just how many rows.
@@ -471,26 +468,6 @@ def import_io_export(db: Session, sources, period: str | None = None,
                    + str(r.get("start_date") or "")[:10] + "\x00"
                    + str(r.get("end_date") or "")[:10] + "\x00"
                    + order_status + "\x00" + line_status)
-            # THE CAMPAIGN'S IMPRESSIONS, SUMMED FROM ITS MONTHS.
-            #
-            # The export has a total_campaign_impressions column - four of
-            # them, in fact - and the one that is populated holds "1". It is a
-            # share of goal, not a count, which is why the campaign total on
-            # the order lines panel has only ever shown money. The monthly
-            # figure IS real, so the campaign total is the months added up.
-            #
-            # BEFORE THE DUPLICATE TEST, because that test throws away the rows
-            # that carry the other months: it keys on the line item and its
-            # dates, which are identical for every month of one flight. And
-            # keyed on the month here, because 95% of this file is rows
-            # repeated verbatim and summing those blindly would give a number
-            # several times too big.
-            _m = str(r.get("date") or "")[:7]
-            if line_id and _m:
-                _i = _num(r.get("monthly_campaign_impressions"))
-                if _i:
-                    imps_by_month.setdefault((order_id, line_id, _m), _i)
-
             if key in seen:              # daily grain, and exports may overlap
                 dupes += 1
                 continue
@@ -777,6 +754,24 @@ def import_io_export(db: Session, sources, period: str | None = None,
                     all_imps = _num(r.get("total_campaign_impressions"))
                     if all_imps is not None and all_imps < 1000:
                         all_imps = None
+                    # SO IT IS WORKED OUT THE WAY THE ORDER FORM WORKS IT OUT:
+                    # the monthly impressions times the number of months the
+                    # line item runs.
+                    #
+                    # And the months do not have to be guessed from the dates,
+                    # which is the part that makes this safe. The export gives
+                    # both a monthly budget and a total budget, and their ratio
+                    # IS the month count the form used - a whole number in
+                    # 199,870 of the 208,140 rows that carry both. The money
+                    # proves the multiplier before it is applied to anything.
+                    #
+                    # Nothing is extrapolated. If either budget is missing, or
+                    # the ratio is not a whole number of months, the campaign
+                    # total stays empty rather than becoming a guess.
+                    if all_imps is None and imps and money and whole:
+                        months = whole / money
+                        if 1 <= months <= 60 and abs(months - round(months)) < 0.02:
+                            all_imps = imps * round(months)
                     if all_imps is not None:
                         cur = kept[k]["total_impressions"]
                         kept[k]["total_impressions"] = (
@@ -866,36 +861,6 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # the schema, which is why the order list showed an empty Buyer column
     # beside a populated Owner one. Blanks fall back to the reporting roster:
     # the partner's buyer, or its SEO person on an SEO line item.
-    # THE CAMPAIGN TOTAL, now that every month has been seen. Only where the
-    # export did not give a usable one of its own - see imps_by_month.
-    # ONLY WHERE MORE THAN ONE MONTH ACTUALLY CONTRIBUTED.
-    #
-    # For most line items the export carries a single dated row - its date is
-    # pinned to the line's start, not to delivery - so "summing the months"
-    # gives one month back. Printing that under a heading that says campaign
-    # total would be claiming a figure nobody computed: it would read as the
-    # whole flight and be one month of it. A line with one month keeps its
-    # dash, which is honest about not knowing.
-    _months: dict[tuple, int] = {}
-    by_line: dict[tuple, float] = {}
-    for (_o, _l, _mo), _v in imps_by_month.items():
-        by_line[(_o, _l)] = by_line.get((_o, _l), 0.0) + _v
-        _months[(_o, _l)] = _months.get((_o, _l), 0) + 1
-    by_line = {k: v for k, v in by_line.items() if _months.get(k, 0) > 1}
-    if by_line:
-        for _k, _v in kept.items():
-            for _d in _v.get("detail") or []:
-                _tot = by_line.get((str(_d.get("order") or ""),
-                                    str(_d.get("line") or "")))
-                if _tot:
-                    _d["total_impressions"] = _tot
-            if _v.get("total_impressions") is None:
-                _sum = sum(by_line.get((str(_d.get("order") or ""),
-                                        str(_d.get("line") or "")), 0.0)
-                           for _d in _v.get("detail") or [])
-                if _sum:
-                    _v["total_impressions"] = _sum
-
     from .partners import find as find_partner, resolve_owner
     partner_cache: dict[str, object] = {}
     fallbacks = 0

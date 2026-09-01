@@ -1,4 +1,4 @@
-build 2026.09.01-153
+build 2026.09.01-154
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -20,53 +20,56 @@ tests/test_board_extras.py
 tests/test_timing.py             (new)
 
 
-THE ROGUE COMMA AND THE ROGUE SEMICOLON ARE THE SAME BUG
-========================================================
-That bar is laid out with flex, so the spinner and the button can sit beside
-the text. Flex makes a flex item of EVERY child - including every bare run of
-text and every <code> - and each one wraps on its own. So the sentence broke
-after the bold heading and left the comma alone at the start of the next line,
-and the semicolon floated between two code spans.
+TOTAL IMPRESSIONS - THAT WAS THE MISSING PIECE
+==============================================
+You told me the rule: monthly impressions times the months the line item runs.
+That is a definition, not an estimate, and it changes the answer completely.
 
-The prose is one element now, so it wraps like a sentence. And the stale-code
-panel is rewritten while I was in there: it was a sentence with two hashes
-buried in the middle of it, which nobody reads as a sentence.
+AND THE MONTHS DO NOT HAVE TO BE GUESSED FROM THE DATES, which is the part that
+makes it safe. The export gives both a monthly budget and a total budget, and
+their ratio IS the month count the form used - a whole number in 199,870 of the
+208,140 rows that carry both. So the money proves the multiplier before it is
+applied to anything, on every single line.
+
+Your own example, order 54425, straight out of the import:
+
+  131447   $1,500/mo, $3,000 total   2 months    88,235 x 2 = 176,470
+  134907   $1,500/mo, $1,500 total   1 month    100,000 x 1 = 100,000
+
+Which matches the money you can already see in that column. Across your whole
+export 1,837 of 2,427 order lines now carry a campaign total, and not one of
+them comes out below its own monthly figure.
+
+WHERE IT SHOWS: the Campaign total column of the order lines panel, above the
+money that was already there - both per line item and on the Total row.
+
+WHEN IT STAYS EMPTY, and it does not guess: if either budget is missing there
+is nothing proving the month count, and if the ratio is not a whole number of
+months it is not a month count. Both cases leave a dash. There are tests for
+both, because a fabricated total in that column would be worse than none.
+
+I have taken out the month-summing code I wrote before you explained the rule.
+It never fired on a real export anyway - every line item has one dated row -
+and this is the actual definition rather than a workaround for it.
+
+
+THE ROGUE COMMA AND THE ROGUE SEMICOLON WERE THE SAME BUG
+=========================================================
+That bar is laid out with flex so the spinner and the button sit beside the
+text, and flex makes a flex item of EVERY child - including each bare run of
+text and each <code>. Each wrapped on its own. So the sentence broke after the
+bold heading and left the comma alone at the start of the next line, and the
+semicolon floated between two hashes.
+
+The prose is one element now and wraps like a sentence. The stale-code panel is
+rewritten too - it was a sentence with two fingerprints buried mid-clause:
 
   These rows were written by older import code. They were last read Sep 1 at
   2:57 PM, and the code that reads the export has changed since. The product
   check abstains until they are read again.
     then 36566e3b05423be7:2026-08 · now 36566e3b05423be7
 
-The two fingerprints are still there, on their own line, where they are
-reference rather than grammar.
+The fingerprints are still there, on their own line, as reference rather than
+grammar.
 
-
-NO - IT IS A SUM OF REAL MONTHS, NEVER A MULTIPLICATION
-=======================================================
-You are right to ask, and multiplying would be making a number up. It does not
-do that and it never will.
-
-WHAT IT DOES: the monthly impressions figure in the export is real. Where a
-line item has rows for several months, those actual values are added together.
-That is the whole of it - no rate, no extrapolation, no month count.
-
-WHERE THE TOTAL WOULD SHOW: the Campaign total column, under the money that is
-already there.
-
-AND WHY IT IS EMPTY ON YOUR DATA, which is the real answer to your question.
-Of the 10,597 line items in the export I have, NOT ONE has more than a single
-dated row - every line item's date is pinned to the month it started. There are
-no months to add up, so there is nothing to show, so it shows nothing. It does
-not fill the gap with a guess.
-
-THE COLUMN THAT CLAIMS TO HAVE IT DOES NOT. total_campaign_impressions appears
-four times in the header; three are empty and the populated one holds "1" - a
-share of goal, not a count. There has been a guard throwing that away since
-before today, which is why Campaign total has only ever shown money.
-
-So: the figure is not in this export, in either form. If it exists in TapClicks
-itself or in a different export, point me at it and I will read it from there.
-The summing code stays in and will fill the column on its own the day a file
-arrives carrying per-month rows.
-
-805 tests pass.
+804 tests pass.

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-153"
-BUILD_NOTES = ("The order-lines panel keeps its sentences in one piece - "
-               "flex was making a flex item of every word.")
+BUILD = "2026.09.01-154"
+BUILD_NOTES = ("Campaign total impressions, worked out the way the order form "
+               "does it, with the money proving the month count.")
 
 # ---------------------------------------------------------------------------
 

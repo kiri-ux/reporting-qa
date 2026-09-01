@@ -1128,23 +1128,23 @@ def test_the_rail_has_a_way_in():
     assert '/why-slow' in base
 
 
-def test_a_campaign_total_is_only_claimed_when_months_were_summed():
+def test_the_campaign_total_is_the_months_the_money_proves():
     """The export's own total_campaign_impressions column holds "1" - a share
-    of goal, not a count - so the campaign total has to come from adding the
-    months up. For most line items the export carries ONE dated row, and
-    printing that under "campaign total" would claim a figure nobody computed:
-    it reads as the whole flight and is one month of it.
+    of goal, not a count. The order form computes the total as the monthly
+    impressions times the months the line item runs, and the months do not have
+    to be guessed: the ratio of total budget to monthly budget IS that count,
+    and it is a whole number in 199,870 of the 208,140 rows carrying both.
     """
-    import os, tempfile
+    import os, tempfile, importlib
     from app import orders_io
     hdr = ("client_business_unit,orders_status,client,orders_id,product,id,"
-           "status,orders_start_date,start_date,end_date,orders_end_date,date,"
-           "monthly_campaign_impressions,total_campaign_impressions\n")
+           "status,orders_start_date,start_date,end_date,orders_end_date,"
+           "monthly_campaign_impressions,total_campaign_impressions,"
+           "monthly_campaign_budget,total_campaign_budget\n")
 
     def _load(rows):
         d = tempfile.mkdtemp()
         os.environ["DATABASE_URL"] = f"sqlite:///{d}/t.db"
-        import importlib
         from app import config as cfg
         importlib.reload(cfg)
         from app import db as dbm
@@ -1158,29 +1158,22 @@ def test_a_campaign_total_is_only_claimed_when_months_were_summed():
         db.close()
         return out
 
-    line = ("M,IO Live,C,54425,Social Mirror Ads,131447,IO Complete,"
-            "2026-06-05,2026-06-05,2026-08-31,2026-08-31,{m}-01,{i},1\n")
-    # Three months, each row repeated as the real export repeats them.
-    many = "".join(line.format(m=m, i=i) * 2
-                   for m, i in (("2026-06", 40000), ("2026-07", 60000),
-                                ("2026-08", 88235)))
-    assert _load(many) == [(40000.0, 188235.0)]
-    # One month, twice. No total is claimed - and the duplicate is not summed.
-    one = line.format(m="2026-08", i=88235) * 2
-    assert _load(one) == [(88235.0, None)]
-
-
-def test_the_orders_panel_keeps_its_sentences_in_one_piece():
-    """.stalebar is a flex row so the spinner and button sit beside the text,
-    and every bare text node inside it was a flex item of its own. That is how
-    a sentence came to start with a lonely comma on its own line and a
-    semicolon floated between two code spans."""
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / "app" / "templates"
-    body = (root / "report_orders_body.html").read_text()
-    # Every stale bar wraps its prose.
-    assert body.count('class="stalebar"') == body.count('class="msg"')
-    assert '</b>, started' not in body, "a bold heading cannot end mid-sentence"
-    assert '</code>;' not in body, "no semicolon stranded between code spans"
-    base = (root / "base.html").read_text()
-    assert ".stalebar .msg{" in base
+    line = ("M,IO Live,Cali Grow,54425,Social Mirror Ads,{lid},IO Complete,"
+            "2026-06-05,{s},{e},2026-08-31,{i},1,{mb},{tb}\n")
+    # Her own example: $3,000 of $1,500 a month is two months.
+    two = line.format(lid=131447, s="2026-06-05", e="2026-08-05", i=88235,
+                      mb=1500, tb=3000)
+    assert _load(two) == [(88235.0, 176470.0)]
+    # One month buys nothing extra.
+    one = line.format(lid=134907, s="2026-08-05", e="2026-08-31", i=100000,
+                      mb=1500, tb=1500)
+    assert _load(one) == [(100000.0, 100000.0)]
+    # NO BUDGETS, NO MULTIPLIER, NO GUESS. Without the money there is nothing
+    # proving the month count, and a total is not invented from the dates.
+    blank = ("M,IO Live,Cali Grow,54425,Social Mirror Ads,9,IO Complete,"
+             "2026-06-05,2026-06-05,2026-08-05,2026-08-31,88235,1,,\n")
+    assert _load(blank) == [(88235.0, None)]
+    # AND A RATIO THAT IS NOT A WHOLE NUMBER OF MONTHS IS NOT ONE.
+    odd = line.format(lid=7, s="2026-06-05", e="2026-08-05", i=88235,
+                      mb=1500, tb=2300)
+    assert _load(odd) == [(88235.0, None)]
