@@ -132,6 +132,11 @@ class Settings(BaseSettings):
     io_order_url: str = ("https://www.reporting.zone/client/iotool/dist/"
                          "#/items/viewOrder/")
 
+    # The line item, not the order. A reason that names a line item should be
+    # one click from it, and the order page does not scroll to it.
+    io_line_url: str = ("https://www.reporting.zone/client/iotool/dist/"
+                        "#/items/viewLineItem/")
+
     # Google. Two ways in, and the OAuth one is first because most Workspace
     # orgs now enforce iam.disableServiceAccountKeyCreation, which makes a
     # service account key impossible to create at all.

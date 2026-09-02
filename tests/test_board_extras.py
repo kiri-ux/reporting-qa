@@ -3099,28 +3099,35 @@ def test_a_date_answer_is_about_the_order_that_was_asked_about():
     from app.audit import _order_line_dates
 
     class L:
+        line_ids = ""
+
         def __init__(self, detail, starts=None, ends=None):
             self.detail, self.starts_on, self.ends_on = detail, starts, ends
 
     # One rolled-up Meta row covering two orders. 55048 runs from 25 August;
     # the September date belongs to 55311.
-    row = L([{"order": "55048", "starts": "2026-08-25", "ends": "2026-10-31"},
-             {"order": "55311", "starts": "2026-09-12", "ends": "2026-12-31"}],
+    row = L([{"order": "55048", "line": "133358",
+              "starts": "2026-08-25", "ends": "2026-10-31"},
+             {"order": "55311", "line": "141002",
+              "starts": "2026-09-12", "ends": "2026-12-31"}],
             starts=dt.date(2026, 8, 25), ends=dt.date(2026, 12, 31))
     starts, ends = _order_line_dates([row], ["55048"])
-    assert starts == [dt.date(2026, 8, 25)], starts
-    assert ends == [dt.date(2026, 10, 31)], ends
+    # THE DATE COMES WITH THE LINE ITEM IT CAME OFF, or it has no address and
+    # the only way to check it is to guess from a screenshot.
+    assert starts == [(dt.date(2026, 8, 25), "133358")], starts
+    assert ends == [(dt.date(2026, 10, 31), "133358")], ends
 
     # No ids asked about - the client's whole picture, which is what the
     # fallback is for.
     starts, _ = _order_line_dates([row], ())
-    assert min(starts) == dt.date(2026, 8, 25)
+    assert min(starts)[0] == dt.date(2026, 8, 25)
 
     # A row written before the line items were kept still answers, off its
     # merged span, which is the answer this always gave.
     old = L(None, starts=dt.date(2026, 9, 12), ends=dt.date(2026, 12, 31))
+    old.line_ids = "999"
     starts, _ = _order_line_dates([old], ["55048"])
-    assert starts == [dt.date(2026, 9, 12)]
+    assert starts == [(dt.date(2026, 9, 12), "999")]
 
     # And when the lookup fell back to the client, the sentence says so rather
     # than blaming the order that was asked about.
@@ -3128,5 +3135,101 @@ def test_a_date_answer_is_about_the_order_that_was_asked_about():
     i = src.index("starts, ends = _order_line_dates(")
     tail = src[i:i + 1200]
     assert "by_order" in tail
-    assert "the client\'s other orders do not start until" in tail
+    assert "the client's other orders " in tail
+    assert "do not start until {named(first)}" in tail
 
+
+
+def test_an_order_id_opens_what_is_stored_under_it(tmp_path, monkeypatch):
+    """A date in a reason needs an address.
+
+    "Nothing on order 55048 starts until 2026-09-12" is a true statement about
+    a row nobody could look at, with the IO tool open on screen saying 25
+    August - and the only way to find out which of the two was stale was to
+    guess from a screenshot. The order number on the list check opens the
+    stored rows beside it now.
+    """
+    import importlib
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'ol.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+    from app.orders_io import import_io_export
+
+    db = dbm.SessionLocal()
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    row = ("MARI,IO Live,Clinton Parkway Nursery,55048,Meta Display & Video Ads,"
+           "133358,IO Live,2026-08-25,2026-08-25,2026-10-31,2026-10-31,100000\n")
+    import_io_export(db, (head + row).encode(), period="2026-08")
+    db.close()
+
+    c = TestClient(mmod.app)
+    page = c.get("/orders/55048/lines").text
+    assert "133358" in page
+    assert "2026-08-25" in page and "2026-10-31" in page
+    # The line's own flight and the order header's, side by side - they
+    # disagree more often than anybody expects and which one a reason quoted
+    # was the whole question.
+    assert "Line flight" in page and "Order header" in page
+
+    # An id nothing is stored under says so rather than showing an empty table
+    # that reads like an empty feed.
+    assert "No line item is stored under order 99999" in c.get("/orders/99999/lines").text
+
+    # And the list check links to it.
+    audit = (TPL / "audit.html").read_text()
+    assert 'data-sheet="/orders/{{ i }}/lines"' in audit
+
+
+def test_a_cancelled_campaign_is_never_told_it_runs_to_a_date(tmp_path, monkeypatch):
+    """The Ooten Law Firm, order 47028.
+
+    Cancelled top to bottom, and the page said "the campaign runs to
+    2026-12-31, past this cycle's lifetime window". That date is what the
+    campaign was SOLD to run to - nothing on the export says the day somebody
+    hit cancel - so it stopped meaning anything the moment the order was
+    cancelled. A cancelled campaign closes out NOW; what decides which cycle it
+    closes out in is the last month it delivered.
+    """
+    import importlib
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'oo.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app.audit import _why
+    from app.orders_io import import_io_export
+
+    db = dbm.SessionLocal()
+    head = ("client_business_unit,orders_status,client,orders_id,product,id,"
+            "status,orders_start_date,start_date,end_date,orders_end_date,"
+            "monthly_campaign_impressions\n")
+    row = ("LOCK KNOX,Cancelled,The Ooten Law Firm,47028,Display,120001,"
+           "Cancelled,2026-01-01,2026-01-01,2026-12-31,2026-12-31,100000\n")
+    import_io_export(db, (head + row).encode(), period="2026-08")
+
+    said = _why(db, "2026-08", {"client": "The Ooten Law Firm", "ids": ["47028"],
+                                "kind": "lifetime", "prefix": "LOCK KNOX",
+                                "raw": ""}, [])
+    assert "runs to 2026-12-31" not in said, said
+    assert "past this cycle's lifetime window" not in said, said
+    assert "cancelled" in said.lower(), said
+    # And it says what the date actually is, so the next person does not go
+    # looking for a campaign that runs to the end of the year.
+    assert "sold to run to" in said, said
+    db.close()
+
+
+def test_the_extra_rows_say_they_are_already_on_the_cycle():
+    """"Are these on the cycle already?" is the first thing anybody asks about
+    that table, and "the order export says these are owed a report" reads as a
+    claim rather than a state of affairs."""
+    page = (TPL / "audit.html").read_text()
+    i = page.index("On the board, not on the list")
+    assert "already on the board" in page[i:i + 900]
+    assert "Nothing needs adding" in page[i:i + 900]

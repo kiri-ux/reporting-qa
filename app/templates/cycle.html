@@ -537,6 +537,12 @@
           <option value="lifetime">Lifetime</option>
           <option value="seo">SEO</option>
         </select></label>
+      <label class="grow">Why
+        <input type="text" name="note" size="30"
+               placeholder="Cancelled, never got a lifetime"></label>
+      {% if not me %}<label>You
+        <input type="text" name="who" size="10" placeholder="Your name"></label>{% endif %}
+      <span class="brk" aria-hidden="true"></span>
       {# THE PRODUCTS ARE WHAT THE CHECKS JUDGE THE PDF AGAINST. A row with
          none reads as a blank beside a hundred that name their buy.
 
@@ -550,11 +556,6 @@
             <label><input type="checkbox" name="products" value="{{ p }}"><span>{{ p }}</span></label>
           {% endfor %}
         </span></span>
-      <label class="wide">Why
-        <input type="text" name="note" size="30"
-               placeholder="Cancelled, never got a lifetime"></label>
-      {% if not me %}<label>You
-        <input type="text" name="who" size="10" placeholder="Your name"></label>{% endif %}
       <span class="brk" aria-hidden="true"></span>
       <button class="mini ok" type="submit">Save the row</button>
     </form>

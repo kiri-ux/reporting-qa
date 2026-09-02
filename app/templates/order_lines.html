@@ -1,0 +1,85 @@
+{# EVERY LINE ITEM STORED UNDER ONE ORDER ID.
+
+   Written because a date in a reason had no address. "Nothing on order 55048
+   starts until 2026-09-12" was a true statement about a row nobody could look
+   at, with the IO tool open on screen saying 25 August - and the only way to
+   find out which of the two was stale was for me to guess from a screenshot.
+
+   This is what the board is actually judging that order against, as stored,
+   with the sync that wrote it. #}
+<p class="sub">
+  Every line item stored under order {{ oid }}, as the last import read it.
+  This is what the board's reasons about this order are made of.
+</p>
+
+{% if stale %}
+  <div class="stalebar">
+    <div class="msg"><b>These rows were written by older import code.</b>
+      They were last read {{ sync.synced_at|et('%b %-d at %-I:%M %p') }}, and
+      the code that reads the export has changed since.</div>
+    <form method="post" action="/orders/sync" style="display:inline">
+      <input type="hidden" name="back" value="/orders/{{ oid }}/lines">
+      <button class="mini" type="submit">Re-read the orders</button>
+    </form>
+  </div>
+{% endif %}
+
+{% if rows %}
+  <div class="tw"><table class="olines">
+    <thead><tr>
+      <th>Line item</th><th>Client</th><th>Product</th><th>Status</th>
+      <th>Line flight</th><th>Order header</th>
+      <th style="text-align:right">Monthly</th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="mono nw">
+            {% if r.line %}
+              <a href="{{ io_line_url }}{{ r.line }}" target="_blank" rel="noopener">{{ r.line }}</a>
+            {% else %}<span class="acct">no line id</span>{% endif %}
+          </td>
+          <td>{{ r.client }}</td>
+          <td><b>{{ r.product }}</b>
+            {% if r.raw and r.raw != r.product %}
+              <br><span class="acct">{{ r.raw }}</span>{% endif %}</td>
+          <td class="nw">
+            {% if r.canceled %}<span class="pill p-fail">canceled</span>
+            {% elif r.complete %}<span class="pill p-warn">complete</span>
+            {% elif r.paused %}<span class="pill p-warn">paused</span>
+            {% elif r.live %}<span class="pill p-pass">live</span>
+            {% else %}<span class="acct">-</span>{% endif %}
+            {% if r.status %}<br><span class="acct">{{ r.status }}</span>{% endif %}
+          </td>
+          {# THE LINE'S OWN FLIGHT AND THE ORDER HEADER'S, SIDE BY SIDE. They
+             disagree more often than anybody expects, and which of them a
+             reason quoted was the whole question. #}
+          <td class="mono nw" style="font-size:12px">
+            {{ r.starts or '?' }}<br>{{ r.ends or 'open' }}</td>
+          <td class="mono nw" style="font-size:12px">
+            {{ r.order_starts or '?' }}<br>{{ r.order_ends or 'open' }}</td>
+          <td class="n" style="font-size:12.5px">
+            {% if r.impressions %}{{ '{:,.0f}'.format(r.impressions) }}<br>{% endif %}
+            {% if r.budget %}${{ '{:,.2f}'.format(r.budget) }}{% endif %}
+            {% if not r.impressions and not r.budget %}<span class="acct">-</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="sub" style="font-size:12px;margin-top:8px">
+    {% if sync and sync.synced_at %}Read from the export
+      {{ sync.synced_at|et('%b %-d at %-I:%M %p') }}.{% endif %}
+    If the IO tool disagrees with a date here, the export is older than the
+    edit - re-read the orders and look again.
+  </p>
+{% else %}
+  <p class="empty">No line item is stored under order {{ oid }}.
+    {% if dropped %}<br><span class="acct">The last import saw it and threw it
+      away: {{ dropped }}.</span>{% endif %}</p>
+{% endif %}
+
+<style>
+.olines th, .olines td { padding:7px 10px }
+.olines td { font-size:13px }
+</style>

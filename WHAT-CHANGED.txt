@@ -1,4 +1,4 @@
-build 2026.09.01-164
+build 2026.09.01-166
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -6,6 +6,7 @@ app/board.py
 app/checks/products.py
 app/checks/rules.py
 app/checks/served.py
+app/config.py
 app/db.py
 app/main.py
 app/orders_io.py
@@ -13,6 +14,7 @@ app/roster.py
 app/templates/audit.html
 app/templates/base.html
 app/templates/cycle.html
+app/templates/order_lines.html   (new)
 app/templates/report_orders_body.html
 app/templates/viewer.html
 app/version.py
@@ -21,29 +23,69 @@ tests/test_order_remap.py
 tests/test_rules.py
 
 
-ADDED BY HAND SAID 1 OF 13
-==========================
-The table is fifty rows a page. I built that filter in the browser, over the
-rows that had been rendered - so it found the one hand-added row on page one
-and reported it as the total, with a straight face.
+WHERE THE 9/12 CAME FROM - AND HOW TO SEE IT YOURSELF NEXT TIME
+===============================================================
+I could not tell you. That is the actual problem, so I fixed that instead of
+guessing again.
 
-That is exactly the trap the search box was in before, and it has the same
-answer: the server applies it, over the whole cycle. The chip is a link now,
-the count is off all 1,247 rows, and pressing it shows all thirteen.
+The order number on the list check is a link now. Click 55048 and a panel opens
+beside the row with every line item stored under that order, as the last import
+read it - line item id, product, status, THE LINE'S OWN FLIGHT AND THE ORDER
+HEADER'S SIDE BY SIDE, the monthly figures, and when it was read. If the IO
+tool disagrees with what is there, the export is older than the edit.
 
-I should have caught this. The pagination is the reason the search moved to the
-server in the first place, and I put a new filter back on the wrong side of it.
+The reasons name the line item now too:
+
+  nothing on order 55048 starts until 2026-09-12 (line item 141002), after
+  this cycle
+
+A date with an address. My guess is still that 55048 was an RFP until 21 August
+- the comments on it say "Changed to an IO" that day - and the export was
+carrying the pre-edit flight when it was last read. The panel will tell you in
+one click rather than costing us both a screenshot round trip.
 
 
-THE PRODUCT PICKER
+A CANCELLED CAMPAIGN IS NEVER TOLD IT RUNS TO A DATE
+====================================================
+The Ooten Law Firm, 47028, cancelled top to bottom, was told
+
+  the campaign runs to 2026-12-31, past this cycle's lifetime window
+
+That date is what the campaign was SOLD to run to. Nothing on the export says
+the day somebody hit cancel, so the date stopped meaning anything the moment
+the order was cancelled - and quoting it says the campaign is still running.
+
+A cancelled or completed order gets its own answer now, and which one depends
+on what is actually known:
+
+  order 47028 is cancelled. The date on it is what it was sold to run to, not
+  the day it stopped, so nothing here says which cycle the lifetime belongs to.
+  Approve it if it is this one.
+
+With a serving file loaded and no delivery this month it says that instead, and
+if another order for the client is still running it names it.
+
+"Every line on this order is canceled" is also gone from lifetime rows. That is
+a monthly's answer - a cancelled campaign is not owed a monthly, and it is
+exactly what a lifetime IS for.
+
+
+THE ADD-A-ROW FORM
 ==================
-Chips you click once, instead of a scrolling box that needs a modifier key held
-down to pick a second thing - which is the normal case here, not the exception.
-They wrap onto two lines and the picked ones fill in.
+Products get their own full-width line under the short fields, so the chips
+stop leaving a hole in the row.
 
 
-  Client:  Exactly as listed on RZ
+"ON THE BOARD, NOT ON THE LIST" - YES, THEY ARE ALREADY ON THE CYCLE
+====================================================================
+Every row in that table is an ordinary row on this cycle's board, waiting for
+its report like the rest. Nothing needs adding. The table says so now rather
+than saying "the order export says these are owed a report", which reads as a
+claim rather than a state of affairs.
+
+What it means is one of two things: the tracker is missing a row, or the export
+is asking for one it should not be.
 
 
-825 tests pass. The orders re-read themselves on the next sync and the reports
-re-check in the background - both fingerprints moved.
+828 tests pass. Orders re-read on the next sync, reports re-check in the
+background.

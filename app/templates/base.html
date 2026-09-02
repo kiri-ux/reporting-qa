@@ -237,15 +237,18 @@ button[data-tip],a[data-tip]{cursor:pointer}
  align-items:flex-start}
 .addrow label{display:flex;flex-direction:column;gap:4px;font-size:12px;
  color:var(--muted);font-weight:600;flex:0 0 auto}
-.addrow label.wide{flex:1 1 220px;min-width:200px}
+.addrow label.grow{flex:1 1 240px;min-width:200px}
 .addrow input,.addrow select{font:inherit;font-size:13px;padding:6px 11px;
  border-radius:16px;border:1px solid var(--line);background:var(--surface);
  color:var(--ink);width:100%}
 /* PRODUCTS AS CHIPS. A native multiple select is a scrolling box of mostly
    empty space that needs a modifier key held down to pick a second thing, and
    picking several is the normal case here. */
-.prodpick{display:flex;flex-direction:column;gap:5px;font-size:12px;
- color:var(--muted);font-weight:600}
+/* ITS OWN LINE. Wrapped in with the short fields it left a hand-sized hole
+   in the row - the chips take one line and the label band takes another, and
+   whatever landed beside them was pushed to the far edge. */
+.prodpick{flex:0 0 100%;display:flex;flex-direction:column;gap:5px;
+ font-size:12px;color:var(--muted);font-weight:600}
 .prodpick .chips{display:flex;flex-wrap:wrap;gap:5px}
 .prodpick label{display:inline-flex;margin:0;cursor:pointer}
 .prodpick input{position:absolute;opacity:0;width:0;height:0}

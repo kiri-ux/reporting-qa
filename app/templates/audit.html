@@ -150,7 +150,19 @@
             {% if c and c.call == 'rejected' %} style="opacity:.55"{% endif %}>
           <td><b>{{ r.client }}</b><br><span class="acct">{{ r.raw }}</span></td>
           <td class="nw"><span class="pill p-{{ 'month' if r.kind == 'monthly' else 'info' }}">{{ 'SEO' if r.kind == 'seo' else r.kind }}</span></td>
-          <td class="mono nw">{{ r.ids|join(' ') }}</td>
+          {# THE NUMBER OPENS WHAT IS STORED UNDER IT.
+             A date in the reason beside this had no address - "nothing on
+             order 55048 starts until 2026-09-12" with the IO tool open on
+             screen saying 25 August, and no way to see which of the two was
+             stale. This is the row the reason was made from. #}
+          <td class="mono nw">
+            {% for i in r.ids %}
+              <a href="/orders/{{ i }}/lines" data-sheet="/orders/{{ i }}/lines"
+                 data-sheet-title="Order {{ i }} as stored"
+                 data-tip="What is stored under this order id, and when it was read. The dates in the reason come from here.">{{ i }}</a>{{ ' ' if not loop.last }}
+            {% endfor %}
+            {% if not r.ids %}<span class="acct">-</span>{% endif %}
+          </td>
           {# THE ORDER'S OWN STATUS, so a reject can be made here rather than
              in another tab. "Nothing served this month" and "IO Paused"
              together are a decision; either one alone is a question.
@@ -238,8 +250,14 @@
 
   <h2 style="margin-top:22px">On the board, not on the list ({{ result.extra|length }})</h2>
   {% if result.extra %}
-    <p class="sub">The order export says these are owed a report this cycle,
-    and the list does not have them.</p>
+    {# "ARE THESE ON THE CYCLE ALREADY?" is the first thing anybody asks about
+       this table, and the old line did not quite answer it: it said what the
+       export says, which reads as a claim rather than a state of affairs. #}
+    <p class="sub"><b>These are already on the board</b> and being asked for -
+    they are ordinary rows on {{ period|month }}'s cycle, waiting for their
+    reports like the rest. Nothing needs adding. It is the list that does not
+    have them, so either the tracker is missing a row or the order export is
+    asking for one it should not.</p>
     <div class="tw"><table>
       <thead><tr><th>Partner</th><th>Client</th><th>Kind</th><th>Order</th>
         <th>Status</th></tr></thead>

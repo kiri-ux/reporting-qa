@@ -3665,6 +3665,80 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
     return templates.TemplateResponse(request, "report_orders.html", ctx)
 
 
+@app.get("/orders/{oid}/lines", response_class=HTMLResponse)
+def order_lines(oid: str, request: Request, db: Session = Depends(get_db)):
+    """Every line item stored under one order id, as the last import read it.
+
+    WRITTEN BECAUSE A DATE IN A REASON HAD NO ADDRESS. "Nothing on order 55048
+    starts until 2026-09-12" is a true statement about a row nobody could look
+    at, with the IO tool open on screen saying 25 August - and the only way to
+    find out which of the two was stale was to guess from a screenshot. The
+    order number on the list check opens this beside it now.
+    """
+    from .version import product_map_version
+
+    oid = re.sub(r"[^0-9]", "", oid or "")[:12]
+    if not oid:
+        raise HTTPException(404)
+    rows = []
+    for l in db.scalars(select(OrderLine)).all():
+        ids = (l.account_ids or "").replace(",", " ").split()
+        if oid not in ids:
+            continue
+        base = {"client": l.client or "", "product": l.product or "(unmapped)"}
+        detail = [d for d in (getattr(l, "detail", None) or [])
+                  if isinstance(d, dict)
+                  and str(d.get("order") or "").strip() == oid]
+        if detail:
+            for d in detail:
+                rows.append({**base, "line": d.get("line") or "",
+                             "raw": d.get("raw") or l.campaign or "",
+                             "starts": d.get("starts"), "ends": d.get("ends"),
+                             "order_starts": d.get("order_starts"),
+                             "order_ends": d.get("order_ends"),
+                             "status": d.get("status") or "",
+                             "live": bool(d.get("live")),
+                             "canceled": bool(d.get("canceled")),
+                             "complete": bool(d.get("complete")),
+                             "paused": bool(d.get("paused")),
+                             "budget": d.get("budget"),
+                             "impressions": d.get("impressions")})
+        else:
+            # A row written before the line items were kept. Its merged span is
+            # all there is, and saying so beats showing nothing.
+            rows.append({**base, "line": l.line_ids or "",
+                         "raw": l.campaign or "",
+                         "starts": l.starts_on, "ends": l.ends_on,
+                         "order_starts": getattr(l, "order_starts_on", None),
+                         "order_ends": getattr(l, "order_ends_on", None),
+                         "status": getattr(l, "status", "") or "",
+                         "live": bool(getattr(l, "live", True)),
+                         "canceled": bool(getattr(l, "canceled", False)),
+                         "complete": bool(getattr(l, "complete", False)),
+                         "paused": bool(getattr(l, "paused", False)),
+                         "budget": l.budget,
+                         "impressions": getattr(l, "impressions", None)})
+    rows.sort(key=lambda r: (str(r.get("starts") or ""), r["product"]))
+
+    from .orders_s3 import NOT_A_SYNC
+    sync = db.scalars(select(OrderSync)
+                      .where(OrderSync.state != "running",
+                             ~OrderSync.source.like(NOT_A_SYNC))
+                      .order_by(desc(OrderSync.id)).limit(1)).first()
+    # AND WHY IT IS NOT HERE, when it is not. An empty table reads as an empty
+    # feed, and the import already wrote down what it did with the rows.
+    gone = ""
+    if not rows:
+        why = (getattr(sync, "dropped_orders", None) or {}).get(oid)
+        gone = why if isinstance(why, str) else ", and ".join(why or ())
+    return templates.TemplateResponse(request, "order_lines.html", {
+        "nav": "orders", "oid": oid, "rows": rows, "sync": sync,
+        "dropped": gone,
+        "io_line_url": settings.io_line_url,
+        "stale": bool(sync and sync.ok and
+                      (sync.map_version or "") != product_map_version())})
+
+
 @app.get("/orders/pull-range.csv")
 def pull_range_csv(db: Session = Depends(get_db)):
     """The earliest start date each partner's pull actually needs.

@@ -491,6 +491,10 @@ def _order_line_dates(lines, ids) -> tuple:
         except ValueError:
             return None
 
+    # (date, line item id) - THE DATE NEEDS AN ADDRESS. "Nothing on order 55048
+    # starts until 2026-09-12" was a true statement about a row nobody could
+    # look at, with the IO tool open on screen saying 25 August, and no way to
+    # tell which of the two was stale without me guessing from a screenshot.
     starts, ends = [], []
     for l in lines:
         detail = [d for d in (getattr(l, "detail", None) or [])
@@ -498,16 +502,17 @@ def _order_line_dates(lines, ids) -> tuple:
                   and (not want or str(d.get("order") or "").strip() in want)]
         if not detail:
             if getattr(l, "starts_on", None):
-                starts.append(l.starts_on)
+                starts.append((l.starts_on, l.line_ids or ""))
             if getattr(l, "ends_on", None):
-                ends.append(l.ends_on)
+                ends.append((l.ends_on, l.line_ids or ""))
             continue
         for d in detail:
+            line = str(d.get("line") or "")
             s, e = as_date(d.get("starts")), as_date(d.get("ends"))
             if s:
-                starts.append(s)
+                starts.append((s, line))
             if e:
-                ends.append(e)
+                ends.append((e, line))
     return starts, ends
 
 
@@ -640,7 +645,11 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
     #
     # So the claim is scoped to what it is actually about, and the reason the
     # others went is added when the last sync recorded one.
-    if all(getattr(l, "canceled", False) for l in lines):
+    # NOT FOR A LIFETIME. "Every line on this order is canceled" is a monthly's
+    # answer - a cancelled campaign is not owed a monthly, and it is exactly
+    # what a lifetime IS for. Said on a lifetime row it reads as a reason the
+    # report is not owed, about the one case where it plainly is.
+    if row["kind"] != "lifetime" and all(getattr(l, "canceled", False) for l in lines):
         gone = _dropped_reason(db, {_key(l.client or "") for l in lines} | {want},
                                row["ids"])
         if gone:
@@ -684,19 +693,27 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
     # belonged to a different order of theirs.
     starts, ends = _order_line_dates(lines, row["ids"] if by_order else ())
     whose = f"order {', '.join(row['ids'])}" if by_order and row["ids"] else "this order"
-    if ends and max(ends) < cyc.starts_on:
+    who_asked = ", ".join(row["ids"]) or "this client"
+
+    def named(pair):
+        """The date, and the line item it came off - see _order_line_dates."""
+        when, line = pair
+        return f"{when} (line item {line})" if line else str(when)
+
+    if ends and max(ends)[0] < cyc.starts_on:
+        last = max(ends)
         if by_order:
-            return f"every line on {whose} ended by {max(ends)}, before this cycle"
-        return (f"no order line carries {', '.join(row['ids']) or 'this client'}"
-                f" - the client's other orders all ended by {max(ends)}, "
-                f"before this cycle")
-    if starts and min(starts) > cyc.ends_on:
+            return (f"every line on {whose} ended by {named(last)}, "
+                    "before this cycle")
+        return (f"no order line carries {who_asked} - the client's other orders "
+                f"all ended by {named(last)}, before this cycle")
+    if starts and min(starts)[0] > cyc.ends_on:
+        first = min(starts)
         if by_order:
-            return (f"nothing on {whose} starts until {min(starts)}, "
+            return (f"nothing on {whose} starts until {named(first)}, "
                     "after this cycle")
-        return (f"no order line carries {', '.join(row['ids']) or 'this client'}"
-                f" - the client's other orders do not start until "
-                f"{min(starts)}, after this cycle")
+        return (f"no order line carries {who_asked} - the client's other orders "
+                f"do not start until {named(first)}, after this cycle")
 
     if row["kind"] == "lifetime":
         from .partners import is_seo
@@ -713,6 +730,53 @@ def _why(db, period: str, row: dict, not_owed: list) -> str:
         # row; asked properly it gives the right date for the order in hand.
         own = _order_end_dates(lines, row["ids"])
         oid = ", ".join(row["ids"]) or "this one"
+
+        # A CANCELLED CAMPAIGN'S END DATE IS NOT WHEN IT ENDED.
+        #
+        # It is what the campaign was SOLD to run to, and nothing on the export
+        # says the day somebody hit cancel. So "the campaign runs to 2026-12-31,
+        # past this cycle's lifetime window" is a sentence about a date that
+        # stopped meaning anything the moment the order was cancelled - and it
+        # was being said about The Ooten Law Firm's 47028, which is Cancelled
+        # top to bottom.
+        #
+        # A cancelled or completed campaign closes out NOW. What decides which
+        # cycle it closes out in is the serving file: the last month it
+        # delivered. That is the answer this owes, not the sold-to date.
+        dead = [l for l in lines
+                if getattr(l, "canceled", False)
+                or getattr(l, "order_canceled", False)
+                or getattr(l, "complete", False)]
+        if dead and len(dead) == len(lines):
+            word = ("cancelled" if any(
+                getattr(l, "canceled", False) or getattr(l, "order_canceled", False)
+                for l in lines) else "closed out")
+            days = 0
+            try:
+                from .serving import served_days
+                seen = served_days(db, period)
+                days = max((seen.get((_key(l.market or ""), _key(l.client or "")), 0)
+                            for l in lines), default=0)
+                loaded = bool(seen)
+            except Exception:                                # noqa: BLE001
+                loaded = False
+            if loaded and not days:
+                return (f"order {oid} is {word}, and the serving file has no "
+                        f"delivery for this client in {month_label(period)} - "
+                        f"so there is nothing from this month to close out. "
+                        f"The date on the order is what it was sold to run to, "
+                        f"not the day it stopped. Approve it here if the "
+                        f"lifetime is still owed.")
+            other = _overlapping_order(lines, row["ids"])
+            if other:
+                return (f"order {oid} is {word}, but order {other} for this "
+                        f"client is still running - so this client is reported "
+                        f"on that order rather than closed out here")
+            return (f"order {oid} is {word}. The date on it is what it was sold "
+                    f"to run to, not the day it stopped, so nothing here says "
+                    f"which cycle the lifetime belongs to. Approve it if it is "
+                    f"this one.")
+
         if own and any(cyc.needs_lifetime(e) for e in own):
             return (f"order {oid} ends "
                     f"{max(e for e in own if cyc.needs_lifetime(e))}, "

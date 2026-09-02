@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-164"
-BUILD_NOTES = ("The added-by-hand filter counts the whole cycle, and the "
-               "product picker is chips you click once.")
+BUILD = "2026.09.01-166"
+BUILD_NOTES = ("An order number opens what is stored under it, and a "
+               "cancelled campaign is never told it runs to a date.")
 
 # ---------------------------------------------------------------------------
 
