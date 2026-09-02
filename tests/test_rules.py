@@ -3228,3 +3228,52 @@ def test_a_spend_tile_without_a_dollar_sign_is_still_money():
     from app.checks.spend import tile_value
     assert tile_value("Impressions\n\n   54,544\n", "Impressions") == 54544.0
     assert tile_value("Nothing here\n\n   54,544\n", "PPC Ad Cost") is None
+
+
+def test_a_recheck_writes_back_the_numbers_the_report_is(tmp_path, monkeypatch):
+    """It rewrote findings, severity and products and left impressions and
+    clicks exactly as the import first read them.
+
+    So a fix to the READER never reached them - only a fix to a rule did.
+    McNutt's lifetime was stored at 10 impressions and 2 clicks by a parser
+    that had walked nine pages past the tiles; the parser was fixed, the
+    lifetime re-checked clean, and its stored numbers stayed 10 and 2. Which is
+    worse than it sounds, because the monthly is judged against them.
+
+    And the other half of the pair has to look again: the sweep has no idea
+    which order it will reach them in.
+    """
+    import importlib
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'rc.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app.recheck import recheck
+
+    db = dbm.SessionLocal()
+    b = dbm.Batch(market="M", period="2026-08"); db.add(b); db.flush()
+    pdf = str(FIXTURES / "mcnutt_site_services.pdf")
+    month = dbm.Report(batch_id=b.id, client="McNutt Site Services",
+                       market="M", period="2026-08", stored_path=pdf,
+                       filename="August 2026_McNutt Site Services 51681.pdf",
+                       severity="pass", findings=[], acked=[],
+                       impressions=10, clicks=2, rules_version="old")
+    life = dbm.Report(batch_id=b.id, client="McNutt Site Services",
+                      market="M", period="2026-08", stored_path=pdf,
+                      filename="Lifetime_McNutt Site Services 51681.pdf",
+                      is_lifetime=True, severity="pass", findings=[], acked=[],
+                      impressions=10, clicks=2, rules_version="old")
+    db.add_all([month, life]); db.commit()
+
+    recheck(db, life)
+    db.expire_all()
+    life = db.get(dbm.Report, life.id)
+    assert life.impressions == 54_544, "the stored number is still the old one"
+    assert life.clicks == 3_303
+    assert life.pages == 15
+
+    # The month was re-checked before the lifetime and is still carrying a
+    # finding about the old numbers. It has to be asked again.
+    month = db.get(dbm.Report, month.id)
+    assert month.rules_version == "", "the other half of the pair was left stale"
+    db.close()

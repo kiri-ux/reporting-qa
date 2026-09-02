@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.02-170"
-BUILD_NOTES = ("The top line is read off page one, and a spend tile with no "
-               "dollar sign is still money.")
+BUILD = "2026.09.02-171"
+BUILD_NOTES = ("A re-check writes back the numbers the report IS, not only "
+               "the ones it is judged by.")
 
 # ---------------------------------------------------------------------------
 

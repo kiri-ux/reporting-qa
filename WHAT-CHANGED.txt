@@ -1,4 +1,4 @@
-build 2026.09.02-170
+build 2026.09.02-171
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -13,6 +13,7 @@ app/config.py
 app/db.py
 app/main.py
 app/orders_io.py
+app/recheck.py
 app/roster.py
 app/templates/audit.html
 app/templates/base.html
@@ -72,5 +73,34 @@ count as dollars. McNutt now paces 1,800.36 against 2,000: 10% short.
 Whole report re-checked end to end: clean pass.
 
 
-836 tests pass. Every report re-checks itself in the background - this changed
-the checking code - so the two false failures come off on their own.
+AND THE FIX COULD NOT REACH THE NUMBERS
+=======================================
+That is the one I should have caught yesterday, and it is the reason the
+failure was still there after 170.
+
+A background re-check rewrites a report's findings, its severity and its
+products - and leaves impressions and clicks exactly as the import first read
+them. So a fix to a RULE reaches every stored report, and a fix to the READER
+reaches none of them.
+
+McNutt's lifetime was stored at 10 impressions and 2 clicks by the parser that
+walked nine pages past the tiles. 170 fixed the parser. The lifetime re-checked
+and came back clean - and its stored numbers stayed 10 and 2, because nothing
+writes them. Then the monthly, which is compared against the lifetime, read
+those numbers and said:
+
+  This month prints impressions 54,544 against 10; clicks 3,303 against 2 on
+  the lifetime.
+
+A real finding on a real report, made entirely of a number nothing in the
+system could correct.
+
+A re-check writes impressions, clicks and the page count back now. And when
+they change it marks the OTHER half of the pair stale, because the sweep has no
+idea which order it will reach the two in - fixing the lifetime while the month
+still carries a finding about the old numbers is only half a fix.
+
+Nothing to press. The sweep will re-read both.
+
+
+837 tests pass.

@@ -264,6 +264,40 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
     rep.rules_version = rules_version()
     rep.logo_hash = logo
 
+    # THE NUMBERS THE REPORT *IS*, NOT ONLY THE ONES IT IS JUDGED BY.
+    #
+    # This wrote back findings, severity and products and left impressions and
+    # clicks exactly as the import first read them - so a fix to the READER
+    # never reached them, only a fix to a rule did. McNutt Site Services'
+    # lifetime was stored at 10 impressions and 2 clicks by a parser that had
+    # walked nine pages past the tiles; the parser was fixed, the lifetime
+    # re-checked clean, and its stored numbers stayed at 10 and 2 forever.
+    #
+    # Which is worse than it sounds, because the monthly is judged against
+    # them: "this month prints 54,544 against 10 on the lifetime" is a real
+    # finding on a real report, made of a number nothing could correct.
+    was_imps, was_clicks = rep.impressions, rep.clicks
+    rep.impressions = result["impressions"]
+    rep.clicks = result["clicks"]
+    if result.get("pages"):
+        rep.pages = result["pages"]
+
+    # AND THE OTHER HALF OF THE PAIR HAS TO LOOK AGAIN.
+    #
+    # The month and the lifetime are compared against each other, and the sweep
+    # has no idea which order it will reach them in. Fixing the lifetime's
+    # numbers leaves the month still carrying a finding about the old ones
+    # until something re-reads it, so this asks: the sibling is marked stale
+    # and the sweep picks it up on its next pass.
+    if (rep.impressions, rep.clicks) != (was_imps, was_clicks):
+        sib = db.scalars(select(Report).where(
+            Report.client == rep.client, Report.period == rep.period,
+            Report.market == (rep.market or ""),
+            Report.is_lifetime.is_(not bool(rep.is_lifetime)),
+            Report.id != rep.id)).all()
+        for other in sib:
+            other.rules_version = ""
+
     # A NAME THAT WAS NEVER BUILT GETS BUILT NOW.
     #
     # Renaming only ever happened on the feed and on a replacement, so every
