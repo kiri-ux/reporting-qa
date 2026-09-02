@@ -3233,3 +3233,18 @@ def test_the_extra_rows_say_they_are_already_on_the_cycle():
     i = page.index("On the board, not on the list")
     assert "already on the board" in page[i:i + 900]
     assert "Nothing needs adding" in page[i:i + 900]
+
+
+def test_the_serve_panel_says_when_it_looks_again():
+    """"When will my new file show up" had to be asked.
+
+    Every panel on that page says when it last read something and none of them
+    said when it looks again - so the only way to find out was to ask, or to
+    keep reloading."""
+    page = (TPL / "orders.html").read_text()
+    i = page.index("The daily serve file arrives on its own")
+    tail = page[i:i + 1800]
+    assert "Checked every {{ sync_every }} minutes" in tail
+    assert 'action="/orders/sync"' in tail, "and a way not to wait for it"
+    from app.config import Settings
+    assert Settings.model_fields["sync_every_minutes"].default == 30

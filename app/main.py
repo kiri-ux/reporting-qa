@@ -1028,6 +1028,11 @@ def orders_view(request: Request, view: str = Query("clients"),
         "missing_orders": missing_orders, "missing_tail": missing_tail,
         "name_split": name_split,
         "period": _p, "serving_prefix": settings.serving_file_prefix,
+        # HOW OFTEN IT LOOKS, so "when will my new file show up" is answered on
+        # the page rather than by asking. Every panel here says when it last
+        # read something and none of them said when it will look again.
+        "sync_every": max(settings.sync_every_minutes or 0, 5)
+                      if settings.sync_every_minutes else 0,
         # PRODUCT NAMES THE MAP HAS NEVER SEEN. Read off the loaded lines
         # rather than off the last sync message, so it is true whether or not
         # anybody was watching when the export came in.

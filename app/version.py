@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-167"
-BUILD_NOTES = ("The health check cannot queue behind the work, and W&L Mazda "
-               "is W and L Mazda.")
+BUILD = "2026.09.01-168"
+BUILD_NOTES = ("The health check cannot queue behind the work, W&L Mazda is "
+               "W and L Mazda, and the serve panel says when it looks again.")
 
 # ---------------------------------------------------------------------------
 

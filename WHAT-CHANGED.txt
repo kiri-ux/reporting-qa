@@ -1,4 +1,4 @@
-build 2026.09.01-167
+build 2026.09.01-168
 Changed files only. Everything since 130 - install this one.
 
 app/audit.py
@@ -70,4 +70,20 @@ Any report already carrying that finding fixes itself in the background: this
 changed the checking code, so every report re-checks.
 
 
-831 tests pass.
+WHEN THE SERVE FILE UPDATES
+===========================
+Every panel on the orders page says when it last read something and none of
+them said when it looks again, so the only way to find out was to ask. The
+serve panel now says:
+
+  Checked every 30 minutes. A file dropped in that folder is picked up on the
+  next check - 30 minutes at the outside - because the folder's contents are
+  fingerprinted and a new or changed file changes the fingerprint. Nothing to
+  press.
+
+With a Sync now button beside it for when you do not want to wait. It reads the
+serve file first, then the roster sheet, then the order export - so the serve
+days land in seconds and the slow part happens behind them.
+
+
+832 tests pass.

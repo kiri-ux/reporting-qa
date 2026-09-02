@@ -516,6 +516,25 @@
         <b>merged</b> with what is already loaded - the days add up rather than
         the newest file replacing the month. Uploading below still replaces the
         month outright, which is what you want for a corrected file.</p>
+      {# "WHEN WILL MY NEW FILE SHOW UP" had to be asked, because every panel
+         on this page says when it last read something and none of them said
+         when it looks again. #}
+      <p class="sub" style="margin:0 0 12px;font-size:13px">
+        {% if sync_every %}
+          <b>Checked every {{ sync_every }} minutes.</b> A file dropped in that
+          folder is picked up on the next check - {{ sync_every }} minutes at
+          the outside - because the folder's contents are fingerprinted and a
+          new or changed file changes the fingerprint. Nothing to press.
+        {% else %}
+          <b>The automatic check is off.</b> Nothing is read from S3 until
+          somebody presses Sync.
+        {% endif %}
+        <form action="/orders/sync" method="post" style="display:inline">
+          <input type="hidden" name="back" value="/orders">
+          <button class="mini" type="submit"
+                  data-tip="Reads the serve file first, then the roster sheet, then the order export. The serve file is small and lands in seconds; the orders take a few minutes behind it.">Sync now</button>
+        </form>
+      </p>
     {% endif %}
     <form action="/orders/serving" method="post" enctype="multipart/form-data"
           style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
