@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.02-169"
-BUILD_NOTES = ("A third worker so a cheap request has somewhere to land, and "
-               "a slow health check is written down.")
+BUILD = "2026.09.02-170"
+BUILD_NOTES = ("The top line is read off page one, and a spend tile with no "
+               "dollar sign is still money.")
 
 # ---------------------------------------------------------------------------
 

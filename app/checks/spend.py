@@ -21,6 +21,19 @@ import re
 
 MONEY = re.compile(r"\$\s?([\d,]+(?:\.\d+)?)")
 
+# THE DOLLAR SIGN IS NOT ALWAYS THERE.
+#
+# McNutt Site Services' Performance Max Cost tile reads "Amount spent on the
+# campaign" and then "1,800.36" - no sign on it - so nothing was found, the
+# pacing panel said "-/$2,000 no comparison" on a report that prints the spend
+# in ninety-point type, and the order's $2,000 sat there with nothing beside
+# it.
+#
+# Only used under a tile whose label is already known to be a cost, and still
+# matched by column, so this cannot wander off and read an impression count as
+# money.
+BARE_MONEY = re.compile(r"(?<![\d,.$])(\d[\d,]*(?:\.\d{1,2})?)(?![\d,.%])")
+
 # Tile label -> the product it is the spend for. The wording is TapClicks' own.
 SPEND_TILES: list[tuple[str, str]] = [
     ("Performance Max Cost", "Performance Max"),
@@ -35,10 +48,21 @@ SPEND_TILES: list[tuple[str, str]] = [
 LOOK_AHEAD = 6
 
 
-def _amounts(line: str) -> list[tuple[int, float]]:
-    """(column, value) for every dollar amount on this line."""
+def _amounts(line: str, bare: bool = False) -> list[tuple[int, float]]:
+    """(column, value) for every dollar amount on this line.
+
+    `bare` also accepts a number with no sign on it - see BARE_MONEY. It is
+    only ever passed under a tile that is already known to be a cost.
+    """
     out = []
     for m in MONEY.finditer(line):
+        try:
+            out.append((m.start(), float(m.group(1).replace(",", ""))))
+        except ValueError:
+            pass
+    if out or not bare:
+        return out
+    for m in BARE_MONEY.finditer(line):
         try:
             out.append((m.start(), float(m.group(1).replace(",", ""))))
         except ValueError:
@@ -58,7 +82,7 @@ def tile_value(text: str, label: str) -> float | None:
         if after and after not in " \t":
             continue
         for nxt in lines[i + 1:i + 1 + LOOK_AHEAD]:
-            got = _amounts(nxt)
+            got = _amounts(nxt, bare=True)
             if not got:
                 continue
             # Nearest column wins. "PPC Ad Cost" and "PPC Cost-Per-Click" share

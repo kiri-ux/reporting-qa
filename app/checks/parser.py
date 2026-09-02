@@ -236,12 +236,93 @@ HEADLINE_FULL = re.compile(
     r"How many ads were served:.*?\n\n\s*([\d,]+)\s+([\d,]+)\s+([\d.]+)%", re.S)
 HEADLINE_IMPS = re.compile(r"How many ads were served:\s*\n\s*([\d,]+)")
 
+# HOW FAR THE TOP-LINE NUMBERS CAN BE FROM THEIR OWN LABEL.
+#
+# `.*?` with DOTALL will walk the entire document looking for something that
+# fits, and on McNutt Site Services it walked twenty-four THOUSAND characters -
+# past the tiles, past the line items - and matched "10  2  20%" out of a
+# month-over-month comparison table nine pages later. The report says 54,544
+# impressions and 3,303 clicks on page one, and it was failed for both.
+#
+# The tiles sit within a few hundred characters of the label they belong to.
+HEADLINE_WINDOW = 1200
+
+NUM_IN_LINE = re.compile(r"(?<![\d,.%])(\d[\d,]*)(?![\d,.%])")
+
+
+def _headline_window(text: str) -> str:
+    """The label and the tiles under it, and nothing from the next page."""
+    at = text.find("How many ads were served:")
+    if at < 0:
+        return ""
+    line_start = text.rfind("\n", 0, at) + 1
+    chunk = text[line_start:line_start + HEADLINE_WINDOW]
+    page = chunk.find("\f")            # never past a page break
+    return chunk[:page] if page > 0 else chunk
+
+
+def _by_column(window: str) -> tuple[float | None, float | None]:
+    """Impressions and clicks matched to their tiles by column.
+
+    THE TILES ARE NOT ALWAYS TWO. A report with an Events tile prints three
+    across, so the numbers do not land on one line in the order the old pattern
+    assumed - McNutt's page one reads "5,343" on its own line and then "54,544
+    3,303" - and a pattern wanting three numbers and a percentage on one line
+    cannot match any of it. Read by column, which is what the eye does: the
+    number under the Clicks label is the clicks.
+    """
+    lines = window.split("\n")
+    imp_at = lines[0].find("How many ads were served:")
+    clk_at = -1
+    for line in lines[:3]:
+        clk_at = line.find("Times a user clicked on an ad")
+        if clk_at >= 0:
+            break
+    if imp_at < 0:
+        return None, None
+
+    def center(m, line):
+        return m.start() + len(m.group(1)) / 2
+
+    found: list[tuple[float, float]] = []          # (column center, value)
+    for line in lines[1:]:
+        for m in NUM_IN_LINE.finditer(line):
+            v = as_number(m.group(1))
+            if v is not None:
+                found.append((center(m, line), v))
+    if not found:
+        return None, None
+    # The label sits left in its tile and the number is centered under it, so
+    # nearest-column is measured against the label's own center.
+    imp_c = imp_at + len("How many ads were served:") / 2
+    imps = min(found, key=lambda c: abs(c[0] - imp_c))[1]
+    clicks = None
+    if clk_at >= 0:
+        clk_c = clk_at + len("Times a user clicked on an ad") / 2
+        rest = [c for c in found if c[1] != imps or abs(c[0] - imp_c) > 1e-9]
+        pool = [c for c in rest if abs(c[0] - clk_c) < abs(c[0] - imp_c)]
+        if pool:
+            clicks = min(pool, key=lambda c: abs(c[0] - clk_c))[1]
+    return imps, clicks
+
 
 def headline(text: str) -> tuple[float | None, float | None, float | None]:
-    m = HEADLINE_FULL.search(text)
+    """Impressions, clicks and CTR off the tiles on page one."""
+    window = _headline_window(text)
+    if not window:
+        return None, None, None
+    m = HEADLINE_FULL.search(window)
     if m:
         return as_number(m.group(1)), as_number(m.group(2)), as_number(m.group(3))
-    m = HEADLINE_IMPS.search(text)
+    imps, clicks = _by_column(window)
+    if imps is not None:
+        # NO CTR RATHER THAN THE WRONG PERCENTAGE. A report laid out this way
+        # prints no CTR tile at all - the percentage sitting there is the Event
+        # Rate - and answering with it would be worse than abstaining, because
+        # every CTR rule would then be comparing against a different number
+        # entirely.
+        return imps, clicks, None
+    m = HEADLINE_IMPS.search(window)
     if m:
         return as_number(m.group(1)), None, None
     return None, None, None

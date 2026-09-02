@@ -3179,3 +3179,52 @@ def test_the_big_parse_lets_go_of_the_box():
     window = src[i:i + 1400]
     assert "time.sleep(" in window, "nothing releases the lock inside the row loop"
     assert "rows_read %" in window, "and it has to be every so often, not every row"
+
+
+def test_the_top_line_is_read_off_page_one_not_page_nine():
+    """McNutt Site Services 51681.
+
+    The page-one tiles say 54,544 impressions and 3,303 clicks, and the one
+    line item says exactly the same. The report was failed twice - impressions
+    "against a stated 10" and clicks "against a stated 2" - because the pattern
+    that finds the top line is `.*?` with DOTALL, so it walked twenty-four
+    thousand characters looking for something that fit and matched "10 2 20%"
+    out of a month-over-month table nine pages later.
+
+    A page-one tile is on page one. The search is bounded to the label's own
+    window and stops at the page break.
+    """
+    from app.checks.parser import headline, pdf_text
+
+    imps, clicks, ctr = headline(pdf_text(FIXTURES / "mcnutt_site_services.pdf"))
+    assert imps == 54_544, imps
+    assert clicks == 3_303, clicks
+    # NO CTR RATHER THAN THE WRONG PERCENTAGE. This report prints no CTR tile -
+    # the percentage beside those two is the Event Rate - and answering with it
+    # would put every CTR rule against a different number entirely.
+    assert ctr is None, ctr
+
+    # And the reports that were reading correctly still do.
+    for name, want in (("benton_rodeo.pdf", (53_280, 89, 0.17)),
+                       ("central_penn.pdf", (199_185, 337, 0.20)),
+                       ("watsontown.pdf", (484_687, 735, 0.16))):
+        assert headline(pdf_text(FIXTURES / name)) == want, name
+
+
+def test_a_spend_tile_without_a_dollar_sign_is_still_money():
+    """McNutt's Performance Max Cost tile reads "Amount spent on the campaign"
+    and then "1,800.36" - no sign on it.
+
+    So nothing was found, and the pacing panel said "-/$2,000 no comparison" on
+    a report that prints the spend in ninety-point type."""
+    from app.checks.parser import pdf_text
+    from app.checks.spend import report_spend
+
+    got = report_spend(pdf_text(FIXTURES / "mcnutt_site_services.pdf"))
+    assert got == {"Performance Max": 1800.36}, got
+
+    # The bare number is only read under a tile already known to be a cost, so
+    # it cannot wander off and take an impression count for money.
+    from app.checks.spend import tile_value
+    assert tile_value("Impressions\n\n   54,544\n", "Impressions") == 54544.0
+    assert tile_value("Nothing here\n\n   54,544\n", "PPC Ad Cost") is None
