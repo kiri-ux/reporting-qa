@@ -1,4 +1,4 @@
-build 2026.09.02-172
+build 2026.09.02-173
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -125,4 +125,26 @@ again" on the LIFETIME first, then on the monthly. In that order - the lifetime
 is where the wrong 10 and 2 are stored, and the monthly is only repeating them.
 
 
-838 tests pass.
+YOU ARE NOT DOING ANYTHING WRONG
+================================
+Three builds have now corrected the monthly and left the number it is being
+compared to. That is my fault three times over, so this build stops the whole
+class rather than the instance.
+
+THE CHECK ABSTAINS ON A HALF NOBODY HAS RE-READ. "The month reports more than
+the whole campaign" is a comparison between two STORED numbers, and a stored
+number is only as good as the reader that wrote it. If the other report has not
+been read by today's code, there is no comparison to make and the check says so
+instead of failing a report against a figure from an older parser. It shows in
+the checks list as skipped, with the reason.
+
+AND ONE PRESS FIXES THE PAIR. Re-checking a report now re-reads its counterpart
+first when the counterpart is stale. So "Check this file again" on whichever
+report you happen to be looking at puts both right - you do not have to know
+that the wrong number lives on the other one.
+
+For McNutt: install this, open either report, press Check this file again. The
+finding goes.
+
+
+839 tests pass.

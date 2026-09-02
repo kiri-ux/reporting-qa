@@ -158,7 +158,16 @@ def sibling_for(db, client: str, period: str, market: str,
     return {"impressions": float(other.impressions or 0) or None,
             "clicks": float(other.clicks or 0) or None,
             "is_lifetime": bool(other.is_lifetime),
-            "filename": other.filename or ""}
+            "filename": other.filename or "",
+            # WHETHER TODAY'S CODE HAS ACTUALLY READ IT.
+            #
+            # The comparison is between two stored numbers, and one of them
+            # belongs to a report nobody has looked at since the reader was
+            # fixed. McNutt's lifetime sat at 10 impressions and 2 clicks -
+            # read off page nine by a parser that has since been corrected -
+            # and the monthly was failed for printing 54,544 against it, three
+            # builds running. The check abstains on a stale half now.
+            "fresh": (other.rules_version or "") == rules_version()}
 
 
 def sibling_of(db, rep) -> dict:
@@ -176,7 +185,8 @@ def sibling_of(db, rep) -> dict:
                        bool(rep.is_lifetime), exclude_id=rep.id)
 
 
-def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
+def recheck(db: Session, rep: Report, *, manual: bool = False,
+            _pair: bool = True) -> dict:
     """Re-read this report's PDF with today's rules. Returns what changed."""
     from .checks.rules import run_all
     from .cycle import cycle_for
@@ -191,6 +201,27 @@ def recheck(db: Session, rep: Report, *, manual: bool = False) -> dict:
         rep.rules_version = rules_version()
         db.commit()
         return {"ok": False, "reason": "the stored PDF is gone"}
+
+    # THE OTHER HALF OF THE PAIR FIRST, IF NOBODY HAS READ IT LATELY.
+    #
+    # A monthly is compared against its lifetime, so re-reading the monthly
+    # while the lifetime still carries numbers from an older parser corrects
+    # the wrong one of the two. Pressing "Check this file again" on the report
+    # you are looking at should just work, whichever of the pair that is.
+    #
+    # One level deep - the sibling is re-checked with _pair off, so this cannot
+    # bounce back and forth between the two.
+    if _pair:
+        for other in db.scalars(select(Report).where(
+                Report.client == rep.client, Report.period == rep.period,
+                Report.market == (rep.market or ""),
+                Report.is_lifetime.is_(not bool(rep.is_lifetime)),
+                Report.id != rep.id)).all():
+            if (other.rules_version or "") != rules_version():
+                try:
+                    recheck(db, other, _pair=False)
+                except Exception:                            # noqa: BLE001
+                    log.exception("sibling re-check failed for %s", other.id)
 
     # A REPORT WITH NO MARKET BELONGS TO NO PARTNER.
     #

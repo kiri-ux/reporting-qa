@@ -3306,3 +3306,63 @@ def test_the_fingerprint_covers_what_a_recheck_stores():
     h.update(b"recheck.py")
     h.update((root / "recheck.py").read_bytes())
     assert h.hexdigest()[:16] == before
+
+
+def test_the_pair_check_abstains_on_a_half_nobody_has_re_read(tmp_path, monkeypatch):
+    """Three builds in a row corrected McNutt's monthly and left the number it
+    was being compared to.
+
+    The comparison is between two stored numbers, and a stored number is only
+    as good as the reader that wrote it. A finding this loud should not be made
+    out of a figure nobody has looked at since the reader was fixed.
+
+    And pressing "Check this file again" on either half should just work: the
+    stale one is re-read first.
+    """
+    import importlib
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'pair.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app.recheck import recheck, sibling_of
+    from app.version import rules_version
+
+    db = dbm.SessionLocal()
+    b = dbm.Batch(market="M", period="2026-08"); db.add(b); db.flush()
+    pdf = str(FIXTURES / "mcnutt_site_services.pdf")
+    month = dbm.Report(batch_id=b.id, client="McNutt Site Services", market="M",
+                       period="2026-08", stored_path=pdf, severity="pass",
+                       filename="August 2026_McNutt Site Services 51681.pdf",
+                       findings=[], acked=[], impressions=54_544, clicks=3_303,
+                       rules_version=rules_version())
+    life = dbm.Report(batch_id=b.id, client="McNutt Site Services", market="M",
+                      period="2026-08", stored_path=pdf, is_lifetime=True,
+                      filename="Lifetime_McNutt Site Services 51681.pdf",
+                      severity="pass", findings=[], acked=[],
+                      impressions=10, clicks=2, rules_version="older")
+    db.add_all([month, life]); db.commit()
+
+    # The lifetime has not been read by today's code, so it is not something to
+    # fail a report against.
+    from app.checks.rules import check_month_within_lifetime
+    sib = sibling_of(db, month)
+    assert sib["fresh"] is False
+    assert check_month_within_lifetime(
+        {"imps": 54_544, "clicks": 3_303, "is_lifetime": False,
+         "sibling": sib}) == []
+
+    # It still fires when both halves are current and the month really is
+    # bigger - that is what the check is for.
+    fresh = dict(sib, fresh=True)
+    out = check_month_within_lifetime(
+        {"imps": 54_544, "clicks": 3_303, "is_lifetime": False,
+         "sibling": fresh})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+
+    # And re-checking the month re-reads the stale lifetime on the way past, so
+    # one press of the button on either report puts the pair right.
+    recheck(db, month)
+    db.expire_all()
+    assert db.get(dbm.Report, life.id).impressions == 54_544
+    assert db.get(dbm.Report, month.id).findings == []
+    db.close()

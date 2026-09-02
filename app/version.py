@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.02-172"
-BUILD_NOTES = ("The fingerprint covers the code that stores a re-check's "
-               "answers, so a fix to it actually reaches the reports.")
+BUILD = "2026.09.02-173"
+BUILD_NOTES = ("A pair is only compared when both halves have been read by "
+               "the same code, and pressing re-check fixes both.")
 
 # ---------------------------------------------------------------------------
 

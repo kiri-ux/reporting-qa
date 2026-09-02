@@ -873,6 +873,21 @@ def check_month_within_lifetime(ctx) -> list[dict]:
     sib = ctx.get("sibling") or {}
     if not sib:
         return []
+    # BOTH HALVES HAVE TO HAVE BEEN READ BY THE SAME CODE.
+    #
+    # This is a comparison between two stored numbers, and a stored number is
+    # only as good as the reader that wrote it. McNutt Site Services' lifetime
+    # was stored at 10 impressions and 2 clicks - read off page nine by a
+    # parser that has since been corrected - and the monthly was failed for
+    # printing 54,544 against it on three builds in a row, because each fix
+    # corrected the monthly and left the number it was being compared to.
+    #
+    # A finding this loud should not be made out of a figure nobody has
+    # re-read. When the other half is stale this abstains and says so, and the
+    # sweep will come back to it: a re-check that changes a report's numbers
+    # marks its sibling stale on the way past.
+    if sib.get("fresh") is False:
+        return []
     # Whichever of the two this report is, the comparison is the same one: the
     # month cannot be bigger than the campaign that contains it.
     mine = {"impressions": ctx.get("imps"), "clicks": ctx.get("clicks")}
@@ -1820,6 +1835,10 @@ SKIP_WHY = {
     "check_client_matches_order": "the file it arrived as carries no client name",
     "check_impression_pacing": "no order figures loaded for this client",
     "check_headline_ctr": "no top-line impressions or clicks on the report",
+    "check_month_within_lifetime": "the other half of the pair has not been "
+                                   "read by today's code yet - comparing "
+                                   "against a number nobody has re-read is how "
+                                   "a fixed report keeps failing",
     "check_line_items": "no grids on the report",
     "check_creative": "no grids on the report",
     "check_device": "no grids on the report",
