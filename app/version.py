@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.01-166"
-BUILD_NOTES = ("An order number opens what is stored under it, and a "
-               "cancelled campaign is never told it runs to a date.")
+BUILD = "2026.09.01-167"
+BUILD_NOTES = ("The health check cannot queue behind the work, and W&L Mazda "
+               "is W and L Mazda.")
 
 # ---------------------------------------------------------------------------
 

@@ -18,6 +18,7 @@ import io
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 
 from dateutil import parser as dp
@@ -446,6 +447,21 @@ def import_io_export(db: Session, sources, period: str | None = None,
     for src in sources:
         for r in _open_source(src):
             rows_read += 1
+            # LET GO OF THE BOX EVERY SO OFTEN.
+            #
+            # This is a couple of million rows of pure-Python parsing, and it
+            # runs in a thread inside the web process - so for the minutes it
+            # takes, it holds the interpreter lock in a tight loop and nothing
+            # else in the process gets a fair slice. Render's health check gives
+            # up after five seconds, and overnight, while reports were coming
+            # in, it did: "HTTP health check failed (timed out after 5
+            # seconds)" on a service that was working perfectly, just busy.
+            #
+            # A sleep - unlike a yield - actually releases the lock, so the
+            # event loop gets to answer. Every few thousand rows, which on the
+            # real export is about a third of a second of sleeping in total.
+            if not rows_read % 4000:
+                time.sleep(0.002)
 
             d = r.get("date") or ""
             if d:

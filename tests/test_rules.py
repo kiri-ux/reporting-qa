@@ -3124,3 +3124,58 @@ def test_a_verdict_can_be_taken_back_in_bulk(tmp_path, monkeypatch):
         r = db.get(db_mod.Report, i)
         assert r.review_state == "new" and r.reviewed_by == ""
         assert r.reviewed_at is None
+
+
+def test_an_ampersand_and_the_word_and_are_the_same_client():
+    """W&L Mazda's report arrived filed as "W and L Mazda" and its cover page
+    says "W&L Mazda".
+
+    Flattened by stripping punctuation that is "wandlmazda" against "wlmazda",
+    far enough apart that the fuzzy match said no - so a correct report was
+    failed as a different client's, which is the loudest finding this tool has.
+    """
+    from app.checks.rules import check_client_matches_order
+
+    assert check_client_matches_order(
+        {"filed_as": "W and L Mazda", "client": "W&L Mazda"}) == []
+    assert check_client_matches_order(
+        {"filed_as": "W&L Subaru", "client": "W and L Subaru"}) == []
+    assert check_client_matches_order(
+        {"filed_as": "Smith & Jones Law", "client": "Smith and Jones Law"}) == []
+
+    # And it still catches the thing it exists for: a whole report pulled on
+    # the wrong client.
+    out = check_client_matches_order(
+        {"filed_as": "St. Francis AMT Program", "client": "Everett Railroad Co"})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+
+
+def test_the_health_check_cannot_queue_behind_the_work():
+    """Render gives up on it after five seconds and calls the service down.
+
+    That is what happened overnight while reports were coming in: a health
+    check that failed on a service that was working perfectly, just busy. A
+    plain `def` endpoint is handed to the threadpool, so it queues behind
+    whatever else is in there - and the one time this route matters is the one
+    time the box is busy.
+    """
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    i = src.index('@app.get("/healthz")')
+    assert src[i:i + 120].split("\n")[1].startswith("async def healthz("), \
+        "the liveness route has to be answered on the event loop"
+    body = src[i:src.index("@app.get", i + 10)]
+    for banned in ("Depends(get_db)", "Session", "Path("):
+        assert banned not in body, f"the liveness route must not touch {banned}"
+
+
+def test_the_big_parse_lets_go_of_the_box():
+    """A couple of million rows of pure-Python parsing, in a thread inside the
+    web process. For the minutes it takes it holds the interpreter lock in a
+    tight loop and nothing else gets a fair slice - including the health check.
+
+    A sleep, unlike a yield, actually releases the lock."""
+    src = (Path(__file__).resolve().parents[1] / "app" / "orders_io.py").read_text()
+    i = src.index("for r in _open_source(src):")
+    window = src[i:i + 1400]
+    assert "time.sleep(" in window, "nothing releases the lock inside the row loop"
+    assert "rows_read %" in window, "and it has to be every so often, not every row"

@@ -1186,8 +1186,20 @@ def check_client_data(ctx) -> list[dict]:
                        f"{mine:,.0f} of {total:,.0f}")], where=COVER)]
 
 
+# "&" AND "AND" ARE THE SAME WORD, AND STRIPPING PUNCTUATION MADE THEM TWO.
+#
+# W&L Mazda's report arrived filed as "W and L Mazda" and its cover page says
+# "W&L Mazda". Flattened, that is "wandlmazda" against "wlmazda" - far enough
+# apart that the fuzzy match said no - so a correct report was failed as a
+# different client's, which is the loudest finding this tool has.
+#
+# The ampersand becomes the word before the punctuation goes, so the two
+# spellings meet. Same for a plus sign, which the tracker uses the same way.
+AMPERSAND = re.compile(r"\s*[&+]\s*")
+
+
 def _flat_name(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+    return re.sub(r"[^a-z0-9]", "", AMPERSAND.sub(" and ", (s or "")).lower())
 
 
 def _same_client(a: str, b: str) -> bool:

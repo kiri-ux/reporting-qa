@@ -524,9 +524,24 @@ def _startup():
 
 
 @app.get("/healthz")
-def healthz():
+async def healthz():
     """Includes the build so you can confirm what is actually live without
-    trusting the dashboard, which looks identical either way."""
+    trusting the dashboard, which looks identical either way.
+
+    ASYNC ON PURPOSE, AND IT DOES NOTHING.
+
+    A plain `def` endpoint is handed to the threadpool, so it queues behind
+    whatever else is in there - and the one time this route matters is the one
+    time the box is busy. Render gives up on it after five seconds and calls
+    the service down, which is what happened overnight while reports were
+    coming in: a health check that failed on a service that was working
+    perfectly, just busy.
+
+    Answered on the event loop, it needs one slice of the interpreter rather
+    than a free thread. Nothing in here touches the database or the disk: the
+    question this route answers is "is this process alive", and anything else
+    it asked could fail for a reason that is not that.
+    """
     return {"ok": True, **version.info(), "rules": version.rules_version()}
 
 
