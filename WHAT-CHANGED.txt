@@ -1,4 +1,4 @@
-build 2026.09.02-173
+build 2026.09.02-174
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -22,6 +22,8 @@ app/templates/order_lines.html   (new)
 app/templates/orders.html
 app/templates/report_orders_body.html
 app/templates/viewer.html
+app/templates/why_slow.html
+app/timing.py
 app/version.py
 tests/fixtures/mcnutt_site_services.pdf   (new)
 tests/test_board_extras.py
@@ -30,121 +32,49 @@ tests/test_rules.py
 tests/test_timing.py
 
 
-McNUTT SITE SERVICES - THE TOP LINE CAME OFF PAGE NINE
-======================================================
-Page one says 54,544 impressions and 3,303 clicks. The one line item says
-exactly the same. The report was failed twice anyway, "against a stated 10" and
-"against a stated 2".
+"15 RESTARTS" WAS FIVE DEPLOYS WEARING A COSTUME
+================================================
+One row is written per worker PROCESS, and there are three workers - so
+installing a build writes three rows. Fifteen of them in an hour is about five
+deploys, which is what you were doing.
 
-The pattern that finds the top line searches with DOTALL and a lazy `.*?`,
-which means it will walk the entire document looking for anything that fits its
-shape. It walked twenty-four THOUSAND characters - past the tiles, past the
-line items - and matched "10  2  20%" out of a month-over-month comparison
-table nine pages later. Then it compared the line item against that.
-
-Two things wrong, both fixed:
-
-  * A page-one tile is on page one. The search is bounded to the label's own
-    window and stops dead at the page break.
-  * The tiles are not always two across. This report has an Events tile, so the
-    numbers do not land on one line in the order the old pattern assumed - page
-    one reads "5,343" on its own line and then "54,544   3,303". It reads by
-    column now, which is what the eye does: the number under the Clicks label
-    is the clicks.
-
-It says NO CTR on a report like this rather than the wrong percentage. There is
-no CTR tile - the 9.80% beside those two is the Event Rate - and answering with
-it would put every CTR rule against a different number entirely.
-
-Every report that was reading correctly still reads the same. There is a test
-holding all seven, and this PDF is now a fixture.
+The page said "That is not normal and it is the reason for the wait. It is
+almost always memory" about an entirely normal afternoon. Starts within ninety
+seconds of each other are one event now, and it says both numbers - the
+restarts, and the worker starts behind them. The verdict text points at the
+restart list instead of guessing: every entry shows the build it came up on,
+and if they are all the SAME build then something really is killing it.
 
 
-AND THE SPEND HAD NO DOLLAR SIGN ON IT
-======================================
-"Performance Max Cost - Amount spent on the campaign - 1,800.36". No sign. The
-reader wanted one, found nothing, and the panel said "-/$2,000 no comparison"
-about a report printing the spend in ninety-point type.
-
-A bare number counts as money under a tile whose label is already known to be a
-cost, still matched by column - so it cannot wander off and read an impression
-count as dollars. McNutt now paces 1,800.36 against 2,000: 10% short.
-
-Whole report re-checked end to end: clean pass.
+"THERE ARE TWO OF THESE"
+========================
+Written down once, and still saying two after build 169 made it three. That
+quietly makes every division on the page wrong - the request list is a third of
+the traffic, not half. It counts the workers now.
 
 
-AND THE FIX COULD NOT REACH THE NUMBERS
-=======================================
-That is the one I should have caught yesterday, and it is the reason the
-failure was still there after 170.
-
-A background re-check rewrites a report's findings, its severity and its
-products - and leaves impressions and clicks exactly as the import first read
-them. So a fix to a RULE reaches every stored report, and a fix to the READER
-reaches none of them.
-
-McNutt's lifetime was stored at 10 impressions and 2 clicks by the parser that
-walked nine pages past the tiles. 170 fixed the parser. The lifetime re-checked
-and came back clean - and its stored numbers stayed 10 and 2, because nothing
-writes them. Then the monthly, which is compared against the lifetime, read
-those numbers and said:
-
-  This month prints impressions 54,544 against 10; clicks 3,303 against 2 on
-  the lifetime.
-
-A real finding on a real report, made entirely of a number nothing in the
-system could correct.
-
-A re-check writes impressions, clicks and the page count back now. And when
-they change it marks the OTHER half of the pair stale, because the sweep has no
-idea which order it will reach the two in - fixing the lifetime while the month
-still carries a finding about the old numbers is only half a fix.
-
-Nothing to press. The sweep will re-read both.
+799 AND 2,029 WERE THE SAME QUEUE
+=================================
+The board says 799 and why-slow said 2,029, which makes both of them
+untrustworthy. Why-slow was asking unscoped: every period, and the signed-off
+reports the sweep deliberately leaves alone. It asks the board's question now,
+with the bigger number beside it and labelled.
 
 
-AND 171 COULD NOT REACH THE REPORTS EITHER
-==========================================
-Which is why the failure was still on your screen with 171 in the footer.
+WHAT YOUR PAGE ACTUALLY SAYS
+============================
+Nothing on it is about the dashboard being slow.
 
-A report re-checks itself when the fingerprint of the checking code changes.
-That fingerprint hashes app/checks/ and nothing else. 171 changed only
-recheck.py - so the fingerprint did not move, nothing was queued, and no report
-ever ran the fix. It was sitting in the build doing nothing.
+  /healthz            0.000-0.008s
+  POST /inbound/zapier   23-25s, 27 queries, ~6-7s of that in the database
 
-That is the same shape as a bug this tool already has a paragraph about
-elsewhere: the fingerprint was too narrow by exactly the thing it was written
-for. recheck.py decides what a re-check WRITES BACK, so a change to it has to
-reach the stored reports just as much as a change to a rule does. It is in the
-fingerprint now, with a test that fails if it ever falls out again.
+The health check is answering instantly - build 169 and 170 did their job. The
+slow thing is a report arriving: 25 seconds each, and about 17 of those are
+this code doing work rather than waiting on the database. That is the pull
+running, which is what should be happening at 3pm on the 2nd.
 
-Installing this queues every report, and this time the fix runs.
-
-If you do not want to wait for the sweep on McNutt: press "Check this file
-again" on the LIFETIME first, then on the monthly. In that order - the lifetime
-is where the wrong 10 and 2 are stored, and the monthly is only repeating them.
+Memory 348 MB of 2,048. Load 9.4, which inside a container counts the whole
+host including the neighbors.
 
 
-YOU ARE NOT DOING ANYTHING WRONG
-================================
-Three builds have now corrected the monthly and left the number it is being
-compared to. That is my fault three times over, so this build stops the whole
-class rather than the instance.
-
-THE CHECK ABSTAINS ON A HALF NOBODY HAS RE-READ. "The month reports more than
-the whole campaign" is a comparison between two STORED numbers, and a stored
-number is only as good as the reader that wrote it. If the other report has not
-been read by today's code, there is no comparison to make and the check says so
-instead of failing a report against a figure from an older parser. It shows in
-the checks list as skipped, with the reason.
-
-AND ONE PRESS FIXES THE PAIR. Re-checking a report now re-reads its counterpart
-first when the counterpart is stale. So "Check this file again" on whichever
-report you happen to be looking at puts both right - you do not have to know
-that the wrong number lives on the other one.
-
-For McNutt: install this, open either report, press Check this file again. The
-finding goes.
-
-
-839 tests pass.
+841 tests pass.

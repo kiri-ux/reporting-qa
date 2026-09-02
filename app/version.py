@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.02-173"
-BUILD_NOTES = ("A pair is only compared when both halves have been read by "
-               "the same code, and pressing re-check fixes both.")
+BUILD = "2026.09.02-174"
+BUILD_NOTES = ("Why-slow counts deploys rather than worker processes, and "
+               "the same queue as the board.")
 
 # ---------------------------------------------------------------------------
 

@@ -23,10 +23,15 @@
 
 <section>
   <h2>This worker</h2>
+  {# HOW MANY THERE ACTUALLY ARE, not a number written down once. It said
+     "there are two of these" long after there were three, which quietly makes
+     every division on this page wrong. #}
   <p class="sub">
-    There are two of these and your page was answered by one of them, so the
-    request list further down is only half the traffic. The restart list is
-    both.
+    {% if workers %}There are {{ workers }} of these{% else %}There are several
+    of these{% endif %} and your page was answered by one of them, so the
+    request list further down is
+    {% if workers %}about a {{ 'half' if workers == 2 else 'third' if workers == 3 else 'fraction' }} of{% else %}only part of{% endif %}
+    the traffic. The restart list is all of them.
   </p>
   <div class="tw"><table>
     <tbody>
@@ -52,9 +57,20 @@
       <tr><th>Requests recorded</th><td>{{ summary.requests_seen }}</td></tr>
       <tr><th>Typical request</th>
         <td>{{ summary.median_seconds }}s, slowest {{ summary.slowest_seconds }}s</td></tr>
-      <tr><th>Restarts in the last hour</th><td>{{ boots_hour }}</td></tr>
+      {# A WORKER STARTING IS NOT THE SERVICE RESTARTING. One row is written
+         per worker process, so a single deploy writes three of them - and
+         "restarted 15 times" was five deploys wearing a costume. #}
+      <tr><th>Restarts in the last hour</th>
+        <td>{{ restarts_hour }}{% if boots_hour != restarts_hour %}
+          <span class="acct">&nbsp;· {{ boots_hour }} worker starts across
+            {{ workers or '?' }} workers</span>{% endif %}</td></tr>
       {% if queue is not none %}
-      <tr><th>Reports awaiting a re-check</th><td>{{ queue }}</td></tr>
+      <tr><th>Reports awaiting a re-check</th>
+        <td>{{ queue }}
+          <span class="acct">&nbsp;· still open, this cycle - the number on the
+            board{% if queue_all and queue_all != queue %}. {{ queue_all }}
+            counting every period and the signed-off ones, which the sweep
+            leaves alone{% endif %}</span></td></tr>
       {% endif %}
       {% if last_sync %}
       <tr><th>Last order sync</th>

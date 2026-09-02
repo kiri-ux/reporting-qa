@@ -600,24 +600,48 @@ def why_slow(request: Request, db: Session = Depends(get_db)):
     """
     boots = _boot_rows(db)
     hour_ago = dt.datetime.utcnow() - dt.timedelta(hours=1)
-    boots_hour = sum(1 for b in boots if b.at >= hour_ago)
+    recent_boots = [b for b in boots if b.at >= hour_ago]
+    boots_hour = len(recent_boots)
+    # A WORKER STARTING IS NOT THE SERVICE RESTARTING.
+    #
+    # One row is written per worker PROCESS, and there are three of them - so a
+    # single deploy writes three rows and "restarted 15 times in the last hour"
+    # is five deploys wearing a costume. That reads as a box falling over on a
+    # day somebody was only installing builds.
+    #
+    # Starts within a minute of each other are one event, which is what a
+    # deploy looks like from in here.
+    events = []
+    for b in sorted(recent_boots, key=lambda x: x.at):
+        if events and (b.at - events[-1][-1].at).total_seconds() <= 90:
+            events[-1].append(b)
+        else:
+            events.append([b])
+    restarts_hour = len(events)
+    # How many workers are actually up: distinct processes in the newest event.
+    workers = len({b.pid for b in events[-1]}) if events else 0
     try:
         from .recheck import running_jobs, stale_count
-        queue = stale_count(db)
+        # THE SAME NUMBER THE BOARD SHOWS. This asked unscoped - every period,
+        # signed-off ones included - so the board said 799 and this page said
+        # 2,029 about the same queue, which makes both of them untrustworthy.
+        queue = stale_count(db, scoped=True, skip_signed=True)
+        queue_all = stale_count(db)
         jobs = running_jobs(db)
     except Exception:                                        # noqa: BLE001
-        queue, jobs = None, {}
+        queue, queue_all, jobs = None, None, {}
     from .db import SlowRequest
     slow = db.scalars(select(SlowRequest)
                       .order_by(desc(SlowRequest.at)).limit(60)).all()
     return templates.TemplateResponse(request, "why_slow.html", {
         "request": request, "nav": "whyslow",
         "summary": timing.summary(),
-        "verdict": timing.verdict(boots_hour),
+        "verdict": timing.verdict(restarts_hour, workers),
         "recent": timing.recent(60), "slow": slow,
         "slow_seconds": SLOW_SECONDS,
         "boots": boots, "boots_hour": boots_hour,
-        "queue": queue, "jobs": jobs,
+        "restarts_hour": restarts_hour, "workers": workers,
+        "queue": queue, "queue_all": queue_all, "jobs": jobs,
         "last_sync": last_sync(db),
         "now": dt.datetime.utcnow(),
     })

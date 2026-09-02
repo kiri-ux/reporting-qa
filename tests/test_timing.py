@@ -1294,3 +1294,38 @@ def test_there_is_somewhere_for_a_cheap_request_to_land():
     assert '"--workers","3"' in docker
     # And the recycler still staggers them, or all three cold-start together.
     assert '"--max-requests-jitter"' in docker
+
+
+def test_a_worker_starting_is_not_the_service_restarting():
+    """One row is written per worker PROCESS, and there are three of them.
+
+    So a single deploy writes three rows and "the service has restarted 15
+    times in the last hour" is five deploys wearing a costume - which reads as
+    a box falling over on a day somebody was only installing builds.
+    """
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    i = src.index("def why_slow(")
+    body = src[i:i + 3000]
+    # Starts within a minute and a half of each other are one event.
+    assert "restarts_hour = len(events)" in body
+    assert "90" in body.split("events[-1][-1].at")[1][:60]
+    # And how many workers there are is measured, not written down once.
+    assert "workers = len({b.pid for b in events[-1]})" in body
+    page = (Path(__file__).resolve().parents[1] / "app" / "templates"
+            / "why_slow.html").read_text()
+    assert "There are two of these" not in page, "it said two long after three"
+    assert "{{ workers }} of these" in page
+
+
+def test_the_two_pages_count_the_same_queue():
+    """The board said 799 and this page said 2,029 about the same thing, which
+    makes both of them untrustworthy. It was asking unscoped - every period,
+    signed-off reports included - and the sweep leaves those alone."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    i = src.index("def why_slow(")
+    body = src[i:i + 3000]
+    assert "stale_count(db, scoped=True, skip_signed=True)" in body
+    # The bigger number is still shown, said out loud rather than unlabeled.
+    assert "queue_all = stale_count(db)" in body

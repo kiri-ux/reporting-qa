@@ -168,7 +168,7 @@ def summary() -> dict:
             "slowest_seconds": slowest, "load": load_average()}
 
 
-def verdict(boots_last_hour: int = 0) -> list[str]:
+def verdict(boots_last_hour: int = 0, workers: int = 0) -> list[str]:
     """Plain sentences about what the numbers above mean.
 
     A table of milliseconds is not an answer to "why is it slow". These are the
@@ -186,9 +186,10 @@ def verdict(boots_last_hour: int = 0) -> list[str]:
     if boots_last_hour >= 4:
         out.append(
             f"The service has restarted {boots_last_hour} times in the last "
-            "hour. That is not normal and it is the reason for the wait: "
-            "every restart makes the next page load pay for the boot. It is "
-            "almost always memory - something read a file too big for the box.")
+            "hour. Installing a build is one of these, so several in a row on "
+            "a day of deploys is expected - the restart list below shows the "
+            "build each one came up on, and if they are all the same build "
+            "then something is killing it. That is almost always memory.")
     rss, cap = s["rss_mb"], s["memory_limit_mb"]
     if rss and cap and rss > cap * 0.85:
         out.append(
