@@ -110,7 +110,19 @@ async def _stopwatch(request: Request, call_next):
         # The list above is in memory and per worker, so seeing it means being
         # at the screen while it happens and catching the right one of the two.
         # This one can be read afterward.
-        if took >= SLOW_SECONDS and not request.url.path.startswith("/healthz"):
+        path = request.url.path
+        # A SLOW HEALTH CHECK IS THE ONE WE MOST NEED WRITTEN DOWN.
+        #
+        # It was excluded because it is trivial and never interesting - and
+        # then Render started mailing about health checks timing out and there
+        # was no evidence at all, only a service that was plainly fine by the
+        # time anybody looked. It is trivial, so ANY delay on it is news: the
+        # threshold is one second rather than three, and it says what else the
+        # box was doing.
+        if path.startswith("/healthz"):
+            if took >= 1.0:
+                _log_slow(request, status, took, box)
+        elif took >= SLOW_SECONDS:
             _log_slow(request, status, took, box)
 
 

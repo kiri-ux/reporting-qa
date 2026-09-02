@@ -1,6 +1,7 @@
-build 2026.09.01-168
+build 2026.09.02-169
 Changed files only. Everything since 130 - install this one.
 
+Dockerfile
 app/audit.py
 app/board.py
 app/checks/products.py
@@ -86,4 +87,34 @@ serve file first, then the roster sheet, then the order export - so the serve
 days land in seconds and the slow part happens behind them.
 
 
-832 tests pass.
+SOMEWHERE FOR A CHEAP REQUEST TO LAND
+=====================================
+The health check email came again in the middle of a working morning, with
+several people on the board. That is the other half of the same problem and it
+is worth being plain about it: nothing is down either time.
+
+The box has half a core and was running two workers. A worker handles one
+request at a time, and building the cycle board is seconds of real work - so
+two people loading it at the same moment, or one person plus the order re-read,
+and there is nobody left to answer /healthz. Render waits five seconds and
+calls the instance failed.
+
+Three workers now. On half a core that buys no extra work per second; what it
+buys is somewhere for a free request to land while the other two are busy,
+which is exactly what this alert is about. Measured headroom: the instance
+reports 2,048 MB, a worker sits around 200 MB, and the order parse peaks about
+233 MB on top of one of them.
+
+AND IT IS WRITTEN DOWN NOW. A slow /healthz was excluded from the slow-request
+log for being trivial and never interesting - so when Render started mailing
+about it there was no evidence at all, only a service that was plainly fine by
+the time anybody looked. Any /healthz over one second is recorded now, with
+what the box was doing. /why-slow shows them.
+
+IF IT KEEPS HAPPENING: the real fix is that the board page is expensive to
+build - it is rebuilt from every order line on every load - and that is a piece
+of work rather than a tweak. Say the word and I will measure it properly off
+/why-slow and cache it.
+
+
+834 tests pass.

@@ -1266,3 +1266,31 @@ def test_a_spend_product_gets_its_campaign_total_from_the_months_too():
            for l in db.query(dbm.OrderLine).all()]
     assert got == [(1750.0, 21000.0, None, None)]
     db.close()
+
+
+def test_a_slow_health_check_is_written_down():
+    """It was excluded because it is trivial and never interesting.
+
+    Then Render started mailing about health checks timing out and there was no
+    evidence at all, only a service that was plainly fine by the time anybody
+    looked. It is trivial, so ANY delay on it is news.
+    """
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    i = src.index("async def _stopwatch")
+    body = src[i:i + 2200]
+    assert 'if path.startswith("/healthz"):' in body
+    assert "if took >= 1.0:" in body, "a lower bar than a page, because it is free"
+    assert "elif took >= SLOW_SECONDS:" in body
+
+
+def test_there_is_somewhere_for_a_cheap_request_to_land():
+    """The box has half a core, so a third worker buys no extra work per
+    second. What it buys is somewhere for /healthz to land while the other two
+    are busy - and with two, it only takes two slow page builds at the same
+    moment for there to be nobody free to say yes."""
+    from pathlib import Path
+    docker = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+    assert '"--workers","3"' in docker
+    # And the recycler still staggers them, or all three cold-start together.
+    assert '"--max-requests-jitter"' in docker
