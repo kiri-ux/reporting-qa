@@ -1,4 +1,4 @@
-build 2026.09.02-171
+build 2026.09.02-172
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -103,4 +103,26 @@ still carries a finding about the old numbers is only half a fix.
 Nothing to press. The sweep will re-read both.
 
 
-837 tests pass.
+AND 171 COULD NOT REACH THE REPORTS EITHER
+==========================================
+Which is why the failure was still on your screen with 171 in the footer.
+
+A report re-checks itself when the fingerprint of the checking code changes.
+That fingerprint hashes app/checks/ and nothing else. 171 changed only
+recheck.py - so the fingerprint did not move, nothing was queued, and no report
+ever ran the fix. It was sitting in the build doing nothing.
+
+That is the same shape as a bug this tool already has a paragraph about
+elsewhere: the fingerprint was too narrow by exactly the thing it was written
+for. recheck.py decides what a re-check WRITES BACK, so a change to it has to
+reach the stored reports just as much as a change to a rule does. It is in the
+fingerprint now, with a test that fails if it ever falls out again.
+
+Installing this queues every report, and this time the fix runs.
+
+If you do not want to wait for the sweep on McNutt: press "Check this file
+again" on the LIFETIME first, then on the monthly. In that order - the lifetime
+is where the wrong 10 and 2 are stored, and the monthly is only repeating them.
+
+
+838 tests pass.

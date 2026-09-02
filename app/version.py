@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.02-171"
-BUILD_NOTES = ("A re-check writes back the numbers the report IS, not only "
-               "the ones it is judged by.")
+BUILD = "2026.09.02-172"
+BUILD_NOTES = ("The fingerprint covers the code that stores a re-check's "
+               "answers, so a fix to it actually reaches the reports.")
 
 # ---------------------------------------------------------------------------
 
@@ -61,6 +61,26 @@ def rules_fingerprint() -> str:
     for name in sorted(p.name for p in here.glob("*.py")):
         h.update(name.encode())
         h.update((here / name).read_bytes())
+    # AND THE CODE THAT DECIDES WHAT A RE-CHECK KEEPS.
+    #
+    # This hashed the rules and nothing else, which is too narrow by exactly
+    # the bug it was written for - the same shape as the one product_map_version
+    # has a paragraph about.
+    #
+    # recheck.py is what writes a re-check's answers back onto the report, and
+    # for a long time it wrote the findings and left the impressions and clicks
+    # alone. Fixing that changed no file under checks/, so the fingerprint did
+    # not move, so nothing was queued, so no report ever ran the fixed code:
+    # McNutt's monthly went on saying "54,544 against 10" with the fix sitting
+    # right there in the build. A deploy that changes what a re-check stores
+    # has to reach the stored reports, the same as a deploy that changes what
+    # it decides.
+    for extra in (Path(__file__).resolve().parent / "recheck.py",):
+        try:
+            h.update(extra.name.encode())
+            h.update(extra.read_bytes())
+        except OSError:
+            pass
     return h.hexdigest()[:16]
 
 

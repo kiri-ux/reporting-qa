@@ -3277,3 +3277,32 @@ def test_a_recheck_writes_back_the_numbers_the_report_is(tmp_path, monkeypatch):
     month = db.get(dbm.Report, month.id)
     assert month.rules_version == "", "the other half of the pair was left stale"
     db.close()
+
+
+def test_the_fingerprint_covers_what_a_recheck_stores():
+    """It hashed the rules and nothing else, which is too narrow by exactly the
+    bug it was written for.
+
+    recheck.py is what writes a re-check's answers back onto the report, and
+    for a long time it wrote the findings and left impressions and clicks
+    alone. Fixing that changed no file under checks/, so the fingerprint did
+    not move, so nothing was queued, so no report ever ran the fixed code -
+    McNutt's monthly went on saying "54,544 against 10" with the fix sitting
+    right there in the build.
+    """
+    import hashlib
+    from pathlib import Path
+    from app.version import rules_fingerprint
+
+    root = Path(__file__).resolve().parents[1] / "app"
+    before = rules_fingerprint()
+    # The hash has to actually contain recheck.py, not merely mention it.
+    h = hashlib.sha256()
+    for name in sorted(p.name for p in (root / "checks").glob("*.py")):
+        h.update(name.encode())
+        h.update((root / "checks" / name).read_bytes())
+    assert h.hexdigest()[:16] != before, \
+        "recheck.py is not in the fingerprint - a fix to it reaches nothing"
+    h.update(b"recheck.py")
+    h.update((root / "recheck.py").read_bytes())
+    assert h.hexdigest()[:16] == before
