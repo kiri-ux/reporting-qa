@@ -76,11 +76,16 @@
 {% if stale.total > 200 %}
   <div class="note" style="border-left-color:var(--gold);background:var(--warn-bg);
        margin:0 0 14px">
+    {# WHICH DEPLOY, AND WHAT IT CHANGED. "A deploy changed the checking rules"
+       is true of every one of these and answers nothing - the only way to find
+       out what was actually different was to ask me. The build's own note is
+       right there. #}
     <b>{{ stale.total }} reports are being re-checked in the background.</b>
-    A deploy changed the checking rules, so every report on the board is being
-    read again with them - and while that runs this box is doing two things at
-    once, so pages will be slower than usual. It works through on its own and
-    the number comes down. Nothing is wrong and nothing needs pressing; reports
+    <b>{{ build_label }}</b> changed the checking rules{% if build_notes %} -
+    {{ build_notes }}{% endif %} - so every report on the board is being read
+    again with them, and while that runs this box is doing two things at once,
+    so pages will be slower than usual. It works through on its own and the
+    number comes down. Nothing is wrong and nothing needs pressing; reports
     already signed off are left alone.
   </div>
 {% endif %}

@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-177"
-BUILD_NOTES = ("The first minute after a deploy belongs to whoever is "
-               "looking at the site.")
+BUILD = "2026.09.03-178"
+BUILD_NOTES = ("The serve panel shows which days are in, and a scheduling "
+               "change no longer re-reads every PDF.")
 
 # ---------------------------------------------------------------------------
 
@@ -61,27 +61,49 @@ def rules_fingerprint() -> str:
     for name in sorted(p.name for p in here.glob("*.py")):
         h.update(name.encode())
         h.update((here / name).read_bytes())
-    # AND THE CODE THAT DECIDES WHAT A RE-CHECK KEEPS.
+    # AND THE CODE THAT DECIDES WHAT A RE-CHECK KEEPS - BUT ONLY THAT.
     #
-    # This hashed the rules and nothing else, which is too narrow by exactly
-    # the bug it was written for - the same shape as the one product_map_version
-    # has a paragraph about.
-    #
+    # The rules alone were too narrow by exactly the bug it was written for.
     # recheck.py is what writes a re-check's answers back onto the report, and
     # for a long time it wrote the findings and left the impressions and clicks
-    # alone. Fixing that changed no file under checks/, so the fingerprint did
-    # not move, so nothing was queued, so no report ever ran the fixed code:
-    # McNutt's monthly went on saying "54,544 against 10" with the fix sitting
-    # right there in the build. A deploy that changes what a re-check stores
-    # has to reach the stored reports, the same as a deploy that changes what
-    # it decides.
-    for extra in (Path(__file__).resolve().parent / "recheck.py",):
-        try:
-            h.update(extra.name.encode())
-            h.update(extra.read_bytes())
-        except OSError:
-            pass
+    # alone; fixing that changed no file under checks/, so nothing was queued
+    # and no report ever ran the fix.
+    #
+    # Hashing the WHOLE file was then too wide by as much. Changing when the
+    # sweeper starts - a sleep, nothing to do with how a report is judged -
+    # queued 880 reports for a full re-read, which is an afternoon of pdftotext
+    # for no change of answer at all.
+    #
+    # So: the two functions that actually decide what a stored report ends up
+    # saying, and nothing else in the file. Parsed rather than imported,
+    # because importing recheck from here is a circle.
+    h.update(_recheck_answers().encode())
     return h.hexdigest()[:16]
+
+
+def _recheck_answers() -> str:
+    """The source of the parts of recheck.py that decide what gets stored.
+
+    `recheck` writes the answers onto the report; `sibling_for` is what the
+    pair check compares against. A change to either changes what a stored
+    report says, and has to reach the reports. The rest of the file - pacing,
+    claims, when the sweep starts - does not.
+    """
+    import ast
+    from pathlib import Path
+
+    src_path = Path(__file__).resolve().parent / "recheck.py"
+    try:
+        src = src_path.read_text(encoding="utf-8")
+        tree = ast.parse(src)
+    except (OSError, SyntaxError):
+        return ""
+    out = []
+    for node in tree.body:
+        if (isinstance(node, ast.FunctionDef)
+                and node.name in ("recheck", "sibling_for")):
+            out.append(ast.get_source_segment(src, node) or "")
+    return "\n".join(out)
 
 
 def product_map_version() -> str:

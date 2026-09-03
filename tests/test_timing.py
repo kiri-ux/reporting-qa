@@ -1356,3 +1356,41 @@ def test_the_sweeper_waits_out_the_first_minute():
     i = src.index("def start_sweeper(")
     body = src[i:src.index("_remap_orders_if_stale()", i)]
     assert "time.sleep(60)" in body, "the sweep still starts on top of the deploy"
+
+
+def test_the_recheck_banner_says_which_deploy_and_what_it_changed():
+    """"A deploy changed the checking rules" is true of every one of these and
+    answers nothing - the only way to find out what was actually different was
+    to ask me. The build's own note is right there."""
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[1] / "app" / "templates"
+            / "cycle.html").read_text()
+    i = page.index("reports are being re-checked in the background")
+    banner = page[i:i + 700]
+    assert "{{ build_label }}" in banner
+    assert "{{ build_notes }}" in banner
+
+
+def test_a_scheduling_change_does_not_re_read_every_pdf():
+    """The whole of recheck.py was in the fingerprint, so changing when the
+    sweeper starts - a sleep, nothing to do with how a report is judged -
+    queued 880 reports for a full re-read.
+
+    Only the two functions that decide what a stored report ends up saying are
+    in it: recheck, which writes the answers, and sibling_for, which is what
+    the pair check compares against.
+    """
+    from app.version import _recheck_answers, rules_fingerprint
+    src = _recheck_answers()
+    assert "def recheck(" in src
+    assert "def sibling_for(" in src
+    assert "def start_sweeper" not in src, "a sleep re-reads 880 PDFs again"
+    assert "MAX_REST_LONG" not in src, "so does changing the pacing"
+    # And it is still IN the fingerprint - that was the bug before this one.
+    import hashlib
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "app" / "checks"
+    h = hashlib.sha256()
+    for name in sorted(p.name for p in root.glob("*.py")):
+        h.update(name.encode()); h.update((root / name).read_bytes())
+    assert h.hexdigest()[:16] != rules_fingerprint()

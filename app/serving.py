@@ -570,3 +570,42 @@ def last_served(db: Session, period: str) -> dict[tuple[str, str], object]:
 def has_serving(db: Session, period: str) -> bool:
     return db.scalar(select(ServedDays.id).where(
         ServedDays.period == period).limit(1)) is not None
+
+
+def served_calendar(db: Session, period: str) -> dict:
+    """Which days of the month the serving file actually has, and which it does not.
+
+    THE COUNT NEVER SAID WHICH DAYS. "1,070 clients loaded for August 2026" is
+    true of a file holding one day and a file holding thirty-one, and the
+    difference decides every "did this run" answer on the board - a client is
+    owed a report at seven days and the file quietly deciding it saw three is
+    not something the number can show.
+
+    The dates are already kept per client. This is the union of them.
+    """
+    import calendar
+    import datetime as _dt
+
+    try:
+        y, m = (int(x) for x in (period or "").split("-"))
+    except ValueError:
+        return {}
+    last = calendar.monthrange(y, m)[1]
+    seen: dict[str, int] = {}
+    for row in db.scalars(select(ServedDays)
+                          .where(ServedDays.period == period)).all():
+        for iso in (getattr(row, "day_list", None) or []):
+            seen[str(iso)[:10]] = seen.get(str(iso)[:10], 0) + 1
+    days = []
+    for d in range(1, last + 1):
+        iso = _dt.date(y, m, d).isoformat()
+        days.append({"day": d, "iso": iso, "clients": seen.get(iso, 0),
+                     "weekend": _dt.date(y, m, d).weekday() >= 5})
+    have = [d for d in days if d["clients"]]
+    # A row loaded before the dates were kept has a count and no day_list, so
+    # an empty answer means "not recorded", not "nothing served".
+    return {"days": days, "with_data": len(have), "of": last,
+            "first": have[0]["iso"] if have else "",
+            "last": have[-1]["iso"] if have else "",
+            "missing": [d["iso"] for d in days if not d["clients"]],
+            "busiest": max((d["clients"] for d in days), default=0)}

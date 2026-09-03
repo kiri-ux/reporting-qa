@@ -3346,3 +3346,43 @@ def test_signing_off_lands_on_the_page_you_pressed_it_on(tmp_path, monkeypatch):
                   headers={"referer": f"http://testserver/report/{rid}/view"},
                   follow_redirects=False)
     assert resp.headers["location"] == "/cycle?period=2026-08&group=Dubois"
+
+
+def test_the_serve_panel_says_which_days_are_in(tmp_path, monkeypatch):
+    """"1,070 clients loaded for August 2026" is true of a file holding one day
+    and a file holding thirty-one.
+
+    A client is owed a report at seven days, so the difference between those
+    two files is the difference between "ran" and "did not" on hundreds of
+    rows - and the count could never show it. The dates are already kept per
+    client; this is the union of them.
+    """
+    import datetime as _dt
+    import importlib
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'sd.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app.serving import served_calendar
+
+    db = dbm.SessionLocal()
+    db.add(dbm.ServedDays(period="2026-08", market_key="m", client_key="c",
+                          market="M", client="C", days=3,
+                          day_list=["2026-08-01", "2026-08-02", "2026-08-05"],
+                          first_day=_dt.date(2026, 8, 1),
+                          last_day=_dt.date(2026, 8, 5)))
+    db.commit()
+
+    cal = served_calendar(db, "2026-08")
+    assert cal["with_data"] == 3 and cal["of"] == 31
+    assert cal["first"] == "2026-08-01" and cal["last"] == "2026-08-05"
+    assert "2026-08-03" in cal["missing"] and "2026-08-01" not in cal["missing"]
+    assert len(cal["days"]) == 31
+    # A day nobody served on is the one worth seeing, so it is countable per
+    # day rather than only present or absent.
+    assert cal["days"][0]["clients"] == 1 and cal["days"][2]["clients"] == 0
+    db.close()
+
+    page = (TPL / "orders.html").read_text()
+    assert "days</b> of" in page and 'class="daystrip"' in page

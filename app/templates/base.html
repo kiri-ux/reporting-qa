@@ -230,6 +230,19 @@ button[data-tip],a[data-tip]{cursor:pointer}
 .notowed{margin-top:12px;font-size:13px}
 .notowed summary{cursor:pointer;color:var(--muted)}
 .notowed table td{padding:4px 10px 4px 0}
+/* THE MONTH AS A STRIP. Thirty-one small squares says at a glance what a
+   sentence has to spell out - and a hole in the middle of it is the thing
+   worth seeing. */
+.daystrip{display:flex;flex-wrap:wrap;gap:3px;margin:0 0 12px}
+.daystrip span{display:inline-flex;align-items:center;justify-content:center;
+ min-width:24px;height:22px;border-radius:5px;font-size:11px;font-weight:700;
+ font-family:'GT Walsheim Pro',sans-serif;border:1px solid var(--line);
+ background:var(--surface);color:var(--muted);cursor:help}
+.daystrip span.on{background:var(--velocity);border-color:var(--velocity);
+ color:#fff}
+.daystrip span.off{background:var(--crit-bg,#fdecec);border-color:var(--crit);
+ color:var(--crit)}
+.daystrip span.wk{opacity:.75}
 /* ADD A ROW. Six controls that have to read as one thought - a grid rather
    than a line of boxes, so the labels sit over their fields and the wide two
    are allowed to be wide. */

@@ -3286,27 +3286,25 @@ def test_the_fingerprint_covers_what_a_recheck_stores():
     recheck.py is what writes a re-check's answers back onto the report, and
     for a long time it wrote the findings and left impressions and clicks
     alone. Fixing that changed no file under checks/, so the fingerprint did
-    not move, so nothing was queued, so no report ever ran the fixed code -
-    McNutt's monthly went on saying "54,544 against 10" with the fix sitting
-    right there in the build.
+    not move and no report ever ran the fixed code.
+
+    Hashing the whole file was then too wide by as much - see
+    test_a_scheduling_change_does_not_re_read_every_pdf. Only the functions
+    that decide what a stored report ends up saying are in it.
     """
     import hashlib
     from pathlib import Path
-    from app.version import rules_fingerprint
+    from app.version import _recheck_answers, rules_fingerprint
 
     root = Path(__file__).resolve().parents[1] / "app"
-    before = rules_fingerprint()
-    # The hash has to actually contain recheck.py, not merely mention it.
     h = hashlib.sha256()
     for name in sorted(p.name for p in (root / "checks").glob("*.py")):
         h.update(name.encode())
         h.update((root / "checks" / name).read_bytes())
-    assert h.hexdigest()[:16] != before, \
-        "recheck.py is not in the fingerprint - a fix to it reaches nothing"
-    h.update(b"recheck.py")
-    h.update((root / "recheck.py").read_bytes())
-    assert h.hexdigest()[:16] == before
-
+    assert h.hexdigest()[:16] != rules_fingerprint(), \
+        "a fix to what a re-check stores reaches nothing"
+    h.update(_recheck_answers().encode())
+    assert h.hexdigest()[:16] == rules_fingerprint()
 
 def test_the_pair_check_abstains_on_a_half_nobody_has_re_read(tmp_path, monkeypatch):
     """Three builds in a row corrected McNutt's monthly and left the number it

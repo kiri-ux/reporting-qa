@@ -1,4 +1,4 @@
-build 2026.09.03-177
+build 2026.09.03-178
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -15,6 +15,7 @@ app/main.py
 app/orders_io.py
 app/recheck.py
 app/roster.py
+app/serving.py
 app/templates/audit.html
 app/templates/base.html
 app/templates/cycle.html
@@ -32,34 +33,44 @@ tests/test_rules.py
 tests/test_timing.py
 
 
-SEVERAL MINUTES AFTER A DEPLOY
-==============================
-Two different things are in that wait, and only one of them is mine.
+"WHAT WAS UPDATED?" - THE BANNER COULD NOT TELL YOU
+===================================================
+"A deploy changed the checking rules" is true of every one of those banners and
+answers nothing, so the only way to find out what was actually different was to
+ask me. It names the build and prints that build's own note now.
 
-RENDER BUILDING THE IMAGE. Every install is a Docker build - pip, copy, push,
-health check, switch. That is a couple of minutes on its own and nothing in
-this code can shorten it. If the footer still shows the old build, that is
-where you are.
+And the honest answer for the one you were looking at: NOTHING about how a
+report is judged. Build 177 changed when the sweeper starts - a sleep - and 880
+reports were queued for a full re-read because of it.
 
-WHAT THIS CODE DOES THE MOMENT IT COMES UP. That part was worse than it needed
-to be, and Render sends traffic as soon as the container answers - so the
-people who reload right after a deploy are exactly the ones who land in it.
+That is my fault twice over in two days. 172 put the whole of recheck.py into
+the fingerprint to fix reports that a parser fix could not reach; too narrow
+became too wide, and every timing tweak in that file now costs an afternoon of
+pdftotext for no change of answer.
 
-  The sweeper started five seconds after boot. That was not "letting the first
-  requests through" - it was letting the FIRST request through and then
-  starting an 850 MB download and a two-million-row parse underneath the
-  second one. It waits a minute now. Nothing it does is urgent; the reports it
-  corrects have been on the board for hours.
-
-  The half-deployed self-check ran before the first page could be served. It
-  parses every file in the package and imports every relative target in each
-  of them, in all three workers, while Render is waiting to send traffic. It
-  is worth doing and it is not worth doing first - it runs in the background
-  now and logs what it finds either way.
-
-If it is still minutes after this, /why-slow will say so: "running for" tells
-you whether the worker answering you had only just started, and anything over
-three seconds is in the slow list underneath with what it was doing.
+Only the two functions that decide what a stored report ends up SAYING are in
+it now - the one that writes the answers back, and the one the pair check
+compares against. Changing the pacing, the claim, or when the sweep starts does
+not queue anything.
 
 
-845 tests pass.
+WHICH DAYS ARE IN THE DAILY SERVE FILE
+======================================
+You asked where to see this. Nowhere, until now: the panel said "1,070 clients
+loaded for August 2026", which is equally true of a file holding one day and a
+file holding thirty-one - and a client is owed a report at seven days, so the
+difference between those two files is the difference between "ran" and "did
+not" on hundreds of rows.
+
+The orders page shows the month as a strip of thirty-one squares, filled for a
+day the file has and red for one it does not, with the client count on hover:
+
+  24 of 31 days of August 2026 are in the file, 2026-08-01 to 2026-08-31.
+  Nothing on 2026-08-03, 2026-08-10, 2026-08-17. A day with no delivery on it
+  anywhere is usually a file that did not arrive rather than a day nobody ran.
+
+The dates were already being kept per client - this is the union of them, so it
+is a reading of what is loaded rather than a new thing to maintain.
+
+
+848 tests pass.
