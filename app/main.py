@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import threading
 import time as _time
 from pathlib import Path
 from urllib.parse import quote
@@ -484,10 +485,16 @@ def get_db():
 @app.on_event("startup")
 def _startup():
     init_db()
-    # BEFORE ANYTHING ELSE: is this box running one build, or two halves of
-    # two? Nothing below this line can tell the difference, and the symptom is
-    # an ImportError on a page nobody has opened yet.
-    selfcheck.check()
+    # IS THIS BOX RUNNING ONE BUILD, OR TWO HALVES OF TWO?
+    #
+    # Nothing else can tell the difference, and the symptom is an ImportError
+    # on a page nobody has opened yet - so it is worth doing. It is NOT worth
+    # doing before the first page can be served: it parses every file in the
+    # package and imports every relative target in each of them, in all three
+    # workers, while Render is waiting to send traffic. Off the boot path, into
+    # a thread; it logs what it finds either way.
+    threading.Thread(target=selfcheck.check, name="selfcheck",
+                     daemon=True).start()
     # The roster ships in the repo, so a fresh deploy has owners and
     # recipients without anyone importing anything.
     db = SessionLocal()

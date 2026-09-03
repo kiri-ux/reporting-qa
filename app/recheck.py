@@ -585,7 +585,18 @@ def start_sweeper() -> None:
     def run():
         import time
         from .proc import background
-        time.sleep(5)                     # let the first requests through
+        # THE FIRST MINUTE AFTER A DEPLOY BELONGS TO WHOEVER IS LOOKING.
+        #
+        # Five seconds was not "letting the first requests through" - it was
+        # letting the first request through and then starting an 850 MB
+        # download and a two-million-row parse underneath the second one.
+        # Render sends traffic the moment the container answers, so the people
+        # who reload straight after a deploy are exactly the ones who land in
+        # it, and the site takes minutes to come up for them.
+        #
+        # Nothing here is urgent. The reports it corrects have been on the
+        # board for hours.
+        time.sleep(60)
         # OUTSIDE THE auto_recheck GATE, deliberately.
         #
         # This used to sit behind it, so on a deploy with the automatic report

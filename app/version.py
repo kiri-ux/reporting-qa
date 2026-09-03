@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-176"
-BUILD_NOTES = ("The report table's column filters narrow the whole cycle, "
-               "not the fifty rows the browser happens to have.")
+BUILD = "2026.09.03-177"
+BUILD_NOTES = ("The first minute after a deploy belongs to whoever is "
+               "looking at the site.")
 
 # ---------------------------------------------------------------------------
 

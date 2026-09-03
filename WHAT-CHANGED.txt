@@ -1,4 +1,4 @@
-build 2026.09.03-176
+build 2026.09.03-177
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -32,35 +32,34 @@ tests/test_rules.py
 tests/test_timing.py
 
 
-I FIXED THE WRONG REPORTER FILTER
-=================================
-There are two on that page and they are different things. 175 fixed the one on
-the partner cards. Taylor is using the one on the REPORTS table, four rows
-lower, and your address bar says so - the link he clicked reads
+SEVERAL MINUTES AFTER A DEPLOY
+==============================
+Two different things are in that wait, and only one of them is mine.
 
-  /cycle?period=2026-08&page=2#reports
+RENDER BUILDING THE IMAGE. Every install is a Docker build - pip, copy, push,
+health check, switch. That is a couple of minutes on its own and nothing in
+this code can shorten it. If the footer still shows the old build, that is
+where you are.
 
-with no filter on it at all, because that filter was never in the address in
-the first place.
+WHAT THIS CODE DOES THE MOMENT IT COMES UP. That part was worse than it needed
+to be, and Render sends traffic as soon as the container answers - so the
+people who reload right after a deploy are exactly the ones who land in it.
 
-The card filters have been server-side for a while: pick one, the page reloads
-narrowed, and the choice is in the URL. The report table's columns - Partner,
-Kind, Status, Reporter - were doing something else entirely. They filtered the
-fifty rows the browser happened to be holding. So page 2 is a fresh page of the
-UNFILTERED board, and the dropdown honestly reads "All" when you land on it,
-because that is the truth about the page you are now looking at.
+  The sweeper started five seconds after boot. That was not "letting the first
+  requests through" - it was letting the FIRST request through and then
+  starting an 850 MB download and a two-million-row parse underneath the
+  second one. It waits a minute now. Nothing it does is urgent; the reports it
+  corrects have been on the board for hours.
 
-That also means the filter never saw the other 970 reports even before you
-paged. "3 of 50 rows" on a cycle of 1,020 is the same trap the search box was
-in a while back.
+  The half-deployed self-check ran before the first page could be served. It
+  parses every file in the package and imports every relative target in each
+  of them, in all three workers, while Render is waiting to send traffic. It
+  is worth doing and it is not worth doing first - it runs in the background
+  now and logs what it finds either way.
 
-They narrow the whole cycle now, the same as the card filters. Picking one
-reloads the board filtered, the choice is in the address, the pagers carry it,
-and page 2 is page 2 of YOUR reports.
-
-It filters on the row's own value rather than on what the cell prints - a Kind
-cell also carries the flight dates, and a filter built out of the printed text
-was offering "lifetime 2026-01-01 to 2026-08-15" as a thing to pick.
+If it is still minutes after this, /why-slow will say so: "running for" tells
+you whether the worker answering you had only just started, and anything over
+three seconds is in the slow list underneath with what it was doing.
 
 
-843 tests pass.
+845 tests pass.

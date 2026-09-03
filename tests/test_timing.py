@@ -1329,3 +1329,30 @@ def test_the_two_pages_count_the_same_queue():
     assert "stale_count(db, scoped=True, skip_signed=True)" in body
     # The bigger number is still shown, said out loud rather than unlabeled.
     assert "queue_all = stale_count(db)" in body
+
+
+def test_the_boot_path_does_not_do_the_slow_work():
+    """Render sends traffic the moment the container answers, so whatever the
+    startup handler does happens while somebody is waiting for a page.
+
+    The self-check parses every file in the package and imports every relative
+    target in each of them, in all three workers. It is worth doing and it is
+    not worth doing first.
+    """
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    i = src.index("def _startup(")
+    body = src[i:i + 1800]
+    assert "target=selfcheck.check" in body, "the self-check still blocks boot"
+    assert "daemon=True" in body, "and it must not hold a worker open"
+
+
+def test_the_sweeper_waits_out_the_first_minute():
+    """Five seconds was not letting the first requests through - it was letting
+    the first request through and then starting an 850 MB download and a
+    two-million-row parse underneath the second one."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
+    i = src.index("def start_sweeper(")
+    body = src[i:src.index("_remap_orders_if_stale()", i)]
+    assert "time.sleep(60)" in body, "the sweep still starts on top of the deploy"
