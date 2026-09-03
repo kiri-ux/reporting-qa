@@ -572,6 +572,32 @@ def has_serving(db: Session, period: str) -> bool:
         ServedDays.period == period).limit(1)) is not None
 
 
+def served_periods(db: Session) -> list[str]:
+    """Every month the serving data holds, newest last."""
+    return sorted({p for (p,) in db.execute(
+        select(ServedDays.period).distinct()).all() if p})
+
+
+def served_newest(db: Session) -> str:
+    """The most recent day anywhere in the serving data.
+
+    NOT JUST THIS CYCLE'S. A lifetime pulled on the 2nd of September is judged
+    on August, but whether the file is CURRENT is a question about the newest
+    date in it - and looking only at August says "31 of 31, up to date" all the
+    way through September while nothing new arrives at all.
+    """
+    newest = ""
+    for row in db.scalars(select(ServedDays)).all():
+        for iso in (getattr(row, "day_list", None) or []):
+            iso = str(iso)[:10]
+            if iso > newest:
+                newest = iso
+        last = getattr(row, "last_day", None)
+        if last and str(last)[:10] > newest:
+            newest = str(last)[:10]
+    return newest
+
+
 def served_calendar(db: Session, period: str) -> dict:
     """Which days of the month the serving file actually has, and which it does not.
 

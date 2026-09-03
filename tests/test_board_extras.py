@@ -2757,8 +2757,11 @@ def test_a_long_recheck_queue_says_why_the_board_is_slow():
     cycle = (TPL / "cycle.html").read_text()
     assert "{% if stale.total > 200 %}" in cycle
     assert "are being re-checked in the background" in cycle
-    assert "pages will be slower than usual" in cycle
-    assert "Nothing is wrong and nothing needs pressing" in cycle
+    assert "Pages are" in cycle and "slower while it runs" in cycle
+    # And a way to stop one that cannot change an answer - see
+    # test_a_pointless_sweep_can_be_stopped.
+    assert 'action="/cycle/recheck/skip"' in cycle
+    assert "nothing is wrong" in cycle and "nothing needs pressing" in cycle
 
     # And the sweep actually treads more carefully on a long queue.
     rc = (Path(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
@@ -3386,3 +3389,44 @@ def test_the_serve_panel_says_which_days_are_in(tmp_path, monkeypatch):
 
     page = (TPL / "orders.html").read_text()
     assert "days</b> of" in page and 'class="daystrip"' in page
+
+
+def test_the_day_strip_says_what_its_colours_mean(tmp_path, monkeypatch):
+    """Three colors and no key - the first thing asked about them was what
+    they meant, which means they were not saying anything.
+
+    And every month in the file, not only the cycle's: a lifetime pulled on the
+    2nd of September is judged on August, so looking only at August reads "31
+    of 31, up to date" all through September while nothing new arrives.
+    """
+    import datetime as _dt
+    import importlib
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'dk.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app.serving import served_newest, served_periods
+
+    db = dbm.SessionLocal()
+    db.add(dbm.ServedDays(period="2026-08", market_key="m", client_key="c",
+                          market="M", client="C", days=1,
+                          day_list=["2026-08-31"],
+                          first_day=_dt.date(2026, 8, 31),
+                          last_day=_dt.date(2026, 8, 31)))
+    db.add(dbm.ServedDays(period="2026-09", market_key="m", client_key="c",
+                          market="M", client="C", days=2,
+                          day_list=["2026-09-01", "2026-09-02"],
+                          first_day=_dt.date(2026, 9, 1),
+                          last_day=_dt.date(2026, 9, 2)))
+    db.commit()
+
+    assert served_periods(db) == ["2026-08", "2026-09"]
+    assert served_newest(db) == "2026-09-02", "the newest day is not this cycle's"
+    db.close()
+
+    page = (TPL / "orders.html").read_text()
+    assert "Newest day in the file" in page
+    assert "{% for m in serve_months %}" in page
+    assert "nothing for\n        that day" in page or "nothing for" in page
+    assert "weekend, in" in page, "the paler squares have to be explained"

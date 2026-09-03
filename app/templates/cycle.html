@@ -80,13 +80,26 @@
        is true of every one of these and answers nothing - the only way to find
        out what was actually different was to ask me. The build's own note is
        right there. #}
-    <b>{{ stale.total }} reports are being re-checked in the background.</b>
-    <b>{{ build_label }}</b> changed the checking rules{% if build_notes %} -
-    {{ build_notes }}{% endif %} - so every report on the board is being read
-    again with them, and while that runs this box is doing two things at once,
-    so pages will be slower than usual. It works through on its own and the
-    number comes down. Nothing is wrong and nothing needs pressing; reports
-    already signed off are left alone.
+    <div class="msg">
+      <b>{{ stale.total }} reports are being re-checked in the background.</b>
+      It works through on its own and the number comes down - nothing is wrong
+      and nothing needs pressing. Signed-off reports are left alone. Pages are
+      slower while it runs.
+      <div class="acct" style="margin-top:5px">Queued by
+        <b>{{ build_label }}</b>{% if build_notes %} - {{ build_notes }}{% endif %}</div>
+    </div>
+    {# AND A WAY TO SAY "NOT THIS ONE".
+       Most deploys do not change how a report is judged, and the fingerprint
+       cannot tell: it is a hash, and it moves when the FORMULA changes as
+       readily as when a rule does. One build changed the formula itself and
+       queued 872 reports to be read again to arrive at exactly what they
+       already said. That is an afternoon of somebody's box for nothing, and
+       there was no way to stop it. #}
+    <form method="post" action="/cycle/recheck/skip" style="margin-top:8px">
+      <input type="hidden" name="period" value="{{ period }}">
+      <button class="mini" type="submit"
+              data-tip="Marks all {{ stale.total }} as current without reading them, and stops the sweep. Use it when you know the deploy changed nothing about how a report is judged - the build note above says. If it DID change a rule, this skips corrections that were owed.">Skip this re-check</button>
+    </form>
   </div>
 {% endif %}
 

@@ -17,16 +17,27 @@ EXPOSE 10000
 # staggers the workers so they never recycle together, and a recycle costs one
 # cold start on one worker while the others keep serving.
 #
-# THREE WORKERS, NOT TWO, FOR AVAILABILITY RATHER THAN THROUGHPUT.
+# TWO WORKERS. THE MEMORY CEILING IS SHARED AND IT IS THE BINDING ONE.
 #
-# The box has half a core, so a third worker buys no extra work per second -
-# what it buys is somewhere for a cheap request to land while the other two are
-# busy. Render asks for /healthz, waits five seconds and calls the instance
-# failed, and with two workers it only takes two slow page builds at the same
-# moment - two people on the board, or one person and the order re-read - for
-# there to be nobody free to say yes. Nothing was ever down.
+# I raised this to three to give a cheap request somewhere to land while the
+# other two were busy, because Render was calling the instance failed when
+# /healthz did not answer inside five seconds. Then Render killed the instance
+# for exceeding its memory limit, which is the same three workers seen from the
+# other side: the 2,048 MB is for the WHOLE INSTANCE, not per process, and a
+# worker was measured holding 348 MB with the order parse peaking a couple of
+# hundred more on top of one of them. Three of those plus a page build each is
+# how you reach the ceiling.
 #
-# Measured headroom: the instance reports a 2,048 MB limit and a worker sits
-# around 200 MB, with the order parse peaking about 233 MB on top of one of
-# them. Three fits with room to spare.
-CMD ["gunicorn","app.main:app","-k","uvicorn.workers.UvicornWorker","-b","0.0.0.0:10000","--timeout","300","--workers","3","--max-requests","800","--max-requests-jitter","200"]
+# The health-check argument is much weaker now anyway - /healthz is answered on
+# the event loop and does nothing, so it does not queue behind a page. Two
+# workers, and memory stops being the thing that restarts the service.
+#
+# If three are wanted, the instance has to be bigger. That is a plan change,
+# not a flag.
+#
+# --max-requests recycles a worker so a slow leak never reaches the ceiling.
+# Halved along with this: at 800 a leaking worker had four times as long to
+# grow, and trimming twice as often costs one cold start on one worker while
+# the other keeps serving. The jitter staggers them so they never recycle
+# together.
+CMD ["gunicorn","app.main:app","-k","uvicorn.workers.UvicornWorker","-b","0.0.0.0:10000","--timeout","300","--workers","2","--max-requests","400","--max-requests-jitter","120"]

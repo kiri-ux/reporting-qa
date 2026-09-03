@@ -1291,8 +1291,10 @@ def test_there_is_somewhere_for_a_cheap_request_to_land():
     moment for there to be nobody free to say yes."""
     from pathlib import Path
     docker = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
-    assert '"--workers","3"' in docker
-    # And the recycler still staggers them, or all three cold-start together.
+    # Was three, for exactly this reason - until Render killed the instance for
+    # exceeding a memory limit that all of them share. See
+    # test_two_workers_because_the_ceiling_is_shared.
+    assert '"--workers","2"' in docker
     assert '"--max-requests-jitter"' in docker
 
 
@@ -1394,3 +1396,85 @@ def test_a_scheduling_change_does_not_re_read_every_pdf():
     for name in sorted(p.name for p in root.glob("*.py")):
         h.update(name.encode()); h.update((root / name).read_bytes())
     assert h.hexdigest()[:16] != rules_fingerprint()
+
+
+def test_the_memory_ceiling_is_shown_as_shared():
+    """"348 MB of 2,048" reads as enormous headroom and it is not.
+
+    Every worker is inside that same 2,048, so the number to watch is workers
+    times this one. Render killed the service for exceeding the limit while
+    that row was reporting a sixth of it used.
+    """
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[1] / "app" / "templates"
+            / "why_slow.html").read_text()
+    i = page.index("Memory held")
+    row = page[i:i + 1200]
+    assert "shared by all" in row
+    assert "summary.rss_mb * workers" in row
+
+
+def test_two_workers_because_the_ceiling_is_shared():
+    """Three was for health-check availability, and then Render killed the
+    instance for exceeding its memory limit - the same three workers seen from
+    the other side. /healthz is answered on the event loop now and does nothing,
+    so it does not queue behind a page either way."""
+    from pathlib import Path
+    docker = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+    assert '"--workers","2"' in docker
+    # And a leaking worker gets half as long to grow.
+    assert '"--max-requests","400"' in docker
+    assert '"--max-requests-jitter"' in docker
+
+
+def test_a_pointless_sweep_can_be_stopped(tmp_path, monkeypatch):
+    """Most deploys do not change how a report is judged, and the fingerprint
+    cannot tell: it is a hash, and it moves when the FORMULA changes as readily
+    as when a rule does.
+
+    Build 178 changed the formula itself and queued 872 reports to be read
+    again to arrive at exactly what they already said - an afternoon of
+    somebody's box for nothing, with no way to stop it.
+    """
+    import importlib
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'sk.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+    from app.recheck import stale_count
+    from app.version import rules_version
+
+    db = dbm.SessionLocal()
+    b = dbm.Batch(market="M", period="2026-08"); db.add(b); db.flush()
+    for i in range(4):
+        db.add(dbm.Report(batch_id=b.id, client=f"C{i}", market="M",
+                          period="2026-08", severity="pass", filename=f"{i}.pdf",
+                          findings=[], acked=[], rules_version="older"))
+    # A signed-off one is not in the sweep to begin with, so it is not in this.
+    db.add(dbm.Report(batch_id=b.id, client="Signed", market="M",
+                      period="2026-08", severity="pass", filename="s.pdf",
+                      findings=[], acked=[], rules_version="older",
+                      review_state="reviewed", reviewed_by="k"))
+    db.commit()
+    assert stale_count(db, scoped=True, skip_signed=True) == 4
+
+    TestClient(mmod.app).post("/cycle/recheck/skip",
+                              data={"period": "2026-08", "who": "k"},
+                              follow_redirects=False)
+    db.expire_all()
+    assert stale_count(db, scoped=True, skip_signed=True) == 0
+    assert all(r.rules_version == rules_version() for r in db.query(dbm.Report)
+               .filter(dbm.Report.review_state != "reviewed").all())
+    # Not read - the findings are untouched, which is the whole point.
+    assert db.query(dbm.Report).filter_by(client="C0").one().severity == "pass"
+    db.close()
+
+    from pathlib import Path as _P
+    page = (_P(__file__).resolve().parents[1] / "app" / "templates"
+            / "cycle.html").read_text()
+    assert 'action="/cycle/recheck/skip"' in page
+    assert "Skip this re-check" in page

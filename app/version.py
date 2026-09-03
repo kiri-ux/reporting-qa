@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-178"
-BUILD_NOTES = ("The serve panel shows which days are in, and a scheduling "
-               "change no longer re-reads every PDF.")
+BUILD = "2026.09.03-181"
+BUILD_NOTES = ("Two workers, a re-check that changes nothing can be stopped, "
+               "and the day strip says what it means.")
 
 # ---------------------------------------------------------------------------
 

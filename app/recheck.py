@@ -788,3 +788,39 @@ def start_job(db: Session, key: str, *, group: str | None = None,
 
     threading.Thread(target=run, name=f"recheck-{key}", daemon=True).start()
     return {"done": 0, "total": total}
+
+
+def skip_the_sweep(db: Session, *, period: str | None = None,
+                   who: str = "") -> int:
+    """Mark everything stale as current WITHOUT re-reading it. Returns how many.
+
+    A deploy that changes how a report is judged has to reach the reports it
+    already judged, which is what the sweep is for. A deploy that does not -
+    and most do not - queues the same eight hundred PDFs for an afternoon of
+    pdftotext that cannot change a single answer.
+
+    The fingerprint cannot tell the two apart on its own; it is a hash, and it
+    moves when the FORMULA changes as readily as when a rule does. Build 178
+    changed the formula itself, so eight hundred and seventy-two reports were
+    read again to arrive at exactly what they already said.
+
+    So there is a way to say "not this one". It is deliberately a person's
+    decision and it is recorded: if the deploy did change a rule, this skips
+    corrections that were owed, and the next deploy that touches the rules
+    queues them again anyway.
+    """
+    q = _stale_query(db, None, None, period, stale_only=True, skip_signed=True)
+    n = 0
+    for rep in db.scalars(q).all():
+        rep.rules_version = rules_version()
+        n += 1
+    if n:
+        db.commit()
+        log.info("sweep skipped by %s: %d reports stamped current",
+                 who or "somebody", n)
+    # And stop the one that is running, or it carries on underneath the answer.
+    try:
+        _release(db, SWEEP_KEY)
+    except Exception:                                        # noqa: BLE001
+        db.rollback()
+    return n

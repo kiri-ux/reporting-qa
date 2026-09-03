@@ -1,4 +1,4 @@
-build 2026.09.03-178
+build 2026.09.03-181
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -33,44 +33,67 @@ tests/test_rules.py
 tests/test_timing.py
 
 
-"WHAT WAS UPDATED?" - THE BANNER COULD NOT TELL YOU
-===================================================
-"A deploy changed the checking rules" is true of every one of those banners and
-answers nothing, so the only way to find out what was actually different was to
-ask me. It names the build and prints that build's own note now.
+THE MEMORY LIMIT - AND IT WAS THE THIRD WORKER
+==============================================
+I did that. Build 169 went from two workers to three so a cheap request had
+somewhere to land while the others were busy. Render then killed the instance
+for exceeding memory, which is the same three workers seen from the other side:
+the 2,048 MB is for the WHOLE INSTANCE, not per process. A worker was measured
+holding 348 MB and an order re-read peaks a couple of hundred more on top of
+one of them - three of those plus a page build each is how you reach the
+ceiling.
 
-And the honest answer for the one you were looking at: NOTHING about how a
-report is judged. Build 177 changed when the sweeper starts - a sleep - and 880
-reports were queued for a full re-read because of it.
+Back to two. The health-check reason for three is much weaker now anyway:
+/healthz is answered on the event loop and does nothing, so it does not queue
+behind a page. And the recycler is halved - 400 requests rather than 800 - so
+anything that grows gets trimmed twice as often.
 
-That is my fault twice over in two days. 172 put the whole of recheck.py into
-the fingerprint to fix reports that a parser fix could not reach; too narrow
-became too wide, and every timing tweak in that file now costs an afternoon of
-pdftotext for no change of answer.
+Why-slow was part of the problem. It said "348 MB of 2,048 MB", which reads as
+enormous headroom, on a page whose whole job is to be trusted. It says the
+ceiling is shared by every worker now, with the total at that rate underneath.
 
-Only the two functions that decide what a stored report ends up SAYING are in
-it now - the one that writes the answers back, and the one the pair check
-compares against. Changing the pacing, the claim, or when the sweep starts does
-not queue anything.
+IF YOU WANT THREE WORKERS, the instance has to be bigger. That is a plan change
+rather than a flag, and worth it if the box keeps feeling tight - but two
+should stop the restarts on its own.
 
 
-WHICH DAYS ARE IN THE DAILY SERVE FILE
+YES, YOU CAN STOP A POINTLESS RE-CHECK
 ======================================
-You asked where to see this. Nowhere, until now: the panel said "1,070 clients
-loaded for August 2026", which is equally true of a file holding one day and a
-file holding thirty-one - and a client is owed a report at seven days, so the
-difference between those two files is the difference between "ran" and "did
-not" on hundreds of rows.
+You are right that it was a waste, and the banner you were looking at proved
+it: build 178's own note says a scheduling change no longer re-reads every PDF,
+and 872 reports were being re-read because of it.
 
-The orders page shows the month as a strip of thirty-one squares, filled for a
-day the file has and red for one it does not, with the client count on hover:
+That one was unavoidable-by-design and I should have said so: 178 changed the
+fingerprint FORMULA, and a hash moves when the formula changes as readily as
+when a rule does. Every report was stamped with the old formula's answer, so
+every report looked stale.
 
-  24 of 31 days of August 2026 are in the file, 2026-08-01 to 2026-08-31.
-  Nothing on 2026-08-03, 2026-08-10, 2026-08-17. A day with no delivery on it
-  anywhere is usually a file that did not arrive rather than a day nobody ran.
-
-The dates were already being kept per client - this is the union of them, so it
-is a reading of what is loaded rather than a new thing to maintain.
+There is a Skip this re-check button on the banner now. It marks them current
+without reading them and stops the sweep. It says plainly what it costs: if the
+deploy DID change a rule, this skips corrections that were owed - and the next
+deploy that touches the rules queues them again anyway.
 
 
-848 tests pass.
+THE DAY STRIP - WHAT THE COLORS MEAN
+====================================
+Three of them and no key, which is why you had to ask. There is a key now:
+
+  filled = in the file · paler = weekend, in the file · red = nothing that day
+
+Hover any square for how many clients delivered on it.
+
+
+AND THE NEWEST DATE, PAST THE CYCLE'S MONTH
+===========================================
+You are right that August alone cannot answer "is this file current" - a
+lifetime pulled on the 2nd of September is judged on August, so a strip showing
+31 of 31 reads as up to date all through September while nothing new arrives.
+
+Every month the file holds gets its own strip now, and above them:
+
+  Newest day in the file: 2026-09-02. That is the whole file, not this cycle -
+  if it is not close to today, the daily drop has stopped arriving whatever the
+  month below says.
+
+
+852 tests pass.

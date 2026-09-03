@@ -242,7 +242,11 @@ button[data-tip],a[data-tip]{cursor:pointer}
  color:#fff}
 .daystrip span.off{background:var(--crit-bg,#fdecec);border-color:var(--crit);
  color:var(--crit)}
-.daystrip span.wk{opacity:.75}
+/* WEEKEND. A paler fill rather than a different color: it is a note, not a
+   state, and the state that matters is in the file or not. */
+.daystrip span.wk.on{background:var(--velocity-40,#8096AC);
+ border-color:var(--velocity-40,#8096AC)}
+.daykey .daystrip span{cursor:default}
 /* ADD A ROW. Six controls that have to read as one thought - a grid rather
    than a line of boxes, so the labels sit over their fields and the wide two
    are allowed to be wide. */

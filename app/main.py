@@ -994,7 +994,8 @@ def orders_view(request: Request, view: str = Query("clients"),
     legend = [{"code": c, "bg": h, "fg": ink_on(h), "name": n} for c, h, n, _ in PRODUCTS]
     clients = _client_rollup(db, lines) if view == "clients" else []
     from .orders_io import guidance_from_loaded
-    from .serving import served_calendar
+    from .serving import (served_calendar, served_newest,
+                          served_periods)
     from .orders_s3 import running_sync
     running = running_sync(db)
     sync_rec = last_sync(db)
@@ -1076,6 +1077,12 @@ def orders_view(request: Request, view: str = Query("clients"),
         # is true of a file holding one day and a file holding thirty-one, and
         # the difference decides every "did this run" answer on the board.
         "serve_days": served_calendar(db, _p),
+        # EVERY MONTH IN THE FILE, not only the cycle's - a lifetime pulled on
+        # the 2nd of September is judged on August, but whether the file is
+        # CURRENT is a question about the newest date in it.
+        "serve_months": [{"period": p, "cal": served_calendar(db, p)}
+                         for p in served_periods(db)],
+        "serve_newest": served_newest(db),
         # HOW OFTEN IT LOOKS, so "when will my new file show up" is answered on
         # the page rather than by asking. Every panel here says when it last
         # read something and none of them said when it will look again.
@@ -1864,6 +1871,26 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     if who.strip():
         _remember(resp, who)
     return resp
+
+
+@app.post("/cycle/recheck/skip")
+def cycle_recheck_skip(request: Request, period: str = Form(""),
+                       who: str = Form(""), db: Session = Depends(get_db)):
+    """Stop a sweep that cannot change any answer.
+
+    Most deploys do not change how a report is judged, and the fingerprint
+    cannot tell: it is a hash, and it moves when the FORMULA changes as
+    readily as when a rule does. Build 178 changed the formula, so 872 reports
+    were queued to be read again to arrive at exactly what they already said.
+    """
+    from .recheck import skip_the_sweep
+    name = who.strip() or whoami(request) or "somebody"
+    n = skip_the_sweep(db, period=period or None, who=name)
+    back = request.headers.get("referer") or "/cycle"
+    if not back.startswith("/") or back.startswith("//"):
+        back = "/cycle"
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(f"{back}{sep}skipped={n}", status_code=303)
 
 
 @app.post("/cycle/done")

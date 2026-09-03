@@ -44,10 +44,24 @@
           {% elif u < 7200 %}{{ (u / 60)|int }} minutes
           {% else %}{{ (u / 3600)|round(1) }} hours{% endif %}
         </td></tr>
+      {# THE CEILING IS FOR THE WHOLE INSTANCE, NOT FOR THIS PROCESS.
+         "348 MB of 2,048" reads as enormous headroom and it is not: every
+         worker is inside that same 2,048, so the number to watch is the one
+         below it. Render killed the service for exceeding this while this row
+         was reporting a sixth of it used. #}
       <tr><th>Memory held</th>
         <td>
-          {% if summary.rss_mb %}{{ summary.rss_mb }} MB{% if summary.memory_limit_mb %}
-            of {{ summary.memory_limit_mb }} MB{% endif %}
+          {% if summary.rss_mb %}{{ summary.rss_mb }} MB
+            {%- if summary.memory_limit_mb %} of {{ summary.memory_limit_mb }} MB,
+            <b>shared by all {{ workers or '?' }} workers</b>{% endif %}
+            {% if summary.rss_mb and workers and summary.memory_limit_mb %}
+              <span class="acct" style="display:block;margin-top:3px">
+                About {{ (summary.rss_mb * workers)|round(0)|int }} MB in use at
+                this rate - and an order re-read peaks a couple of hundred more
+                on top of one worker. Over the ceiling is an automatic restart,
+                which is the email that says the instance became temporarily
+                unavailable.</span>
+            {% endif %}
           {% else %}not readable here{% endif %}
         </td></tr>
       {% if summary.load %}

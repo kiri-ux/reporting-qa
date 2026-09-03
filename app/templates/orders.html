@@ -511,24 +511,47 @@
     {# WHICH DAYS ARE IN, not how many clients. A count is true of a file
        holding one day and a file holding thirty-one, and a client is owed a
        report at seven - so a quiet gap is the difference between "ran" and
-       "did not". #}
-    {% if serve_days and serve_days.of %}
+       "did not".
+
+       EVERY MONTH IN THE FILE, not only this cycle's. A lifetime pulled on the
+       2nd of September is judged on August, so looking only at August reads
+       "31 of 31, up to date" all through September while nothing new arrives. #}
+    {% if serve_newest %}
       <p class="sub" style="margin:0 0 6px;font-size:13px">
-        <b>{{ serve_days.with_data }} of {{ serve_days.of }} days</b> of
-        {{ period|month }} are in the file{% if serve_days.first %},
-        {{ serve_days.first }} to {{ serve_days.last }}{% endif %}.
-        {% if serve_days.missing %}<span style="color:var(--crit)">Nothing on
-          {{ serve_days.missing[:6]|join(', ') }}{% if serve_days.missing|length > 6 %}
-          and {{ serve_days.missing|length - 6 }} more{% endif %}.</span>
-          A day with no delivery on it anywhere is usually a file that did not
-          arrive rather than a day nobody ran.{% endif %}
+        <b>Newest day in the file: {{ serve_newest }}.</b>
+        That is the whole file, not this cycle - if it is not close to today,
+        the daily drop has stopped arriving whatever the month below says.</p>
+    {% endif %}
+    {% for m in serve_months %}
+      {% if m.cal and m.cal.of %}
+      <p class="sub" style="margin:0 0 4px;font-size:13px">
+        <b>{{ m.cal.with_data }} of {{ m.cal.of }} days</b> of
+        {{ m.period|month }}{% if m.cal.first %}, {{ m.cal.first }} to
+        {{ m.cal.last }}{% endif %}.
+        {% if m.cal.missing %}<span style="color:var(--crit)">Nothing on
+          {{ m.cal.missing[:6]|join(', ') }}{% if m.cal.missing|length > 6 %}
+          and {{ m.cal.missing|length - 6 }} more{% endif %}.</span>{% endif %}
       </p>
       <div class="daystrip">
-        {% for d in serve_days.days %}
+        {% for d in m.cal.days %}
           <span class="{{ 'on' if d.clients else 'off' }}{{ ' wk' if d.weekend }}"
-                data-tip="{{ d.iso }} · {% if d.clients %}{{ d.clients }} client{{ 's' if d.clients != 1 }} delivered{% else %}nothing in the file{% endif %}">{{ d.day }}</span>
+                data-tip="{{ d.iso }} · {% if d.clients %}{{ '{:,}'.format(d.clients) }} client{{ 's' if d.clients != 1 }} delivered{% else %}nothing in the file for this day{% endif %}">{{ d.day }}</span>
         {% endfor %}
       </div>
+      {% endif %}
+    {% endfor %}
+    {% if serve_months %}
+      {# THE COLORS HAD TO BE ASKED ABOUT, WHICH MEANS THEY WERE NOT SAYING
+         ANYTHING. Three of them and no key. #}
+      <p class="sub daykey" style="margin:0 0 12px;font-size:12px">
+        <span class="daystrip" style="display:inline-flex;margin:0 6px 0 0;
+              vertical-align:-4px"><span class="on">1</span></span>in the file ·
+        <span class="daystrip" style="display:inline-flex;margin:0 6px 0 8px;
+              vertical-align:-4px"><span class="on wk">2</span></span>weekend, in
+        the file ·
+        <span class="daystrip" style="display:inline-flex;margin:0 6px 0 8px;
+              vertical-align:-4px"><span class="off">3</span></span>nothing for
+        that day. Hover any of them for how many clients delivered.</p>
     {% endif %}
     {% if serving_prefix %}
       <p class="sub" style="margin:0 0 12px;font-size:13px">
