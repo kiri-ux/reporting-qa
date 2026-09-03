@@ -12,9 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-181"
-BUILD_NOTES = ("Two workers, a re-check that changes nothing can be stopped, "
-               "and the day strip says what it means.")
+BUILD = "2026.09.03-182"
+BUILD_NOTES = ("The newest-day line says the date and stops there.")
 
 # ---------------------------------------------------------------------------
 

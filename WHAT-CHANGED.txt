@@ -1,4 +1,4 @@
-build 2026.09.03-181
+build 2026.09.03-182
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -91,9 +91,10 @@ lifetime pulled on the 2nd of September is judged on August, so a strip showing
 
 Every month the file holds gets its own strip now, and above them:
 
-  Newest day in the file: 2026-09-02. That is the whole file, not this cycle -
-  if it is not close to today, the daily drop has stopped arriving whatever the
-  month below says.
+  Newest day in the file: 2026-09-02.
+
+Just the date. The sentence I had after it explained a thing you can see for
+yourself.
 
 
 852 tests pass.

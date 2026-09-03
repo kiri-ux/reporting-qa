@@ -518,9 +518,7 @@
        "31 of 31, up to date" all through September while nothing new arrives. #}
     {% if serve_newest %}
       <p class="sub" style="margin:0 0 6px;font-size:13px">
-        <b>Newest day in the file: {{ serve_newest }}.</b>
-        That is the whole file, not this cycle - if it is not close to today,
-        the daily drop has stopped arriving whatever the month below says.</p>
+        <b>Newest day in the file: {{ serve_newest }}.</b></p>
     {% endif %}
     {% for m in serve_months %}
       {% if m.cal and m.cal.of %}
