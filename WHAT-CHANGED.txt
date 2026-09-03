@@ -1,4 +1,4 @@
-build 2026.09.03-182
+build 2026.09.03-183
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -28,73 +28,57 @@ app/timing.py
 app/version.py
 tests/fixtures/mcnutt_site_services.pdf   (new)
 tests/test_board_extras.py
+tests/test_expected_products.py
 tests/test_order_remap.py
 tests/test_rules.py
+tests/test_serving.py
 tests/test_timing.py
 
 
-THE MEMORY LIMIT - AND IT WAS THE THIRD WORKER
-==============================================
-I did that. Build 169 went from two workers to three so a cheap request had
-somewhere to land while the others were busy. Render then killed the instance
-for exceeding memory, which is the same three workers seen from the other side:
-the 2,048 MB is for the WHOLE INSTANCE, not per process. A worker was measured
-holding 348 MB and an order re-read peaks a couple of hundred more on top of
-one of them - three of those plus a page build each is how you reach the
-ceiling.
+SKYPAC 51251 - THE CANCELLED PRODUCTS
+=====================================
+You were right and the screen was arguing with itself. "Ordered but not on the
+report: CTV, Performance Max, Video" sat directly above a panel saying of those
+same three that a cancelled buy "is not part of what the campaign was asked to
+deliver". Both cannot be true.
 
-Back to two. The health-check reason for three is much weaker now anyway:
-/healthz is answered on the event loop and does nothing, so it does not queue
-behind a page. And the recycler is halved - 400 requests rather than 800 - so
-anything that grows gets trimmed twice as often.
+Build 162 took cancelled lines out of the pacing goal and did not take them out
+of the products list, which still said a lifetime carries everything the client
+ever bought, cancelled included. That is right for a buy that RAN and was then
+stopped - the lifetime is what closes it out. It is wrong for a buy that was
+called off, and 120731 and 120736 were called off.
 
-Why-slow was part of the problem. It said "348 MB of 2,048 MB", which reads as
-enormous headroom, on a page whose whole job is to be trusted. It says the
-ceiling is shared by every worker now, with the total at that rate underneath.
-
-IF YOU WANT THREE WORKERS, the instance has to be bigger. That is a plan change
-rather than a flag, and worth it if the box keeps feeling tight - but two
-should stop the restarts on its own.
+So: a product is dropped from the list when EVERY line item of it inside the
+campaign was cancelled. Not the row's flag - Social Mirror CTV is one row
+holding a cancelled 120751 and a complete 122725 and 128151, and the flag alone
+would have dropped a product that plainly ran. It reads the line items.
 
 
-YES, YOU CAN STOP A POINTLESS RE-CHECK
-======================================
-You are right that it was a waste, and the banner you were looking at proved
-it: build 178's own note says a scheduling change no longer re-reads every PDF,
-and 872 reports were being re-read because of it.
+AND "STOPPED 2026-08-28", WHICH THE FILE DISPROVES
+==================================================
+1,277 impressions on 1 September, in the file you sent. The tag was reading the
+last day inside AUGUST, so a campaign that ran to the 28th and kept going looks
+exactly like one somebody switched off on the 28th - the September rows were
+sitting right there and nothing looked at them.
 
-That one was unavoidable-by-design and I should have said so: 178 changed the
-fingerprint FORMULA, and a hash moves when the formula changes as readily as
-when a rule does. Every report was stamped with the old formula's answer, so
-every report looked stale.
-
-There is a Skip this re-check button on the banner now. It marks them current
-without reading them and stops the sweep. It says plainly what it costs: if the
-deploy DID change a rule, this skips corrections that were owed - and the next
-deploy that touches the rules queues them again anyway.
+It looks past the cycle's month now. Delivery in any later month and the tag
+does not go on. A campaign with nothing after it still says when it stopped,
+which is the half worth keeping.
 
 
-THE DAY STRIP - WHAT THE COLORS MEAN
-====================================
-Three of them and no key, which is why you had to ask. There is a key now:
+THE FIX HAD TO REACH THE REPORTS, SO THERE IS A RE-CHECK
+========================================================
+Worth saying plainly because you asked about a pointless one last week: this
+one is not pointless, and it is the reason for it.
 
-  filled = in the file · paler = weekend, in the file · red = nothing that day
+Half of what a report is judged against is not the PDF - it is the order behind
+it. "Ordered but not on the report" is roster.py, and every pacing number is
+roster.py, and roster.py was not part of what a fix "reaching" a report means.
+SKyPAC would have kept failing for three cancelled products with the fix
+already installed. It is in now.
 
-Hover any square for how many clients delivered on it.
-
-
-AND THE NEWEST DATE, PAST THE CYCLE'S MONTH
-===========================================
-You are right that August alone cannot answer "is this file current" - a
-lifetime pulled on the 2nd of September is judged on August, so a strip showing
-31 of 31 reads as up to date all through September while nothing new arrives.
-
-Every month the file holds gets its own strip now, and above them:
-
-  Newest day in the file: 2026-09-02.
-
-Just the date. The sentence I had after it explained a thing you can see for
-yourself.
+The Skip button is still there if you would rather. Skipping this one keeps the
+old answer on every report already stored.
 
 
-852 tests pass.
+857 tests pass.

@@ -541,3 +541,56 @@ def test_the_status_is_kept_in_its_own_words(db):
     import_io_export(db, (head + rows).encode(), period="2026-07")
     row = db.scalars(select(OrderLine)).first()
     assert "IO Complete" in row.status and "IO Pending Launch" in row.status
+
+
+def test_a_campaign_still_delivering_next_month_did_not_stop(db):
+    """SKYPAC 51251. Tagged "stopped 2026-08-28" with 1,277 impressions on
+    1 September sitting in the same file. The stop day is read out of the
+    cycle's own month, so a campaign that ran to the 28th and kept going into
+    September reads exactly like one that was switched off on the 28th."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 9, 1)))
+    db.add(OrderLine(market="M", client="Still Going", account_ids="51251",
+                     line_ids="1", product="CTV", campaign="Connected TV Ads",
+                     live=False, canceled=True,
+                     starts_on=D("2026-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2026-01-01"),
+                     order_ends_on=D("2026-12-31")))
+    db.commit()
+    import_serving(db, _rows(HEAD,
+                             *_days("Still Going", "M", "2026-08-01", 28),
+                             *_days("Everyone Else", "M", "2026-08-01", 31),
+                             # And here it is in September, which is the whole
+                             # point - the August rows alone cannot see it.
+                             *_days("Still Going", "M", "2026-09-01", 2)))
+    life = [e for e in expected_for(db, "2026-08") if e.kind == "lifetime"]
+    assert life and all(e.stopped_on is None for e in life), \
+        "called a campaign stopped that is still delivering"
+
+
+def test_a_campaign_with_nothing_after_it_still_says_when_it_stopped(db):
+    """The fix above must not switch the tag off for everybody."""
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine
+    from app.serving import import_serving
+    D = dt.date.fromisoformat
+    db.add(Batch(email_subject="x", received_at=dt.datetime(2026, 9, 1)))
+    db.add(OrderLine(market="M", client="Really Stopped", account_ids="51252",
+                     line_ids="1", product="CTV", campaign="Connected TV Ads",
+                     live=False, canceled=True,
+                     starts_on=D("2026-01-01"), ends_on=D("2026-12-31"),
+                     order_starts_on=D("2026-01-01"),
+                     order_ends_on=D("2026-12-31")))
+    db.commit()
+    import_serving(db, _rows(HEAD,
+                             *_days("Really Stopped", "M", "2026-08-01", 12),
+                             *_days("Everyone Else", "M", "2026-08-01", 31),
+                             *_days("Everyone Else", "M", "2026-09-01", 2)))
+    life = [e for e in expected_for(db, "2026-08") if e.kind == "lifetime"]
+    life = [e for e in life if e.client == "Really Stopped"]
+    assert len(life) == 1 and life[0].stopped_on == D("2026-08-12")

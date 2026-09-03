@@ -12,8 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-182"
-BUILD_NOTES = ("The newest-day line says the date and stops there.")
+BUILD = "2026.09.03-183"
+BUILD_NOTES = ("A cancelled buy is no longer 'ordered but not on the report', "
+               "and a campaign still delivering next month is not 'stopped'.")
 
 # ---------------------------------------------------------------------------
 
@@ -77,7 +78,28 @@ def rules_fingerprint() -> str:
     # saying, and nothing else in the file. Parsed rather than imported,
     # because importing recheck from here is a circle.
     h.update(_recheck_answers().encode())
+    # AND ROSTER.PY, WHICH DECIDES WHAT THE REPORT IS JUDGED AGAINST.
+    #
+    # Half the findings on a report are not about the PDF at all - they are
+    # about the order behind it. "Ordered but not on the report" is
+    # roster.expected_products; every pacing number is roster.ordered_for.
+    # A fix to either changes the answer as squarely as a fix to a rule does,
+    # and nothing under checks/ moves when it lands, so SKyPAC would have gone
+    # on failing for three cancelled products with the fix sitting in the file.
+    #
+    # The whole file, not picked functions. Those two read a dozen helpers
+    # between them and picking by name is how the recheck.py hash was too
+    # narrow by exactly the bug it was written for, twice.
+    h.update(_roster_source())
     return h.hexdigest()[:16]
+
+
+def _roster_source() -> bytes:
+    from pathlib import Path
+    try:
+        return (Path(__file__).resolve().parent / "roster.py").read_bytes()
+    except OSError:
+        return b""
 
 
 def _recheck_answers() -> str:

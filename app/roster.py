@@ -291,10 +291,12 @@ def expected_products(db: Session, client: str, account_ids: str,
         # a report without it is not missing anything.
         if window and (window[0] or window[1]):
             hit = [l for l in hit if _overlaps(l, window[0], window[1])]
-        # A CANCELLED BUY IS STILL ON THE LIFETIME. Canceling does not mean it
-        # never ran - it ran and was stopped - and the lifetime is the report
-        # that closes the campaign out, so what it delivered belongs on it.
-        return {l.product for l in hit if is_mapped(l.product)}
+        # A buy that RAN and was then stopped still belongs on the lifetime -
+        # the lifetime is the report that closes the campaign out, so what it
+        # delivered belongs on it. A product whose every line item was
+        # cancelled is a different thing, and is not owed at all.
+        return {l.product for l in hit if is_mapped(l.product)
+                and _wanted_on_lifetime(l, window)}
     if period:
         # An empty result here is not the same as no order list. If every one
         # of a client's products stopped before the period, the honest answer
@@ -306,6 +308,43 @@ def expected_products(db: Session, client: str, account_ids: str,
     return {l.product for l in hit if is_mapped(l.product)
             and getattr(l, "live", True)
             and not getattr(l, "canceled", False)}
+
+
+def _wanted_on_lifetime(line, window) -> bool:
+    """Is any part of this product still being asked for on this campaign?
+
+    A PRODUCT WHOSE EVERY LINE ITEM WAS CANCELLED IS NOT OWED ON THE LIFETIME.
+    SKyPAC's August lifetime was failed for "Ordered but not on the report:
+    CTV, Performance Max, Video" while the pacing panel on the same screen said
+    of all three that a cancelled buy "is not part of what the campaign was
+    asked to deliver". Both cannot be right, and it is the check that was
+    wrong: 120731 and 120736 were called off, and no widget is owed for a buy
+    that was called off.
+
+    THE ROLLED-UP FLAG CANNOT ANSWER THIS. One OrderLine row is one client and
+    one product across every order carrying it, so Social Mirror CTV on the
+    same campaign - cancelled on 120751, complete on 122725 and 128151 - is a
+    single row, and reading `canceled` off it would drop a product that plainly
+    ran. The answer is per line item, in `detail`.
+    """
+    detail = getattr(line, "detail", None)
+    if not detail:
+        return not getattr(line, "canceled", False)
+    inside = False
+    for d in detail:
+        if not isinstance(d, dict):
+            continue
+        if window and (window[0] or window[1]):
+            if not _overlaps(_Window(d.get("starts"), d.get("ends")),
+                             window[0], window[1]):
+                continue
+        inside = True
+        if not d.get("canceled"):
+            return True
+    # Every line item inside the campaign was cancelled, so nothing is owed.
+    # If the detail held none inside the window at all there is nothing to read
+    # there and the rolled-up flag is all there is, as before.
+    return not inside and not getattr(line, "canceled", False)
 
 
 def quiet_products(db: Session, client: str, account_ids: str,

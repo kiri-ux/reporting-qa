@@ -3291,6 +3291,10 @@ def test_the_fingerprint_covers_what_a_recheck_stores():
     Hashing the whole file was then too wide by as much - see
     test_a_scheduling_change_does_not_re_read_every_pdf. Only the functions
     that decide what a stored report ends up saying are in it.
+
+    And roster.py, whole: half of what a report is judged against is the order
+    behind it rather than the PDF, so a fix to expected_products or ordered_for
+    has to reach the reports the same way a fix to a rule does.
     """
     import hashlib
     from pathlib import Path
@@ -3304,6 +3308,9 @@ def test_the_fingerprint_covers_what_a_recheck_stores():
     assert h.hexdigest()[:16] != rules_fingerprint(), \
         "a fix to what a re-check stores reaches nothing"
     h.update(_recheck_answers().encode())
+    assert h.hexdigest()[:16] != rules_fingerprint(), \
+        "a fix to what the report is judged against reaches nothing"
+    h.update((root / "roster.py").read_bytes())
     assert h.hexdigest()[:16] == rules_fingerprint()
 
 def test_the_pair_check_abstains_on_a_half_nobody_has_re_read(tmp_path, monkeypatch):

@@ -889,12 +889,18 @@ def expected_for(db: Session, period: str,
                 e.order_status[oid] = known[oid]
 
     # AND WHERE A CAMPAIGN ACTUALLY STOPPED, for the ones that were cancelled.
-    from .serving import last_served
+    from .serving import last_served, serving_later
     stopped = last_served(db, period)
+    # AND NOT IF IT IS STILL DELIVERING IN A LATER MONTH. The stop day is read
+    # out of this cycle's period alone, so a campaign that ran to 28 August and
+    # kept going into September reads as one that stopped on the 28th.
+    still_going = serving_later(db, period)
     for (mk, ck, kind), e in rows.items():
         if kind != "lifetime":
             continue
         if not any_stopped.get((mk, ck)):
+            continue
+        if (mk, ck) in still_going:
             continue
         day = stopped.get((mk, ck))
         # Only when it is EARLIER than what the order says AND earlier than the

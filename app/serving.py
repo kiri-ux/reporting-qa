@@ -567,6 +567,24 @@ def last_served(db: Session, period: str) -> dict[tuple[str, str], object]:
         if r.last_day}
 
 
+def serving_later(db: Session, period: str) -> set[tuple[str, str]]:
+    """Clients with delivery in a month AFTER this cycle's.
+
+    "IT STOPPED" IS A CLAIM ABOUT THE WHOLE FILE, AND WAS BEING READ OFF ONE
+    MONTH OF IT. The stop date is the last day inside the cycle's own period,
+    so a campaign that ran to 28 August and is still running in September looks
+    exactly like one that stopped on the 28th - if you never look past August.
+    SKyPAC 51251 was tagged "stopped 2026-08-28" with 1,277 impressions on
+    1 September sitting in the same file.
+
+    A later month is enough on its own: the stop day is inside this period, so
+    anything in a later one is after it.
+    """
+    return {(r.market_key, r.client_key) for r in db.scalars(
+        select(ServedDays).where(ServedDays.period > period)).all()
+        if r.days or r.last_day}
+
+
 def has_serving(db: Session, period: str) -> bool:
     return db.scalar(select(ServedDays.id).where(
         ServedDays.period == period).limit(1)) is not None

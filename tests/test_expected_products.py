@@ -392,3 +392,61 @@ def test_a_grouped_buy_counts_its_goal_once(monkeypatch):
 
     month = R.ordered_for(None, "Russell Law", "51091", "2026-07")
     assert month["CTV, Video"]["impressions"] == 50000.0
+
+
+# --------------------------------------------------- a cancelled buy on a lifetime
+def test_a_product_cancelled_on_every_line_is_not_owed_on_the_lifetime(db):
+    """SKYPAC 51251. The August lifetime was failed for "Ordered but not on the
+    report: CTV, Performance Max, Video" - and all three of those were called
+    off. The pacing panel on the same screen already said so, in as many words:
+    a cancelled buy "is not part of what the campaign was asked to deliver"."""
+    from app.db import OrderLine
+    from app.roster import expected_products
+    db.add(OrderLine(market="7 Mountains KY", client=CLIENT,
+                     account_ids="51251", line_ids="120731", campaign="CTV",
+                     product="CTV", canceled=True, live=False,
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 6, 30),
+                     detail=[{"line_id": "120731", "canceled": True,
+                              "starts": "2026-01-01", "ends": "2026-06-30"}]))
+    db.add(OrderLine(market="7 Mountains KY", client=CLIENT,
+                     account_ids="51251", line_ids="120750",
+                     campaign="Video Ads", product="Video",
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 8, 31),
+                     detail=[{"line_id": "120750", "canceled": False,
+                              "starts": "2026-01-01", "ends": "2026-08-31"}]))
+    db.commit()
+    got = expected_products(db, CLIENT, "51251", lifetime=True)
+    assert "CTV" not in got
+    assert "Video" in got
+
+
+def test_a_product_with_one_cancelled_line_and_one_live_one_still_counts(db):
+    """Social Mirror CTV on that same campaign: cancelled on 120751, complete
+    on 122725 and 128151. One OrderLine row holds all three, so reading the
+    rolled-up flag would drop a product that plainly ran."""
+    from app.db import OrderLine
+    from app.roster import expected_products
+    db.add(OrderLine(market="7 Mountains KY", client=CLIENT,
+                     account_ids="51251", line_ids="120751 122725",
+                     campaign="Social Mirror", product="Social Mirror Ads",
+                     canceled=True, live=False,
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 8, 31),
+                     detail=[{"line_id": "120751", "canceled": True,
+                              "starts": "2026-01-01", "ends": "2026-06-30"},
+                             {"line_id": "122725", "canceled": False,
+                              "starts": "2026-07-01", "ends": "2026-08-31"}]))
+    db.commit()
+    assert expected_products(db, CLIENT, "51251",
+                             lifetime=True) == {"Social Mirror Ads"}
+
+
+def test_a_row_with_no_line_detail_falls_back_to_its_own_flag(db):
+    """Rows written before the detail existed still have to answer."""
+    from app.db import OrderLine
+    from app.roster import expected_products
+    db.add(OrderLine(market="7 Mountains KY", client=CLIENT,
+                     account_ids="51251", line_ids="1", campaign="CTV",
+                     product="CTV", canceled=False,
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 8, 31)))
+    db.commit()
+    assert expected_products(db, CLIENT, "51251", lifetime=True) == {"CTV"}
