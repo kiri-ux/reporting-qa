@@ -450,3 +450,27 @@ def test_a_row_with_no_line_detail_falls_back_to_its_own_flag(db):
                      starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 8, 31)))
     db.commit()
     assert expected_products(db, CLIENT, "51251", lifetime=True) == {"CTV"}
+
+
+def test_the_line_item_dates_out_of_the_detail_are_strings(db):
+    """REPORT 2255 DIED ON THIS. The detail is JSON, so its dates come back as
+    ISO strings while the campaign window is real dates, and Python will not
+    compare the two - it raises. Every re-check of a lifetime went to the
+    error page."""
+    from app.db import OrderLine
+    from app.roster import expected_products
+    db.add(OrderLine(market="M", client=CLIENT, account_ids="51251",
+                     line_ids="1", campaign="CTV", product="CTV",
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 8, 31),
+                     detail=[{"line_id": "1", "canceled": False,
+                              "starts": "2026-01-01", "ends": "2026-08-31"}]))
+    db.add(OrderLine(market="M", client=CLIENT, account_ids="51251",
+                     line_ids="2", campaign="Video Ads", product="Video",
+                     canceled=True, live=False,
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 6, 30),
+                     detail=[{"line_id": "2", "canceled": True,
+                              "starts": "2026-01-01", "ends": "2026-06-30"}]))
+    db.commit()
+    got = expected_products(db, CLIENT, "51251", lifetime=True,
+                            window=(dt.date(2026, 1, 1), dt.date(2026, 8, 31)))
+    assert got == {"CTV"}

@@ -1,5 +1,18 @@
-build 2026.09.03-183
+build 2026.09.03-184
 Changed files only. Everything since 130 - install this one.
+
+183 BROKE THE RE-CHECK BUTTON. DO NOT RUN IT.
+=============================================
+"'>' not supported between instances of 'str' and 'datetime.date'", on every
+re-check of a lifetime, which on 183 is every lifetime on the board.
+
+The new cancelled-buy test reads each line item's own flight out of the stored
+detail. That detail is JSON, so its dates come back as ISO STRINGS, and the
+campaign window it is compared against is real dates. Python does not compare
+the two, it raises. My tests passed it a window of None and never hit the line.
+
+Both go through the date parser now, and there is a test with the window set
+and strings in the detail.
 
 Dockerfile
 app/audit.py
@@ -81,4 +94,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-857 tests pass.
+858 tests pass.

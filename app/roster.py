@@ -335,8 +335,13 @@ def _wanted_on_lifetime(line, window) -> bool:
         if not isinstance(d, dict):
             continue
         if window and (window[0] or window[1]):
-            if not _overlaps(_Window(d.get("starts"), d.get("ends")),
-                             window[0], window[1]):
+            # THROUGH _as_date. The detail is JSON, so its dates are ISO
+            # STRINGS while the window is real dates, and comparing the two
+            # raises rather than answering - the re-check button on report 2255
+            # died on "'>' not supported between str and datetime.date".
+            if not _overlaps(_Window(_as_date(d.get("starts")),
+                                     _as_date(d.get("ends"))),
+                             _as_date(window[0]), _as_date(window[1])):
                 continue
         inside = True
         if not d.get("canceled"):

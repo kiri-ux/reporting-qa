@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-183"
+BUILD = "2026.09.03-184"
 BUILD_NOTES = ("A cancelled buy is no longer 'ordered but not on the report', "
                "and a campaign still delivering next month is not 'stopped'.")
 
