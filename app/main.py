@@ -1798,8 +1798,30 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     # page again means scrolling the board back to where you were, every time.
     # The board this report was opened from is carried on the form.
     target = back if back.startswith("/") and not back.startswith("//") else ""
-    # The cookie, not the referer, as the fallback. The referer here is the
-    # report page itself, which is the one place this must not land.
+    # THE PAGE YOU PRESSED IT ON, BEFORE THE COOKIE.
+    #
+    # The cookie is written when a report is OPENED, so it remembers the board
+    # you were on the last time you viewed a PDF - which is exactly right when
+    # you sign off from inside the viewer, and exactly wrong everywhere else.
+    # Signing off from a partner's list sent Taylor to whichever partner he had
+    # last opened a PDF under: press the tick in 7 Mountains PA Stroudsburg,
+    # land in 7 Mountains PA Dubois. Every time.
+    #
+    # So: an explicit back wins, then the page the press came from, then the
+    # cookie. The referer is skipped when it IS the report page - that is the
+    # one place this must not land, and it is the case the cookie exists for.
+    if not target:
+        came = request.headers.get("referer") or ""
+        try:
+            from urllib.parse import urlsplit
+            bits = urlsplit(came)
+            same = (not bits.netloc
+                    or bits.netloc == urlsplit(str(request.url)).netloc)
+            path = bits.path + (f"?{bits.query}" if bits.query else "")
+            if same and path.startswith("/") and "/report/" not in path:
+                target = path
+        except Exception:                                    # noqa: BLE001
+            pass
     resp = RedirectResponse(target or _back_cookie(request) or "/cycle",
                             status_code=303)
     # First sign-off of the day remembers you, so there is no separate step to

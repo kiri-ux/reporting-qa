@@ -1,4 +1,4 @@
-build 2026.09.02-174
+build 2026.09.02-175
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -32,49 +32,41 @@ tests/test_rules.py
 tests/test_timing.py
 
 
-"15 RESTARTS" WAS FIVE DEPLOYS WEARING A COSTUME
-================================================
-One row is written per worker PROCESS, and there are three workers - so
-installing a build writes three rows. Fifteen of them in an hour is about five
-deploys, which is what you were doing.
+BOTH OF TAYLOR'S - AND HE DIAGNOSED THE FIRST ONE HIMSELF
+==========================================================
 
-The page said "That is not normal and it is the reason for the wait. It is
-almost always memory" about an entirely normal afternoon. Starts within ninety
-seconds of each other are one event now, and it says both numbers - the
-restarts, and the worker starts behind them. The verdict text points at the
-restart list instead of guessing: every entry shows the build it came up on,
-and if they are all the SAME build then something really is killing it.
+PAGE 2 LOST THE REPORTER FILTER
+===============================
+This is the critical one and he is right about what it does: the filter is not
+being ignored, the link he clicked never carried it.
 
+Every pager and chip on the board was built from a hand-written list of query
+parameters - period, group, state, search, bucket - and the CARD filters
+(Partner, Buyer, Reporter, Trainer, Status) were not on that list. So page 2 is
+a link to a board with no reporter set, and the dropdown honestly reads "All"
+when you land, because that is what the address says.
 
-"THERE ARE TWO OF THESE"
-========================
-Written down once, and still saying two after build 169 made it three. That
-quietly makes every division on the page wrong - the request list is a third of
-the traffic, not half. It counts the workers now.
-
-
-799 AND 2,029 WERE THE SAME QUEUE
-=================================
-The board says 799 and why-slow said 2,029, which makes both of them
-untrustworthy. Why-slow was asking unscoped: every period, and the signed-off
-reports the sweep deliberately leaves alone. It asks the board's question now,
-with the bigger number beside it and labelled.
+There is one place now that writes out every filter that is on, and every
+pager, bucket and drop-this-filter chip is built from it. Anything added later
+is carried by all of them or by none, rather than by whichever ones somebody
+remembered.
 
 
-WHAT YOUR PAGE ACTUALLY SAYS
-============================
-Nothing on it is about the dashboard being slow.
+SIGNING OFF SENT HIM TO ANOTHER PARTNER
+=======================================
+He worked this out exactly right: it goes back to the last market where he used
+View PDF.
 
-  /healthz            0.000-0.008s
-  POST /inbound/zapier   23-25s, 27 queries, ~6-7s of that in the database
+Opening a report writes down the board you came from, so that signing off
+inside the viewer returns you there rather than leaving you on the PDF. That
+cookie was also being used when you sign off from a partner's LIST, where it is
+simply the wrong answer - it sends you to wherever you last opened a PDF. Press
+the tick in 7 Mountains PA Stroudsburg, land in 7 Mountains PA Dubois. Every
+time, as he says.
 
-The health check is answering instantly - build 169 and 170 did their job. The
-slow thing is a report arriving: 25 seconds each, and about 17 of those are
-this code doing work rather than waiting on the database. That is the pull
-running, which is what should be happening at 3pm on the 2nd.
-
-Memory 348 MB of 2,048. Load 9.4, which inside a container counts the whole
-host including the neighbors.
+It goes back to the page the press came from now. The cookie is still the
+fallback and still wins when the press came from inside the viewer, which is
+the one place it must not land.
 
 
-841 tests pass.
+843 tests pass.

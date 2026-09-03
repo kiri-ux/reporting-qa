@@ -3248,3 +3248,88 @@ def test_the_serve_panel_says_when_it_looks_again():
     assert 'action="/orders/sync"' in tail, "and a way not to wait for it"
     from app.config import Settings
     assert Settings.model_fields["sync_every_minutes"].default == 30
+
+
+def test_paging_keeps_the_filter_that_is_on(tmp_path, monkeypatch):
+    """Taylor set Reporter to himself, pressed page 2, and got everybody's
+    markets back with the filter reading "All".
+
+    The pagers were built out of a hand-written list of parameters and the card
+    filters were not on it, so the link he clicked had never carried the one
+    thing he had set. Every link on the page is built from the same place now.
+    """
+    import datetime as _dt
+    import importlib
+    import re as _re
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'pg.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+
+    db = dbm.SessionLocal()
+    for i in range(45):
+        db.add(dbm.OrderLine(market=f"Partner {i:02d}", client=f"Client {i}",
+                             product="Display", account_ids=str(50000 + i),
+                             line_ids=str(i), live=True, flights=[], detail=[],
+                             starts_on=_dt.date(2026, 8, 1),
+                             ends_on=_dt.date(2026, 8, 31)))
+    db.commit(); db.close()
+
+    picks = "|".join(f"Partner {i:02d}" for i in range(40))
+    page = TestClient(mmod.app).get("/cycle", params={
+        "period": "2026-08", "partner": picks}).text
+
+    cards = _re.findall(r'href="(/cycle\?[^"]*cards=\d+)"', page)
+    assert cards, "no card pager to check"
+    assert all("partner=" in href for href in cards), \
+        "the card pager drops the filter that is on"
+    rows = _re.findall(r'href="(/cycle\?[^"]*page=\d+#reports)"', page)
+    assert all("partner=" in href for href in rows), \
+        "the report pager drops it too"
+    # Built once, not written out per link - which is how it fell off in the
+    # first place.
+    tpl = (TPL / "cycle.html").read_text()
+    assert "{% macro keep(skip='') %}" in tpl
+    assert tpl.count('href="/cycle?period={{ period }}{% if filter_group') == 0
+
+
+def test_signing_off_lands_on_the_page_you_pressed_it_on(tmp_path, monkeypatch):
+    """The cookie is written when a report is OPENED, so it remembers the board
+    you were on the last time you viewed a PDF.
+
+    Right when you sign off from inside the viewer, wrong everywhere else:
+    press the tick in 7 Mountains PA Stroudsburg and land in 7 Mountains PA
+    Dubois, every time.
+    """
+    import importlib
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'so.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    from app import config as cfg; importlib.reload(cfg)
+    from app import db as dbm; importlib.reload(dbm); dbm.init_db()
+    from app import main as mmod; importlib.reload(mmod)
+
+    db = dbm.SessionLocal()
+    b = dbm.Batch(market="M", period="2026-08"); db.add(b); db.flush()
+    r = dbm.Report(batch_id=b.id, client="C", period="2026-08", severity="pass",
+                   filename="C.pdf", findings=[], acked=[])
+    db.add(r); db.commit(); rid = r.id; db.close()
+
+    c = TestClient(mmod.app)
+    c.cookies.set("qa_back", "/cycle?period=2026-08&group=Dubois")
+    here = "http://testserver/cycle?period=2026-08&group=Stroudsburg"
+    resp = c.post(f"/report/{rid}/review", data={"state": "reviewed", "who": "T"},
+                  headers={"referer": here}, follow_redirects=False)
+    assert resp.headers["location"] == "/cycle?period=2026-08&group=Stroudsburg", \
+        resp.headers["location"]
+
+    # From inside the viewer the cookie still wins - that is the one place this
+    # must not land.
+    resp = c.post(f"/report/{rid}/review", data={"state": "new"},
+                  headers={"referer": f"http://testserver/report/{rid}/view"},
+                  follow_redirects=False)
+    assert resp.headers["location"] == "/cycle?period=2026-08&group=Dubois"

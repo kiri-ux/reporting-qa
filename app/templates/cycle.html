@@ -2,7 +2,23 @@
 {% block title %}{{ cycle.label }} cycle · Report QA{% endblock %}
 {% block where %}Cycle · {{ cycle.label }}{% endblock %}
 {% block body %}
-{% macro cardlink(n) %}/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}&cards={{ n }}{% endmacro %}
+{# EVERY FILTER THAT IS ON, IN ONE PLACE.
+   The pagers were built out of a hand-written list of parameters, and the card
+   filters - Partner, Buyer, Reporter, Trainer, Status - were not on it. So
+   Taylor set Reporter to himself, pressed page 2, and got everybody's markets
+   back with the filter reading "All": the link he clicked had never carried it.
+   Anything added here is carried by every pager and chip on the page. #}
+{% macro keep(skip='') %}period={{ period }}{%
+  if filter_group and 'group' not in skip %}&group={{ filter_group|urlencode }}{% endif %}{%
+  if filter_state and 'state' not in skip %}&state={{ filter_state }}{% endif %}{%
+  if q and 'q' not in skip %}&q={{ q|urlencode }}{% endif %}{%
+  if bucket != 'pending' and 'done' not in skip %}&done={{ bucket }}{% endif %}{%
+  if hand_on and 'hand' not in skip %}&hand=1{% endif %}{%
+  if show_all and 'rows' not in skip %}&rows=all{% endif %}{%
+  for name, picks in (card_filters or {}).items() %}{%
+    if picks and name not in skip %}&{{ name }}={{ picks|join('|')|urlencode }}{% endif %}{%
+  endfor %}{% endmacro %}
+{% macro cardlink(n) %}/cycle?{{ keep() }}&cards={{ n }}{% endmacro %}
 {% macro cardpager() %}
   {% if card_pages > 1 %}
     <div class="pager">
@@ -211,7 +227,7 @@
       Only started</button>
     <span class="count" id="cnt-groups"></span>
     {% if q %}
-      <a class="chip" href="/cycle?period={{ period }}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}"
+      <a class="chip" href="/cycle?{{ keep('q') }}"
          title="Drop this search">{{ q }} &times;</a>
     {% endif %}
   </form>
@@ -231,11 +247,11 @@
     <span class="frow">Filters</span>
     {% if filter_group %}
       <span class="chip">{{ filter_group }}<a title="Show every partner again"
-        href="/cycle?period={{ period }}{% if filter_state %}&state={{ filter_state }}{% endif %}">&times;</a></span>
+        href="/cycle?{{ keep('group') }}">&times;</a></span>
     {% endif %}
     {% if filter_state %}
       <span class="chip">{{ state_label[filter_state] }}<a title="Drop this filter"
-        href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}">&times;</a></span>
+        href="/cycle?{{ keep('state') }}">&times;</a></span>
     {% endif %}
     {# WHAT THE BOARD IS NARROWED TO, said on the page. These used to live only
        in the dropdowns and in the address bar, so a saved view that filtered
@@ -835,7 +851,7 @@
 {# One page of fifty, and the address of any other page. The table used to be
    capped at 150 of 763 with a "load all" that put four seconds of browser time
    on the page. #}
-{% macro pagelink(n) %}/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}&page={{ n }}#reports{% endmacro %}
+{% macro pagelink(n) %}/cycle?{{ keep() }}&page={{ n }}#reports{% endmacro %}
 {% macro pager() %}
   {% if pages > 1 %}
     <div class="pager">
@@ -890,12 +906,12 @@
        said so with a straight face - the same trap the search box was in. #}
     {% if hand_total or hand_on %}
       <a class="mini toggle{{ ' on' if hand_on }}"
-         href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}{% if not hand_on %}&hand=1{% endif %}#reports"
+         href="/cycle?{{ keep('hand') }}{% if not hand_on %}&hand=1{% endif %}#reports"
          data-tip="{% if hand_on %}Showing only the rows somebody put on this cycle by hand. Click to show the rest again.{% else %}Only the rows somebody put on this cycle by hand - approved from the list check, or added here. They are marked BY HAND beside the client.{% endif %}"
         >Added by hand <b>{{ hand_total }}</b></a>
     {% endif %}
     {% if q %}
-      <a class="chip" href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if bucket != 'pending' %}&done={{ bucket }}{% endif %}"
+      <a class="chip" href="/cycle?{{ keep('q') }}"
          title="Drop this search">{{ q }} &times;</a>
     {% endif %}
   </form>
@@ -905,7 +921,7 @@
                              ('completed', 'Completed', done_hidden),
                              ('all', 'All', open_count + done_hidden)) %}
       <a class="bucket{{ ' on' if bucket == key }}"
-         href="/cycle?period={{ period }}{% if filter_group %}&group={{ filter_group|urlencode }}{% endif %}{% if filter_state %}&state={{ filter_state }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}{% if key != 'pending' %}&done={{ key }}{% endif %}#reports"
+         href="/cycle?{{ keep('done') }}{% if key != 'pending' %}&done={{ key }}{% endif %}#reports"
       >{{ label }} <b>{{ n }}</b></a>
     {% endfor %}
   </div>

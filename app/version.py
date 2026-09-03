@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.02-174"
-BUILD_NOTES = ("Why-slow counts deploys rather than worker processes, and "
-               "the same queue as the board.")
+BUILD = "2026.09.02-175"
+BUILD_NOTES = ("Paging keeps the filter that is on, and signing off lands on "
+               "the page you pressed it on.")
 
 # ---------------------------------------------------------------------------
 
