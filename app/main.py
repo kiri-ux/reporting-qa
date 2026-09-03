@@ -1368,6 +1368,15 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                # rendered found one of thirteen and said so with a straight
                # face.
                hand: str = Query(""),
+               # THE REPORT TABLE'S OWN COLUMN FILTERS, applied here.
+               #
+               # They filtered the fifty rows the browser had, which is not
+               # what the control looks like it does: set Reporter to yourself,
+               # press page 2, and it is gone - page 2 is a fresh page of the
+               # unfiltered board. The card filters above have been server-side
+               # for a while and these never caught up.
+               col_partner: str = Query(""), col_kind: str = Query(""),
+               col_status: str = Query(""), col_reporter: str = Query(""),
                db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
@@ -1454,6 +1463,19 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     hand_total = sum(1 for e in rows if e.forced_by)
     if hand:
         rows = [e for e in rows if e.forced_by]
+    # Each column filters on the row's own value rather than on whatever its
+    # cell prints - a Kind cell also carries the flight dates, and a filter
+    # built out of the printed text offers "lifetime 2026-01-01 to ..." as a
+    # choice.
+    cols = {"partner": _picked(col_partner), "kind": _picked(col_kind),
+            "status": _picked(col_status), "reporter": _picked(col_reporter)}
+    _col_of = {"partner": lambda e: e.market or "",
+               "kind": lambda e: e.kind or "",
+               "status": lambda e: e.state or "",
+               "reporter": lambda e: e.reporter or ""}
+    for name, want in cols.items():
+        if want:
+            rows = [e for e in rows if _col_of[name](e) in want]
     # ONE GRID, WITH THE FINISHED WORK FILTERED OUT RATHER THAN MOVED AWAY.
     #
     # Signed-off reports used to live in their own collapsed section at the
@@ -1551,6 +1573,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "all_markets": sorted({m for g in groups for m in (g.markets or [])}
                               | {g.group for g in groups if g.group}),
         "all_products": every_product(),
+        "cols": cols,
         # The hand-added chip beside the search: how many there are, and
         # whether it is on.
         "hand_total": hand_total, "hand_on": bool(hand),

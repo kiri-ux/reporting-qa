@@ -17,6 +17,9 @@
   if show_all and 'rows' not in skip %}&rows=all{% endif %}{%
   for name, picks in (card_filters or {}).items() %}{%
     if picks and name not in skip %}&{{ name }}={{ picks|join('|')|urlencode }}{% endif %}{%
+  endfor %}{%
+  for name, picks in (cols or {}).items() %}{%
+    if picks and name not in skip %}&col_{{ name }}={{ picks|join('|')|urlencode }}{% endif %}{%
   endfor %}{% endmacro %}
 {% macro cardlink(n) %}/cycle?{{ keep() }}&cards={{ n }}{% endmacro %}
 {% macro cardpager() %}
@@ -596,7 +599,7 @@
                  data-clear="{{ 1 if not e.report.open_findings else 0 }}"
                  aria-label="Select {{ e.client }}">
         {% endif %}</td>
-        <td class="nw">{{ e.market }}</td>
+        <td class="nw" data-v="{{ e.market }}">{{ e.market }}</td>
         <td><b>{{ e.client }}</b>{% if e.forced_by %}<span class="byhand"
             data-tip="Put on this cycle by hand by {{ e.forced_by }}{% if e.forced_note %} - {{ e.forced_note }}{% endif %}. The order export did not ask for it.">by hand</span>{% endif %}
           {# The order id is what gets quoted when raising this with anyone,
@@ -630,7 +633,7 @@
              what identifies the client. #}
           {% if e.line_ids %}<span class="oid lid" title="Line item ids">{{ e.line_ids }}</span>{% endif %}
           <span class="sr">{% for p in chips.get(e.ident, []) %}{{ p.name }} {% endfor %}</span></td>
-        <td class="nw">{% if e.kind == 'lifetime' %}
+        <td class="nw" data-v="{{ e.kind }}">{% if e.kind == 'lifetime' %}
           <span class="pill p-info"
                 {% if e.life_note %}title="{{ e.life_note }}. A lifetime is owed when a campaign finishes, whatever else this client still has running."{% endif %}>lifetime</span>
           {# Both dates: this is the range the report has to cover, and the end
@@ -655,7 +658,7 @@
           <span class="pill p-info"
                 data-tip="SEO is a separate report, pulled outside TapClicks and uploaded here. It goes into the partner's folder with the rest, and the checks are not run on it.">SEO</span>
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
-        <td class="nw"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
+        <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
           {% if e.report and e.report.renamed_from %}
             <span class="wpill" title="Arrived as {{ e.report.renamed_from }} - the order id was missing or wrong, so it was renamed.">renamed</span>
@@ -709,7 +712,7 @@
             <span class="empty">Not received</span>
           {% else %}<span class="empty">Not received</span>{% endif %}
         </td>
-        <td class="nw">{{ e.reporter }}
+        <td class="nw" data-v="{{ e.reporter }}">{{ e.reporter }}
           {# Only a sign-off that still stands. The name outlives a re-check
              that pulled it, so that the person can be told - printing it
              regardless put an initial beside a report nobody had reviewed. #}
@@ -948,9 +951,12 @@
   <div class="tw"><table id="tbl-cycle">
     <thead><tr><th class="pick"><input type="checkbox" class="pickall"
         aria-label="Select every report shown"></th>
-    <th data-col="Partner">Partner</th><th>Client</th><th>Products</th>
-    <th data-col="Kind">Kind</th><th data-col="Status">Status</th><th>Findings</th>
-    <th data-col="Reporter">Reporter</th><th>Sign-off</th></tr></thead>
+    {# data-key says the SERVER filters this column, on the row's own value
+       rather than on whatever the cell prints. #}
+    <th data-col="Partner" data-key="partner">Partner</th><th>Client</th><th>Products</th>
+    <th data-col="Kind" data-key="kind">Kind</th>
+    <th data-col="Status" data-key="status">Status</th><th>Findings</th>
+    <th data-col="Reporter" data-key="reporter">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>
   {{ pager() }}
   {# WHAT THIS CYCLE DOES NOT OWE, AND WHY.

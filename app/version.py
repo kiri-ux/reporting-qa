@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.02-175"
-BUILD_NOTES = ("Paging keeps the filter that is on, and signing off lands on "
-               "the page you pressed it on.")
+BUILD = "2026.09.03-176"
+BUILD_NOTES = ("The report table's column filters narrow the whole cycle, "
+               "not the fifty rows the browser happens to have.")
 
 # ---------------------------------------------------------------------------
 

@@ -3272,7 +3272,8 @@ def test_paging_keeps_the_filter_that_is_on(tmp_path, monkeypatch):
 
     db = dbm.SessionLocal()
     for i in range(45):
-        db.add(dbm.OrderLine(market=f"Partner {i:02d}", client=f"Client {i}",
+        db.add(dbm.OrderLine(market="Partner 00" if i < 3 else f"Partner {i:02d}",
+                             client=f"Client {i}",
                              product="Display", account_ids=str(50000 + i),
                              line_ids=str(i), live=True, flights=[], detail=[],
                              starts_on=_dt.date(2026, 8, 1),
@@ -3295,6 +3296,18 @@ def test_paging_keeps_the_filter_that_is_on(tmp_path, monkeypatch):
     tpl = (TPL / "cycle.html").read_text()
     assert "{% macro keep(skip='') %}" in tpl
     assert tpl.count('href="/cycle?period={{ period }}{% if filter_group') == 0
+
+    # AND THE REPORT TABLE'S OWN COLUMNS. There are two Reporter filters on
+    # that page - one for the partner cards and one for the report rows - and
+    # the second was filtering the fifty rows the browser had, so page 2 was a
+    # fresh page of the unfiltered board with the dropdown reading "All".
+    page = TestClient(mmod.app).get("/cycle", params={
+        "period": "2026-08", "col_partner": "Partner 00"}).text
+    rows = _re.findall(r'href="(/cycle\?[^"]*page=\d+#reports)"', page)
+    assert all("col_partner=" in href for href in rows), \
+        "the column filter falls off the pager"
+    assert 'data-key="reporter"' in page, "the server has to know the column"
+    assert 'data-v="Partner 00"' in page, "and the value it filters on"
 
 
 def test_signing_off_lands_on_the_page_you_pressed_it_on(tmp_path, monkeypatch):

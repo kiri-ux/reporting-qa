@@ -1308,9 +1308,25 @@ body.fit .pdfwrap object{height:100%}
     if (wrap && table.tHead) {
       Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th, i) {
         if (!th.hasAttribute('data-col')) return;
+        // A COLUMN THAT NARROWS THE WHOLE CYCLE, NOT THE PAGE.
+        //
+        // These filtered the fifty rows the browser had, which is not what the
+        // control looks like it does: set Reporter to yourself, press page 2,
+        // and the filter is gone - because page 2 is a fresh page of the
+        // unfiltered board and the dropdown honestly says "All" on arrival.
+        // Taylor lost his own markets that way and called it critical, and he
+        // was right; the card filters above have navigated for a while and
+        // these never caught up.
+        //
+        // A column marked data-key is filtered by the server on that key, off
+        // each cell's data-v - the value rather than whatever the cell prints,
+        // so a Kind cell that also carries dates still filters on "monthly".
+        var key = th.dataset.key || '';
         var vals = {};
         rows.forEach(function (r) {
-          (r.cells[i] || '').split(/\s*,\s*/).forEach(function (v) {
+          var raw = key && r.tr.cells[i] && r.tr.cells[i].dataset.v !== undefined
+            ? r.tr.cells[i].dataset.v : (r.cells[i] || '');
+          (raw || '').split(/\s*,\s*/).forEach(function (v) {
             v = v.trim();
             if (v && v !== '\u2014' && v !== '-') vals[v] = (vals[v] || 0) + 1;
           });
@@ -1322,9 +1338,25 @@ body.fit .pdfwrap object{height:100%}
         if (names.length < 2) return;
         var f = document.createElement('div'); f.className = 'colf';
         var lb = document.createElement('label'); lb.textContent = th.dataset.col;
-        var sel = buildMulti(names, vals, 'colf-' + box.dataset.filter + '-' + i, lb, run);
+        var sel = buildMulti(names, vals,
+          'colf-' + box.dataset.filter + '-' + i, lb,
+          key ? function () {
+            var u = new URL(window.location.href);
+            if (sel.chosen.length) u.searchParams.set('col_' + key, sel.chosen.join('|'));
+            else u.searchParams.delete('col_' + key);
+            u.searchParams.delete('page');       // a narrower board starts at one
+            u.hash = 'reports';
+            window.location.assign(u.toString());
+          } : run);
+        // What the address already asked for, ticked - or the control denies
+        // the filter it is currently applying.
+        if (key) {
+          var want = (new URL(window.location.href)
+            .searchParams.get('col_' + key) || '').split('|').filter(Boolean);
+          if (want.length) sel.setChosen(want);
+        }
         f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
-        selects.push({ i: i, el: sel });
+        if (!key) selects.push({ i: i, el: sel });
       });
       if (selects.length) {
         var clear = document.createElement('button');

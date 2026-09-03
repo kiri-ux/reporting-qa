@@ -1,4 +1,4 @@
-build 2026.09.02-175
+build 2026.09.03-176
 Changed files only. Everything since 130 - install this one.
 
 Dockerfile
@@ -32,41 +32,35 @@ tests/test_rules.py
 tests/test_timing.py
 
 
-BOTH OF TAYLOR'S - AND HE DIAGNOSED THE FIRST ONE HIMSELF
-==========================================================
+I FIXED THE WRONG REPORTER FILTER
+=================================
+There are two on that page and they are different things. 175 fixed the one on
+the partner cards. Taylor is using the one on the REPORTS table, four rows
+lower, and your address bar says so - the link he clicked reads
 
-PAGE 2 LOST THE REPORTER FILTER
-===============================
-This is the critical one and he is right about what it does: the filter is not
-being ignored, the link he clicked never carried it.
+  /cycle?period=2026-08&page=2#reports
 
-Every pager and chip on the board was built from a hand-written list of query
-parameters - period, group, state, search, bucket - and the CARD filters
-(Partner, Buyer, Reporter, Trainer, Status) were not on that list. So page 2 is
-a link to a board with no reporter set, and the dropdown honestly reads "All"
-when you land, because that is what the address says.
+with no filter on it at all, because that filter was never in the address in
+the first place.
 
-There is one place now that writes out every filter that is on, and every
-pager, bucket and drop-this-filter chip is built from it. Anything added later
-is carried by all of them or by none, rather than by whichever ones somebody
-remembered.
+The card filters have been server-side for a while: pick one, the page reloads
+narrowed, and the choice is in the URL. The report table's columns - Partner,
+Kind, Status, Reporter - were doing something else entirely. They filtered the
+fifty rows the browser happened to be holding. So page 2 is a fresh page of the
+UNFILTERED board, and the dropdown honestly reads "All" when you land on it,
+because that is the truth about the page you are now looking at.
 
+That also means the filter never saw the other 970 reports even before you
+paged. "3 of 50 rows" on a cycle of 1,020 is the same trap the search box was
+in a while back.
 
-SIGNING OFF SENT HIM TO ANOTHER PARTNER
-=======================================
-He worked this out exactly right: it goes back to the last market where he used
-View PDF.
+They narrow the whole cycle now, the same as the card filters. Picking one
+reloads the board filtered, the choice is in the address, the pagers carry it,
+and page 2 is page 2 of YOUR reports.
 
-Opening a report writes down the board you came from, so that signing off
-inside the viewer returns you there rather than leaving you on the PDF. That
-cookie was also being used when you sign off from a partner's LIST, where it is
-simply the wrong answer - it sends you to wherever you last opened a PDF. Press
-the tick in 7 Mountains PA Stroudsburg, land in 7 Mountains PA Dubois. Every
-time, as he says.
-
-It goes back to the page the press came from now. The cookie is still the
-fallback and still wins when the press came from inside the viewer, which is
-the one place it must not land.
+It filters on the row's own value rather than on what the cell prints - a Kind
+cell also carries the flight dates, and a filter built out of the printed text
+was offering "lifetime 2026-01-01 to 2026-08-15" as a thing to pick.
 
 
 843 tests pass.
