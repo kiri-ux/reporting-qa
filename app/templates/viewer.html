@@ -545,14 +545,32 @@ details[open] > .cksum::before{content:'▾ '}
 
 /* A drop target reads as somewhere to put a file. The browser's own file input
    reads as a button next to the words "No file chosen". */
-.drop{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;
- border:1.5px dashed var(--line);border-radius:12px;color:var(--ink-2);
+.drop{position:relative;display:flex;align-items:center;gap:10px;padding:14px 16px;
+ cursor:pointer;border:1.5px dashed var(--line);border-radius:12px;color:var(--ink-2);
  background:var(--surface);transition:border-color .12s,background .12s,color .12s}
 .drop:hover,.drop.over{border-color:var(--velocity);color:var(--velocity);
  background:var(--velocity-10)}
 .drop.over{border-style:solid}
-.drop input[type=file]{position:absolute;width:1px;height:1px;opacity:0;
- pointer-events:none}
+/* THE INPUT COVERS THE DROP ZONE, AND .drop IS position:relative SO THAT MEANS
+   SOMETHING. Both halves of that are load-bearing and neither is decoration.
+
+   It was a 1px absolute box with no positioned ancestor. On this page - and
+   only this page - .checks is position:static, because body.fit turns the
+   report page into two panes that scroll inside themselves. So the input's
+   containing block became the page itself and its static position was
+   somewhere down the checks panel's scrolled content, hundreds of pixels below
+   the fold, which made the body scrollable when it is not supposed to be.
+
+   Then: choose a file, the OS dialog closes, the browser puts focus back on
+   the input and scrolls it into view - and body.fit is overflow:hidden, which
+   stops a PERSON scrolling but not a script. The page shifted up and stayed
+   there with no scrollbar to bring it back. That is Taylor's "the whole window
+   shifts up and I can't use it anymore".
+
+   Covering the zone fixes it at the cause: there is nothing to scroll to,
+   because the thing being focused is what you just clicked. */
+.drop input[type=file]{position:absolute;inset:0;width:100%;height:100%;
+ opacity:0;cursor:pointer}
 .dtext{font-size:13px}
 .asname{font-size:11.5px;margin:6px 0 0;max-width:46ch}
 .asname code{font-size:11px;background:var(--atlas-10);padding:1px 5px;

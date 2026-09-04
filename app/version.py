@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-186"
-BUILD_NOTES = ("A hand-added row finds the report that arrived for it, and a "
-               "note is no longer a verdict.")
+BUILD = "2026.09.03-187"
+BUILD_NOTES = ("Choosing a file to replace a report no longer shifts the page "
+               "off the screen.")
 
 # ---------------------------------------------------------------------------
 

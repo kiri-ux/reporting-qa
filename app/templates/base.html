@@ -845,6 +845,27 @@ body.fit .pdfwrap object{height:100%}
 
 <script>
 (function () {
+  // A PAGE THAT CANNOT BE SCROLLED BACK MUST NOT BE SCROLLED AWAY.
+  //
+  // body.fit is overflow:hidden - the report page is two panes that scroll
+  // inside themselves and the page itself does not move. overflow:hidden stops
+  // a PERSON scrolling and not a script, so anything that calls scrollIntoView
+  // shifts it and leaves no scrollbar to bring it back: focus returning from
+  // the file dialog did exactly that, and the report page shifted up and
+  // stayed there. The cause is fixed where it was; this is so the next one
+  // cannot do it either.
+  // NOT ON A NARROW SCREEN. Under 900px the fit layout gives up and the page
+  // scrolls normally, and pinning it there would be a worse bug than the one
+  // this is for.
+  if (document.body.classList.contains('fit')) {
+    var wide = window.matchMedia('(min-width: 901px)');
+    window.addEventListener('scroll', function () {
+      if (wide.matches && (window.scrollY || window.scrollX)) {
+        window.scrollTo(0, 0);
+      }
+    }, { passive: true });
+  }
+
   // Back to top. These tables run to a couple of thousand rows.
   var btn = document.getElementById('totop');
   var onScroll = function () { btn.classList.toggle('show', window.scrollY > 600); };

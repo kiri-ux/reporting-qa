@@ -1532,3 +1532,44 @@ def test_the_order_re_read_waits_for_a_gap_and_runs_niced(monkeypatch):
     at = src.index("_wait_for_a_quiet_box()\n        with background():")
     assert "_remap_orders_if_stale()" in src[at:at + 200], \
         "the heaviest job in the service is the one not marked background"
+
+
+# ------------------------------------ the report page cannot be scrolled away
+def test_the_file_input_is_contained_by_the_drop_zone():
+    """TAYLOR: "whenever I click the button to upload a revised PDF, the entire
+    window shifts up and I can't use it anymore."
+
+    The input was a 1px absolute box with no positioned ancestor, and on THIS
+    page .checks is position:static because body.fit makes two panes that
+    scroll inside themselves. So its containing block was the page, its static
+    position was down inside the checks panel's scrolled content, and the body
+    became scrollable when it is not supposed to be. Choosing a file returns
+    focus to the input, the browser scrolls it into view, and body.fit is
+    overflow:hidden - which stops a person scrolling, not a script. The page
+    went up and there was no scrollbar to bring it back.
+    """
+    from pathlib import Path as _P
+    css = (_P(__file__).resolve().parents[1] / "app" / "templates"
+           / "viewer.html").read_text()
+    at = css.index(".drop{")
+    block = css[at:css.index(".dtext{", at)]
+    assert "position:relative" in block.split("}")[0], \
+        "the drop zone is not a containing block, so the input escapes it"
+    inp = block[block.index(".drop input[type=file]"):]
+    assert "inset:0" in inp and "height:100%" in inp, \
+        "the input does not cover the zone, so focus has somewhere to scroll to"
+
+
+def test_a_fit_page_snaps_back_if_something_scrolls_it():
+    """The belt to the braces above. body.fit has no scrollbar, so a page
+    scrolled by a script stays scrolled - and every one of those is a page that
+    looks broken and is."""
+    from pathlib import Path as _P
+    base = (_P(__file__).resolve().parents[1] / "app" / "templates"
+            / "base.html").read_text()
+    at = base.index("classList.contains('fit')")
+    guard = base[at:at + 400]
+    assert "scrollTo(0, 0)" in guard
+    # And not on a narrow screen, where the fit layout gives up and the page is
+    # supposed to scroll.
+    assert "min-width: 901px" in guard

@@ -1,5 +1,29 @@
-build 2026.09.03-186
+build 2026.09.03-187
 Changed files only. Everything since 130 - install this one.
+
+TAYLOR AGAIN - THE PAGE THAT SHIFTS UP AND WILL NOT COME BACK
+=============================================================
+Not a stream of bugs, a stream of good reports. This one is a real find and it
+would have been very hard to describe any better than he did.
+
+The report page is the only page in the tool laid out to NOT scroll: two panes
+that scroll inside themselves so the checks and the PDF stay on screen
+together. It gets that by way of overflow:hidden on the body.
+
+overflow:hidden stops a PERSON scrolling. It does not stop a script.
+
+The hidden file input behind the drop zone was a 1px box positioned absolutely
+with nothing to be absolute inside of - and on this page, and only this page,
+its containing block ends up being the whole document rather than the drop
+zone. So it sat hundreds of pixels below the fold. Choose a file, the OS dialog
+closes, the browser hands focus back to the input and scrolls it into view -
+and there is no scrollbar to scroll back with. Stuck, exactly as he said.
+
+The input covers the drop zone now, so there is nothing to scroll to: the thing
+being focused is the thing you just clicked. And a page in that layout snaps
+back to the top if anything scrolls it, so the next one of these cannot do it
+either.
+
 
 CENTRAL COAST TRAILERS - NOTHING COULD CLEAR IT BECAUSE NOTHING WAS WRONG
 =========================================================================
@@ -159,4 +183,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-865 tests pass.
+867 tests pass.
