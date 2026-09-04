@@ -365,21 +365,25 @@ def test_every_finding_says_which_page_to_look_at():
     assert not missing, "findings with no page: " + "; ".join(missing)
 
 
-def test_the_rate_ceiling_finding_carries_its_page_and_widget():
-    """And it stays OUT of the completion widgets, which have their own check
-    that names the row. Reading those a second time and printing a vaguer
-    version of the same finding is what made it look like a duplicate - it was
-    one, on every report that has a completion widget."""
-    from app.checks.rules import check_rate_ceiling
-    inside = ("OVERVIEW - PAGE 1\nSocial Mirror Creative Performance\n"
-              " row   1   2\n"
-              "Completion Performance\n  Strategy   101.16%\n")
-    assert check_rate_ceiling({"text": inside, "page_of": lambda _o: 12}) == []
+def test_a_completion_rate_over_100_is_caught_by_the_column_not_the_title():
+    """WATSONTOWN. Pluto TV reads 100.51% inside Top CTV Publishers, which
+    carries a Completion Rate column and is not called Completion Performance.
 
-    text = ("OVERVIEW - PAGE 1\nSite and App Performance\n"
-            "  example.com   250.00%   4,000\n")
-    out = check_rate_ceiling({"text": text, "page_of": lambda _o: 12})
-    assert out[0]["where"] == "p12 · Site and App Performance"
+    That one row was the entire remaining catch of check_rate_ceiling - a whole
+    separate rule that scanned the document for any figure over 100% and
+    otherwise re-reported what this check had already said by name. Reading the
+    column rather than the widget's title deletes the rule and keeps the
+    finding.
+    """
+    from app.checks.parser import pdf_pages
+    from app.checks.rules import CHECKS, check_completion_rates
+
+    text = "".join(pdf_pages(Path(__file__).resolve().parents[1]
+                             / "tests" / "fixtures" / "watsontown.pdf"))
+    out = check_completion_rates({"text": text, "page_of": None})
+    assert len(out) == 1
+    assert "Pluto TV" in out[0]["detail"] and "100.51%" in out[0]["detail"]
+    assert "check_rate_ceiling" not in {fn.__name__ for fn, _l in CHECKS}
 
 
 def test_seo_is_never_owed_a_lifetime():
@@ -1616,8 +1620,8 @@ def test_a_fix_nobody_has_written_is_blank_rather_than_invented():
     rows = [c for g in flags() for c in g["checks"]]
     blank = [c for c in rows if not c["how"]]
     assert unwritten() == len(blank)
-    assert blank, "nothing left to write, so the counter is dead code"
-    assert len(blank) < len(rows), "nothing was written at all"
+    # There are none left, which is the point of having counted them. The
+    # machinery stays: the next check added will have nothing written about it.
     body = (TPL / "rules_body.html").read_text()
     assert "not written yet" in body
     assert "no fix written against them yet" in body
@@ -3570,3 +3574,33 @@ def test_a_broken_database_costs_the_counts_and_not_the_page():
             raise RuntimeError("no such table: reports")
 
     assert flag_counts(Dead(), "2026-08") == {}
+
+
+def test_okay_to_package_gets_a_green_tick():
+    """The one thing on this page that is not a hold-up. Read out of the fix
+    itself rather than kept as a separate flag, so it cannot say one thing
+    while the words beside it say another."""
+    from app.flag_catalog import PACKS_MEANS, flags
+
+    packs = {c["key"] for g in flags() for c in g["checks"] if c["packs"]}
+    assert packs == {"check_pacing_off", "check_lifetime_goal",
+                     "check_geofence_names", "check_site_ctr"}, packs
+    for g in flags():
+        for c in g["checks"]:
+            assert c["packs"] == ("packag" in c["how"].lower())
+    assert PACKS_MEANS
+    body = (TPL / "rules_body.html").read_text()
+    assert 'class="packs"' in body and "{{ packs_means }}" in body
+
+
+def test_the_client_checks_are_one_row():
+    """Two rows for one thing - the line items against the cover page, and the
+    cover page against the row it arrived in. Both halves still run."""
+    from app.checks.rules import CHECKS, SKIP_WHY
+    from app.flag_catalog import described
+
+    names = {fn.__name__ for fn, _l in CHECKS}
+    assert "check_client_wrong" in names
+    assert "check_client_data" not in names
+    assert "check_client_matches_order" not in names
+    assert "check_client_wrong" in SKIP_WHY and "check_client_wrong" in described()

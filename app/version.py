@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-193"
-BUILD_NOTES = ("Pacing is one check, and a cancelled line that ran this month "
-               "explains an over-delivery rather than being one.")
+BUILD = "2026.09.04-194"
+BUILD_NOTES = ("35 checks. The rate ceiling is deleted, the two client checks "
+               "are one, and okay-to-package has a green tick.")
 
 # ---------------------------------------------------------------------------
 

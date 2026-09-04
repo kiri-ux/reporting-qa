@@ -1,6 +1,46 @@
-build 2026.09.04-193
+build 2026.09.04-194
 Changed files only. Everything since 130 - install this one.
-37 checks now, not 38 - the two pacing rows are one.
+35 checks now, down from 38.
+
+YOU WERE RIGHT ABOUT THE RATE CEILING. IT IS GONE.
+==================================================
+Your question was the right one and I should have asked it instead of writing
+another paragraph defending the thing. So I ran it against every stored report
+with the completion widgets excluded, and it found exactly ONE figure:
+
+  Pluto TV - Live TV and Movies    198    100.51%
+
+in Watsontown's Top CTV Publishers grid. Which is a completion rate. It was in
+a widget that is not CALLED "Completion Performance", so the completion check
+could not see it and a whole separate rule existed to catch it from the other
+side of the report.
+
+So the completion check reads the COLUMN now instead of the widget's title. It
+catches that row by name - "Pluto TV shows 100.51%" - and check_rate_ceiling is
+deleted. Nothing lost, one fewer row, and the finding is on the check that can
+actually say which row it is.
+
+The answer to "what else is ever over 100%": nothing. You were right.
+
+
+THE TWO CLIENT CHECKS ARE ONE ROW
+=================================
+Merged, and your text kept as you wrote it. Both halves still run - the line
+items against the cover page, and the cover page against the row it arrived in
+- they just report as one line. My paragraph explaining why they were different
+is gone; it was the explanation that needed deleting, not the check.
+
+
+GREEN TICK ON OKAY TO PACKAGE
+=============================
+Four of them: pacing, lifetime goal, geo-fence names, site CTR. A green tick
+beside the owner, and the key says what it means - the report can still go out,
+the fix is a message to send rather than something to hold delivery for.
+
+It is read out of your own how-to, not kept as a separate setting: any fix
+containing the word "package" gets the tick. So the icon cannot say one thing
+while the words next to it say another, and you control it by wording.
+
 
 THE NEW RULE - A CANCELLED LINE THAT RAN EXPLAINS THE OVER
 ==========================================================
@@ -483,4 +523,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-888 tests pass.
+890 tests pass.

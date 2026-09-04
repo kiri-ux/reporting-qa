@@ -523,51 +523,6 @@ def check_pacing_off(ctx) -> list[dict]:
     return check_impression_pacing(ctx) + check_pacing(ctx)
 
 
-RATE_RE = re.compile(r"\b(\d{2,4}\.\d{2})%")
-
-
-def check_rate_ceiling(ctx) -> list[dict]:
-    """A percentage over 100% somewhere no other check is looking.
-
-    IT SKIPS THE COMPLETION WIDGETS, which is what makes it worth keeping.
-    check_completion_rates already reads inside every Completion Performance
-    widget and names the row it found; this one used to read those same rows a
-    second time and print a vaguer version of the same thing, which is why it
-    looked like a duplicate. It was one, on every report that has a completion
-    widget - and that is most of them.
-
-    What is left is the part nothing else covers: a CTR column at 250%, a rate
-    in a widget nobody has written a check for. If that turns out to be nothing
-    on a real cycle, the count on the flags page will say so and the check can
-    go. A check that fires only where it is the only one looking is a check
-    whose number means something.
-
-    Nothing to do with a HIGH CTR - that is check_site_ctr and its own
-    thresholds. Over 100% is impossible, not suspicious.
-    """
-    text = ctx["text"]
-    # Every span check_completion_rates owns, so this one stays out of them.
-    owned = []
-    for m in re.finditer(r"^.*Completion Performance.*$", text, re.M):
-        owned.append((m.end(), m.end() + len(_widget_block(text, m.end()))))
-
-    bad, first = set(), -1
-    for m in RATE_RE.finditer(text):
-        if float(m.group(1)) <= 100:
-            continue
-        if any(a <= m.start() < b for a, b in owned):
-            continue
-        bad.add(m.group(1))
-        if first < 0:
-            first = m.start()
-    if not bad:
-        return []
-    return [_f("rate_over_100", "warn", "Rate printed above 100%",
-               "Values found: " + ", ".join(f"{b}%" for b in sorted(bad)[:5]) +
-               ". Completion rates and CTR cannot exceed 100%.",
-               where=_where(ctx, first, widget_at(text, first)))]
-
-
 # ---------------------------------------------------------------- previews
 def check_thumbnails(ctx) -> list[dict]:
     """ONE FINDING PER WIDGET, NOT ONE PER REPORT.
@@ -1370,6 +1325,17 @@ def check_client_matches_order(ctx) -> list[dict]:
                       ("Cover page says", ctx.get("client") or "?")], where=COVER)]
 
 
+def check_client_wrong(ctx) -> list[dict]:
+    """The report, and the data on it, belong to this client - ONE CHECK.
+
+    Two rows for one thing. Both halves are the same question asked of a
+    different half of the file: the line items against the cover page, and the
+    cover page against the row it arrived in. A report pulled entirely on the
+    wrong client only fails the second, so both still run.
+    """
+    return check_client_data(ctx) + check_client_matches_order(ctx)
+
+
 def check_date_range(ctx) -> list[dict]:
     """The printed date range has to match what the report claims to be.
 
@@ -1502,12 +1468,21 @@ def check_completion_rates(ctx) -> list[dict]:
 
     A rate above 100 means more completions than impressions, which is
     arithmetically impossible - it is a counting fault upstream, not a good
-    month. Every "Completion Performance" widget is checked, whatever product
-    it belongs to.
+    month.
+
+    ANY WIDGET WITH A COMPLETION RATE COLUMN, not only the ones titled
+    "Completion Performance". Watsontown's Top CTV Publishers grid has one, and
+    Pluto TV in it reads 100.51% - a completion rate over 100% that this check
+    could not see because of the widget's name. That single row was the entire
+    remaining catch of check_rate_ceiling, a whole separate rule that scanned
+    the document for any figure over 100% and mostly re-reported what this one
+    had already said by name. Reading the column instead of the title deletes
+    the rule and keeps the finding.
     """
     text = ctx.get("text") or ""
     out, seen = [], set()
-    for m in re.finditer(r"^.*Completion Performance.*$", text, re.M):
+    for m in re.finditer(r"^.*(?:Completion Performance|Completion Rate).*$",
+                         text, re.M):
         block = _widget_block(text, m.end())
         for line in block.split("\n"):
             bad = [v for v in PCT.findall(line)
@@ -1515,7 +1490,11 @@ def check_completion_rates(ctx) -> list[dict]:
             if not bad:
                 continue
             label = re.split(r"\s{2,}", line.strip())[0][:60]
-            key = (m.group(0).strip()[:60], label)
+            # THE ROW ITSELF, NOT THE HEADING ABOVE IT. A widget titled
+            # "Completion Performance" whose header row also says "Completion
+            # Rate" now starts two overlapping blocks, and keyed on the heading
+            # the same row came out twice under two different headings.
+            key = (label, tuple(bad))
             if key in seen:
                 continue
             seen.add(key)
@@ -1909,7 +1888,6 @@ CHECKS: list[tuple] = [
     (check_creative,       "Creative totals match the line items"),
     (check_device,         "The device breakout matches the eligible total"),
     (check_row_math,       "Every row's CTR matches that row's own numbers"),
-    (check_rate_ceiling,   "No rate is above its ceiling"),
     (check_thumbnails,     "Every creative preview rendered"),
     (check_blank_pages,    "No widget page came out blank"),
     (check_geofence_names, "Every geo-fencing row has a business name"),
@@ -1918,9 +1896,7 @@ CHECKS: list[tuple] = [
     (check_rogue_ctv,      "No CTV widget on a report with no CTV"),
     (check_products,       "The products on the report match the live orders"),
     (check_date_range,     "The date range matches the period this report covers"),
-    (check_client_data,    "The data on the report belongs to the client it names"),
-    (check_client_matches_order,
-     "The report is for the client whose slot it arrived in"),
+    (check_client_wrong,   "The report and its data belong to this client"),
     (check_market_logo,    "Page one carries the partner's logo, not a generic one"),
     (check_pacing_off,
      "Delivery and spend are close to what the order asked for"),
@@ -1956,7 +1932,7 @@ SKIP_WHY = {
     "check_products": "no order list loaded for this client, or the loaded one "
                       "was read by older import code",
     "check_date_range": "the report prints no date range",
-    "check_client_matches_order": "the file it arrived as carries no client name",
+    "check_client_wrong": "nothing on the report or its filename names a client",
     "check_pacing_off": "no order figures loaded for this client",
     "check_headline_ctr": "no top-line impressions or clicks on the report",
     "check_month_within_lifetime": "the other half of the pair has not been "
@@ -1967,7 +1943,6 @@ SKIP_WHY = {
     "check_creative": "no grids on the report",
     "check_device": "no grids on the report",
     "check_row_math": "no grids on the report",
-    "check_rate_ceiling": "no grids on the report",
     "check_completion_rates": "no completion widget on the report",
     "check_zero_completion": "no completion rate column on the report",
     "check_some_zero_completion": "no video, CTV or audio completion column on "
@@ -2017,13 +1992,13 @@ def _rule_applies(rule, ctx) -> bool:
                 and ctx.get("orders_current", True))
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
-    if name == "check_client_matches_order":
-        # Needs a NAMED file. A report saved by hand is called "Digital
-        # Marketing Report.pdf" and says nothing about who it is for.
-        return bool(ctx.get("filed_as")) and bool(ctx.get("client"))
-    if name == "check_client_data":
-        # Needs a client to compare against and line items that name one.
-        return bool(ctx.get("client")) and bool(ctx.get("text"))
+    if name == "check_client_wrong":
+        # EITHER HALF IS ENOUGH. The line item comparison needs a client and
+        # some text; the filename comparison needs a NAMED file, and a report
+        # saved by hand is called "Digital Marketing Report.pdf" and says
+        # nothing about who it is for.
+        return bool(ctx.get("client")) and (bool(ctx.get("text"))
+                                            or bool(ctx.get("filed_as")))
     if name == "check_lifetime_goal":
         return bool(ctx.get("is_lifetime")) and bool(ctx.get("ordered"))
     if name == "check_pacing_off":
@@ -2041,10 +2016,13 @@ def _rule_applies(rule, ctx) -> bool:
     if name in ("check_headline_ctr",):
         return ctx.get("imps") is not None and ctx.get("clicks") is not None
     if name in ("check_line_items", "check_creative", "check_device",
-                "check_row_math", "check_rate_ceiling"):
+                "check_row_math"):
         return bool(ctx.get("tables"))
     if name == "check_completion_rates":
-        return "Completion Performance" in (ctx.get("text") or "")
+        # A COMPLETION RATE COLUMN, wherever it is. Watsontown's Top CTV
+        # Publishers grid has one and is not called Completion Performance.
+        text = ctx.get("text") or ""
+        return "Completion Performance" in text or "Completion Rate" in text
     if name == "check_zero_completion":
         return "Completion Rate" in (ctx.get("text") or "")
     if name == "check_some_zero_completion":

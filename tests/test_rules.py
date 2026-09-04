@@ -2062,10 +2062,19 @@ def test_no_widget_check_fires_on_the_real_fixtures():
         r = run_all(FIXTURES / f"{f}.pdf", filename=f"July 2026_{f}_1234.pdf",
                     period="2026-07",
                     flight=(_dt.date(2024, 1, 1), _dt.date(2026, 7, 31)))
-        noisy = [x for x in r["findings"]
-                 if x["code"] in ("completion_over_100", "unknown_device",
-                                  "widget_missing")]
+        codes = ["unknown_device", "widget_missing"]
+        # WATSONTOWN IS NOT CLEAN ON THIS ONE AND NEVER WAS. Pluto TV reads
+        # 100.51% in its Top CTV Publishers grid - a real completion rate over
+        # 100%, which the old check_rate_ceiling flagged from the other side of
+        # the report. Now that the completion check reads the column rather
+        # than the widget's title, it is the one that says so.
+        if f != "watsontown":
+            codes.append("completion_over_100")
+        noisy = [x for x in r["findings"] if x["code"] in codes]
         assert not noisy, f"{f}: {[x['title'] for x in noisy]}"
+        if f == "watsontown":
+            hit = [x for x in r["findings"] if x["code"] == "completion_over_100"]
+            assert len(hit) == 1 and "Pluto TV" in hit[0]["detail"]
 
 
 # ------------------------------------------- the device-under warning at 20%
@@ -3520,23 +3529,13 @@ def test_creative_only_speaks_up_when_it_claims_too_much():
     assert "creative_over_top" in src
 
 
-def test_the_rate_ceiling_is_a_backstop_not_the_completion_check():
-    """It reads the WHOLE document for anything over 100%, so a CTR column at
-    250% is caught too. And it has never had anything to do with a CTR over 5%
-    - that is the site check and its own thresholds; the catalog said otherwise
-    and made two different checks read as one."""
-    from app.checks.rules import check_rate_ceiling
-    from app.flag_catalog import flags
-
-    hit = check_rate_ceiling({"text": "Watched Rate    128.40%\n", "tables": [],
-                              "page_of": None})
-    assert len(hit) == 1
-    assert check_rate_ceiling({"text": "CTR    7.20%\n", "tables": [],
-                               "page_of": None}) == [], \
-        "a high CTR is the site check, not this one"
-    what = [c["what"] for g in flags() for c in g["checks"]
-            if c["key"] == "check_rate_ceiling"][0]
-    assert "5%" not in what
+def test_the_rate_ceiling_rule_is_gone():
+    """It only ever found completion rates, and the completion check now reads
+    them wherever the column is. A rule whose whole catch is another rule's is
+    not a backstop, it is a second copy."""
+    import app.checks.rules as R
+    assert not hasattr(R, "check_rate_ceiling")
+    assert "check_rate_ceiling" not in R.SKIP_WHY
 
 
 def test_pacing_is_one_check_not_two_rows():

@@ -158,6 +158,13 @@ body{margin:0;background:var(--plane);color:var(--ink);
 .ownr.vfy{border-style:dashed;color:var(--muted)}
 .ownrto{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap}
 .ownrto i{font-style:normal;color:var(--muted);font-size:11px}
+/* OKAY TO PACKAGE. The report can still go out; the fix is a message to send.
+   Green because it is the one thing on this page that is not a hold-up. */
+.packs{display:inline-flex;align-items:center;justify-content:center;
+ width:17px;height:17px;flex:0 0 auto;border-radius:50%;font-size:11px;
+ background:var(--ok-bg,#e6f4ea);color:var(--ok,#1e7a43);
+ border:1px solid currentColor}
+.whokey .packs{margin-right:0}
 .w-reporter{color:var(--velocity)}
 .w-buyer{color:var(--atlas)}
 .w-admin{color:var(--ink-2)}

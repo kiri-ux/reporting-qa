@@ -105,6 +105,7 @@
         <div><span class="ownr w-{{ who }}">{{ who }}</span>{{ means }}</div>
       {% endfor %}
       <div><span class="ownr vfy">verify</span>{{ verify_means }}</div>
+      <div><span class="packs">&#10003;</span>{{ packs_means }}</div>
     </div>
 
     {# ALL, OR THE ONES ACTUALLY FIRING. Radio and a sibling selector, like the
@@ -136,6 +137,8 @@
                 <td class="fl-pass">{{ c.label }}</td>
                 <td class="fl-who">
                   <span class="ownrto">
+                    {% if c.packs %}<span class="packs"
+                         data-tip="{{ packs_means }}">&#10003;</span>{% endif %}
                     {% if c.verify %}<span class="ownr vfy"
                          data-tip="Check it yourself before it goes anywhere. The tool misreads pages, and a false positive sent on is two people's afternoon.">verify</span><i>&rarr;</i>{% endif %}
                     <span class="ownr w-{{ c.who }}">{{ c.who }}</span>

@@ -53,6 +53,9 @@ REPORTER = "reporter"
 BUYER = "buyer"
 ADMIN = "admin"
 
+PACKS_MEANS = ("The report can still go out. The fix is a message to send, "
+               "not something to hold delivery for.")
+
 VERIFY_MEANS = ("Check it yourself before it goes anywhere. A finding is the "
                 "tool's reading of a PDF and the tool misreads pages, so a "
                 "false positive sent on is two people's afternoon.")
@@ -126,11 +129,6 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "more serve than the lifetime report. One of the two reports has "
          "the wrong date range on it, probably the lifetime. Check the "
          "start and end dates on both reports."),
-        ("check_rate_ceiling",
-         "A percentage over 100% somewhere no other check is looking - the "
-         "completion widgets have their own check and are skipped.",
-         ADMIN, False,
-         ""),
     ]),
     ("What the client bought", [
         ("check_products",
@@ -167,23 +165,13 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "a reporting issue."),
     ]),
     ("The right report for the right client", [
-        ("check_client_data",
-         "Data on the report that belongs to a different client.",
+        ("check_client_wrong",
+         "Data on the report that belongs to a different client, or a report "
+         "sitting in a different client's row.",
          REPORTER, False,
-         "Verify this first - it could be a typo or abbreviation "
-         "preventing the tool from seeing that match. Use your judgment "
-         "if it's the right client, pull with the correct client if not."),
-        ("check_client_matches_order",
-         "The report is for a different client than the ROW IT ARRIVED IN. Not "
-         "the same as the check above, which compares the cover page against "
-         "the report's own line items: a report pulled entirely on the wrong "
-         "client agrees with itself perfectly and only the slot it landed in "
-         "disagrees. St. Francis's July slot held six pages of Everett "
-         "Railroad and nothing inside the file was wrong.",
-         REPORTER, False,
-         "Two different things wear this: a report filed against the "
-         "wrong row, or the right report named wrongly. The order id in "
-         "the filename is what decides which."),
+         "Verify this first - it could be a typo or abbreviation preventing "
+         "the tool from seeing that match. Use your judgment if it's the right "
+         "client, pull with the correct client if not."),
         ("check_date_range",
          "The printed date range is not the period this report claims to "
          "cover.",
@@ -267,7 +255,8 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
     ]),
     ("Completion rates", [
         ("check_completion_rates",
-         "A completion rate above 100%.",
+         "A completion rate above 100% - in any widget carrying a completion "
+         "rate column, not only the ones named Completion Performance.",
          ADMIN, True,
          "Verify, then alert Alyssa."),
         ("check_zero_completion",
@@ -324,7 +313,12 @@ def flags() -> list[dict]:
     out = []
     for title, items in FLAG_GROUPS:
         rows = [{"key": key, "label": labels.get(key, key), "what": what,
-                 "who": who, "verify": verify, "how": how}
+                 "who": who, "verify": verify, "how": how,
+                 # OKAY TO PACKAGE. Read out of the fix itself rather than kept
+                 # as a separate flag, so it cannot say one thing while the
+                 # words beside it say another - change the words and the icon
+                 # follows.
+                 "packs": "packag" in (how or "").lower()}
                 for key, what, who, verify, how in items if key in labels]
         if rows:
             out.append({"group": title, "checks": rows})
@@ -354,26 +348,24 @@ NOTES: dict[str, str] = {
     "check_creative":
         "asked: only flag when the impressions are GREATER than the product "
         "reports. Done - the under-by branch is gone.",
-    "check_rate_ceiling":
-        "asked: is this needed, and it fired on 16 August reports. It was "
-        "reading the completion widgets a second time and printing a vaguer "
-        "version of a finding the completion check had already made - a real "
-        "duplicate on every report that has one. It skips them now, so the "
-        "count on the page becomes the answer: if it is 0 next cycle, nothing "
-        "but the completion check ever needed it and it can go. Description "
-        "cut to one line.",
+    "check_completion_rates":
+        "asked: what percentage other than a completion rate is ever over "
+        "100%? Right question, and the answer is none. Run against every "
+        "stored report, the old check_rate_ceiling found exactly one figure "
+        "outside a Completion Performance widget - Pluto TV at 100.51% in "
+        "Watsontown's Top CTV Publishers grid, which is a completion rate in a "
+        "widget with a different name. So this check reads the COLUMN now "
+        "rather than the widget title, it catches that row by name, and "
+        "check_rate_ceiling is deleted.",
     "check_pacing_off":
         "asked: what is check_pacing, and then - one check, not two rows for "
         "the same flag with two metrics. Merged. Impressions and dollars both "
         "still run and a report is checked on whichever it has; they just "
         "report as one line now, on the page and on every report's checklist.",
-    "check_client_matches_order":
-        "asked: is this the same as check_client_data? No. That one compares "
-        "the cover page against the report's own line items; this one compares "
-        "it against the ROW the file arrived in. A report pulled entirely on "
-        "the wrong client agrees with itself perfectly - St. Francis's July "
-        "slot held six pages of Everett Railroad and nothing inside the file "
-        "was wrong.",
+    "check_client_wrong":
+        "asked: same as the one above, merge them. Done - one row. Both halves "
+        "still run: the line items against the cover page, and the cover page "
+        "against the row it arrived in.",
     "check_strategy_categorized":
         "asked: only flag when it shows on the donut on the title page. That "
         "is what it already means - the donut IS the product breakout, and a "
