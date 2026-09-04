@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-189"
-BUILD_NOTES = ("Every flag says whose desk it goes to, and 24 of 38 say how to "
-               "fix it.")
+BUILD = "2026.09.04-190"
+BUILD_NOTES = ("Each flag says how many reports it is flagging now, and two "
+               "campaigns of one advertiser are not two clients.")
 
 # ---------------------------------------------------------------------------
 

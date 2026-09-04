@@ -114,26 +114,57 @@ body{margin:0;background:var(--plane);color:var(--ink);
 .flagt td{padding:7px 12px 7px 0;border-bottom:1px solid var(--line);
  vertical-align:top}
 .flagt tr:last-child td{border-bottom:0}
+/* ALL, OR THE ONES ACTUALLY FIRING THIS CYCLE. The catalog listed 38 with
+   equal weight, so a check flagging sixty reports read exactly like one that
+   has never fired - on the page somebody uses to decide what to look at first.
+   Radio and a sibling selector, because the sheet injects this as innerHTML
+   and a script tag put in that way never runs. */
+.rp-flags > input[name="flagonly"]{position:absolute;opacity:0;pointer-events:none}
+.fobar{display:flex;gap:6px;align-items:center;margin:0 0 12px}
+.fobar label{font-family:'GT Walsheim Pro',sans-serif;font-size:12.5px;
+ font-weight:700;color:var(--muted);cursor:pointer;padding:3px 10px;
+ border:1px solid var(--line);border-radius:14px}
+.fobar label:hover{color:var(--velocity);border-color:var(--velocity)}
+.fobar .sub{font-size:12px;color:var(--muted)}
+#fo-all:checked ~ .fobar label[for="fo-all"],
+#fo-live:checked ~ .fobar label[for="fo-live"]{color:var(--atlas);
+ border-color:var(--atlas);background:var(--atlas-10)}
+#fo-live:checked ~ .flaggroup tr.quiet,
+#fo-live:checked ~ .flaggroup.quiet{display:none}
+#fo-all:checked ~ .nonelive{display:none}
+.fl-n{width:1%;text-align:right;padding-right:10px !important}
+.ncount{display:inline-block;min-width:22px;padding:1px 6px;border-radius:10px;
+ background:var(--gold);color:var(--atlas);font-family:Agdasima,sans-serif;
+ font-size:12px;font-weight:700;text-align:center}
+.nzero{color:var(--muted);font-size:12px}
 .fl-what{color:var(--ink-2);width:30%}
-.fl-who{width:78px;white-space:nowrap}
-.fl-how{color:var(--ink-2);width:30%;font-size:12.5px}
-.fl-pass{color:var(--muted);font-size:12.5px;width:22%}
+.fl-who{width:1%;white-space:nowrap}
+.fl-how{color:var(--ink-2);width:31%;font-size:12.5px}
+.fl-pass{color:var(--muted);font-size:12.5px;width:23%}
 /* WHOSE DESK IT GOES TO. Three of them, so they read as a set rather than as
    three unrelated colors - same shape, same weight, hue is the only thing
-   carrying the difference. */
-.who{display:inline-block;font-family:Agdasima,sans-serif;font-size:12px;
- letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:11px;
- border:1px solid currentColor;line-height:1.5}
+   carrying the difference.
+
+   IT FITS THE WORD AND NOTHING ELSE. width:max-content and align-self keep it
+   that size inside a flex or grid parent too, where a plain inline-block gets
+   stretched to the row. */
+.who{display:inline-block;width:max-content;max-width:100%;align-self:center;
+ flex:0 0 auto;font-family:Agdasima,sans-serif;font-size:11px;
+ letter-spacing:.04em;text-transform:uppercase;padding:1px 7px;border-radius:9px;
+ border:1px solid currentColor;line-height:1.5;white-space:nowrap}
 .w-reporter{color:var(--velocity)}
 .w-buyer{color:var(--atlas)}
 .w-admin{color:var(--ink-2)}
 /* Not written yet, and saying so out loud. A column half filled in looks
    finished from a distance. */
 .tbd{color:var(--muted);font-style:italic;opacity:.75}
-.whokey{display:flex;flex-direction:column;gap:6px;margin:0 0 18px;
+/* The key: pill and what it means on ONE line. Stacked, three of them took as
+   much room as the first group of flags underneath. */
+.whokey{display:flex;flex-direction:column;gap:4px;margin:0 0 16px;
  font-size:12.5px;color:var(--ink-2);border-left:2px solid var(--line);
  padding-left:12px}
-.whokey .who{margin-right:8px;min-width:74px;text-align:center}
+.whokey div{display:flex;gap:8px;align-items:baseline}
+.whokey .who{align-self:baseline}
 .linkish{background:none;border:0;padding:0 0 0 6px;font:inherit;font-size:11px;
  color:var(--velocity);cursor:pointer;text-decoration:underline}
 .topbar::after{content:'';position:absolute;left:0;right:0;bottom:-3px;height:3px;

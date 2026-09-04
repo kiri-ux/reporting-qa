@@ -3459,3 +3459,69 @@ def test_the_day_strip_says_what_its_colours_mean(tmp_path, monkeypatch):
     assert "{% for m in serve_months %}" in page
     assert "nothing for\n        that day" in page or "nothing for" in page
     assert "weekend, in" in page, "the paler squares have to be explained"
+
+
+def test_the_catalogue_counts_what_is_flagging_right_now(tmp_path, monkeypatch):
+    """38 checks listed with equal weight meant one flagging sixty reports this
+    month read exactly like one that has never fired - on the page somebody
+    uses to decide what to look at first."""
+    import datetime as dt
+    import importlib
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'fl.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTO_RECHECK", "false")
+    monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
+    from app import config as cfg
+    importlib.reload(cfg)
+    from app import db as dbm
+    importlib.reload(dbm)
+    dbm.init_db()
+    db = dbm.SessionLocal()
+    b = dbm.Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1))
+    db.add(b)
+    db.commit()
+    for i, key in enumerate(("check_products", "check_products",
+                             "check_market_logo")):
+        db.add(dbm.Report(
+            batch_id=b.id, client=f"C{i}", market="M", period="2026-08",
+            severity="warn", filename=f"{i}.pdf", findings=[], acked=[],
+            checks=[{"key": key, "state": "flagged", "count": 1},
+                    # A passing check is not a count, which is the whole point.
+                    {"key": "check_row_math", "state": "passed"}]))
+    db.commit()
+
+    from app.board import flag_counts
+    assert flag_counts(db, "2026-08") == {"check_products": 2,
+                                          "check_market_logo": 1}
+    # A cycle with nothing in it is zero, not an error.
+    assert flag_counts(db, "2026-07") == {}
+    db.close()
+
+    from app import main as mmod
+    importlib.reload(mmod)
+    from fastapi.testclient import TestClient
+    page = TestClient(mmod.app).get("/rules?frag=1").text
+    assert 'class="ncount"' in page
+    assert "Flagging now" in page and "August 2026" in page
+    # All / active is a radio and a sibling selector: the sheet injects this as
+    # innerHTML and a script tag put in that way never runs.
+    assert 'name="flagonly"' in page and "<script" not in page
+    assert '#fo-live:checked ~ .flaggroup tr.quiet' in \
+        (TPL / "base.html").read_text()
+
+    monkeypatch.undo()
+    importlib.reload(cfg)
+    importlib.reload(dbm)
+    importlib.reload(mmod)
+
+
+def test_a_broken_database_costs_the_counts_and_not_the_page():
+    """This page was pure reference and needed no database at all. A count is
+    not worth taking it down for."""
+    from app.board import flag_counts
+
+    class Dead:
+        def execute(self, *_a, **_k):
+            raise RuntimeError("no such table: reports")
+
+    assert flag_counts(Dead(), "2026-08") == {}

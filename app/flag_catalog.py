@@ -24,7 +24,7 @@ from an order problem from a broken feed. Three answers:
             budget, and the names given to strategies, fences and conversions.
   admin     nobody at this end. The figures printed do not agree with each
             other, or a widget did not render - the data or the platform is
-            wrong and it goes upstream.
+            wrong. Goes to Alyssa.
 
 A test walks `CHECKS` and fails if anything is missing from this file. A check
 nobody can find is a check that gets argued about from memory.
@@ -53,7 +53,7 @@ WHO_MEANS = {
     BUYER: "Whoever set the campaign up. The order, its products and budget, "
            "and the names given to strategies, fences and conversions.",
     ADMIN: "Nobody at this end. The figures do not agree with each other or a "
-           "widget did not render, so it goes upstream.",
+           "widget did not render. Send it to Alyssa.",
 }
 
 # (group title, [(check function name, what going wrong looks like, who fixes

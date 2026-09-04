@@ -1226,6 +1226,36 @@ def _same_client(a: str, b: str) -> bool:
     return near(a, b)
 
 
+def _mostly_this_client(ctx, filed: str) -> bool:
+    """Do the report's own line items mostly belong to the filed client?
+
+    Weighted by impressions, because a report is what it mostly is: one small
+    line naming the right client does not rescue five large ones naming
+    somebody else, and a majority is the same bar check_client_data uses for
+    the mirror-image question.
+
+    False when the line items carry no client name at all - that is nothing
+    known rather than a disagreement, and the cover-page comparison stands.
+    """
+    from .quality import line_item_totals
+
+    rows = line_item_totals(ctx.get("text") or "")
+    if len(rows) < 2:
+        return False
+    mine = total = 0.0
+    for name, imps, _clicks in rows:
+        if " - " not in (name or ""):
+            continue
+        who = _client_of(name)
+        if not who or len(who) < 5:
+            continue
+        weight = max(imps, 1.0)
+        total += weight
+        if _same_client(who, filed):
+            mine += weight
+    return bool(total) and mine / total >= 0.5
+
+
 def check_client_matches_order(ctx) -> list[dict]:
     """The report has to be for the client whose slot it arrived in.
 
@@ -1247,6 +1277,23 @@ def check_client_matches_order(ctx) -> list[dict]:
     filed = _flat_name(ctx.get("filed_as") or "")
     cover = _flat_name(ctx.get("client") or "")
     if len(filed) < 5 or len(cover) < 5 or _same_client(filed, cover):
+        return []
+    # AND NOT WHEN THE REPORT'S OWN LINE ITEMS SAY THE FILED CLIENT.
+    #
+    # A CLIENT HERE IS OFTEN A CAMPAIGN. Belmont Park is on the board as
+    # "Belmont Park Branding Meta Pmax" and its cover page reads "Belmont Park
+    # LEISURE Meta + Pmax" - two campaigns of one advertiser, one order, one
+    # report - and the two names have nothing in common past "Belmont Park", so
+    # the fuzzy match said different client and the loudest finding this tool
+    # has went on a correct report.
+    #
+    # Comparing two names could never settle that: "Ashley HomeStore -
+    # Blacksburg" and "Ashley HomeStore - Roanoke" look just as alike and ARE
+    # two clients. The line items are what tells them apart. Five of Belmont
+    # Park's six read "Belmont Park - ...", which is the filed client on the
+    # page in its own data; St. Francis's slot full of Everett Railroad had
+    # nothing on any page that said St. Francis, and still does not.
+    if _mostly_this_client(ctx, filed):
         return []
     return [_f("wrong_client_file", "fail",
                "This is a different client's report",

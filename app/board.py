@@ -1457,3 +1457,39 @@ def summary(expected: list[Expected]) -> dict:
     c["total"] = len(expected)
     c["lifetimes"] = sum(1 for e in expected if e.kind == "lifetime")
     return c
+
+
+def flag_counts(db: Session, period: str) -> dict[str, int]:
+    """{check name: how many of this cycle's reports it is flagging}.
+
+    HOW MANY IS THE HALF THE CATALOG COULD NOT ANSWER. It listed all 38 with
+    equal weight, so a check that has fired on sixty reports this month and one
+    that has never fired at all read exactly the same - and the list is meant
+    to be where somebody decides what to look at first.
+
+    Counted off each report's own stored checklist rather than its findings,
+    because that is what carries the CHECK's name. A finding carries a code,
+    and several checks write the same one.
+
+    One report counts once for a check however many times it raised it: the
+    question is how many reports are affected, not how many lines were printed.
+
+    BEST EFFORT. This page was pure reference and needed no database at all. A
+    count is not worth taking it down for, so anything that goes wrong here
+    means no numbers rather than no page.
+    """
+    from collections import Counter
+
+    out: Counter = Counter()
+    try:
+        got = db.execute(select(Report.checks).where(
+            Report.period == period)).all()
+    except Exception:                                        # noqa: BLE001
+        return {}
+    for (rows,) in got:
+        for c in (rows or []):
+            if isinstance(c, dict) and c.get("state") in ("failed", "flagged"):
+                key = c.get("key")
+                if key:
+                    out[key] += 1
+    return dict(out)

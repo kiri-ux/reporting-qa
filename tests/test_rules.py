@@ -3395,3 +3395,82 @@ def test_the_pair_check_abstains_on_a_half_nobody_has_re_read(tmp_path, monkeypa
     assert db.get(dbm.Report, life.id).impressions == 54_544
     assert db.get(dbm.Report, month.id).findings == []
     db.close()
+
+
+# ------------------------------------- a client here is often a campaign
+_BELMONT = (
+    "Line Item Performance\n"
+    " Line Item Name                                                      "
+    "Impressions   Clicks     CTR\n"
+    " Belmont Park - Behavioral Facebook/Instagram Premium                     "
+    "62,800      210   0.33%\n"
+    " Belmont Park LEISURE Meta + Pmax - Things to do in san diego             "
+    "31,700      120   0.38%\n"
+    " Belmont Park - Custom Audience Lookalike Facebook/Instagram Premium      "
+    "23,100       90   0.39%\n"
+    " Belmont Park - WVID Feed Facebook/Instagram Premium                      "
+    "22,800       80   0.35%\n"
+    " Belmont Park - Custom Audience Matching Facebook/Instagram Premium       "
+    "18,600       70   0.38%\n"
+    " Belmont Park - Retargeting Facebook/Instagram Premium                    "
+    "17,900       60   0.34%\n")
+
+
+def test_two_campaigns_of_one_advertiser_are_not_two_clients():
+    """BELMONT PARK 54540. On the board as "Belmont Park Branding Meta Pmax",
+    cover page reads "Belmont Park LEISURE Meta + Pmax" - two campaigns of one
+    advertiser, one order, one report. Past "Belmont Park" the names have
+    nothing in common, so the fuzzy match said different client and the loudest
+    finding this tool has went on a correct report.
+
+    Comparing the two names could never have settled it. The line items could:
+    five of the six say "Belmont Park - ...", which is the filed client on the
+    page in its own data.
+    """
+    from app.checks.rules import check_client_matches_order
+    assert check_client_matches_order(
+        {"filed_as": "Belmont Park Branding Meta Pmax",
+         "client": "Belmont Park LEISURE Meta + Pmax", "text": _BELMONT}) == []
+
+
+def test_a_report_pulled_on_the_wrong_client_is_still_caught():
+    """St. Francis AMT Program's July slot held six pages of Everett Railroad
+    Co and nothing on any page said St. Francis. The line item test must not
+    have loosened that."""
+    from app.checks.rules import check_client_matches_order
+    text = ("Line Item Performance\n"
+            " Line Item Name                        Impressions   Clicks    CTR\n"
+            " Everett Railroad Co - Display              62,800      210  0.33%\n"
+            " Everett Railroad Co - Video                31,700      120  0.38%\n")
+    out = check_client_matches_order(
+        {"filed_as": "St. Francis AMT Program",
+         "client": "Everett Railroad Co", "text": text})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+
+
+def test_one_small_right_line_does_not_rescue_a_wrong_report():
+    """A report is what it MOSTLY is. Majority by impressions, the same bar the
+    mirror-image check uses."""
+    from app.checks.rules import check_client_matches_order
+    text = ("Line Item Performance\n"
+            " Line Item Name                        Impressions   Clicks    CTR\n"
+            " Everett Railroad Co - Display              62,800      210  0.33%\n"
+            " Everett Railroad Co - Video                31,700      120  0.38%\n"
+            " St. Francis AMT Program - Display             400        2  0.50%\n")
+    out = check_client_matches_order(
+        {"filed_as": "St. Francis AMT Program",
+         "client": "Everett Railroad Co", "text": text})
+    assert len(out) == 1, "a rounding error of a line item cleared the report"
+
+
+def test_line_items_with_no_client_on_them_leave_the_name_check_alone():
+    """Nothing known is not agreement. The cover-page comparison stands."""
+    from app.checks.rules import check_client_matches_order
+    text = ("Line Item Performance\n"
+            " Line Item Name                        Impressions   Clicks    CTR\n"
+            " Display Prospecting                        62,800      210  0.33%\n"
+            " Video Retargeting                          31,700      120  0.38%\n")
+    out = check_client_matches_order(
+        {"filed_as": "St. Francis AMT Program",
+         "client": "Everett Railroad Co", "text": text})
+    assert len(out) == 1
