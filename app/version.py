@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-191"
-BUILD_NOTES = ("Your fixes are in, and Mobile Conquesting is out of the "
-               "device-eligible total.")
+BUILD = "2026.09.04-192"
+BUILD_NOTES = ("Your notes are answered, creative only flags when it claims "
+               "too much, and the columns are in your order.")
 
 # ---------------------------------------------------------------------------
 

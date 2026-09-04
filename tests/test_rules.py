@@ -3506,3 +3506,34 @@ def test_the_client_being_called_mobile_conquesting_does_not_empty_the_total():
                  "Facebook/Instagram Premium",
                  "Belmont Park - Retargeting Facebook/Instagram Premium"):
         assert not is_device_excluded(name, ex), name
+
+
+def test_creative_only_speaks_up_when_it_claims_too_much():
+    """It also used to say something when the creative tables came to LESS than
+    the top line, which is the ordinary case: a channel reporting completions
+    rather than clicks - CTV, Performance Max - has no creative rows to add up.
+    So almost every report carrying one was told its creative tables covered
+    part of the campaign. True, unhelpful, and sat beside real problems."""
+    src = (__import__("pathlib").Path(__file__).resolve().parents[1]
+           / "app" / "checks" / "rules.py").read_text()
+    assert "creative_under_top" not in src
+    assert "creative_over_top" in src
+
+
+def test_the_rate_ceiling_is_a_backstop_not_the_completion_check():
+    """It reads the WHOLE document for anything over 100%, so a CTR column at
+    250% is caught too. And it has never had anything to do with a CTR over 5%
+    - that is the site check and its own thresholds; the catalog said otherwise
+    and made two different checks read as one."""
+    from app.checks.rules import check_rate_ceiling
+    from app.flag_catalog import flags
+
+    hit = check_rate_ceiling({"text": "Watched Rate    128.40%\n", "tables": [],
+                              "page_of": None})
+    assert len(hit) == 1
+    assert check_rate_ceiling({"text": "CTR    7.20%\n", "tables": [],
+                               "page_of": None}) == [], \
+        "a high CTR is the site check, not this one"
+    what = [c["what"] for g in flags() for c in g["checks"]
+            if c["key"] == "check_rate_ceiling"][0]
+    assert "5%" not in what

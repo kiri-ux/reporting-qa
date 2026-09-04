@@ -1589,14 +1589,14 @@ def test_the_owner_pill_does_not_borrow_the_cycle_cards_class():
     assert '<div class="who">' in cards, "the cards stopped using it"
 
 
-def test_what_to_do_sits_beside_what_it_means():
-    """Reading the finding and then jumping a column of tags to find out what
-    to do about it put the two halves of one thought apart."""
+def test_the_columns_are_in_the_order_that_was_asked_for():
+    """What it means, what passing claims, whose desk, what to do. Pinned
+    because a column order is the kind of thing a tidy-up quietly reverses."""
     import re
     body = (TPL / "rules_body.html").read_text()
     at = body.index('class="flagt"')
-    order = re.findall(r'class="(fl-\w+)"', body[at:at + 2200])
-    assert order[:4] == ["fl-n", "fl-what", "fl-how", "fl-who"], order
+    order = re.findall(r'class="(fl-\w+)"', body[at:at + 2400])
+    assert order[:5] == ["fl-n", "fl-what", "fl-pass", "fl-who", "fl-how"], order
 
 
 def test_a_fix_nobody_has_written_is_blank_rather_than_invented():

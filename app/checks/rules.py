@@ -403,6 +403,15 @@ def check_line_items(ctx) -> list[dict]:
 
 
 def check_creative(ctx) -> list[dict]:
+    """The creative rows cannot claim more than the campaign delivered.
+
+    ONE DIRECTION ONLY. This used to also say something when the creative
+    tables came to LESS than the top line, which is the ordinary case rather
+    than a fault: a channel that reports completions instead of clicks - CTV,
+    Performance Max - has no creative rows to add up, so almost every report
+    carrying one was told its creative tables "cover part of the campaign".
+    True, unhelpful, and on the list beside things that are actually wrong.
+    """
     imps = ctx["imps"]
     tables = [t for t in ctx["tables"] if CREATIVE.search(t.title or "")]
     if not tables or not imps:
@@ -415,14 +424,6 @@ def check_creative(ctx) -> list[dict]:
                    "Creative table claims more than the campaign delivered",
                    f"Creative tables total {si:,.0f} impressions against a stated {imps:,.0f} "
                    f"(+{si - imps:,.0f}). Usually a de-duplication problem upstream.",
-                   where=spot)]
-    if si < imps * 0.999:
-        spot = _where(ctx, ctx["text"].find(tables[0].title or ""),
-                      tables[0].title or "Creative Performance")
-        return [_f("creative_under_top", "info",
-                   "Creative tables cover part of the campaign",
-                   f"Creative tables total {si:,.0f} against {imps:,.0f}. Normal when a channel "
-                   f"(CTV, Performance Max) reports completions or events rather than clicks.",
                    where=spot)]
     return []
 
@@ -511,6 +512,19 @@ RATE_RE = re.compile(r"\b(\d{2,4}\.\d{2})%")
 
 
 def check_rate_ceiling(ctx) -> list[dict]:
+    """Any percentage printed anywhere above 100%.
+
+    THE BACKSTOP, NOT THE COMPLETION CHECK. check_completion_rates reads inside
+    a Completion Performance widget and names the row; this one reads the whole
+    document, so a CTR column at 250% or a rate in a widget nobody has written
+    a check for still gets caught. Overlapping on a completion widget is the
+    point of a backstop, not a duplicate.
+
+    AND IT HAS NOTHING TO DO WITH A HIGH CTR. The catalog said "a CTR over 5%"
+    for a while, which is check_site_ctr's job and its own thresholds - this
+    one has only ever looked for figures over 100, which are impossible rather
+    than suspicious.
+    """
     text = ctx["text"]
     bad, first = set(), -1
     for m in RATE_RE.finditer(text):

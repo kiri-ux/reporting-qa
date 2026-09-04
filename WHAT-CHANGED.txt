@@ -1,5 +1,74 @@
-build 2026.09.04-191
+build 2026.09.04-192
 Changed files only. Everything since 130 - install this one.
+
+NO, I HAD NOT READ THE NOTES COLUMN
+===================================
+I read WHO and HOW and stopped. That is on me - you wrote five questions in
+there and none of them got an answer. All five are answered below and in the
+sheet, and NOTES is now a column the sheet carries both ways, so a question
+asked once does not have to be asked twice. It does not appear on the page:
+it is a conversation about the check, not something a person reading a finding
+needs.
+
+
+CHECK_CREATIVE - ONLY WHEN IT CLAIMS TOO MUCH
+=============================================
+You are right, and it was worse than a preference. It also spoke up when the
+creative tables came to LESS than the top line, which is the ORDINARY case: a
+channel reporting completions rather than clicks - CTV, Performance Max - has
+no creative rows to add up. So nearly every report carrying one was told its
+creative tables "cover part of the campaign". True, useless, and sitting beside
+things that are actually wrong. That half is gone.
+
+
+CHECK_RATE_CEILING - NOT A DUPE, BUT THE DESCRIPTION WAS WRONG
+==============================================================
+"A CTR over 5%" was never true of this check. It has only ever looked for
+figures over 100%, which are impossible rather than suspicious - a CTR that is
+merely high is check_site_ctr, with its own thresholds. So the dupe you spotted
+was in my words, not in the code, and the words are fixed.
+
+The 100% half is a real overlap with the completion check and worth keeping:
+that one reads INSIDE a Completion Performance widget and names the row, this
+one reads the whole document, so a CTR column printing 250% or a rate in a
+widget nobody has written a check for still gets caught. That is a backstop
+doing its job rather than a duplicate.
+
+
+CHECK_PACING - "WHAT IS THIS"
+=============================
+A full month's SPEND against the month's budget, in dollars. The impressions
+version is check_impression_pacing, directly above it. Whole months only.
+The catalog says so now.
+
+
+CHECK_CLIENT_MATCHES_ORDER - NOT THE SAME AS THE ONE ABOVE
+==========================================================
+You struck it out as a duplicate of check_client_data. They are opposites:
+
+  check_client_data           cover page against the report's OWN LINE ITEMS
+  check_client_matches_order  cover page against THE ROW IT ARRIVED IN
+
+A report pulled entirely on the wrong client agrees with itself perfectly, so
+the first one says nothing. St. Francis AMT Program's July slot held six pages
+of Everett Railroad - cover page, line items, every widget - and nothing inside
+the file was wrong. Only the slot disagreed. Keeping it.
+
+
+CHECK_STRATEGY_CATEGORIZED - THE DONUT IS WHAT IT ALREADY MEANS
+==============================================================
+The donut on page one IS the product breakout, and a strategy line with no
+product word in its name is exactly what lands on it as its own slice. So it is
+already the condition you asked for, just spotted from the line item names
+rather than from the chart. If you have one that is flagged and does NOT show
+on the donut, send it and I will narrow it.
+
+
+COLUMNS IN YOUR ORDER
+=====================
+What it means · what passing claims · who fixes it · how to fix it. On the page
+and in the sheet, with a test pinning it so a tidy-up cannot reverse it.
+
 
 THE OUTLINE ON THE NAMES - MY CLASS LANDED ON YOUR CARDS
 ========================================================
@@ -361,4 +430,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-881 tests pass.
+883 tests pass.

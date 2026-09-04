@@ -92,7 +92,9 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "than a wrong number. Total the impressions of the rows before "
          "sending to Alyssa."),
         ("check_creative",
-         "The creative rows do not add up to the line item they belong to.",
+         "The creative rows add up to MORE than the line item they belong to. "
+         "Coming in under is not flagged - a channel that reports completions "
+         "rather than clicks has no creative rows to add up.",
          ADMIN, True,
          "Verify the numbers first, send to Alyssa if you're seeing more "
          "impressions in the creative section than what is reported for "
@@ -125,8 +127,12 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "the wrong date range on it, probably the lifetime. Check the "
          "start and end dates on both reports."),
         ("check_rate_ceiling",
-         "A rate is above what that rate can be - a CTR over 5%, a completion "
-         "rate over 100%.",
+         "Any percentage printed anywhere on the report above 100%. This is "
+         "the BACKSTOP, not the completion check: that one reads inside a "
+         "Completion Performance widget and names the row, this one reads the "
+         "whole document, so a CTR column at 250% is caught too. It has "
+         "nothing to do with a high CTR - over 100% is impossible rather than "
+         "suspicious, and a suspicious one is the site check.",
          ADMIN, False,
          ""),
     ]),
@@ -154,7 +160,10 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "You can package the report, but flag the buyer in case this is "
          "a reporting issue."),
         ("check_pacing",
-         "A full month's spend that does not look like a full month's budget.",
+         "A full month's SPEND against the month's budget - dollars, where the "
+         "pacing check above is impressions. Whole months only: a lifetime "
+         "covers a campaign's flight and a monthly budget says nothing about "
+         "it, and a part month is under by the part that has not happened.",
          BUYER, False,
          ""),
         ("check_lifetime_goal",
@@ -171,7 +180,12 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "preventing the tool from seeing that match. Use your judgment "
          "if it's the right client, pull with the correct client if not."),
         ("check_client_matches_order",
-         "The report is for a different client than the row it arrived in.",
+         "The report is for a different client than the ROW IT ARRIVED IN. Not "
+         "the same as the check above, which compares the cover page against "
+         "the report's own line items: a report pulled entirely on the wrong "
+         "client agrees with itself perfectly and only the slot it landed in "
+         "disagrees. St. Francis's July slot held six pages of Everett "
+         "Railroad and nothing inside the file was wrong.",
          REPORTER, False,
          "Two different things wear this: a report filed against the "
          "wrong row, or the right report named wrongly. The order id in "
@@ -335,3 +349,39 @@ def unwritten() -> int:
 
 def described() -> set[str]:
     return {key for _t, items in FLAG_GROUPS for key, _w, _o, _v, _h in items}
+
+
+# WHAT WAS ASKED ABOUT A CHECK, AND WHAT THE ANSWER WAS.
+#
+# Round-tripped through the sheet so a question does not have to be asked
+# twice. NOT shown on the flags page - it is a conversation about the check
+# rather than something a person reading a finding needs.
+NOTES: dict[str, str] = {
+    "check_creative":
+        "asked: only flag when the impressions are GREATER than the product "
+        "reports. Done - the under-by branch is gone.",
+    "check_rate_ceiling":
+        "asked: is this the site check and the completion check? Neither. It "
+        "reads the whole document for anything over 100%, so it also catches a "
+        "rate in a widget with no check of its own; the completion check reads "
+        "inside a Completion Performance widget and names the row. The 'CTR "
+        "over 5%' in the old description was simply wrong - this check has "
+        "never looked at a CTR that was merely high.",
+    "check_pacing":
+        "asked: what is this? A full month's SPEND against the month's budget, "
+        "in dollars - the impression version is check_impression_pacing above "
+        "it.",
+    "check_client_matches_order":
+        "asked: is this the same as check_client_data? No. That one compares "
+        "the cover page against the report's own line items; this one compares "
+        "it against the ROW the file arrived in. A report pulled entirely on "
+        "the wrong client agrees with itself perfectly - St. Francis's July "
+        "slot held six pages of Everett Railroad and nothing inside the file "
+        "was wrong.",
+    "check_strategy_categorized":
+        "asked: only flag when it shows on the donut on the title page. That "
+        "is what it already means - the donut IS the product breakout, and a "
+        "strategy with no product word in its name is what lands on it as its "
+        "own slice. If you have one that is flagged and does NOT show on the "
+        "donut, send it and I will narrow it.",
+}
