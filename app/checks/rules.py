@@ -1753,24 +1753,35 @@ def check_some_zero_completion(ctx) -> list[dict]:
     return out
 
 
-def check_preview_links(ctx) -> list[dict]:
-    """Every creative variant has to carry a link to look at it.
+def check_variant_preview_links(ctx) -> list[dict]:
+    """Every variant on a Social Mirror AI grid has to carry its preview link.
 
-    The Social Mirror AI grid prints "Click to View" with the ad's URL behind
-    it, one per variant. A row with that column empty is a variant nobody
-    reading the report can see - and it is the column somebody opens when they
-    want to know what an underperforming variant actually looks like.
+    NOT THE SAME CHECK AS A MISSING PREVIEW IMAGE, which is why it has its own
+    name. On a CTV or display grid the preview is a picture printed in the
+    cell, and a blank cell means the thumbnail did not render. On this grid the
+    preview is a LINK - the report prints "Click to View" and hangs the ad's
+    URL off it - so a blank cell means a variant nobody reading the report can
+    open. Two different columns, two different repairs, and one word for both
+    made a finding that read as though the wrong thing was wrong.
+
+    It is the column somebody clicks when they want to know what an
+    underperforming variant actually looks like.
     """
     from .quality import missing_preview_links
     text = ctx.get("text") or ""
     page_of = ctx.get("page_of")
     out = []
     for at, title, blank, rows in missing_preview_links(text):
-        where = (f"p{page_of(at)} · " if page_of else "") + title
+        # THE CHECK'S OWN NAME, not the line above the header. That line is the
+        # merged group header on this grid and comes back as "Creative", which
+        # is the word this check is being renamed to get away from.
+        where = (f"p{page_of(at)} · " if page_of else "") + "Variant preview links"
         out.append(_f("preview_link_blank", "warn",
-                      f"{blank} of {rows} creatives have no preview link",
-                      "The Preview Link column is empty on those rows, so "
-                      "there is no way to see the ad from the report.",
+                      f"{blank} of {rows} variants have no preview link",
+                      "The Preview Link column is empty on those rows. The "
+                      "preview on this grid is a link rather than a picture, "
+                      "so those variants cannot be opened from the report at "
+                      "all.",
                       where=where))
     return out
 
@@ -1806,7 +1817,8 @@ CHECKS: list[tuple] = [
      "The month does not report more than the whole campaign"),
     (check_zero_completion, "No completion widget is 0% all the way down"),
     (check_some_zero_completion, "No video, CTV or audio row sits at 0% watched"),
-    (check_preview_links,   "Every creative variant carries a link to view it"),
+    (check_variant_preview_links,
+     "Every variant carries its preview link"),
     (check_completion_rates, "No completion rate is above 100%"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
@@ -1848,7 +1860,7 @@ SKIP_WHY = {
     "check_zero_completion": "no completion rate column on the report",
     "check_some_zero_completion": "no video, CTV or audio completion column on "
                                   "the report",
-    "check_preview_links": "no creative grid with a preview link column",
+    "check_variant_preview_links": "no creative grid with a preview link column",
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
     "check_geofence_names": "no geo-fencing table on the report",
@@ -1926,7 +1938,7 @@ def _rule_applies(rule, ctx) -> bool:
         from .quality import WATCHED_WIDGET
         text = ctx.get("text") or ""
         return "Completion Rate" in text and bool(WATCHED_WIDGET.search(text))
-    if name == "check_preview_links":
+    if name == "check_variant_preview_links":
         from .quality import LINK_HEADER
         return bool(LINK_HEADER.search(ctx.get("text") or ""))
     if name == "check_devices_known":

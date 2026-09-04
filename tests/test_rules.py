@@ -3003,8 +3003,16 @@ def test_a_real_widget_title_still_ends_the_table():
 def test_a_creative_variant_with_no_preview_link_is_flagged():
     """The Social Mirror AI grid prints "Click to View" with the ad's URL
     behind it, one per variant. A row with that column empty is a variant
-    nobody reading the report can see."""
-    from app.checks.rules import check_preview_links
+    nobody reading the report can see.
+
+    NAMED APART FROM THE SCREENSHOT CHECK. On a CTV grid the preview is a
+    picture and a blank cell means the thumbnail did not render; here the
+    preview is a link and a blank cell means the ad cannot be opened at all.
+    One word for both made the finding read as though the wrong thing was
+    wrong - and the location chip said "Creative", which is the merged group
+    header and names nothing.
+    """
+    from app.checks.rules import check_variant_preview_links
     text = ("Social Mirror Creative AI Performance\n"
             " Creative Name        Variant Name        Creative Format   "
             "Preview Link   Percentage Served    CTR\n\n"
@@ -3012,9 +3020,25 @@ def test_a_creative_variant_with_no_preview_link_is_flagged():
             "Click to View             2.60%   0.62%\n\n"
             " NTCC - Workforce     Variant: Original   Video             "
             "                          2.25%   0.54%\n")
-    out = check_preview_links({"text": text, "page_of": lambda _o: 12})
+    out = check_variant_preview_links({"text": text, "page_of": lambda _o: 12})
     assert len(out) == 1
-    assert "1 of 2 creatives have no preview link" == out[0]["title"]
+    assert "1 of 2 variants have no preview link" == out[0]["title"]
+    assert out[0]["where"] == "p12 · Variant preview links"
+    assert "link rather than a picture" in out[0]["detail"]
+
+
+def test_the_variant_link_check_is_named_apart_from_the_screenshot_one():
+    """Two columns, two repairs. A shared name is how a finding about a
+    missing LINK reads as a finding about a missing picture."""
+    from app.checks.rules import CHECKS, SKIP_WHY
+    from app.flag_catalog import described
+    labels = {fn.__name__: label for fn, label in CHECKS}
+    assert "check_variant_preview_links" in labels
+    assert "check_preview_links" not in labels, "the old ambiguous name is back"
+    assert labels["check_variant_preview_links"] == \
+        "Every variant carries its preview link"
+    assert "check_variant_preview_links" in SKIP_WHY
+    assert "check_variant_preview_links" in described()
 
 
 def test_one_creative_at_zero_completion_is_a_warning_not_a_fail():

@@ -1,5 +1,31 @@
-build 2026.09.03-187
+build 2026.09.04-188
 Changed files only. Everything since 130 - install this one.
+
+VARIANT PREVIEW LINKS - THEIR OWN NAME NOW
+==========================================
+The finding was right, which is why it needed renaming rather than fixing. Eight
+of those rows really are blank and really cannot be opened. What was wrong was
+that it sounded like the OTHER check - the one about a preview cell with no
+screenshot in it - and on this grid the preview is not a picture at all. It is
+a link, "Click to View" with the ad's URL behind it, and a blank cell means
+nobody reading the report can open that variant.
+
+Two columns, two repairs, and one word for both. So:
+
+  check name    Every variant carries its preview link
+  the finding   8 of 160 variants have no preview link
+  where         p12 · Variant preview links
+  the catalog   says outright that it is separate from the screenshot check
+                and why
+
+The location chip is the other half of it. It used to print whatever line sat
+above the column headers, which on this grid is the merged group header - the
+single word "Creative". So a finding about missing links was labeled with the
+name of the check it was being confused with. It says what it is now.
+
+Findings already accepted stay accepted: the stored code did not change, only
+what it says.
+
 
 TAYLOR AGAIN - THE PAGE THAT SHIFTS UP AND WILL NOT COME BACK
 =============================================================
@@ -112,6 +138,7 @@ app/checks/served.py
 app/checks/spend.py
 app/config.py
 app/db.py
+app/flag_catalog.py
 app/main.py
 app/orders_io.py
 app/recheck.py
@@ -183,4 +210,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-867 tests pass.
+868 tests pass.

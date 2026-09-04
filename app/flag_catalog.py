@@ -105,10 +105,13 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
          "frame to show."),
         ("check_blank_screenshots",
          "An ad screenshot cell with no screenshot in it."),
-        ("check_preview_links",
-         "A creative variant with no link to look at it. HTML5 creatives - "
-         "the ones whose name ends in .zip - are skipped, because there is "
-         "nothing to link to."),
+        ("check_variant_preview_links",
+         "A variant with no PREVIEW LINK. Separate from the screenshot check "
+         "above and deliberately so: on a Social Mirror AI grid the preview is "
+         "a link rather than a picture, so the thing that goes missing is the "
+         "link and the repair is a different one. HTML5 creatives - the ones "
+         "whose name ends in .zip - are skipped, because there is nothing to "
+         "link to."),
         ("check_creative_names",
          "A creative row that does not say which creative it is."),
         ("check_social_mirror_sizes",

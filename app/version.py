@@ -12,9 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.03-187"
-BUILD_NOTES = ("Choosing a file to replace a report no longer shifts the page "
-               "off the screen.")
+BUILD = "2026.09.04-188"
+BUILD_NOTES = ("Variant preview links are named apart from preview images.")
 
 # ---------------------------------------------------------------------------
 
