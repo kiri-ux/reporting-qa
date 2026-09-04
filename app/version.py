@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-192"
-BUILD_NOTES = ("Your notes are answered, creative only flags when it claims "
-               "too much, and the columns are in your order.")
+BUILD = "2026.09.04-193"
+BUILD_NOTES = ("Pacing is one check, and a cancelled line that ran this month "
+               "explains an over-delivery rather than being one.")
 
 # ---------------------------------------------------------------------------
 

@@ -1,5 +1,58 @@
-build 2026.09.04-192
+build 2026.09.04-193
 Changed files only. Everything since 130 - install this one.
+37 checks now, not 38 - the two pacing rows are one.
+
+THE NEW RULE - A CANCELLED LINE THAT RAN EXPLAINS THE OVER
+==========================================================
+Collective Heads 1809. Mobile Conquesting is 233,333 live on 51012 and 266,666
+cancelled on 55157, both flighted across August, and the report shows 403,589 -
+"73% over". It is not over. The cancelled line delivered for part of the month
+before somebody stopped it, so the report counts what it served and the goal
+correctly does not. The gap between them is arithmetic, and there is nothing
+for anybody to do about it.
+
+So: OVER by more than the band, with a cancelled line item of that product
+overlapping the report's month, and a live one beside it - not flagged.
+
+OVER ONLY, deliberately. A product that is SHORT with a cancelled line beside
+it is short of what is still being asked for, which is a real number about a
+real buy. Social Mirror on that same report is 91% short and still says so.
+
+And it has to OVERLAP the month. One cancelled in March explains nothing about
+August.
+
+
+CHECK_RATE_CEILING - YOU WERE RIGHT, IT WAS A DUPLICATE
+=======================================================
+It fired on 16 August reports, which is the answer to "is it active anywhere" -
+and looking at why: it was reading the completion widgets a second time and
+printing a vaguer version of a finding the completion check had already made,
+by name and by row. On every report that has a completion widget, which is most
+of them, it was a duplicate.
+
+It skips them now. What is left is the part nothing else covers - a CTR column
+at 250%, a rate in a widget with no check of its own. Which makes the count on
+the flags page the answer to your question: if it comes back 0 next cycle, then
+nothing but the completion check ever needed it and I will delete it.
+
+Description cut to one line. You were right about that too.
+
+
+PACING IS ONE CHECK
+===================
+Impressions and dollars were two rows on the page and two lines on every
+report's checklist for one question. They are the same fault seen through
+different columns and the report goes to the same buyer either way, so they are
+one row now, named check_pacing_off.
+
+Both halves still run - most products print no spend at all, and a report
+carrying only one of them is checked on the one it has. It reports as a single
+line.
+
+
+AND YOUR HOW-TO FOR check_some_zero_completion IS IN.
+One left blank: check_rate_ceiling, which may not survive the next cycle.
+
 
 NO, I HAD NOT READ THE NOTES COLUMN
 ===================================
@@ -430,4 +483,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-883 tests pass.
+888 tests pass.

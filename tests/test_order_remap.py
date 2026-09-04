@@ -386,7 +386,7 @@ def test_the_spend_tiles_are_read_off_a_real_report():
 
 
 def test_half_a_months_budget_adrift_is_flagged():
-    from app.checks.rules import check_pacing
+    from app.checks.rules import check_pacing, check_pacing_off
     ctx = {"text": " PPC Ad Cost\n Amount spent\n $400.00\n", "is_lifetime": False,
            "budgets": {"PPC": 1000.0}}
     out = check_pacing(ctx)
@@ -395,7 +395,7 @@ def test_half_a_months_budget_adrift_is_flagged():
 
 
 def test_a_normal_month_says_nothing():
-    from app.checks.rules import check_pacing
+    from app.checks.rules import check_pacing, check_pacing_off
     for spent in ("$900.00", "$1,000.00", "$1,400.00"):
         ctx = {"text": f" PPC Ad Cost\n Amount spent\n {spent}\n",
                "is_lifetime": False, "budgets": {"PPC": 1000.0}}
@@ -403,7 +403,7 @@ def test_a_normal_month_says_nothing():
 
 
 def test_overspending_by_half_is_flagged_too():
-    from app.checks.rules import check_pacing
+    from app.checks.rules import check_pacing, check_pacing_off
     ctx = {"text": " PPC Ad Cost\n Amount spent\n $1,600.00\n",
            "is_lifetime": False, "budgets": {"PPC": 1000.0}}
     out = check_pacing(ctx)
@@ -413,23 +413,23 @@ def test_overspending_by_half_is_flagged_too():
 def test_a_lifetime_report_is_not_paced():
     """It covers a campaign's whole flight, and a monthly budget says nothing
     about that."""
-    from app.checks.rules import check_pacing, _rule_applies
+    from app.checks.rules import _rule_applies, check_pacing, check_pacing_off
     ctx = {"text": " PPC Ad Cost\n x\n $10.00\n", "is_lifetime": True,
            "budgets": {"PPC": 1000.0}}
     assert check_pacing(ctx) == []
-    assert _rule_applies(check_pacing, ctx) is False
+    assert _rule_applies(check_pacing_off, ctx) is False
 
 
 def test_no_budget_loaded_means_no_claim():
-    from app.checks.rules import check_pacing, _rule_applies
+    from app.checks.rules import _rule_applies, check_pacing_off
     ctx = {"text": " PPC Ad Cost\n x\n $10.00\n", "is_lifetime": False, "budgets": {}}
-    assert _rule_applies(check_pacing, ctx) is False
+    assert _rule_applies(check_pacing_off, ctx) is False
 
 
 def test_a_product_whose_spend_is_not_on_the_report_is_skipped():
     """Most products print no spend at all. Comparing a budget against nothing
     would fail every one of them."""
-    from app.checks.rules import check_pacing
+    from app.checks.rules import check_pacing, check_pacing_off
     ctx = {"text": "nothing here\n", "is_lifetime": False,
            "budgets": {"Display": 1000.0}}
     assert check_pacing(ctx) == []

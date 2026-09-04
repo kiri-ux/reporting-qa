@@ -508,30 +508,58 @@ def check_row_math(ctx) -> list[dict]:
     return out[:5]
 
 
+def check_pacing_off(ctx) -> list[dict]:
+    """Delivery and spend against what the order asked for - ONE CHECK.
+
+    These were two rows on the flags page and two lines on every report's
+    checklist, which is two of everything for one question. Impressions and
+    dollars are the same fault seen through different columns: a campaign that
+    is 60% under is 60% under, and which metric noticed it is not a difference
+    anybody acts on differently - the report goes to the same buyer either way.
+
+    Both halves still run. A report only carrying one of them - most products
+    print no spend at all - is checked on the one it has.
+    """
+    return check_impression_pacing(ctx) + check_pacing(ctx)
+
+
 RATE_RE = re.compile(r"\b(\d{2,4}\.\d{2})%")
 
 
 def check_rate_ceiling(ctx) -> list[dict]:
-    """Any percentage printed anywhere above 100%.
+    """A percentage over 100% somewhere no other check is looking.
 
-    THE BACKSTOP, NOT THE COMPLETION CHECK. check_completion_rates reads inside
-    a Completion Performance widget and names the row; this one reads the whole
-    document, so a CTR column at 250% or a rate in a widget nobody has written
-    a check for still gets caught. Overlapping on a completion widget is the
-    point of a backstop, not a duplicate.
+    IT SKIPS THE COMPLETION WIDGETS, which is what makes it worth keeping.
+    check_completion_rates already reads inside every Completion Performance
+    widget and names the row it found; this one used to read those same rows a
+    second time and print a vaguer version of the same thing, which is why it
+    looked like a duplicate. It was one, on every report that has a completion
+    widget - and that is most of them.
 
-    AND IT HAS NOTHING TO DO WITH A HIGH CTR. The catalog said "a CTR over 5%"
-    for a while, which is check_site_ctr's job and its own thresholds - this
-    one has only ever looked for figures over 100, which are impossible rather
-    than suspicious.
+    What is left is the part nothing else covers: a CTR column at 250%, a rate
+    in a widget nobody has written a check for. If that turns out to be nothing
+    on a real cycle, the count on the flags page will say so and the check can
+    go. A check that fires only where it is the only one looking is a check
+    whose number means something.
+
+    Nothing to do with a HIGH CTR - that is check_site_ctr and its own
+    thresholds. Over 100% is impossible, not suspicious.
     """
     text = ctx["text"]
+    # Every span check_completion_rates owns, so this one stays out of them.
+    owned = []
+    for m in re.finditer(r"^.*Completion Performance.*$", text, re.M):
+        owned.append((m.end(), m.end() + len(_widget_block(text, m.end()))))
+
     bad, first = set(), -1
     for m in RATE_RE.finditer(text):
-        if float(m.group(1)) > 100:
-            bad.add(m.group(1))
-            if first < 0:
-                first = m.start()
+        if float(m.group(1)) <= 100:
+            continue
+        if any(a <= m.start() < b for a, b in owned):
+            continue
+        bad.add(m.group(1))
+        if first < 0:
+            first = m.start()
     if not bad:
         return []
     return [_f("rate_over_100", "warn", "Rate printed above 100%",
@@ -1072,6 +1100,20 @@ def check_impression_pacing(ctx) -> list[dict]:
             continue                        # check_pacing already has the money
         if one_product and pace < 0:
             continue                        # the campaign line already said it
+        # OVER, WITH A CANCELLED LINE THAT RAN THIS MONTH BESIDE THE LIVE ONE.
+        #
+        # Collective Heads' Mobile Conquesting is 233,333 live on 51012 and
+        # 266,666 cancelled on 55157, both flighted across August, and the
+        # report shows 403,589 - "73% over". It is not over. The cancelled line
+        # delivered for part of the month before somebody stopped it, so the
+        # report counts what it served while the goal correctly leaves it out,
+        # and the gap between them is arithmetic rather than a fault.
+        #
+        # OVER ONLY. A product that is SHORT with a cancelled line beside it is
+        # short of what is still being asked for, which is a real number about
+        # a real buy and still worth saying.
+        if pace > 0 and (ordered.get(row.get("product")) or {}).get("cancel_ran"):
+            continue
         # A WEEK OR LESS OF THE MONTH IS NOT OFF PACE, IT IS NEW.
         days = row.get("days")
         if days is not None and days <= MIN_DAYS_TO_PACE:
@@ -1880,9 +1922,8 @@ CHECKS: list[tuple] = [
     (check_client_matches_order,
      "The report is for the client whose slot it arrived in"),
     (check_market_logo,    "Page one carries the partner's logo, not a generic one"),
-    (check_pacing,         "A full month's spend is close to a full month's budget"),
-    (check_impression_pacing,
-     "Delivery is within 50% of what the order asked for"),
+    (check_pacing_off,
+     "Delivery and spend are close to what the order asked for"),
     (check_lifetime_goal,  "A finished campaign delivered what it was sold"),
     (check_month_within_lifetime,
      "The month does not report more than the whole campaign"),
@@ -1916,7 +1957,7 @@ SKIP_WHY = {
                       "was read by older import code",
     "check_date_range": "the report prints no date range",
     "check_client_matches_order": "the file it arrived as carries no client name",
-    "check_impression_pacing": "no order figures loaded for this client",
+    "check_pacing_off": "no order figures loaded for this client",
     "check_headline_ctr": "no top-line impressions or clicks on the report",
     "check_month_within_lifetime": "the other half of the pair has not been "
                                    "read by today's code yet - comparing "
@@ -1985,12 +2026,13 @@ def _rule_applies(rule, ctx) -> bool:
         return bool(ctx.get("client")) and bool(ctx.get("text"))
     if name == "check_lifetime_goal":
         return bool(ctx.get("is_lifetime")) and bool(ctx.get("ordered"))
-    if name == "check_impression_pacing":
-        return bool(ctx.get("ordered"))
-    if name == "check_pacing":
-        # Needs a budget on the order AND a spend on the report. Most products
-        # print no spend at all, and most orders have no budget loaded yet.
-        return bool(ctx.get("budgets")) and not ctx.get("is_lifetime")
+    if name == "check_pacing_off":
+        # EITHER HALF IS ENOUGH. Impressions need the order's figures; spend
+        # needs a budget on the order AND a spend on the report, and most
+        # products print no spend at all. A report with one and not the other
+        # has still been checked.
+        return bool(ctx.get("ordered")) or (
+            bool(ctx.get("budgets")) and not ctx.get("is_lifetime"))
     if name == "check_market_logo":
         # Two ways to have nothing to say: the corner could not be read at
         # all, or nobody has ever marked the tool's default logo, so there

@@ -3537,3 +3537,84 @@ def test_the_rate_ceiling_is_a_backstop_not_the_completion_check():
     what = [c["what"] for g in flags() for c in g["checks"]
             if c["key"] == "check_rate_ceiling"][0]
     assert "5%" not in what
+
+
+def test_pacing_is_one_check_not_two_rows():
+    """Impressions and dollars are the same fault seen through different
+    columns. Two rows on the flags page and two lines on every report's
+    checklist was two of everything for one question, and the report goes to
+    the same buyer either way."""
+    from app.checks.rules import CHECKS, SKIP_WHY, check_pacing_off
+    from app.flag_catalog import described
+
+    names = {fn.__name__ for fn, _label in CHECKS}
+    assert "check_pacing_off" in names
+    assert "check_pacing" not in names and "check_impression_pacing" not in names
+    assert "check_pacing_off" in SKIP_WHY and "check_pacing_off" in described()
+    # Both halves still run: a report with only one of them is checked on it.
+    assert check_pacing_off({"text": "", "ordered": {}, "budgets": {},
+                             "is_lifetime": False}) == []
+
+
+def test_a_report_with_only_one_of_the_two_pacing_halves_is_not_skipped():
+    """Most products print no spend at all. Reporting that as "not checked"
+    when the impressions were checked is worse than saying nothing."""
+    from app.checks.rules import _rule_applies, check_pacing_off
+    assert _rule_applies(check_pacing_off, {"ordered": {"CTV": {}}})
+    assert _rule_applies(check_pacing_off,
+                         {"budgets": {"CTV": 500.0}, "is_lifetime": False})
+    assert not _rule_applies(check_pacing_off, {})
+
+
+_MC = (" Line Item Performance\n"
+       " Collective - MC Mobile   403,589   100  0.02%\n")
+
+
+def _mc(**kw):
+    base = {"impressions": 233_333, "budget": None, "stopped": False,
+            "days": 31, "cancel_ran": False}
+    base.update(kw)
+    return {"Mobile Conquesting": base}
+
+
+def test_over_pacing_is_not_flagged_when_a_cancelled_line_ran_this_month():
+    """COLLECTIVE HEADS. Mobile Conquesting is 233,333 live on 51012 and
+    266,666 cancelled on 55157, both flighted across August, and the report
+    shows 403,589 - "73% over". It is not over. The cancelled line delivered
+    for part of the month before somebody stopped it, so the report counts what
+    it served while the goal correctly leaves it out. The gap between them is
+    arithmetic, and there is nothing for anybody to do about it."""
+    from app.checks.rules import check_impression_pacing
+    ctx = {"text": _MC, "is_lifetime": False}
+    assert [f["title"] for f in check_impression_pacing(
+        dict(ctx, ordered=_mc()))] == ["Mobile Conquesting is 73% over"]
+    assert check_impression_pacing(dict(ctx, ordered=_mc(cancel_ran=True))) == []
+
+
+def test_being_short_is_still_said_with_a_cancelled_line_beside_it():
+    """Short of what is still being asked for is a real number about a real
+    buy. Only the over-by direction is explained by a line that ran and
+    stopped."""
+    from app.checks.rules import check_impression_pacing
+    text = (" Line Item Performance\n"
+            " Collective - MC Mobile   20,000   100  0.50%\n")
+    out = check_impression_pacing({"text": text, "is_lifetime": False,
+                                   "ordered": _mc(cancel_ran=True)})
+    assert len(out) == 1 and "short" in out[0]["title"]
+
+
+def test_a_cancelled_line_outside_the_month_does_not_excuse_it(monkeypatch):
+    """It has to OVERLAP the report's month. One cancelled in March explains
+    nothing about August."""
+    import datetime as dt
+    from app import roster as R
+
+    class L:
+        detail = [{"canceled": True, "starts": "2026-01-01", "ends": "2026-03-31"},
+                  {"canceled": False, "starts": "2026-01-01", "ends": "2026-12-31"}]
+    assert not R._cancelled_ran(L(), "2026-08")
+
+    class M:
+        detail = [{"canceled": True, "starts": "2026-01-01", "ends": "2026-12-31"},
+                  {"canceled": False, "starts": "2026-01-01", "ends": "2026-12-31"}]
+    assert R._cancelled_ran(M(), "2026-08")

@@ -402,6 +402,25 @@ def budgets_for(db: Session, client: str, account_ids: str,
     return out
 
 
+def _cancelled_ran(line, period: str | None) -> bool:
+    """Did a CANCELLED line item of this product overlap the report's month?
+
+    The report counts what it served before it was stopped; the goal correctly
+    leaves it out. So the product reads over by whatever the cancelled line
+    delivered, and that is arithmetic rather than a fault - there is nothing
+    for anybody to do about it.
+    """
+    for d in (getattr(line, "detail", None) or []):
+        if not isinstance(d, dict) or not d.get("canceled"):
+            continue
+        if not period:
+            return True
+        if _ran_during(_Window(_as_date(d.get("starts")),
+                               _as_date(d.get("ends"))), period):
+            return True
+    return False
+
+
 def _live_lines(line, period: str | None) -> dict | None:
     """This row's money with the CANCELLED line items taken out.
 
@@ -496,7 +515,12 @@ def ordered_for(db: Session, client: str, account_ids: str,
                                     # figure on the order)", which is a
                                     # comparison against a campaign that was
                                     # called off.
-                                    "stopped": False})
+                                    "stopped": False,
+                                    # A cancelled line item that overlapped
+                                    # this month, beside a live one. Its
+                                    # impressions are on the report and out of
+                                    # the goal, so "over" means nothing.
+                                    "cancel_ran": False})
         if getattr(l, "canceled", False) or getattr(l, "complete", False):
             row["stopped"] = True
         # The line item ids behind this row. Two order rows carrying the same
@@ -541,6 +565,17 @@ def ordered_for(db: Session, client: str, account_ids: str,
                 # the half that is still delivering.
                 if live["any"]:
                     row["stopped"] = False
+                    # AND WHETHER A CANCELLED LINE RAN BESIDE THE LIVE ONE.
+                    #
+                    # Collective Heads' Mobile Conquesting is 233,333 live on
+                    # 51012 and 266,666 cancelled on 55157, both flighted
+                    # across August, and the report shows 403,589 - "73% over".
+                    # It is not over. The cancelled line delivered for part of
+                    # the month before somebody stopped it, and the report
+                    # counts what it served while the goal correctly does not.
+                    # Nobody can act on that, so it is not said.
+                    if _cancelled_ran(l, period):
+                        row["cancel_ran"] = True
             else:
                 for key in ("budget", "impressions"):
                     v = getattr(l, key, None)

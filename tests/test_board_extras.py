@@ -366,12 +366,20 @@ def test_every_finding_says_which_page_to_look_at():
 
 
 def test_the_rate_ceiling_finding_carries_its_page_and_widget():
+    """And it stays OUT of the completion widgets, which have their own check
+    that names the row. Reading those a second time and printing a vaguer
+    version of the same finding is what made it look like a duplicate - it was
+    one, on every report that has a completion widget."""
     from app.checks.rules import check_rate_ceiling
-    text = ("OVERVIEW - PAGE 1\nSocial Mirror Creative Performance\n"
-            " row   1   2\n"
-            "Completion Performance\n  Strategy   101.16%\n")
+    inside = ("OVERVIEW - PAGE 1\nSocial Mirror Creative Performance\n"
+              " row   1   2\n"
+              "Completion Performance\n  Strategy   101.16%\n")
+    assert check_rate_ceiling({"text": inside, "page_of": lambda _o: 12}) == []
+
+    text = ("OVERVIEW - PAGE 1\nSite and App Performance\n"
+            "  example.com   250.00%   4,000\n")
     out = check_rate_ceiling({"text": text, "page_of": lambda _o: 12})
-    assert out[0]["where"] == "p12 · Completion Performance"
+    assert out[0]["where"] == "p12 · Site and App Performance"
 
 
 def test_seo_is_never_owed_a_lifetime():

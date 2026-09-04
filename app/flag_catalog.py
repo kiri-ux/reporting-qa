@@ -127,12 +127,8 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "the wrong date range on it, probably the lifetime. Check the "
          "start and end dates on both reports."),
         ("check_rate_ceiling",
-         "Any percentage printed anywhere on the report above 100%. This is "
-         "the BACKSTOP, not the completion check: that one reads inside a "
-         "Completion Performance widget and names the row, this one reads the "
-         "whole document, so a CTR column at 250% is caught too. It has "
-         "nothing to do with a high CTR - over 100% is impossible rather than "
-         "suspicious, and a suspicious one is the site check.",
+         "A percentage over 100% somewhere no other check is looking - the "
+         "completion widgets have their own check and are skipped.",
          ADMIN, False,
          ""),
     ]),
@@ -154,18 +150,16 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "The strategy line is missing the product name from the report, "
          "so the donut chart on page one isn't correctly showing the "
          "product name. Alert the buyer."),
-        ("check_impression_pacing",
-         "Delivery more than 50% off what the order asked for, either way.",
+        ("check_pacing_off",
+         "Delivery or spend more than 50% off what the order asked for, "
+         "either way. One check: impressions and dollars are the same fault "
+         "seen through different columns. A product running OVER with a "
+         "cancelled line item that overlapped the month is not flagged - the "
+         "cancelled buy served before it was stopped, so the report counts it "
+         "and the goal does not.",
          BUYER, False,
-         "You can package the report, but flag the buyer in case this is "
-         "a reporting issue."),
-        ("check_pacing",
-         "A full month's SPEND against the month's budget - dollars, where the "
-         "pacing check above is impressions. Whole months only: a lifetime "
-         "covers a campaign's flight and a monthly budget says nothing about "
-         "it, and a part month is under by the part that has not happened.",
-         BUYER, False,
-         ""),
+         "You can package the report, but flag the buyer in case this is a "
+         "reporting issue."),
         ("check_lifetime_goal",
          "A finished campaign that did not deliver what it was sold.",
          BUYER, False,
@@ -283,8 +277,8 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "Verify, then alert Alyssa."),
         ("check_some_zero_completion",
          "One video, CTV or audio row at 0% among others that watched fine.",
-         ADMIN, False,
-         ""),
+         ADMIN, True,
+         "Verify, then alert Alyssa."),
     ]),
     ("Names and labels", [
         ("check_geofence_names",
@@ -361,16 +355,18 @@ NOTES: dict[str, str] = {
         "asked: only flag when the impressions are GREATER than the product "
         "reports. Done - the under-by branch is gone.",
     "check_rate_ceiling":
-        "asked: is this the site check and the completion check? Neither. It "
-        "reads the whole document for anything over 100%, so it also catches a "
-        "rate in a widget with no check of its own; the completion check reads "
-        "inside a Completion Performance widget and names the row. The 'CTR "
-        "over 5%' in the old description was simply wrong - this check has "
-        "never looked at a CTR that was merely high.",
-    "check_pacing":
-        "asked: what is this? A full month's SPEND against the month's budget, "
-        "in dollars - the impression version is check_impression_pacing above "
-        "it.",
+        "asked: is this needed, and it fired on 16 August reports. It was "
+        "reading the completion widgets a second time and printing a vaguer "
+        "version of a finding the completion check had already made - a real "
+        "duplicate on every report that has one. It skips them now, so the "
+        "count on the page becomes the answer: if it is 0 next cycle, nothing "
+        "but the completion check ever needed it and it can go. Description "
+        "cut to one line.",
+    "check_pacing_off":
+        "asked: what is check_pacing, and then - one check, not two rows for "
+        "the same flag with two metrics. Merged. Impressions and dollars both "
+        "still run and a report is checked on whichever it has; they just "
+        "report as one line now, on the page and on every report's checklist.",
     "check_client_matches_order":
         "asked: is this the same as check_client_data? No. That one compares "
         "the cover page against the report's own line items; this one compares "
