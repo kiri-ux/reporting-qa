@@ -1563,6 +1563,40 @@ def test_every_flag_says_whose_desk_it_goes_to():
     for g in flags():
         for c in g["checks"]:
             assert c["who"] in roles, f"{c['key']} has no owner"
+            assert isinstance(c["verify"], bool)
+
+
+def test_most_flags_are_verified_before_they_go_anywhere():
+    """A finding is the tool's reading of a PDF and the tool misreads pages. An
+    owner tag with no verify step in front of it says "send this on", and a
+    false positive sent on is two people's afternoon."""
+    from app.flag_catalog import VERIFY_MEANS, flags
+
+    rows = [c for g in flags() for c in g["checks"]]
+    assert sum(1 for c in rows if c["verify"]) >= len(rows) / 3
+    assert VERIFY_MEANS
+    body = (TPL / "rules_body.html").read_text()
+    assert 'class="ownr vfy"' in body and "{{ verify_means }}" in body
+
+
+def test_the_owner_pill_does_not_borrow_the_cycle_cards_class():
+    """It did, and the partner cards grew an outline round every name. `.who`
+    was already the block of buyer/reporter/trainer tags on a card."""
+    body = (TPL / "rules_body.html").read_text()
+    assert 'class="who ' not in body, "the owner pill is back on .who"
+    assert 'class="ownr' in body
+    cards = (TPL / "cycle.html").read_text()
+    assert '<div class="who">' in cards, "the cards stopped using it"
+
+
+def test_what_to_do_sits_beside_what_it_means():
+    """Reading the finding and then jumping a column of tags to find out what
+    to do about it put the two halves of one thought apart."""
+    import re
+    body = (TPL / "rules_body.html").read_text()
+    at = body.index('class="flagt"')
+    order = re.findall(r'class="(fl-\w+)"', body[at:at + 2200])
+    assert order[:4] == ["fl-n", "fl-what", "fl-how", "fl-who"], order
 
 
 def test_a_fix_nobody_has_written_is_blank_rather_than_invented():
@@ -3506,6 +3540,9 @@ def test_the_catalogue_counts_what_is_flagging_right_now(tmp_path, monkeypatch):
     # All / active is a radio and a sibling selector: the sheet injects this as
     # innerHTML and a script tag put in that way never runs.
     assert 'name="flagonly"' in page and "<script" not in page
+    # Flagging now is the default: the whole list is a reference, the ones
+    # actually firing are the work.
+    assert 'id="fo-live" checked' in page
     assert '#fo-live:checked ~ .flaggroup tr.quiet' in \
         (TPL / "base.html").read_text()
 

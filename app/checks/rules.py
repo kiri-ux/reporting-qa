@@ -80,7 +80,17 @@ def _f(code, sev, title, detail, trace=None, where=""):
 # "... - Keyword PPC", "... Performance Max". Mobile Conquesting line items end
 # in "Mobile", so match on the tail rather than searching the whole string.
 PRODUCT_TAIL = {
-    "Mobile Conquesting": r"\bMobile$",
+    # THE STRATEGY CAN END IN EITHER WORD. Anchored on "Mobile" alone, this
+    # caught "Geo-Fencing Mobile" and "Geo-Retargeting Mobile" and missed
+    # "Behavioral Mobile Conquesting" - so Belmont Park's largest Mobile
+    # Conquesting line, 74,353 impressions, was counted as device-eligible and
+    # its device breakout came out 89.7% short of a total no device widget was
+    # ever going to describe.
+    #
+    # Still anchored, deliberately. The client here is NAMED "Belmont Park
+    # Mobile Conquesting", so matching those words anywhere in the line would
+    # take out their Facebook rows as well and leave nothing eligible at all.
+    "Mobile Conquesting": r"\bMobile(?:\s+Conquesting)?$",
     "PPC": r"\bPPC$",
     "YouTube": r"\bYouTube\b",
     "LinkedIn": r"\bLinkedIn\b",

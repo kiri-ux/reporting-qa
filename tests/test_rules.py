@@ -3474,3 +3474,35 @@ def test_line_items_with_no_client_on_them_leave_the_name_check_alone():
         {"filed_as": "St. Francis AMT Program",
          "client": "Everett Railroad Co", "text": text})
     assert len(out) == 1
+
+
+def test_mobile_conquesting_is_out_of_the_device_eligible_total():
+    """BELMONT PARK. "Device totals 8,558 against 82,911 eligible (-89.7%)" -
+    and 74,353 of that 82,911 was one Mobile Conquesting line, which the device
+    widget never describes.
+
+    The tail pattern was anchored on "Mobile" alone, so it caught "Geo-Fencing
+    Mobile" and "Geo-Retargeting Mobile" and missed "Behavioral Mobile
+    Conquesting", which is the same product spelled out.
+    """
+    from app.checks.rules import is_device_excluded
+    ex = {"Mobile Conquesting", "PPC", "YouTube", "LinkedIn", "Performance Max"}
+    for name in ("Belmont Park Mobile Conquesting - Behavioral Mobile Conquesting",
+                 "Belmont Park Mobile Conquesting - Geo-Retargeting Lookalike Mobile",
+                 "Belmont Park Mobile Conquesting - Geo-Fencing Mobile",
+                 "Belmont Park Mobile Conquesting - Geo-Retargeting Mobile"):
+        assert is_device_excluded(name, ex), name
+
+
+def test_the_client_being_called_mobile_conquesting_does_not_empty_the_total():
+    """It is anchored for a reason. This client is NAMED "Belmont Park Mobile
+    Conquesting", so matching those words anywhere in the line would take their
+    Facebook rows out too and leave nothing eligible at all - which reads as a
+    passing check rather than a broken one."""
+    from app.checks.rules import is_device_excluded
+    ex = {"Mobile Conquesting", "PPC", "YouTube", "LinkedIn", "Performance Max"}
+    for name in ("Belmont Park - Cross Platform Facebook/Instagram Premium",
+                 "Belmont Park Mobile Conquesting - Cross Platform "
+                 "Facebook/Instagram Premium",
+                 "Belmont Park - Retargeting Facebook/Instagram Premium"):
+        assert not is_device_excluded(name, ex), name

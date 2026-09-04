@@ -137,10 +137,10 @@ body{margin:0;background:var(--plane);color:var(--ink);
  background:var(--gold);color:var(--atlas);font-family:Agdasima,sans-serif;
  font-size:12px;font-weight:700;text-align:center}
 .nzero{color:var(--muted);font-size:12px}
-.fl-what{color:var(--ink-2);width:30%}
+.fl-what{color:var(--ink-2);width:29%}
+.fl-how{color:var(--ink-2);width:33%;font-size:12.5px}
 .fl-who{width:1%;white-space:nowrap}
-.fl-how{color:var(--ink-2);width:31%;font-size:12.5px}
-.fl-pass{color:var(--muted);font-size:12.5px;width:23%}
+.fl-pass{color:var(--muted);font-size:12.5px;width:21%}
 /* WHOSE DESK IT GOES TO. Three of them, so they read as a set rather than as
    three unrelated colors - same shape, same weight, hue is the only thing
    carrying the difference.
@@ -148,10 +148,16 @@ body{margin:0;background:var(--plane);color:var(--ink);
    IT FITS THE WORD AND NOTHING ELSE. width:max-content and align-self keep it
    that size inside a flex or grid parent too, where a plain inline-block gets
    stretched to the row. */
-.who{display:inline-block;width:max-content;max-width:100%;align-self:center;
+.ownr{display:inline-block;width:max-content;max-width:100%;align-self:center;
  flex:0 0 auto;font-family:Agdasima,sans-serif;font-size:11px;
  letter-spacing:.04em;text-transform:uppercase;padding:1px 7px;border-radius:9px;
  border:1px solid currentColor;line-height:1.5;white-space:nowrap}
+/* Verify it yourself BEFORE it goes anywhere. Most of these are not somebody
+   else's problem until a person has confirmed the tool read the page right,
+   and a bare owner tag on those sends work to a desk that did not need it. */
+.ownr.vfy{border-style:dashed;color:var(--muted)}
+.ownrto{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap}
+.ownrto i{font-style:normal;color:var(--muted);font-size:11px}
 .w-reporter{color:var(--velocity)}
 .w-buyer{color:var(--atlas)}
 .w-admin{color:var(--ink-2)}
@@ -164,7 +170,7 @@ body{margin:0;background:var(--plane);color:var(--ink);
  font-size:12.5px;color:var(--ink-2);border-left:2px solid var(--line);
  padding-left:12px}
 .whokey div{display:flex;gap:8px;align-items:baseline}
-.whokey .who{align-self:baseline}
+.whokey .ownr{align-self:baseline}
 .linkish{background:none;border:0;padding:0 0 0 6px;font:inherit;font-size:11px;
  color:var(--velocity);cursor:pointer;text-decoration:underline}
 .topbar::after{content:'';position:absolute;left:0;right:0;bottom:-3px;height:3px;

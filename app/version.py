@@ -12,9 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-190"
-BUILD_NOTES = ("Each flag says how many reports it is flagging now, and two "
-               "campaigns of one advertiser are not two clients.")
+BUILD = "2026.09.04-191"
+BUILD_NOTES = ("Your fixes are in, and Mobile Conquesting is out of the "
+               "device-eligible total.")
 
 # ---------------------------------------------------------------------------
 

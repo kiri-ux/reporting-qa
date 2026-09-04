@@ -2274,7 +2274,7 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
     # actually look for" could only be answered by having seen enough reports.
     from .board import flag_counts
     from .cycle import current_period, month_label
-    from .flag_catalog import WHO_MEANS, flags, unwritten
+    from .flag_catalog import VERIFY_MEANS, WHO_MEANS, flags, unwritten
     # HOW MANY REPORTS EACH ONE IS FLAGGING RIGHT NOW. The catalog listed all
     # 38 with equal weight, so a check firing on sixty reports this month read
     # exactly like one that has never fired - on the page somebody uses to
@@ -2292,7 +2292,8 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
            "short_days": SHORT_CAMPAIGN_DAYS, "flags": groups,
            # AND WHOSE DESK EACH ONE GOES TO. A finding says a report is wrong
            # and never said who fixes it.
-           "who_means": WHO_MEANS, "unwritten": unwritten(),
+           "who_means": WHO_MEANS, "verify_means": VERIFY_MEANS,
+           "unwritten": unwritten(),
            "goal_band": int(GOAL_BAND * 100)}
     if request.query_params.get("frag"):
         return templates.TemplateResponse(request, "rules_body.html", ctx)

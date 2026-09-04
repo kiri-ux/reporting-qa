@@ -1,5 +1,51 @@
-build 2026.09.04-190
+build 2026.09.04-191
 Changed files only. Everything since 130 - install this one.
+
+THE OUTLINE ON THE NAMES - MY CLASS LANDED ON YOUR CARDS
+========================================================
+`.who` was already the block of buyer/reporter/trainer tags on every partner
+card. I gave the new owner pill the same name, so every name on the board grew
+a border. It is `.ownr` now and nothing else uses it.
+
+That was also why the pills looked stretched: they were inheriting card layout,
+not sizing themselves.
+
+
+YOUR SHEET IS IN - ALL 38
+=========================
+Every WHO and every HOW, as you wrote them. 3 still blank: rate above its
+ceiling, a month's spend that does not look like a month's budget, and one row
+at 0% among others that watched fine.
+
+AND "VERIFY, THEN X" IS NOW A THING THE PAGE UNDERSTANDS. You wrote it on 20 of
+them and it is the honest shape of this: a finding is the tool's reading of a
+PDF, and the tool misreads pages. So those rows show a dashed VERIFY pill, an
+arrow, then the owner - the escalation is the second step, not the first. The
+key explains it.
+
+HOW TO FIX now sits next to what the finding means, where you asked. Reading
+the finding and then jumping a column of tags to find out what to do about it
+had the two halves of one thought apart.
+
+FLAGGING NOW IS THE DEFAULT TAB. The full 38 is a reference; the ones actually
+firing this cycle are the work.
+
+
+MOBILE CONQUESTING IS OUT OF THE DEVICE TOTAL
+=============================================
+"Device totals 8,558 against 82,911 eligible (-89.7%)" - and 74,353 of that
+82,911 was a single Mobile Conquesting line.
+
+Mobile Conquesting has always been excluded from the device-eligible total. The
+pattern was anchored on the word "Mobile" at the end of the line item name, so
+it caught "Geo-Fencing Mobile" and "Geo-Retargeting Mobile" and missed
+"Behavioral Mobile Conquesting", which is the same product spelled out in full.
+
+It takes either ending now. Still anchored, deliberately: this client is NAMED
+"Belmont Park Mobile Conquesting", so matching those words anywhere in the line
+would have taken their Facebook rows out as well and left nothing eligible at
+all - which reads as a check that passed rather than one that broke.
+
 
 BELMONT PARK - NOT A DIFFERENT CLIENT'S REPORT
 ==============================================
@@ -315,4 +361,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-876 tests pass.
+881 tests pass.

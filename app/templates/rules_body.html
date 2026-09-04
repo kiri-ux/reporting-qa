@@ -102,15 +102,18 @@
        broken feed was something you either knew or asked somebody. #}
     <div class="whokey">
       {% for who, means in who_means.items() %}
-        <div><span class="who w-{{ who }}">{{ who }}</span>{{ means }}</div>
+        <div><span class="ownr w-{{ who }}">{{ who }}</span>{{ means }}</div>
       {% endfor %}
+      <div><span class="ownr vfy">verify</span>{{ verify_means }}</div>
     </div>
 
     {# ALL, OR THE ONES ACTUALLY FIRING. Radio and a sibling selector, like the
        tabs above - the sheet injects this as innerHTML and a script tag put in
        that way never runs. #}
-    <input type="radio" name="flagonly" id="fo-all" checked>
-    <input type="radio" name="flagonly" id="fo-live">
+    {# FLAGGING NOW IS THE DEFAULT. The whole list is a reference; the ones
+       actually firing this cycle are the work. #}
+    <input type="radio" name="flagonly" id="fo-all">
+    <input type="radio" name="flagonly" id="fo-live" checked>
     <div class="fobar">
       <label for="fo-all">All 38</label>
       <label for="fo-live">Flagging now
@@ -130,10 +133,18 @@
                        data-tip="Flagging {{ c.n }} report{{ '' if c.n == 1 else 's' }} in {{ flag_period }}">{{ c.n }}</span>
                   {% else %}<span class="nzero" data-tip="Nothing this cycle">-</span>{% endif %}</td>
                 <td class="fl-what">{{ c.what }}</td>
-                <td class="fl-who"><span class="who w-{{ c.who }}">{{ c.who }}</span></td>
+                {# WHAT TO DO SITS BESIDE WHAT IT MEANS. Reading the finding
+                   and then jumping a column of tags to find out what to do
+                   about it put the two halves of one thought apart. #}
                 <td class="fl-how">
                   {% if c.how %}{{ c.how }}
                   {% else %}<span class="tbd">not written yet</span>{% endif %}</td>
+                <td class="fl-who">
+                  <span class="ownrto">
+                    {% if c.verify %}<span class="ownr vfy"
+                         data-tip="Check it yourself before it goes anywhere. The tool misreads pages, and a false positive sent on is two people's afternoon.">verify</span><i>&rarr;</i>{% endif %}
+                    <span class="ownr w-{{ c.who }}">{{ c.who }}</span>
+                  </span></td>
                 <td class="fl-pass">{{ c.label }}</td>
               </tr>
             {% endfor %}
@@ -146,10 +157,10 @@
     {% endif %}
 
     <p class="sub" style="margin-top:20px;font-size:12.5px">
-      The first column is what a finding means, then whose desk it goes to and
-      what to do about it. The last is the same rule written as the claim the
-      tool makes about a report that passes it - which is how it reads on the
-      report's own checklist.
+      What a finding means, then what to do about it, then whose desk it goes
+      to. The last column is the same rule written as the claim the tool makes
+      about a report that passes it - which is how it reads on the report's own
+      checklist.
       {% if unwritten %}
         <br><b>{{ unwritten }} of these have no fix written against them yet.</b>
         The ones that do are what the checking code itself knows - what to look
