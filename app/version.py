@@ -12,9 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-194"
-BUILD_NOTES = ("35 checks. The rate ceiling is deleted, the two client checks "
-               "are one, and okay-to-package has a green tick.")
+BUILD = "2026.09.04-195"
+BUILD_NOTES = ("The descriptions say the thing and stop.")
 
 # ---------------------------------------------------------------------------
 

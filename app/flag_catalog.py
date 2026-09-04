@@ -22,9 +22,7 @@ from an order problem from a broken feed. Three answers:
             the logo, what got left switched on.
   buyer     whoever set the campaign up. The order, the products on it, the
             budget, and the names given to strategies, fences and conversions.
-  admin     nobody at this end. The figures printed do not agree with each
-            other, or a widget did not render - the data or the platform is
-            wrong. Goes to Alyssa.
+  admin     a data error. Goes to Alyssa on the reporting team.
 
 AND MOST OF THEM SAY "VERIFY FIRST", which is the honest shape of it. A
 finding is the tool's reading of a PDF, and the tool misreads pages. Sending
@@ -65,8 +63,7 @@ WHO_MEANS = {
               "range, the logo, and whatever got left switched on.",
     BUYER: "Whoever set the campaign up. The order, its products and budget, "
            "and the names given to strategies, fences and conversions.",
-    ADMIN: "Nobody at this end. The figures do not agree with each other or a "
-           "widget did not render. Send it to Alyssa.",
+    ADMIN: "Data error, send to Alyssa on the reporting team to look into.",
 }
 
 # (group title, [(check function name, what going wrong looks like, who fixes
@@ -95,9 +92,7 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "than a wrong number. Total the impressions of the rows before "
          "sending to Alyssa."),
         ("check_creative",
-         "The creative rows add up to MORE than the line item they belong to. "
-         "Coming in under is not flagged - a channel that reports completions "
-         "rather than clicks has no creative rows to add up.",
+         "The creative rows add up to MORE than the line item they belong to.",
          ADMIN, True,
          "Verify the numbers first, send to Alyssa if you're seeing more "
          "impressions in the creative section than what is reported for "
@@ -150,11 +145,8 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "product name. Alert the buyer."),
         ("check_pacing_off",
          "Delivery or spend more than 50% off what the order asked for, "
-         "either way. One check: impressions and dollars are the same fault "
-         "seen through different columns. A product running OVER with a "
-         "cancelled line item that overlapped the month is not flagged - the "
-         "cancelled buy served before it was stopped, so the report counts it "
-         "and the goal does not.",
+         "either way. Not flagged when it is OVER and a cancelled line item "
+         "ran that month - that buy served before it was stopped.",
          BUYER, False,
          "You can package the report, but flag the buyer in case this is a "
          "reporting issue."),
@@ -225,8 +217,7 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
     ("Creative", [
         ("check_thumbnails",
          "A creative preview that did not render - an empty box where the ad "
-         "should be. HTML5 creatives are skipped: a zip of markup has no still "
-         "frame to show.",
+         "should be, or a thumbnail missing message.",
          REPORTER, False,
          "All previews are now in, resend the report from the scheduler."),
         ("check_blank_screenshots",
@@ -236,11 +227,7 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "flag Alyssa. Otherwise you can mark off the flag."),
         ("check_variant_preview_links",
          "A variant with no PREVIEW LINK. Separate from the screenshot check "
-         "above and deliberately so: on a Social Mirror AI grid the preview is "
-         "a link rather than a picture, so the thing that goes missing is the "
-         "link and the repair is a different one. HTML5 creatives - the ones "
-         "whose name ends in .zip - are skipped, because there is nothing to "
-         "link to.",
+         "above.",
          ADMIN, True,
          "Verify, then alert Alyssa if missing."),
         ("check_creative_names",
@@ -255,8 +242,7 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
     ]),
     ("Completion rates", [
         ("check_completion_rates",
-         "A completion rate above 100% - in any widget carrying a completion "
-         "rate column, not only the ones named Completion Performance.",
+         "A completion rate above 100%, in any widget that has the column.",
          ADMIN, True,
          "Verify, then alert Alyssa."),
         ("check_zero_completion",

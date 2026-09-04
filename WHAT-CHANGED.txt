@@ -1,6 +1,34 @@
-build 2026.09.04-194
+build 2026.09.04-195
 Changed files only. Everything since 130 - install this one.
-35 checks now, down from 38.
+35 checks, down from 38.
+
+THE DESCRIPTIONS SAY THE THING AND STOP
+=======================================
+Every one you highlighted, cut to what you highlighted:
+
+  variant preview links   A variant with no PREVIEW LINK. Separate from the
+                          screenshot check above.
+  creative previews       A creative preview that did not render - an empty box
+                          where the ad should be, or a thumbnail missing
+                          message.
+  creative totals         The creative rows add up to MORE than the line item
+                          they belong to.
+  completion rates        A completion rate above 100%, in any widget that has
+                          the column.
+  pacing                  Delivery or spend more than 50% off what the order
+                          asked for, either way. Not flagged when it is OVER
+                          and a cancelled line item ran that month - that buy
+                          served before it was stopped.
+
+And the admin key line: "Data error, send to Alyssa on the reporting team to
+look into."
+
+The two longest left are yours from the start and I have not touched them.
+
+Every one of those explanations was me arguing with a reader who was not there.
+The reasoning still exists - it is in the code, where the next person changing
+the check will actually need it, and where it costs nobody a paragraph.
+
 
 YOU WERE RIGHT ABOUT THE RATE CEILING. IT IS GONE.
 ==================================================
