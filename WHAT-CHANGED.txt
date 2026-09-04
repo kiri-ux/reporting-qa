@@ -1,5 +1,69 @@
-build 2026.09.03-184
+build 2026.09.03-186
 Changed files only. Everything since 130 - install this one.
+
+CENTRAL COAST TRAILERS - NOTHING COULD CLEAR IT BECAUSE NOTHING WAS WRONG
+=========================================================================
+The row said NOT RECEIVED with an Upload button. The report was in the
+database - eleven pages, 1,613,199 impressions, order 46423, open in your other
+tab carrying a Needs fix. Two different things about the same client, and no
+button anywhere joined them, which is why nothing you pressed did anything.
+
+The rows you add by hand were built at the very END of the board, after every
+arrived report had already been matched to a row. So a hand-added row could
+never be given one. It sat there offering to upload a file that turned up days
+ago, forever.
+
+They are built before the matching now. Central Coast Trailers will pick up
+1793 the moment you load the board.
+
+WHILE YOU ARE THERE: that report is marked Needs fix and the card says 0 errors
+or needs fix, because the board could not see it. That number will move when
+the row joins up.
+
+
+TAYLOR'S NOTE FIELD - ENTER WAS PRESSING THE WRONG BUTTON
+=========================================================
+He is exactly right, and the cause is plain HTML: Enter in a text box presses
+the form's FIRST submit button. The note box sat in the same form as the two
+decision icons, and the first of those is "Done, no report". So writing down
+why you are chasing a file checked the row off the board.
+
+Worse underneath: the route treated ANY unrecognized action as "done". Even a
+typo would have marked a report complete. That now returns an error instead.
+
+The note has its own Save button, first in the form so Enter reaches it and
+last on the screen so it reads the way it always did. Saving a note does not
+touch the verdict - the row stays on the board asking for its report - and the
+note comes back in the box next time you load the page.
+
+
+THE HEALTH CHECK ALARM, AND WHAT IT WAS
+=======================================
+The heaviest job this service runs is the order re-read: an 850 MB download and
+a two-million-row parse, in the same process that serves the board. Everything
+else heavy marks itself so a page load outranks it. That one never did. It ran
+at full priority, and it starts one minute after a deploy - which is the minute
+the person who deployed spends reloading the page to see whether it worked.
+
+So the alarm was not random and it was not the box being small. It was the
+deploy, every time, and this deploy triggered it twice over: roster.py moved,
+which re-reads the orders AND re-checks every report.
+
+Two changes:
+
+  * It runs niced now, like everything else. A page outranks it.
+  * It waits for a gap in the traffic first - no real page request for 25
+    seconds - up to a fifteen minute cap, then goes anyway. Health checks do
+    not count as traffic, or the gap would never come.
+
+Why-slow says this in the half hour after a deploy, so the next alarm has an
+answer on the page rather than a guess.
+
+WHAT THIS DOES NOT FIX: the instance is one box running two workers, so a
+health check that fails is the whole service, not one of a pool. If these keep
+arriving on quiet days rather than deploy days, that is a size problem and
+costs money.
+
 
 183 BROKE THE RE-CHECK BUTTON. DO NOT RUN IT.
 =============================================
@@ -42,6 +106,7 @@ app/version.py
 tests/fixtures/mcnutt_site_services.pdf   (new)
 tests/test_board_extras.py
 tests/test_expected_products.py
+tests/test_manual_upload.py
 tests/test_order_remap.py
 tests/test_rules.py
 tests/test_serving.py
@@ -94,4 +159,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-858 tests pass.
+865 tests pass.

@@ -1934,11 +1934,20 @@ def mark_row_done(request: Request, period: str = Form(...),
         row = CycleDone(period=period, ident=ident)
         db.add(row)
     row.market, row.client, row.kind = market, client, kind
-    # THREE OVERRIDES, AND THEY ARE NOT THE SAME STATEMENT.
+    # FOUR OVERRIDES, AND THEY ARE NOT THE SAME STATEMENT.
     #   done    somebody did the work, there is just no PDF (SEO)
     #   none    no report was owed - it did not run
     #   needed  the rules took it off and they are wrong about this one
-    row.reason = action if action in {"done", "none", "needed"} else "done"
+    #   note    none of the above - just why this one is still open
+    #
+    # AND AN UNKNOWN ACTION IS NOT "done". Falling back to it meant anything
+    # unexpected checked the row off, which is how pressing Enter in the note
+    # box marked a report complete: the form's first button is "Done, no
+    # report", Enter presses the first button, and the fallback would have
+    # done it anyway.
+    if action not in {"done", "none", "needed", "note"}:
+        raise HTTPException(400, "unknown action")
+    row.reason = action
     row.note = note.strip()[:255]
     # THE ORDER NUMBER, so the row that gets built carries it and a search for
     # the order finds the row. A hand-added row with no order id on it is

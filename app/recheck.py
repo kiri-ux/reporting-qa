@@ -76,6 +76,18 @@ MAX_REST_LONG = 45.0
 SWEEP_KEY = "sweep"
 CLAIM_STALE_MINUTES = 4          # a claim not touched in this long is dead
 
+# AND NOT WHILE SOMEBODY IS LOOKING AT THE BOARD.
+#
+# The order re-read is minutes of solid work in the web process, and it starts
+# a minute after a deploy - which is to say, exactly when the person who
+# deployed is reloading the page to see whether it worked. Waiting for a gap in
+# the traffic costs nothing: the reports it corrects have been wrong for hours.
+#
+# Capped, because "quiet" may never come on a busy afternoon and the orders do
+# have to be re-read eventually. At the cap it goes ahead anyway, niced.
+QUIET_SECONDS = 25               # no real request for this long means go
+QUIET_WAIT_MAX = 900             # but never hold off longer than this
+
 
 def _key(f: dict) -> tuple:
     """What identifies a finding across a re-check.
@@ -570,6 +582,27 @@ def _wait_for_the_sync(db: Session) -> None:
         waited += 20
 
 
+def _wait_for_a_quiet_box() -> None:
+    """Hold off until nobody has asked this worker for a page in a while.
+
+    The re-read starts a minute after a deploy, which is the same minute the
+    person who deployed spends reloading the board - so the heaviest job in the
+    service and the most impatient audience it has arrive together, every time.
+
+    Only this worker's own traffic is visible from here. That is enough: the
+    other one is answering pages instead of running this, and a box busy enough
+    to matter is busy on both.
+    """
+    import time
+    from .timing import quiet_for
+    waited = 0
+    while quiet_for() < QUIET_SECONDS and waited < QUIET_WAIT_MAX:
+        time.sleep(5)
+        waited += 5
+    if waited:
+        log.info("order re-read waited %ss for a gap in the traffic", waited)
+
+
 def start_sweeper() -> None:
     """Run the sweep in the background until nothing is stale.
 
@@ -604,7 +637,16 @@ def start_sweeper() -> None:
         # board went on answering from order data an older import produced,
         # with nothing to show for it but the same product finding coming back.
         # Re-reading the orders is not the same job as re-reading the PDFs.
-        _remap_orders_if_stale()
+        #
+        # INSIDE background(), WHICH IT NEVER WAS. Every other heavy thing this
+        # service does marks itself so a page load outranks it, and the single
+        # heaviest one - an 850 MB download and a two-million-row parse - was
+        # the one running at full priority, in the web process, right after
+        # every deploy that touches the order code. That is most deploys, and
+        # it is when the health check fails.
+        _wait_for_a_quiet_box()
+        with background():
+            _remap_orders_if_stale()
         if not settings.auto_recheck:
             _running.clear()
             return

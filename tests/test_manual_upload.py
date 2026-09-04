@@ -1292,3 +1292,91 @@ def test_any_row_can_be_uploaded_without_the_checks(client):
     assert 'name="skip_checks" value="1"' in cycle
     assert ">\n                No checks\n              </label>" in cycle \
         or "No checks" in cycle
+
+
+# ---------------------------------------- a hand-added row and the file that came
+def test_a_hand_added_row_finds_the_report_that_arrived_for_it(client):
+    """CENTRAL COAST TRAILERS 46423. Eleven pages, 1.6 million impressions,
+    marked needs fix - and the board said NOT RECEIVED with an Upload button
+    beside it, so there was nothing anywhere that could clear it.
+
+    The hand-added rows were built at the very end of expected_for, after every
+    report had already been matched to a row, so a row somebody put on by hand
+    could never be given one."""
+    c, (db, dbm, imod) = client
+    from app.board import expected_for
+    # A client the order export has never heard of, put on the cycle by hand.
+    c.post("/cycle/done",
+           data={"period": "2026-07", "market": "7 Mountains KY",
+                 "client": "Central Coast Trailers", "kind": "monthly",
+                 "action": "needed", "who": "k", "ref": "46423"},
+           follow_redirects=False)
+    rows = [e for e in expected_for(db, "2026-07")
+            if e.client == "Central Coast Trailers"]
+    assert len(rows) == 1 and rows[0].report is None      # nothing has arrived
+
+    # Now the report turns up.
+    r = c.post("/cycle/upload",
+               data={"period": "2026-07", "market": "7 Mountains KY",
+                     "client": "Central Coast Trailers", "account_ids": "46423",
+                     "kind": "monthly"},
+               files={"file": ("x.pdf",
+                               (FIXTURES / "benton_rodeo.pdf").read_bytes(),
+                               "application/pdf")},
+               follow_redirects=False)
+    assert r.status_code == 303
+    db.expire_all()
+    rows = [e for e in expected_for(db, "2026-07")
+            if e.client == "Central Coast Trailers"]
+    assert len(rows) == 1, "the hand-added row and its report split into two"
+    assert rows[0].report is not None, \
+        "the board still says not received with the file sitting right there"
+
+
+def test_a_note_on_a_waiting_row_does_not_mark_it_complete(client):
+    """TAYLOR'S BUG. The note box sat inside the same form as the two decision
+    buttons, and Enter in a text box presses the form's FIRST submit button -
+    which was "Done, no report". So writing down why you are chasing a file
+    checked the row off the board."""
+    c, (db, dbm, imod) = client
+    from app.board import expected_for
+    r = c.post("/cycle/done",
+               data={"period": "2026-07", "market": "7 Mountains KY",
+                     "client": "Awaken Bakery", "kind": "monthly",
+                     "action": "note", "who": "Taylor",
+                     "note": "waiting on the buyer"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    db.expire_all()
+    row = [e for e in expected_for(db, "2026-07")
+           if e.client == "Awaken Bakery" and e.kind == "monthly"][0]
+    assert not row.done_by, "a note checked the row off"
+    assert row.done_note == "waiting on the buyer"
+    assert row.noted_by == "Taylor"
+    # And the buttons are still there to press, with the note in the box.
+    page = c.get("/cycle?period=2026-07").text
+    assert 'value="waiting on the buyer"' in page
+    assert 'name="action" value="done"' in page
+
+
+def test_an_unknown_action_is_refused_rather_than_treated_as_done(client):
+    """The fallback was "done", so anything unexpected checked the row off."""
+    c, (db, dbm, imod) = client
+    r = c.post("/cycle/done",
+               data={"period": "2026-07", "market": "7 Mountains KY",
+                     "client": "Awaken Bakery", "kind": "monthly",
+                     "action": "whatever"}, follow_redirects=False)
+    assert r.status_code == 400
+
+
+def test_the_note_button_comes_before_the_decision_buttons_in_the_form():
+    """Enter presses the first submit button in the form. That is the whole
+    fix, and it is an ordering that a tidy-up would quietly undo."""
+    page = (Path(__file__).resolve().parents[1] / "app" / "templates"
+            / "cycle.html").read_text()
+    # The signoff form on a row, not the "add a row to this cycle" form above
+    # it, which posts to the same place.
+    at = page.index('action="/cycle/done" class="signoff"')
+    block = page[at:at + 3000]
+    assert block.index('value="note"') < block.index('value="done"'), \
+        "Enter in the note box will mark the row complete again"

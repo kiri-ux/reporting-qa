@@ -1478,3 +1478,57 @@ def test_a_pointless_sweep_can_be_stopped(tmp_path, monkeypatch):
             / "cycle.html").read_text()
     assert 'action="/cycle/recheck/skip"' in page
     assert "Skip this re-check" in page
+
+
+# ------------------------------------------- the box backs off while you are on it
+def test_the_health_check_does_not_count_as_somebody_being_here():
+    """It arrives every few seconds forever, so counting it means the box is
+    never quiet and the back-off never lifts - and it is the thing being
+    protected, not the thing to wait for."""
+    import time
+    from app import timing
+    timing.record("/cycle", "GET", 200, 0.2, 3, 0.1)
+    assert timing.quiet_for() < 1
+    time.sleep(0.05)
+    before = timing.quiet_for()
+    timing.record("/healthz", "GET", 200, 0.001, 0, 0.0)
+    assert timing.quiet_for() >= before, "a health check reset the quiet clock"
+
+
+def test_a_worker_nobody_has_touched_reads_as_quiet():
+    """Which is the point: the deploy's own heavy work should start while the
+    box is still empty, not under whoever reloaded first."""
+    import importlib
+    from app import timing
+    importlib.reload(timing)
+    assert timing.quiet_for() >= 0
+    assert timing._LAST_HUMAN == 0.0
+
+
+def test_the_order_re_read_waits_for_a_gap_and_runs_niced(monkeypatch):
+    """THE HEALTH CHECK KEEPS FAILING AND THIS IS THE JOB DOING IT. An 850 MB
+    download and a two-million-row parse, in the web process, at full priority,
+    starting one minute after a deploy - which is the minute the person who
+    deployed spends reloading the board."""
+    import app.recheck as R
+    monkeypatch.setattr(R, "QUIET_SECONDS", 10)
+    monkeypatch.setattr(R, "QUIET_WAIT_MAX", 12)
+    quiet = iter([0.0, 0.0, 99.0])
+    monkeypatch.setattr("app.timing.quiet_for", lambda: next(quiet))
+    slept: list = []
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: slept.append(s))
+    R._wait_for_a_quiet_box()
+    assert slept, "started the re-read on top of somebody using the site"
+
+    # And it gives up rather than never re-reading the orders at all.
+    monkeypatch.setattr("app.timing.quiet_for", lambda: 0.0)
+    slept.clear()
+    R._wait_for_a_quiet_box()
+    assert sum(slept) <= R.QUIET_WAIT_MAX + 5
+
+    from pathlib import Path as _P
+    src = (_P(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
+    at = src.index("_wait_for_a_quiet_box()\n        with background():")
+    assert "_remap_orders_if_stale()" in src[at:at + 200], \
+        "the heaviest job in the service is the one not marked background"

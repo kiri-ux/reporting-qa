@@ -88,15 +88,41 @@ def mark(name: str, seconds: float) -> None:
         box["phases"][name] = round(box["phases"].get(name, 0.0) + seconds, 3)
 
 
+# WHEN A PERSON LAST ASKED THIS WORKER FOR SOMETHING.
+#
+# The background work does not need to know how busy the box is. It needs to
+# know whether anybody is sitting in front of it, which is a much easier
+# question and the one that decides whether an 850 MB re-read is rude.
+#
+# Render's health check does not count. It arrives every few seconds forever,
+# so counting it means the box is never quiet and the back-off never lifts -
+# and it is the thing being protected, not the thing to wait for.
+_LAST_HUMAN = 0.0
+
+
 def record(path: str, method: str, status: int, seconds: float,
            queries: int, db_seconds: float,
            phases: dict | None = None) -> None:
+    global _LAST_HUMAN
     with _LOCK:
+        if not path.startswith("/healthz"):
+            _LAST_HUMAN = time.time()
         RECENT.append({"at": time.time(), "path": path[:120], "method": method,
                        "status": status, "seconds": round(seconds, 3),
                        "queries": queries,
                        "db_seconds": round(db_seconds, 3),
                        "phases": dict(phases or {})})
+
+
+def quiet_for() -> float:
+    """Seconds since this worker last answered a real request.
+
+    Large on a worker nobody has touched - including one that has only just
+    booted, which is the point: the deploy's own heavy work should start while
+    the box is still empty rather than under whoever reloaded first.
+    """
+    with _LOCK:
+        return time.time() - (_LAST_HUMAN or BOOTED_AT)
 
 
 def recent(limit: int = 60) -> list[dict]:
@@ -204,6 +230,13 @@ def verdict(boots_last_hour: int = 0, workers: int = 0) -> list[str]:
             "the host is running - so it can be high because of neighbors "
             "rather than because of this tool. The per-request seconds below "
             "are the ones that are definitely ours.")
+    if up < 1800:
+        out.append(
+            "The heavy jobs run after a deploy - the order export is re-read "
+            "and the reports are re-checked. Both wait for a gap in the "
+            "traffic before they start and run below a page load once they "
+            "do, so a health-check alarm in the half hour after a deploy is "
+            "the box being busy rather than the box being broken.")
     if s["requests_seen"] >= 5 and s["median_seconds"] < 2 and \
             s["slowest_seconds"] < 5:
         out.append(

@@ -95,6 +95,11 @@ class Expected:
     #           tell the difference between paused on the 2nd and paused on the
     #           30th, and a person can.
     done_kind: str = "done"
+    # A NOTE AND NOTHING ELSE. Somebody wrote why they are waiting on a row
+    # without saying it is finished - the note box sat inside the same form as
+    # the two decision buttons, so pressing Enter in it pressed the first
+    # button and checked the row off.
+    noted_by: str = ""
     # PUT BACK ON THE BOARD BY HAND. Every rule for deciding a report is not
     # owed is a rule about the usual case, and somebody who knows this client
     # gets the last word. Who said so and why.
@@ -964,6 +969,16 @@ def expected_for(db: Session, period: str,
     # below: "first monthly" only means anything if there has not been one.
     seen_before = _clients_with_a_monthly(db, period)
 
+    # THE HAND-ADDED ROWS HAVE TO EXIST BEFORE THE REPORTS ARE MATCHED.
+    #
+    # They were built at the very end, after _attach_reports had already run,
+    # so a row somebody put on by hand could never be matched to the report
+    # that arrived for it - it sat at "not received", offering an Upload
+    # button, while the file was in the database and open in another tab
+    # carrying a verdict. Central Coast Trailers 46423: eleven pages, 1.6
+    # million impressions, marked needs fix, and the board said nothing had
+    # come. Nothing could clear it, because the row was not about that report.
+    _add_hand_rows(db, period, rows, idx, reporter_pool)
     _attach_reports(db, period, rows)
     # EVERY RULE BELOW IS A RULE ABOUT THE USUAL CASE. Somebody who knows this
     # client gets the last word, so a row marked "needs a report" by hand
@@ -1072,43 +1087,6 @@ def expected_for(db: Session, period: str,
                                 "starts": life.starts_on, "ends": life.ends_on})
             del rows[(mk, ck, kind)]
 
-    # A ROW SOMEBODY PUT ON BY HAND WHEN THE EXPORT HAS NEVER HEARD OF IT.
-    #
-    # The "needed" override has always been able to KEEP a row the rules would
-    # have removed, and that covers most of what it is for. It could not create
-    # one - so approving a client whose orders are not in the export at all
-    # recorded a decision and changed nothing, silently, which is the worst of
-    # the three things it could have done. 53872 is exactly that case: it is on
-    # the list precisely BECAUSE the export does not have it.
-    #
-    # These rows carry no products and no dates, because nothing knows them.
-    # They exist so the client is on the cycle and a report can be uploaded
-    # against them, which is what approving one is asking for.
-    for ident, m in overrides(db, period).items():
-        if getattr(m, "reason", "") != "needed":
-            continue
-        mk, _, rest = (ident or "").partition("|")
-        ck, _, kind = rest.partition("|")
-        if not mk or not ck or (mk, ck, kind) in rows:
-            continue
-        p = _match_partner(idx, m.market or "")
-        rows[(mk, ck, kind)] = Expected(
-            market=m.market or "", group=(p.group if p and p.group else m.market) or "",
-            client=m.client or "", kind=kind or "monthly",
-            # The order number off the row that was approved, so the board
-            # shows it and a search by order id can find it.
-            account_ids=(getattr(m, "ref", "") or ""),
-            # AND WHAT IT IS A REPORT FOR. These rows used to carry no products
-            # at all - nothing knew them - so the board showed a blank in the
-            # column every other row fills in, and the product checks had
-            # nothing to judge the PDF against. Whoever added the row said.
-            products=[x.strip() for x in
-                      (getattr(m, "products", "") or "").split(",") if x.strip()],
-            reporter=first_name(p.reporting_team if p else "", reporter_pool),
-            buyer=(p.buyer if p else ""),
-            forced_by=m.marked_by or "put on by hand",
-            forced_note=m.note or "")
-
     out = list(rows.values())
     _stamp_done(db, period, out)
     out.sort(key=lambda e: (e.group.lower(), e.market.lower(),
@@ -1130,10 +1108,21 @@ def _stamp_done(db: Session, period: str, rows: list[Expected]) -> None:
         return
     for e in rows:
         m = marks.get(e.ident)
-        if m is not None and getattr(m, "reason", "") != "needed":
-            e.done_by = m.marked_by or "checked off"
-            e.done_note = m.note or ""
-            e.done_kind = getattr(m, "reason", "") or "done"
+        if m is None:
+            continue
+        reason = getattr(m, "reason", "")
+        if reason == "needed":
+            continue
+        e.done_note = m.note or ""
+        # A NOTE IS NOT A VERDICT, and the row has to stay askable. Enter in
+        # the note box pressed the first button in the form - "Done, no
+        # report" - so writing down why you are chasing a file marked it as
+        # handled and took it off the list.
+        if reason == "note":
+            e.noted_by = m.marked_by or ""
+            continue
+        e.done_by = m.marked_by or "checked off"
+        e.done_kind = reason or "done"
 
 
 # Products that never get a report of their own. A client running one of these
@@ -1218,6 +1207,54 @@ def lifetimes_delivered(db: Session, limit: int = 400) -> list[dict]:
     return [{"id": r.id, "client": r.client, "market": r.market,
              "period": r.period, "orders": r.account_ids,
              "state": r.review_state} for r in rows]
+
+
+def _add_hand_rows(db: Session, period: str,
+                   rows: dict[tuple[str, str, str], Expected],
+                   idx, reporter_pool) -> None:
+    """A ROW SOMEBODY PUT ON BY HAND WHEN THE EXPORT HAS NEVER HEARD OF IT.
+
+    The "needed" override has always been able to KEEP a row the rules would
+    have removed, and that covers most of what it is for. It could not create
+    one - so approving a client whose orders are not in the export at all
+    recorded a decision and changed nothing, silently, which is the worst of
+    the three things it could have done. 53872 is exactly that case: it is on
+    the list precisely BECAUSE the export does not have it.
+
+    These rows carry no dates, because nothing knows them. They exist so the
+    client is on the cycle and a report can be uploaded against them, which is
+    what approving one is asking for.
+
+    CALLED BEFORE THE REPORTS ARE MATCHED, which is the whole reason it is a
+    function. It used to be the last thing expected_for did, so a hand-added
+    row was created after every report had already found its home and could
+    never be given one - it offered an Upload button for a file that had
+    arrived days ago.
+    """
+    for ident, m in overrides(db, period).items():
+        if getattr(m, "reason", "") != "needed":
+            continue
+        mk, _, rest = (ident or "").partition("|")
+        ck, _, kind = rest.partition("|")
+        if not mk or not ck or (mk, ck, kind) in rows:
+            continue
+        p = _match_partner(idx, m.market or "")
+        rows[(mk, ck, kind)] = Expected(
+            market=m.market or "", group=(p.group if p and p.group else m.market) or "",
+            client=m.client or "", kind=kind or "monthly",
+            # The order number off the row that was approved, so the board
+            # shows it and a search by order id can find it.
+            account_ids=(getattr(m, "ref", "") or ""),
+            # AND WHAT IT IS A REPORT FOR. These rows used to carry no products
+            # at all - nothing knew them - so the board showed a blank in the
+            # column every other row fills in, and the product checks had
+            # nothing to judge the PDF against. Whoever added the row said.
+            products=[x.strip() for x in
+                      (getattr(m, "products", "") or "").split(",") if x.strip()],
+            reporter=first_name(p.reporting_team if p else "", reporter_pool),
+            buyer=(p.buyer if p else ""),
+            forced_by=m.marked_by or "put on by hand",
+            forced_note=m.note or "")
 
 
 def _attach_reports(db: Session, period: str,
