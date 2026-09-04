@@ -2272,9 +2272,12 @@ def rules_view(request: Request):
     # AND EVERY FLAG IT RAISES, on a second tab. The findings list on a report
     # only ever shows what went wrong on that report, so "what does this thing
     # actually look for" could only be answered by having seen enough reports.
-    from .flag_catalog import flags
+    from .flag_catalog import WHO_MEANS, flags, unwritten
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
            "short_days": SHORT_CAMPAIGN_DAYS, "flags": flags(),
+           # AND WHOSE DESK EACH ONE GOES TO. A finding says a report is wrong
+           # and never said who fixes it.
+           "who_means": WHO_MEANS, "unwritten": unwritten(),
            "goal_band": int(GOAL_BAND * 100)}
     if request.query_params.get("frag"):
         return templates.TemplateResponse(request, "rules_body.html", ctx)

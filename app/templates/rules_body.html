@@ -97,6 +97,15 @@
       completion column, no order loaded - is reported as skipped rather than
       passed, with the reason, on the report itself.</p>
 
+    {# WHOSE DESK IT GOES TO. A finding says a report is wrong and never said
+       who fixes it, so telling a template problem from an order problem from a
+       broken feed was something you either knew or asked somebody. #}
+    <div class="whokey">
+      {% for who, means in who_means.items() %}
+        <div><span class="who w-{{ who }}">{{ who }}</span>{{ means }}</div>
+      {% endfor %}
+    </div>
+
     {% for g in flags %}
       <h2 style="margin-top:{{ 6 if loop.first else 22 }}px">{{ g.group }}</h2>
       <table class="flagt">
@@ -104,6 +113,10 @@
           {% for c in g.checks %}
             <tr>
               <td class="fl-what">{{ c.what }}</td>
+              <td class="fl-who"><span class="who w-{{ c.who }}">{{ c.who }}</span></td>
+              <td class="fl-how">
+                {% if c.how %}{{ c.how }}
+                {% else %}<span class="tbd">not written yet</span>{% endif %}</td>
               <td class="fl-pass">{{ c.label }}</td>
             </tr>
           {% endfor %}
@@ -112,8 +125,15 @@
     {% endfor %}
 
     <p class="sub" style="margin-top:20px;font-size:12.5px">
-      The left column is what a finding means. The right is the same rule
-      written as the claim the tool makes about a report that passes it - which
-      is how it reads on the report's own checklist.</p>
+      The first column is what a finding means, then whose desk it goes to and
+      what to do about it. The last is the same rule written as the claim the
+      tool makes about a report that passes it - which is how it reads on the
+      report's own checklist.
+      {% if unwritten %}
+        <br><b>{{ unwritten }} of these have no fix written against them yet.</b>
+        The ones that do are what the checking code itself knows - what to look
+        at to tell which cause it is. The rest are process rather than code, and
+        a plausible guess in that column would be worse than a blank one.
+      {% endif %}</p>
   </div>
 </div>

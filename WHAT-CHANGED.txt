@@ -1,5 +1,54 @@
-build 2026.09.04-188
+build 2026.09.04-189
 Changed files only. Everything since 130 - install this one.
+
+WHO FIXES IT, AND HOW - ON THE FLAGS TAB
+========================================
+Two new columns on all 38, and a key at the top of the tab:
+
+  REPORTER  whoever pulls the report. Template, widgets, filters, the date
+            range, the logo, whatever got left switched on.        14 flags
+  BUYER     whoever set the campaign up. The order, its products and budget,
+            and the names given to strategies, fences, conversions.  10 flags
+  ADMIN     nobody at this end. The figures do not agree with each other or a
+            widget did not render, so it goes upstream.            14 flags
+
+Every one has an owner. Argue with any of them - they are one word each in
+app/flag_catalog.py and nothing else reads them.
+
+HOW TO FIX: 24 WRITTEN, 14 BLANK, AND THE BLANKS SAY SO
+=======================================================
+The 24 are what the checking code itself knows - which is mostly how to tell
+WHICH cause it is, since most of these findings have two or three. "The line
+items do not add up" is usually a line filtered out of the widget rather than a
+wrong number, and that is worth saying because it changes what you look at
+first.
+
+The other 14 are process rather than code, and I left them empty on purpose. A
+plausible-sounding fix in that column would be worse than a blank one, because
+somebody would follow it. The page prints "not written yet" on each and counts
+them at the bottom, so a half-filled column cannot look finished from a
+distance.
+
+Here they are, by owner, if you want to send them round:
+
+  ADMIN     device breakout describes more impressions than were served
+  ADMIN     Facebook and Instagram placements exceed the platform tiles
+  ADMIN     store visit figure disagrees with its own table
+  ADMIN     a rate above its ceiling - CTR over 5%, completion over 100%
+  ADMIN     an ad screenshot cell with no screenshot in it
+  ADMIN     a completion rate above 100%
+  ADMIN     one video, CTV or audio row at 0% among others that watched fine
+  ADMIN     a device breakout row that is not an actual device
+  BUYER     a full month's spend that does not look like a full month's budget
+  REPORTER  geo-fenced Mobile Conquesting with no fence breakout behind it
+  REPORTER  a video or audio product that never says how much got watched
+  REPORTER  a page that came out blank where a widget should be
+  REPORTER  the template's section banners left switched on
+  REPORTER  text cut off for want of space
+
+Send me the wording and I will put it in. This file is deliberately outside
+app/checks/, so editing it costs no re-check - wording here is free.
+
 
 VARIANT PREVIEW LINKS - THEIR OWN NAME NOW
 ==========================================
@@ -147,6 +196,7 @@ app/serving.py
 app/templates/audit.html
 app/templates/base.html
 app/templates/cycle.html
+app/templates/rules_body.html
 app/templates/order_lines.html   (new)
 app/templates/orders.html
 app/templates/report_orders_body.html
@@ -210,4 +260,4 @@ The Skip button is still there if you would rather. Skipping this one keeps the
 old answer on every report already stored.
 
 
-868 tests pass.
+870 tests pass.

@@ -12,8 +12,9 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-188"
-BUILD_NOTES = ("Variant preview links are named apart from preview images.")
+BUILD = "2026.09.04-189"
+BUILD_NOTES = ("Every flag says whose desk it goes to, and 24 of 38 say how to "
+               "fix it.")
 
 # ---------------------------------------------------------------------------
 

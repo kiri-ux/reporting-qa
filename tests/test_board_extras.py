@@ -1552,6 +1552,35 @@ def test_the_flags_tab_lists_them_all():
             assert c["what"] and c["label"] and c["what"] != c["label"]
 
 
+def test_every_flag_says_whose_desk_it_goes_to():
+    """A finding says a report is wrong and used to stop there. Telling a
+    template problem from an order problem from a broken feed was something you
+    either knew or had to ask somebody."""
+    from app.flag_catalog import ADMIN, BUYER, REPORTER, WHO_MEANS, flags
+
+    roles = {REPORTER, BUYER, ADMIN}
+    assert set(WHO_MEANS) == roles, "a role with nothing explaining it"
+    for g in flags():
+        for c in g["checks"]:
+            assert c["who"] in roles, f"{c['key']} has no owner"
+
+
+def test_a_fix_nobody_has_written_is_blank_rather_than_invented():
+    """The half of this column that is not filled in is process rather than
+    code, and a plausible guess printed there would be worse than a blank -
+    somebody would follow it. The page says how many are missing."""
+    from app.flag_catalog import flags, unwritten
+
+    rows = [c for g in flags() for c in g["checks"]]
+    blank = [c for c in rows if not c["how"]]
+    assert unwritten() == len(blank)
+    assert blank, "nothing left to write, so the counter is dead code"
+    assert len(blank) < len(rows), "nothing was written at all"
+    body = (TPL / "rules_body.html").read_text()
+    assert "not written yet" in body
+    assert "no fix written against them yet" in body
+
+
 def test_the_monthly_rule_does_not_open_with_a_headline():
     body = (TPL / "rules_body.html").read_text()
     assert "One product is enough." not in body
