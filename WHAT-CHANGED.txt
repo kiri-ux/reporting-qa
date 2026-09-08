@@ -1,19 +1,22 @@
-build 2026.09.08-212
+build 2026.09.08-213
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-Corrected reports now reach Drive. The Drive upload recorded the name it filed
-under and never the file - and a corrected report keeps its name, only the file
-underneath changes. So sync compared a name to itself, decided nothing had
-moved, and skipped it. Dropbox had always recorded both.
+Sync all, on the links page. It walks every packaged partner whose folder is
+not the current work, one at a time, signed-off reports only. The button says
+how many are behind; nothing shows when nothing is.
 
-Nothing goes out unstamped. Every report filed to Drive has no record of which
-file went up, so the first sync of each partner after this deploy sends the
-month in full and writes it down. After that it sends only what moved.
+A line item that says Social Mirror is a Social Mirror line. "Cross Platform
+Mobile Retargeting Social Mirror" matched the one-word `mobile` nickname before
+the full product name, so 37,128 impressions came off Social Mirror and went on
+to Mobile Conquesting - Social Mirror 91% short, Mobile Conquesting 73% over,
+on a report where both were fine. A nickname now only decides a name that names
+nothing else.
 
-PowerPoint uploads. Some SEO comes back as a deck: stored, named, signed off
-and packaged like anything else, checks not run - there is nothing in a deck
-for a rule about a Digital Marketing Report widget to read. The report page
-offers it for download instead of embedding it.
+LOCK KNOX and INNO are not partners. They are what the reporting tracker calls
+Lockwood Digital Solutions Knoxville and Innovision, and a row approved off
+that tracker carried the code onto the board as a partner of its own. Codes
+resolve to the partner when exactly one fits, and the rows already on the board
+move without being re-added.
 
-917 tests pass.
+920 tests pass.

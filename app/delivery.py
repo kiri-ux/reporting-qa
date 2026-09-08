@@ -923,6 +923,118 @@ def delivery_key(period: str, group: str) -> str:
     return f"deliver:{period}:{group}"
 
 
+SYNC_ALL = "sync-all"
+
+
+def behind(db: Session, period: str) -> list[str]:
+    """Every partner already packaged whose folder is not the current work.
+
+    A report that has been corrected keeps its name, so for a long time
+    nothing on the Drive side noticed it had changed at all - the folder went
+    on holding the old file and the board said synced. That is fixed, but it
+    leaves a cycle's worth of folders nobody can be sure of, and checking a
+    hundred and forty-five partners by hand is not a plan.
+
+    Packaged partners only. This is a sync, not a first delivery: a partner
+    that has never had a link is one somebody has not finished with, and
+    creating its folder from here would be a surprise.
+    """
+    packaged = set(latest_deliveries(db, period))
+    out = []
+    for g in by_group(db, period):
+        if g.group not in packaged:
+            continue
+        t = _group_target(g)
+        if any(e.ready and (needs_send(e, t) or unstamped(e, t))
+               for e in g.expected):
+            out.append(g.group)
+    return out
+
+
+def start_sync_all(db: Session, period: str) -> dict:
+    """Walk every partner that is behind, one at a time.
+
+    ONE WORKER, NOT ONE PER PARTNER. A hundred and forty-five threads each
+    holding a Drive session is a way to be rate-limited into a two-hour outage,
+    and the box is also meant to be answering a health check.
+    """
+    import threading
+
+    from sqlalchemy import select as _select
+
+    from .db import DeliveryJob, SessionLocal
+
+    row = db.scalar(_select(DeliveryJob).where(DeliveryJob.key == SYNC_ALL))
+    if row is not None and row.state == "running" and not row.stalled:
+        return {"done": row.done, "total": row.total}
+    names = behind(db, period)
+    if row is None:
+        row = DeliveryJob(key=SYNC_ALL)
+        db.add(row)
+    row.partner_group = SYNC_ALL
+    row.period = period
+    row.state = "running" if names else "done"
+    row.done = 0
+    row.total = len(names)
+    row.note = names[0] if names else "everything is current"
+    row.started_at = row.updated_at = dt.datetime.utcnow()
+    db.commit()
+    if not names:
+        return {"done": 0, "total": 0}
+
+    def run():
+        from .proc import background
+        own = SessionLocal()
+
+        def touch(done: int, note: str, state: str = "running"):
+            r = own.scalar(_select(DeliveryJob).where(DeliveryJob.key == SYNC_ALL))
+            if r is None:
+                return
+            r.done, r.note, r.state = done, note[:255], state
+            r.updated_at = dt.datetime.utcnow()
+            own.commit()
+
+        done = 0
+        failed: list[str] = []
+        try:
+            with background():        # a page load still comes first
+                for name in names:
+                    touch(done, name)
+                    try:
+                        # Signed-off reports only, which is what the partner is
+                        # owed - and it means a partner still being worked
+                        # through is brought up to date rather than skipped.
+                        #
+                        # The progress callback keeps the row's clock moving.
+                        # A job is called stalled after four minutes without a
+                        # touch, and a big partner takes longer than that.
+                        rec = deliver(
+                            own, period, name, ready_only=True,
+                            progress=lambda n, note, _g=name: touch(
+                                done, f"{_g} - {note}"))
+                        if rec is not None and not rec.ok:
+                            failed.append(name)
+                    except Exception:                        # noqa: BLE001
+                        log.exception("sync-all failed for %s", name)
+                        failed.append(name)
+                        own.rollback()
+                    done += 1
+            note = (f"{done} done, {len(failed)} failed: "
+                    + ", ".join(failed[:6])) if failed else f"{done} done"
+            touch(done, note, "done" if not failed else "failed")
+        except Exception as exc:                             # noqa: BLE001
+            log.exception("sync-all failed")
+            try:
+                touch(done, f"{type(exc).__name__}: {exc}", "failed")
+            except Exception:                                # noqa: BLE001
+                pass
+        finally:
+            own.close()
+
+    threading.Thread(target=run, name="sync-all", daemon=True).start()
+    return {"done": 0, "total": len(names)}
+
+
 def start_delivery(db: Session, period: str, group_name: str, *,
                    force: bool = False, tag: str = "",
                    ready_only: bool = False) -> dict:

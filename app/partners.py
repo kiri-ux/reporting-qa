@@ -288,6 +288,40 @@ def find(db: Session, name: str) -> Partner | None:
     return best
 
 
+def by_code(db: Session, code: str) -> Partner | None:
+    """The partner a tracker's market CODE stands for, if exactly one fits.
+
+    "LOCK KNOX" is not a partner. It is what the reporting tracker calls
+    Lockwood Digital Solutions Knoxville, and approving a row off that tracker
+    put the code on the board as a partner in its own right - a card of one
+    report under a name nobody uses, sitting beside the real Lockwood.
+
+    The rule is the one a person reads the code by: every chunk of it starts a
+    word in the partner's name, in order. LOCK begins Lockwood and KNOX begins
+    Knoxville. It answers only when exactly one partner fits, so a code that is
+    ambiguous, or is not a code at all, is left showing rather than guessed at.
+    Putting a client under the wrong partner is worse than an odd name on a
+    card.
+    """
+    chunks = [c for c in re.split(r"[^A-Za-z0-9]+", code or "") if c]
+    if not chunks:
+        return None
+    hits = []
+    for p in all_partners(db):
+        words = [w for w in re.split(r"[^A-Za-z0-9]+", p.partner or "") if w]
+        at = 0
+        for c in chunks:
+            for i in range(at, len(words)):
+                if words[i].lower().startswith(c.lower()):
+                    at = i + 1
+                    break
+            else:
+                break
+        else:
+            hits.append(p)
+    return hits[0] if len(hits) == 1 else None
+
+
 def is_seo(product: str) -> bool:
     return "seo" in (product or "").lower() or "search engine" in (product or "").lower()
 

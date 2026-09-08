@@ -40,6 +40,22 @@
   <span class="count" id="linkcount"></span>
 </form>
 
+{# EVERY FOLDER AT ONCE. A corrected report keeps its name, so for a long time
+   nothing noticed the file underneath had changed and the folder went on
+   holding the old one. #}
+{% if all_job %}
+  <p class="syncall busy"><span class="spin"></span>
+    <b data-all>{{ all_job.done }} of {{ all_job.total }}</b> partners synced
+    <span class="acct" data-all-note>{{ all_job.note or '' }}</span></p>
+{% elif behind %}
+  <form method="post" action="/cycle/{{ period }}/sync-all" class="syncall">
+    <button class="btn" type="submit">Sync all {{ behind|length }}</button>
+    <span class="acct">{{ behind|length }} packaged partner{{ '' if behind|length == 1 else 's' }}
+      {{ 'is' if behind|length == 1 else 'are' }} not the current work.
+      Signed-off reports only.</span>
+  </form>
+{% endif %}
+
 <section>
   {% if delivered.links %}
     <div class="links wide">
@@ -290,6 +306,27 @@
 // finished, which is the one thing a progress indicator must never do.
 //
 // This asks the server instead, and reloads the moment nothing is running.
+// The same, for the run that walks every partner.
+(function () {
+  var n = document.querySelector('[data-all]');
+  if (!n) return;
+  var period = new URLSearchParams(location.search).get('period') || '';
+  var tick = function () {
+    fetch('/cycle/packing?period=' + encodeURIComponent(period),
+          {headers: {'Accept': 'application/json'}})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var mine = (d.jobs || {})['sync-all'];
+        if (!mine) { location.reload(); return; }
+        n.textContent = mine.done + ' of ' + (mine.total || '?');
+        var note = document.querySelector('[data-all-note]');
+        if (note) note.textContent = mine.note || '';
+        setTimeout(tick, 3000);
+      })
+      .catch(function () { setTimeout(tick, 5000); });
+  };
+  setTimeout(tick, 2500);
+})();
 (function () {
   var busy = document.querySelector('[data-busy]');
   if (!busy) return;

@@ -3876,3 +3876,103 @@ def test_slide_count_reads_the_package(tmp_path):
     bad = tmp_path / "b.pptx"
     bad.write_bytes(b"not a zip")
     assert slide_count(bad) == 0
+
+
+def test_sync_all_walks_every_partner_that_is_behind():
+    """A corrected report keeps its name, so for a long time nothing on the
+    Drive side noticed the file underneath had changed - the folder went on
+    holding the old one and the board said synced. That is fixed, but it leaves
+    a cycle of folders nobody can be sure of, and checking a hundred and
+    forty-five partners by hand is not a plan."""
+    import inspect
+    from app import main
+    from app.delivery import SYNC_ALL, behind, start_sync_all
+
+    src = inspect.getsource(behind)
+    # Packaged partners only - this is a sync, not a first delivery.
+    assert "packaged = set(latest_deliveries(db, period))" in src
+    assert "if g.group not in packaged" in src
+    assert "e.ready and (needs_send(e, t) or unstamped(e, t))" in src
+
+    run = inspect.getsource(start_sync_all)
+    # One worker. A hundred and forty-five Drive sessions at once is an outage.
+    assert run.count("threading.Thread") == 1
+    assert "ready_only=True" in run
+    # A partner failing does not stop the rest.
+    assert "failed.append(name)" in run
+    # And the clock keeps moving, or a big partner is called stalled.
+    assert "progress=lambda" in run
+
+    assert SYNC_ALL == "sync-all"
+    assert inspect.getsource(main.sync_all_groups)
+    html = (TPL / "links.html").read_text()
+    assert 'action="/cycle/{{ period }}/sync-all"' in html
+    assert "Sync all {{ behind|length }}" in html
+    assert "d.jobs || {})['sync-all']" in html
+
+
+def test_social_mirror_is_not_mobile_because_the_name_says_mobile():
+    """"Collective Heads - KLOS - Cross Platform Mobile Retargeting Social
+    Mirror" matched the one-word `mobile` nickname before the full product name
+    later in the list, so 37,128 impressions came off Social Mirror and went on
+    to Mobile Conquesting. Social Mirror read 91% short of its order and Mobile
+    Conquesting 73% over, on a report where both were fine."""
+    from app.checks.served import report_product as rp
+
+    klos = "Collective Heads - Meruelo Media - Los Angeles (KLOS 95.5) ROCK - "
+    assert rp(klos + "Cross Platform Mobile Retargeting Social Mirror") == "Social Mirror"
+    assert rp(klos + "Retargeting Social Mirror") == "Social Mirror"
+    assert rp(klos + "Behavioral Social Mirror CTV") == "Social Mirror CTV"
+    # And the nickname still decides a name that names nothing else.
+    assert rp(klos + "Address Targeting Mobile") == "Mobile Conquesting"
+    assert rp("Close Lumber - Geo-Retargeting Mobile") == "Mobile Conquesting"
+    assert rp("Acme - Geo-Retargeting Display Mobile") == "Mobile Conquesting"
+    assert rp("Acme - Behavioral OTT") == "CTV"
+    # A format on its own is still the last resort, not the first answer.
+    assert rp("Acme - Venue Targeting DOOH Video") == "DOOH"
+    assert rp("Acme - Retargeting Video") == "Video"
+    assert rp("Acme - Retargeting Display") == "Display"
+
+
+def test_a_tracker_market_code_resolves_to_the_partner(tmp_path, monkeypatch):
+    """"LOCK KNOX" is not a partner. It is what the reporting tracker calls
+    Lockwood Digital Solutions Knoxville, and approving a row off that tracker
+    put a card called LOCK KNOX on the board, holding one report, beside the
+    real Lockwood."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'p.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import partners as pmod
+    importlib.reload(pmod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+    for name in ("Lockwood Digital Solutions Knoxville",
+                 "Lockwood Digital Solutions Nashville",
+                 "Results Radio Chico"):
+        db.add(db_mod.Partner(partner=name))
+    db.commit()
+    pmod.all_partners.cache_clear() if hasattr(pmod.all_partners, "cache_clear") else None
+
+    got = pmod.by_code(db, "LOCK KNOX")
+    assert got is not None and got.partner == "Lockwood Digital Solutions Knoxville"
+    # Ambiguous is left alone - the wrong partner is worse than an odd name.
+    assert pmod.by_code(db, "LOCK") is None
+    assert pmod.by_code(db, "ZZZ") is None
+    assert pmod.by_code(db, "") is None
+
+    # A one-word code works the same way: INNO is Innovision.
+    db.add(db_mod.Partner(partner="Innovision Media"))
+    db.commit()
+    pmod._CACHE["rows"] = None          # the roster is cached for a few seconds
+    got = pmod.by_code(db, "INNO")
+    assert got is not None and got.partner == "Innovision Media"
+
+    import inspect
+    from app import board, main
+    assert "by_code(db, hint)" in inspect.getsource(main.cycle_audit_call)
+    # And rows already on the board are healed, not only new ones.
+    assert "by_code(db, market)" in inspect.getsource(board._add_hand_rows)

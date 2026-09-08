@@ -1239,8 +1239,20 @@ def _add_hand_rows(db: Session, period: str,
         if not mk or not ck or (mk, ck, kind) in rows:
             continue
         p = _match_partner(idx, m.market or "")
+        # A CODE, NOT A PARTNER. Rows approved off the reporting tracker carry
+        # its market column, which holds "LOCK KNOX" and "INNO" rather than
+        # Lockwood Digital Solutions Knoxville and Innovision. Unresolved, each
+        # one became a partner card of its own beside the real one. Healed
+        # here as well as where the row is written, so the rows already on the
+        # board move without anybody re-adding them.
+        market = m.market or ""
+        if p is None:
+            from .partners import by_code
+            found = by_code(db, market)
+            if found is not None:
+                p, market = found, found.partner
         rows[(mk, ck, kind)] = Expected(
-            market=m.market or "", group=(p.group if p and p.group else m.market) or "",
+            market=market, group=(p.group if p and p.group else market) or "",
             client=m.client or "", kind=kind or "monthly",
             # The order number off the row that was approved, so the board
             # shows it and a search by order id can find it.

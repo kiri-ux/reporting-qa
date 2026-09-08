@@ -2005,6 +2005,15 @@ def deliver_group(request: Request, period: str, group: str = Form(...),
     return RedirectResponse(back, status_code=303)
 
 
+@app.post("/cycle/{period}/sync-all")
+def sync_all_groups(period: str, db: Session = Depends(get_db)):
+    """Bring every packaged partner's folder up to the current reports."""
+    from .delivery import start_sync_all
+
+    start_sync_all(db, period)
+    return RedirectResponse(f"/cycle/links?period={period}", status_code=303)
+
+
 def _matches(e, q: str) -> bool:
     """Every word has to appear somewhere on the row, in any order.
 
@@ -2234,7 +2243,16 @@ def cycle_audit_call(request: Request, period: str = Form(""),
     # the board materializes the override into a row of its own - see
     # expected_for.
     if call == "approved" and client and not market:
-        market = (market_hint or "").strip() or "(not in the export)"
+        # THE CODE IS NOT THE PARTNER. "LOCK KNOX" is what the tracker calls
+        # Lockwood Digital Solutions Knoxville, and using it as it stands put a
+        # card called LOCK KNOX on the board beside the real Lockwood, holding
+        # one report. Resolved when exactly one partner fits it; left showing
+        # when nothing does, because an odd name on a card beats a client filed
+        # under the wrong partner.
+        from .partners import by_code
+        hint = (market_hint or "").strip()
+        found = by_code(db, hint) if hint else None
+        market = (found.partner if found else hint) or "(not in the export)"
     if call == "approved" and market and client:
         ident = f"{_ident_key(market)}|{_ident_key(client)}|{kind}"
         mark = db.scalars(select(CycleDone).where(
@@ -2420,11 +2438,22 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
             "when": bad.created_at if bad else None,
         })
     waiting.sort(key=lambda w: w["group"].lower())
+    # HOW MANY FOLDERS ARE NOT THE CURRENT WORK, and the one button that fixes
+    # all of them. Checking a hundred and forty-five partners by hand is not a
+    # plan, and until now it was the only one.
+    from .delivery import SYNC_ALL, behind
+    from .db import DeliveryJob as _DJ
+    all_job = db.scalar(select(_DJ).where(_DJ.key == SYNC_ALL))
+    if all_job is not None and (all_job.period != period
+                                or all_job.state != "running"
+                                or all_job.stalled):
+        all_job = None
     return templates.TemplateResponse(request, "links.html", {
         "nav": "links", "cycle": cycle_for(period), "period": period,
         "anchor": _anchor,
         "periods": periods, "delivered": delivered, "new": new,
         "waiting": waiting, "running": running,
+        "behind": behind(db, period), "all_job": all_job,
         "configured": settings.delivery_configured,
     })
 

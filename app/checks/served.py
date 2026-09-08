@@ -19,27 +19,41 @@ from .products import PRODUCT_LEADS, _flat
 from .quality import line_item_totals
 
 
-def _leads() -> list[tuple[str, str]]:
-    """The order vocabulary, plus what a REPORT calls the same things.
+# WHAT A REPORT CALLS THINGS THAT THE ORDER SPELLS OUT.
+#
+# An order says "Mobile Conquesting Display & Video Ads". The report's line
+# items say "Close Lumber - Geo-Retargeting Mobile" - the product is one word
+# at the end, and the order's own pattern needs both words, so every Mobile
+# Conquesting line on every report matched nothing at all.
+NICKNAMES: list[tuple[str, str]] = [
+    ("Mobile Conquesting", r"\bmobile\b"),
+    ("CTV", r"\bott\b"),
+    ("Native Display", r"\bnativ\w*\b"),
+]
 
-    An order says "Mobile Conquesting Display & Video Ads". The report's line
-    items say "Close Lumber - Geo-Retargeting Mobile" - the product is one word
-    at the end, and the order's own pattern needs both words, so every Mobile
-    Conquesting line on every report matched nothing at all.
+# The last resort. These are formats, not products: an order sells "Mobile
+# Conquesting Display & Video Ads", so a line item saying Display might be any
+# of three products and only means Display when nothing better is in the name.
+GENERIC = {r"video\b", r"display\b", r"audio\b"}
 
-    The extras go in beside their equivalents rather than at the end, because
-    the order of this list IS the specificity rule: "Venue Targeting DOOH
-    Video" is DOOH, and a rule that ran after Video would call it Video.
+
+def _leads() -> tuple[list, list, list]:
+    """The vocabulary in three tiers, most specific first.
+
+    THE TIER IS THE SPECIFICITY RULE, and it used to be the position in one
+    flat list - which put the one-word nicknames ahead of the full product
+    names that come later in the order's own list. So "Collective Heads - KLOS
+    - Cross Platform Mobile Retargeting Social Mirror" matched `mobile` and was
+    filed as Mobile Conquesting, taking 37,128 impressions off Social Mirror
+    and putting them on a product that had not served them. Social Mirror read
+    91% short of its order and Mobile Conquesting 73% over.
+
+    A name that says Social Mirror is a Social Mirror line however many other
+    words are in it. A nickname only decides a name that names nothing.
     """
-    extra = {"Mobile Conquesting": r"\bmobile\b", "CTV": r"\bott\b",
-             "Native Display": r"\bnativ\w*\b"}
-    out: list[tuple[str, str]] = []
-    for product, rx in PRODUCT_LEADS:
-        out.append((product, rx))
-        if product in extra:
-            out.append((product, extra.pop(product)))
-    out.extend(extra.items())
-    return out
+    named = [(p, rx) for p, rx in PRODUCT_LEADS if rx not in GENERIC]
+    generic = [(p, rx) for p, rx in PRODUCT_LEADS if rx in GENERIC]
+    return named, list(NICKNAMES), generic
 
 
 LEADS = _leads()
@@ -50,15 +64,17 @@ def report_product(name: str) -> str | None:
 
     The order's patterns are anchored to the front of a product name. Here the
     product is somewhere inside a line item name somebody wrote, so the same
-    patterns are searched instead of matched - in the same order, which is what
-    keeps "DOOH Video" a DOOH line.
+    patterns are searched instead of matched - in tier order, which is what
+    keeps "DOOH Video" a DOOH line and "Retargeting Mobile" a Mobile
+    Conquesting one.
     """
     flat = _flat(name)
     if not flat:
         return None
-    for product, rx in LEADS:
-        if re.search(rx, flat):
-            return product
+    for tier in LEADS:
+        for product, rx in tier:
+            if re.search(rx, flat):
+                return product
     return None
 
 
