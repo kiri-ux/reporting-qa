@@ -3617,3 +3617,14 @@ def test_a_cancelled_line_outside_the_month_does_not_excuse_it(monkeypatch):
         detail = [{"canceled": True, "starts": "2026-01-01", "ends": "2026-12-31"},
                   {"canceled": False, "starts": "2026-01-01", "ends": "2026-12-31"}]
     assert R._cancelled_ran(M(), "2026-08")
+
+
+def test_a_partner_who_never_sent_a_logo_is_not_flagged_for_the_default():
+    """The default on their reports is not a mistake anybody is going to fix,
+    so the finding says "chase this" about a thing with nothing behind it."""
+    from app.checks.rules import NO_LOGO_MARKETS, check_market_logo
+    for m in ("Amazin Results LLC", "Ampersand", "ampersand"):
+        assert check_market_logo({"logo_generic": True, "market": m}) == [], m
+    assert len(check_market_logo({"logo_generic": True,
+                                  "market": "Lockwood Digital"})) == 1
+    assert NO_LOGO_MARKETS

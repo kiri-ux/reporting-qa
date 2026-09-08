@@ -1360,17 +1360,17 @@ def test_the_sweeper_waits_out_the_first_minute():
     assert "time.sleep(60)" in body, "the sweep still starts on top of the deploy"
 
 
-def test_the_recheck_banner_says_which_deploy_and_what_it_changed():
-    """"A deploy changed the checking rules" is true of every one of these and
-    answers nothing - the only way to find out what was actually different was
-    to ask me. The build's own note is right there."""
+def test_the_recheck_banner_names_the_build_and_stops():
+    """It carried the build's own note as well, which is a sentence about the
+    deploy on a banner about a queue. The build number is what identifies the
+    deploy; anybody who wants to know what changed reads the notes."""
     from pathlib import Path
     page = (Path(__file__).resolve().parents[1] / "app" / "templates"
             / "cycle.html").read_text()
     i = page.index("reports are being re-checked in the background")
     banner = page[i:i + 700]
     assert "{{ build_label }}" in banner
-    assert "{{ build_notes }}" in banner
+    assert "{{ build_notes }}" not in banner
 
 
 def test_a_scheduling_change_does_not_re_read_every_pdf():

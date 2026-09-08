@@ -1,65 +1,30 @@
-build 2026.09.04-200  (builds 196-200 in one)
+build 2026.09.08-201
 Changed files only. Everything since 130 - install this one.
-35 checks, down from 38.
+35 checks.
 
-Every zip is cumulative from build 130, so this single file is all of 196
-through 200. Five things landed:
+THE UPLOAD THAT OPENED A DIFFERENT MARKET
+=========================================
+Real bug, and a bad one. When you upload a file, the tool first looks for an
+existing report to replace. That lookup matched on ORDER ID ACROSS EVERY REPORT
+IN THE CYCLE and never checked the market - so an upload made against one
+partner's row landed on another partner's report the moment the two shared an
+id. Which is exactly what you saw: a different market and a different campaign,
+twice, including after a manual re-pull.
 
-
-1. SOCIAL MIRROR CTV OWES NO SITE AND APP WIDGET          (200)
-=============================================================
-Stanley Steemer Dothan 52493 runs Mobile Conquesting and Social Mirror CTV, and
-its BARCK+ line is the CTV one. It was failed for a Site and App Performance
-widget that buy never gets - its inventory is the publisher list, and the
-publisher list was on the report.
-
-The exemption existed and was too strict: it needed EVERY product to be a CTV
-kind, so one Mobile Conquesting line put the widget back on the hook. BARCK+ is
-the only thing that owes this widget at all, so nothing else moves.
+An upload is made from a row. It can only replace that row's report now.
 
 
-2. THE SWEEP STANDS ASIDE WHILE YOU ARE ON THE BOARD      (199)
-=============================================================
-Eight builds in a day, each queueing an 850 MB order re-read AND all ~880
-reports back through pdftotext. The queue never drained between them, so the
-box ran the sweep all afternoon while you were using it - which is the health
-check alarm.
-
-185 taught the ORDER RE-READ to wait for a gap in the traffic. The sweep, which
-is much the longer of the two, now waits too: 25 quiet seconds between batches.
-
-Still true: taking fewer builds is worth more than anything I can do in code.
+NO-LOGO PARTNERS
+================
+Amazin Results LLC, Ampersand, Grace Impressions. Never flagged for the default
+logo - they have never sent one, so there is nothing behind the finding. Send
+more names and I will add them; they are one line in app/checks/rules.py.
 
 
-3. PAUSED BELONGS ON A LIFETIME                       (196-198)
-=============================================================
-You were right and I took the wrong half out. A pause means it RAN and was
-stopped, so a product paused in April belongs on a campaign-to-date report.
-That is what makes it different from a cancelled buy, which was called off.
-Still not flagged on a monthly.
-
-The real fault was the sentence under the finding, which printed the monthly
-line on both kinds of report - "paused, so not owed either way", true of a
-monthly and the reverse of true on a lifetime. It says the fact and stops now:
-
-  ran to 2026-04-30 · paused
-
-Order 51681's three products are still flagged. They ran, they are on the
-campaign, and the report does not show them.
+THE BANNER STOPS REPEATING THE BUILD NOTE
+=========================================
+It named the build and then printed a sentence about the deploy on a banner
+about a queue. The build number identifies the deploy; that is enough.
 
 
-4. THE DESCRIPTIONS SAY THE THING AND STOP                (195)
-=============================================================
-Cut to what you highlighted: variant preview links, creative previews, creative
-totals, completion rates, pacing. And the admin key line now reads "Data error,
-send to Alyssa on the reporting team to look into."
-
-
-5. AND WHAT WAS ALREADY IN THE EARLIER ONES
-=============================================================
-check_rate_ceiling deleted, the two client checks merged into one row, the
-green tick on okay-to-package, the cancelled-line pacing rule, and your sheet
-applied across all 35.
-
-
-895 tests pass.
+897 tests pass.

@@ -2788,6 +2788,16 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     # and should go through the route that knows how to handle one.
     from .ingest import _rkey
     for r in db.scalars(select(Report).where(Report.period == period)).all():
+        # THE SAME MARKET, WHICH THIS NEVER CHECKED.
+        #
+        # The match is an order-id intersection across every report in the
+        # cycle, so an upload made against one partner's row landed on another
+        # partner's report whenever the two shared an id - three LMSD files
+        # opened a different market and a different campaign, twice, including
+        # after a manual re-pull. An upload is made from a row; it can only
+        # replace that row's report.
+        if (r.market or "") != (market or ""):
+            continue
         if bool(r.is_lifetime) != is_lifetime:
             continue
         # A client's SEO report and their digital one are two files, not two

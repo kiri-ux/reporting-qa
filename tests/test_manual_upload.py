@@ -1380,3 +1380,28 @@ def test_the_note_button_comes_before_the_decision_buttons_in_the_form():
     block = page[at:at + 3000]
     assert block.index('value="note"') < block.index('value="done"'), \
         "Enter in the note box will mark the row complete again"
+
+
+def test_an_upload_only_replaces_a_report_on_its_own_market(client):
+    """THREE LMSD FILES OPENED A DIFFERENT MARKET AND A DIFFERENT CAMPAIGN,
+    twice, including after a manual re-pull. The replacement match is an order
+    id intersection across every report in the cycle and never checked the
+    market, so an upload made against one partner's row landed on another
+    partner's report whenever the two shared an id."""
+    c, (db, dbm, imod) = client
+    rep_id = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0].id
+    other = db.query(dbm.Report).get(rep_id)
+    other.market = "Somebody Else"
+    db.commit()
+
+    r = c.post("/cycle/upload",
+               data={"period": "2026-07", "market": "7 Mountains KY",
+                     "client": "Awaken Bakery", "account_ids": "52746",
+                     "kind": "monthly"},
+               files={"file": ("x.pdf", (FIXTURES / "salem_rv.pdf").read_bytes(),
+                               "application/pdf")},
+               follow_redirects=False)
+    assert r.headers["location"] != f"/report/{rep_id}/view", \
+        "the upload opened another market's report"
+    db.expire_all()
+    assert db.query(dbm.Report).count() == 2

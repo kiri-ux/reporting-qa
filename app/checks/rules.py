@@ -1093,6 +1093,11 @@ def check_impression_pacing(ctx) -> list[dict]:
     return out
 
 
+# Partners who have never provided a logo. Add to this rather than acking the
+# same finding every month.
+NO_LOGO_MARKETS = {"amazinresultsllc", "ampersand", "graceimpressions"}
+
+
 def check_market_logo(ctx) -> list[dict]:
     """The corner of page one must not carry the reporting tool's own mark.
 
@@ -1103,6 +1108,11 @@ def check_market_logo(ctx) -> list[dict]:
     logo across all of them.
     """
     if not ctx.get("logo_generic"):
+        return []
+    # SOME PARTNERS NEVER SENT A LOGO, so the default one on their reports is
+    # not a mistake anybody is going to fix. Flagging it says "chase this" about
+    # a thing with nothing behind it.
+    if _flat_name(ctx.get("market") or "") in NO_LOGO_MARKETS:
         return []
     return [_f("generic_logo", "fail",
                "Page one carries the reporting tool's default logo",

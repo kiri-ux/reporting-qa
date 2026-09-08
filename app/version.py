@@ -12,9 +12,8 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.04-200"
-BUILD_NOTES = ("A CTV buy beside a mobile one is still a CTV buy - no Site "
-               "and App widget owed.")
+BUILD = "2026.09.08-201"
+BUILD_NOTES = ("")
 
 # ---------------------------------------------------------------------------
 
