@@ -956,7 +956,7 @@ def test_a_dropbox_failure_does_not_lose_the_drive_copy(monkeypatch, tmp_path):
 
     rec = dmod.deliver(db, "2026-08", "7 Mountains KY")
     assert not rec.ok
-    assert "filed in Drive" in rec.message
+    assert "in Drive" in rec.message
     assert "insufficient_scope" in rec.message
     assert rec.archive_url.endswith("DRV"), "the Drive copy was not recorded"
 

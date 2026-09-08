@@ -160,6 +160,17 @@ class Report(Base):
     # has actually moved. Two different PDFs agreeing on both to the second is
     # not a thing that happens here.
     delivered_stamp: Mapped[str] = mapped_column(String(64), default="")
+    # AND THE SAME TWO AGAIN, FOR DROPBOX.
+    #
+    # A Dropbox partner is filed twice: into Drive as the archive, then into
+    # Dropbox as the link the partner opens. Both passes were reading and
+    # writing this one pair of columns, so the Drive pass stamped every report
+    # and the Dropbox pass read those stamps as "already up there" and sent
+    # nothing. The folder was never created, and asking Dropbox for a link to a
+    # folder that does not exist is what put not_found on the card. Two
+    # folders, two records of what is in them.
+    dbx_as: Mapped[str] = mapped_column(String(255), default="")
+    dbx_stamp: Mapped[str] = mapped_column(String(64), default="")
 
     batch: Mapped["Batch"] = relationship(back_populates="reports")
 
@@ -902,6 +913,13 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "delivered_as", "VARCHAR(255) DEFAULT '' NOT NULL",
      "UPDATE reports SET delivered_as = filename "
      "WHERE delivered_as = '' AND filename <> ''"),
+    # NO BACKFILL FROM delivered_as. That column is the one the Drive pass
+    # overwrote, so copying it across would carry the fault straight into the
+    # new columns and the Dropbox folders would stay missing. Empty means the
+    # first sync after this deploy sends the month in full, which for a partner
+    # whose folder is not there is the right answer anyway.
+    ("reports", "dbx_as", "VARCHAR(255) DEFAULT '' NOT NULL"),
+    ("reports", "dbx_stamp", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("order_lines", "detail", "JSON"),

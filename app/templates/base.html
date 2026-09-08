@@ -568,7 +568,14 @@ input[type=text]:focus{outline:none;border-color:var(--velocity);
  box-shadow:0 0 0 3px var(--velocity-10)}
 .tools .count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;
  white-space:nowrap}
-tr[hidden]{display:none}
+/* HIDDEN MEANS HIDDEN, WHATEVER THE ELEMENT IS.
+   The browser's own rule for [hidden] is display:none at the weakest possible
+   specificity, so any class that sets display beats it. `.links li{display:
+   flex}` did exactly that: the partner search set hidden on every row that did
+   not match, the counter dutifully read "12 of 142", and all 142 rows stayed
+   on the screen. It had already been patched once for table rows. Once, for
+   everything. */
+[hidden]{display:none !important}
 
 /* ---- chip tooltip ----
    A title attribute waits about a second and renders in the OS font. These

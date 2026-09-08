@@ -1,22 +1,20 @@
-build 2026.09.08-207
+build 2026.09.08-208
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-The sync error is on hover. "Last sync failed" on the card, the API message
-behind it.
+The partner search on the Packaged links page filters the list, not just the
+counter.
 
-A pacing unit with nothing to compare on any of its rows does not get a
-section. Performance Max with no figures was printing a Spend heading and one
-"-/- no comparison" line.
+Dropbox now keeps its own record of what is in its folder. Drive was filing
+first and stamping every report, Dropbox read those stamps as work already
+done, sent nothing, and so never created the folder - which is why there are
+no August folders and why the card said not_found. The first sync after this
+sends each Dropbox partner's month in full.
 
-Bair Foundation's row-CTR findings are gone - a row missing a column the rest
-of the table fills in is not judged.
+A Dropbox failure is written in words: what happened and what to do next.
 
-Performance Max and PPC are out of the impressions total and the
-device-eligible total.
+Three campaigns that share account ids each keep their own report. LMSD's
+Z90 / MAGIC / 91X rows were one row between them, so two of the three files
+attached to nothing and the rows read "report not received".
 
-Part-month lines are paced against a part-month goal.
-
-Amazing Results LLC, Ampersand, Grace Impressions: no default-logo finding.
-
-902 tests pass.
+907 tests pass.

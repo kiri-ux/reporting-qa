@@ -461,6 +461,18 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
     if tag:
         folder += f" - {_safe(tag)}"
 
+    # DOES THE FOLDER EVEN EXIST? Nothing in it can be up to date if it is not
+    # there. The records of what was filed are the only reason a report gets
+    # skipped, and a record can outlive the folder it describes - somebody
+    # moves it, renames it, empties the month out - at which point every report
+    # is skipped, no folder is made, and the link lookup fails on a path that
+    # was never created. Ask once, and send the month in full when the answer
+    # is no.
+    exists = True
+    try:
+        dbx.files_get_metadata(folder)
+    except Exception as exc:                             # noqa: BLE001
+        exists = "not_found" not in str(exc)
     n = 0
     skipped = 0
     for e in group.expected:
@@ -470,7 +482,7 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         # ONLY WHAT HAS CHANGED. See the same rule in the Drive path: a report
         # still filed under the name it has, from the file it was filed from,
         # is already in this folder.
-        if not tag and not needs_send(e):
+        if exists and not tag and not needs_send(e, "dropbox"):
             skipped += 1
             continue
         src = Path(r.stored_path)
@@ -489,7 +501,7 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         # never change, so a report filed last week under an older name is
         # still sitting there beside the new one unless it is taken out. Only
         # the name THIS report was last filed as is removed.
-        was = "" if tag else (getattr(r, "delivered_as", "") or "").strip()
+        was = "" if tag else (getattr(r, "dbx_as", "") or "").strip()
         if was and was != name:
             try:
                 dbx.files_delete_v2(f"{folder}/{was}")
@@ -499,8 +511,8 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         dbx.files_upload(data, f"{folder}/{name}",
                          mode=WriteMode("overwrite"))
         if not tag:
-            r.delivered_as = name[:255]
-            r.delivered_stamp = file_stamp(r.stored_path)
+            r.dbx_as = name[:255]
+            r.dbx_stamp = file_stamp(r.stored_path)
         n += 1
         if progress:
             progress(n, f"sending {e.client} to Dropbox")
@@ -625,9 +637,9 @@ def deliver(db: Session, period: str, group_name: str, *,
                         f"is picked up.")
         except Exception as exc:  # noqa: BLE001
             import traceback; traceback.print_exc()
-            return fail(f"Reports are filed in Drive"
-                        f"{' at ' + archive_url if archive_url else ''}, but the "
-                        f"Dropbox upload failed: {type(exc).__name__}: {exc}")
+            return fail(f"The reports are in Drive"
+                        f"{' at ' + archive_url if archive_url else ''}. "
+                        f"Dropbox did not take them: {_plain_dropbox(exc)}")
         message = (f"{dbx_msg} Also filed in Drive." if archive_url else dbx_msg)
 
     if share_url:
@@ -667,7 +679,7 @@ def file_stamp(path: str) -> str:
         return ""
 
 
-def send_reason(e) -> str:
+def send_reason(e, target: str = "drive") -> str:
     """WHY this report is not what the partner has, in a word or two.
 
     "26 reports changed since this was packaged", on a partner whose 26 reports
@@ -682,18 +694,59 @@ def send_reason(e) -> str:
     r = getattr(e, "report", None)
     if not r or not getattr(r, "stored_path", ""):
         return ""
-    filed = getattr(r, "delivered_as", "") or ""
+    as_col, stamp_col = filed_fields(target)
+    filed = getattr(r, as_col, "") or ""
     if not filed:
         return "never sent"
     if filed != report_filename(e):
         return "renamed"
-    stamp = getattr(r, "delivered_stamp", "") or ""
+    stamp = getattr(r, stamp_col, "") or ""
     if stamp and stamp != file_stamp(r.stored_path):
         return "new file"
     return ""
 
 
-def needs_send(e) -> bool:
+def _plain_dropbox(exc: Exception) -> str:
+    """The Dropbox failure in words somebody can act on.
+
+    What was on the card was four lines of API traceback ending in
+    LookupError('not_found', None), which reads as a bug in this tool and is
+    not. Dropbox says a handful of things and each of them has a next step.
+    """
+    text = f"{type(exc).__name__}: {exc}"
+    low = text.lower()
+    if "not_found" in low:
+        return ("the folder it wanted is not there. Press sync again - it will "
+                "build the month from scratch.")
+    if "insufficient_space" in low or "quota" in low:
+        return "the account is out of space."
+    if "expired_access_token" in low or "invalid_access_token" in low:
+        return "it would not let us in. The Dropbox login needs redoing."
+    if "no_permission" in low or "access_denied" in low or "team_folder" in low:
+        return "this login cannot write to that folder."
+    if "too_many_requests" in low or "rate" in low and "limit" in low:
+        return "it is throttling us. Wait a few minutes and press sync again."
+    if "timeout" in low or "timed out" in low or "connection" in low:
+        return "the connection dropped part way through. Press sync again."
+    # Anything unrecognized still gets shown - a message nobody can read beats
+    # a partner sitting there with no reason at all.
+    return text
+
+
+def filed_fields(target: str) -> tuple[str, str]:
+    """Which pair of columns records what is in THIS destination's folder.
+
+    A Dropbox partner has two folders - the Drive archive and the Dropbox
+    folder the link opens - and they hold different things at different times.
+    One pair of columns for both meant whichever pass ran first told the second
+    one its work was already done.
+    """
+    if (target or "").lower() == "dropbox":
+        return "dbx_as", "dbx_stamp"
+    return "delivered_as", "delivered_stamp"
+
+
+def needs_send(e, target: str = "drive") -> bool:
     """Is this report different from what is sitting in the partner's folder?
 
     Two ways it can be: filed under a name it no longer has, or filed as a file
@@ -703,7 +756,8 @@ def needs_send(e) -> bool:
     r = getattr(e, "report", None)
     if not r or not getattr(r, "stored_path", ""):
         return False
-    if (getattr(r, "delivered_as", "") or "") != report_filename(e):
+    as_col, stamp_col = filed_fields(target)
+    if (getattr(r, as_col, "") or "") != report_filename(e):
         return True
     # AN UNKNOWN STAMP IS NOT A CHANGED FILE.
     #
@@ -712,7 +766,7 @@ def needs_send(e) -> bool:
     # reports in its folder that thirty-three of them needed sending again.
     # Crying wolf about it is worse than missing one: the name still has to
     # match, and the stamp gets written the next time it does go up.
-    stamp = getattr(r, "delivered_stamp", "") or ""
+    stamp = getattr(r, stamp_col, "") or ""
     return bool(stamp) and stamp != file_stamp(r.stored_path)
 
 
@@ -738,14 +792,22 @@ def out_of_sync(group) -> list[str]:
     # So a report is behind when it was filed and has since moved, or when it
     # is signed off and has never been filed. Not when it is still being
     # worked on.
+    # AGAINST THE FOLDER THE PARTNER ACTUALLY OPENS. For a Dropbox partner that
+    # is the Dropbox folder, not the Drive archive beside it.
+    target = _group_target(group)
+    as_col, _stamp = filed_fields(target)
     out = []
     for e in group.expected:
-        if not needs_send(e):
+        if not needs_send(e, target):
             continue
-        was_filed = bool(getattr(e.report, "delivered_as", "") or "")
+        was_filed = bool(getattr(e.report, as_col, "") or "")
         if was_filed or e.ready:
             out.append(e.client or report_filename(e))
     return out
+
+
+def _group_target(group) -> str:
+    return (getattr(group, "target", "") or settings.delivery_target or "")
 
 
 def out_of_sync_why(group) -> dict[str, int]:
@@ -754,13 +816,15 @@ def out_of_sync_why(group) -> dict[str, int]:
     Reading a list of twenty-six client names tells you nothing about what
     happened to them. The reasons do, and there are only ever three.
     """
+    target = _group_target(group)
+    as_col, _stamp = filed_fields(target)
     out: dict[str, int] = {}
     for e in group.expected:
-        if not needs_send(e):
+        if not needs_send(e, target):
             continue
-        if not (bool(getattr(e.report, "delivered_as", "") or "") or e.ready):
+        if not (bool(getattr(e.report, as_col, "") or "") or e.ready):
             continue
-        why = send_reason(e) or "changed"
+        why = send_reason(e, target) or "changed"
         out[why] = out.get(why, 0) + 1
     return out
 
@@ -845,7 +909,7 @@ def start_delivery(db: Session, period: str, group_name: str, *,
         row.total = len([e for e in g.expected if e.report and e.report.stored_path])
     else:
         rows_ = [e for e in g.expected if not ready_only or e.ready]
-        row.total = len([e for e in rows_ if needs_send(e)])
+        row.total = len([e for e in rows_ if needs_send(e, _group_target(g))])
     row.note = "starting"
     row.started_at = row.updated_at = dt.datetime.utcnow()
     db.commit()

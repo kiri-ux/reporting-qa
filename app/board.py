@@ -1272,11 +1272,39 @@ def _attach_reports(db: Session, period: str,
     from sqlalchemy.orm import defer
     reports = db.scalars(select(Report).where(Report.period == period)
                          .options(defer(Report.checks))).all()
-    by_client = {(_key(e.client), e.kind): e for e in rows.values()}
-    by_account: dict[tuple[str, str], Expected] = {}
+    # EVERY ROW THAT MATCHES, NOT THE LAST ONE WRITTEN.
+    #
+    # These were single-value maps, so two rows carrying the same account id
+    # left only one behind and the other became unreachable: whichever report
+    # arrived first took the surviving row, the second matched the same row,
+    # found it taken, and attached to nothing. On the board that reads as
+    # "report not received" for a file that is in the database - which is what
+    # LMSD's three Secret Contest campaigns did, all sharing ids, one row
+    # standing for all three.
+    #
+    # And the market breaks the tie. A report was uploaded from a row; the row
+    # in that market is the row it belongs to.
+    by_client: dict[tuple[str, str], list[Expected]] = {}
+    by_account: dict[tuple[str, str], list[Expected]] = {}
     for e in rows.values():
+        by_client.setdefault((_key(e.client), e.kind), []).append(e)
         for a in ACC.findall(e.account_ids or ""):
-            by_account[(a, e.kind)] = e
+            by_account.setdefault((a, e.kind), []).append(e)
+
+    def pick(cands: list[Expected], market: str) -> Expected | None:
+        """A row still waiting for a report, its own market first."""
+        free = [e for e in cands if e.report is None]
+        if not free:
+            return None
+        mk = _key(market or "")
+        if mk:
+            for e in free:
+                if _key(e.market or "") == mk:
+                    return e
+        # The market is only a tie-breaker. Markets are spelled differently in
+        # the two systems often enough that insisting on one would turn a match
+        # that has worked for months into "not received".
+        return free[0]
 
     for r in reports:
         # THREE ROWS A CLIENT CAN OWE, not two. An SEO report is a different
@@ -1287,11 +1315,12 @@ def _attach_reports(db: Session, period: str,
                 "seo" if getattr(r, "is_seo", False) else "monthly")
         hit = None
         for a in ACC.findall(r.account_ids or "") or []:
-            hit = by_account.get((a, kind))
+            hit = pick(by_account.get((a, kind)) or [], r.market or "")
             if hit:
                 break
         if hit is None:
-            hit = by_client.get((_key(r.client), kind))
+            hit = pick(by_client.get((_key(r.client), kind)) or [],
+                       r.market or "")
         # EVERY REPORT THAT ALREADY EXISTS PREDATES THE SPLIT.
         #
         # `is_seo` is new, so every report in the database is stamped False -
@@ -1305,11 +1334,12 @@ def _attach_reports(db: Session, period: str,
         if hit is None and kind in ("monthly", "seo"):
             other = "seo" if kind == "monthly" else "monthly"
             for a in ACC.findall(r.account_ids or "") or []:
-                hit = by_account.get((a, other))
+                hit = pick(by_account.get((a, other)) or [], r.market or "")
                 if hit:
                     break
             if hit is None:
-                hit = by_client.get((_key(r.client), other))
+                hit = pick(by_client.get((_key(r.client), other)) or [],
+                           r.market or "")
         if hit is not None and hit.report is None:
             hit.report = r
 

@@ -698,7 +698,7 @@ def test_a_sync_only_sends_what_actually_moved():
     from app import delivery
     for fn in (delivery.upload_drive_folder, delivery.upload_dropbox_folder):
         src = inspect.getsource(fn)
-        assert "needs_send(e)" in src, fn.__name__
+        assert "needs_send(e" in src, fn.__name__
         assert "skipped += 1" in src, fn.__name__
         # And it still hands back the link when nothing needed sending.
         assert "Already up to date" in src, fn.__name__
@@ -3604,3 +3604,123 @@ def test_the_client_checks_are_one_row():
     assert "check_client_data" not in names
     assert "check_client_matches_order" not in names
     assert "check_client_wrong" in SKIP_WHY and "check_client_wrong" in described()
+
+
+def test_dropbox_keeps_its_own_record_of_what_is_filed(tmp_path):
+    """A Dropbox partner is filed twice - Drive first, then Dropbox - and both
+    passes were writing the same two columns. The Drive pass stamped every
+    report, the Dropbox pass read those stamps as work already done, uploaded
+    nothing, and so never created the folder. Then it asked for a link to a
+    folder that was not there. That is what "not_found" on the card was, and
+    why August had no Dropbox folders at all."""
+    from app.board import Expected, GroupRow
+    from app.db import Report
+    from app.delivery import filed_fields, needs_send, out_of_sync
+
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    r = Report(filename="August 2026_Acme 1.pdf", stored_path=str(pdf),
+               client="Acme", severity="pass", findings=[],
+               review_state="reviewed")
+    e = Expected(market="M", group="P", client="Acme", kind="monthly", report=r)
+
+    # The Drive pass runs and records what it filed.
+    r.delivered_as = "August 2026_Acme 1.pdf"
+    assert needs_send(e, "drive") is False
+    # Dropbox has still had nothing.
+    assert needs_send(e, "dropbox") is True
+    assert out_of_sync(GroupRow("P", "dropbox", [e])) == ["Acme"]
+    assert out_of_sync(GroupRow("P", "drive", [e])) == []
+
+    # And once Dropbox has it, it stops asking.
+    r.dbx_as = "August 2026_Acme 1.pdf"
+    assert needs_send(e, "dropbox") is False
+    assert filed_fields("dropbox") == ("dbx_as", "dbx_stamp")
+    assert filed_fields("drive") == ("delivered_as", "delivered_stamp")
+
+
+def test_a_missing_dropbox_folder_gets_the_month_in_full():
+    """Nothing in a folder can be up to date if the folder is not there. The
+    record of what was filed outlives the folder it describes - somebody moves
+    it, renames it, empties it - and every report then gets skipped for a
+    folder that does not exist."""
+    import inspect
+    from app import delivery
+    src = inspect.getsource(delivery.upload_dropbox_folder)
+    assert "files_get_metadata" in src
+    assert "exists and not tag and not needs_send" in src
+
+
+def test_the_dropbox_failure_is_readable():
+    """What was on the card was four lines of API traceback ending in
+    LookupError('not_found', None). Nobody can act on that."""
+    from app.delivery import _plain_dropbox
+
+    class ApiError(Exception):
+        pass
+
+    msg = _plain_dropbox(ApiError(
+        "ApiError('4f78', ListSharedLinksError('path', "
+        "LookupError('not_found', None)))"))
+    assert "not_found" not in msg
+    assert "folder" in msg and "sync again" in msg
+    assert _plain_dropbox(ApiError("expired_access_token")) == \
+        "it would not let us in. The Dropbox login needs redoing."
+    # Anything it does not recognize still says something.
+    assert _plain_dropbox(ApiError("the roof fell in"))
+
+
+def test_hidden_is_hidden_on_every_element():
+    """The partner search set hidden on every row that did not match, the
+    counter read "12 of 142", and all 142 rows stayed on the screen -
+    `.links li{display:flex}` beats the browser's own rule for [hidden]."""
+    css = (TPL / "base.html").read_text()
+    assert "[hidden]{display:none !important}" in css
+    links = (TPL / "links.html").read_text()
+    assert "r.li.hidden = !hit" in links
+
+
+def test_three_campaigns_sharing_an_account_id_each_keep_their_report():
+    """LMSD runs three Secret Contest campaigns that carry the same account
+    ids. The match maps were single-value, so two of the three rows were
+    unreachable - one row stood for all three, the first report took it, and
+    the other two files attached to nothing. Upload, mark needs fix, come back,
+    and the row says "report not received" for a PDF that is in the database."""
+    from app.board import Expected, _attach_reports
+
+    class R:
+        def __init__(self, client, market, ids):
+            self.client, self.market, self.account_ids = client, market, ids
+            self.is_lifetime = False
+            self.is_seo = False
+            self.period = "2026-08"
+
+    rows = {}
+    for name in ("Z90 Secret Contest", "MAGIC Secret Contest",
+                 "91X Secret Contest"):
+        rows[(name, name, "monthly")] = Expected(
+            market=f"LMSD - {name} 2026", group="LMSD", client=name,
+            kind="monthly", account_ids="51201 51202")
+
+    reports = [R("Z90 Secret Contest", "LMSD - Z90 Secret Contest 2026",
+                 "51201 51202"),
+               R("MAGIC Secret Contest", "LMSD - MAGIC Secret Contest 2026",
+                 "51201 51202"),
+               R("91X Secret Contest", "LMSD - 91X Secret Contest 2026",
+                 "51201 51202")]
+
+    class FakeDB:
+        def scalars(self, *a, **k):
+            class S:
+                def all(_s):
+                    return reports
+            return S()
+
+    _attach_reports(FakeDB(), "2026-08", rows)
+
+    got = {e.market: (e.report.market if e.report else None)
+           for e in rows.values()}
+    assert None not in got.values(), got
+    # And each one landed on its own campaign, not just on some free row.
+    for want, have in got.items():
+        assert want == have, got
