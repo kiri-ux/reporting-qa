@@ -66,6 +66,50 @@ def canonical_name(rep) -> str:
     return f"{_safe(stem)}.{(ext or 'pdf').lower()}"
 
 
+def rebuild_ids(db, rep) -> str:
+    """The orders this report covers, worked out again from the client alone.
+
+    ids_for_report below only ever ADDS to what a report already carries, which
+    is right when the stored ids are right and no use at all when they are not.
+    They were not: a year in a campaign name was read as an order id, so "LMSD
+    - Z90 Secret Contest 2026" matched every other campaign named after the
+    year, and its report came out carrying 51666 51923 53511 54820 54822 54824
+    55200 - one of which is Z90's, and 55200 belongs to Excel Summer-Fall 2026
+    at Red Pony Marketing. Fixing the id rule fixed nothing already stored,
+    because nothing re-derived these. A re-check rewrote the findings and left
+    the ids exactly as the import first read them, which is the same shape as
+    the impressions bug in recheck.py.
+
+    So this starts from the client's name and nothing else, and can therefore
+    take an id AWAY. It returns "" when it cannot tell, and the caller keeps
+    what it has: a report whose client is not on the order list is not an
+    invitation to blank the name it is filed under.
+    """
+    from .roster import _overlaps, _ran_during, client_lines
+
+    # By name only. Handing it the stored ids is how the wrong ones survive.
+    hit = client_lines(db, getattr(rep, "client", "") or "", "") or []
+    if not hit:
+        return ""
+    period = getattr(rep, "period", "") or ""
+    if getattr(rep, "is_lifetime", False):
+        from .ingest import client_flight
+        window = client_flight(db, rep.client, "")
+        if window and window[0]:
+            hit = [l for l in hit if _overlaps(l, window[0], window[1])]
+    elif period:
+        hit = [l for l in hit if _ran_during(l, period)]
+
+    out: list[str] = []
+    for l in hit:
+        if getattr(l, "canceled", False):
+            continue
+        for i in (l.account_ids or "").replace(",", " ").split():
+            if i not in out:
+                out.append(i)
+    return " ".join(sorted(out))[:255]
+
+
 def ids_for_report(db, rep) -> str:
     """EVERY ORDER THIS REPORT COVERS, not just the one it was filed under.
 

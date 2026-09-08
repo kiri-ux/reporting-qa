@@ -1,34 +1,31 @@
-build 2026.09.08-210
+build 2026.09.08-211
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-A year in a campaign name was being read as an order id. "LMSD - Z90 Secret
-Contest 2026" was filed under the id 2026, and so was every other campaign
-named after the year, in every market - so they all matched each other. Z90's
-report carried 51666 51923 53511 54820 54822 54824 55200; one of those is
-Z90's, and 55200 is Excel Summer-Fall 2026 at Red Pony Marketing. Its pacing
-was measured against all of them. Fixed at the root, which also settles the
-Z90 file opening the 91X report.
+A re-check now works out a report's order ids again. It was writing back
+findings and leaving the ids as the import first read them, so fixing the rule
+in 210 reached no stored report - the seven orders were still on the Z90 page.
+Every report re-checks itself on this deploy; the ids and the filename correct
+themselves as it goes.
+
+A year in a campaign name is not an order id. "LMSD - Z90 Secret Contest 2026"
+was filed under 2026, along with every other campaign named after the year, so
+they all matched each other. 55200 is Excel Summer-Fall 2026 at Red Pony
+Marketing.
 
 Client names are exact. Z90, MAGIC and 91X are three clients.
 
 A wrapped line item name that ends on a widget word is still the name. Peters -
 Troy's Performance Max line wraps onto "Services/Homeowners/Retargeting
-Performance", which was read as the next widget's title and thrown away - so
-218,084 Performance Max impressions stayed in the device-eligible total and
-the breakout was reported as 84% short.
+Performance", which was read as a heading and thrown away, so 218,084
+Performance Max impressions stayed in the device-eligible total.
 
-Sync reads the folder before it skips anything. Our record of what was filed
-was trusted over the folder itself, so a file moved, renamed or deleted after
-it went up left every report skipped and sync doing nothing.
+Sync reads the folder before it skips anything.
 
-Dropbox keeps its own record, separate from Drive's. Drive was filing first and
-stamping every report, Dropbox read those stamps as work already done and sent
-nothing - so the folder was never made and the card said not_found.
+Dropbox keeps its own record, separate from Drive's.
 
 A Dropbox failure is written in words.
 
-The partner search on the Packaged links page filters the list, not just the
-counter.
+The partner search on the Packaged links page filters the list.
 
-912 tests pass.
+913 tests pass.

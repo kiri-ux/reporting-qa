@@ -672,3 +672,57 @@ def test_a_job_whose_process_died_stops_claiming_to_be_running():
     s.expire_all()
     dead = s.query(RecheckJob).filter_by(key="g:7 Mountains PA").one()
     assert dead.state == "stopped" and "52 of 93" in dead.note
+
+
+def test_a_recheck_works_out_the_orders_again(tmp_path, monkeypatch):
+    """A re-check wrote back findings and left the order ids exactly as the
+    import first read them, so fixing the rule that decides which orders belong
+    to a client reached no stored report at all. Z90's report kept carrying
+    51666 51923 53511 54820 54822 54824 55200 - one of them Z90's, and 55200
+    belonging to Excel Summer-Fall 2026 at Red Pony Marketing - and went on
+    being paced against all seven."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'n.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    db = db_mod.SessionLocal()
+    OrderLine, Report = db_mod.OrderLine, db_mod.Report
+
+    db.add(OrderLine(market="Local Media San Diego",
+                     client="LMSD - Z90 Secret Contest 2026",
+                     account_ids="54824", product="Social Mirror",
+                     starts_on=dt.date(2026, 7, 1), ends_on=dt.date(2026, 9, 30),
+                     live=True))
+    db.add(OrderLine(market="Red Pony Marketing", client="Excel Summer-Fall 2026",
+                     account_ids="55200", product="Meta",
+                     starts_on=dt.date(2026, 7, 1), ends_on=dt.date(2026, 9, 30),
+                     live=True))
+    db.commit()
+
+    b = db_mod.Batch(market="Local Media San Diego", period="2026-08")
+    db.add(b); db.flush()
+    rep = Report(batch_id=b.id, filename="x.pdf",
+                 client="LMSD - Z90 Secret Contest 2026", period="2026-08", market="Local Media San Diego", findings=[],
+                 severity="pass",
+                 account_ids="51666 51923 53511 54820 54822 54824 55200")
+    db.add(rep); db.commit()
+
+    from app.naming import rebuild_ids
+    assert rebuild_ids(db, rep) == "54824"
+
+    # A client that is not on the order list keeps the ids it has - a blank
+    # name is worse than a stale one.
+    other = Report(client="Nobody At All", period="2026-08", findings=[],
+                   severity="pass", account_ids="12345", filename="y.pdf")
+    assert rebuild_ids(db, other) == ""
+
+    # And the re-check is what applies it.
+    import inspect
+    from app import recheck as rmod
+    src = inspect.getsource(rmod.recheck)
+    assert "rebuild_ids(db, rep)" in src
+    assert src.index("rebuild_ids(db, rep)") < src.index("client_flight(db")

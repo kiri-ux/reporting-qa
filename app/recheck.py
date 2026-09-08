@@ -247,6 +247,24 @@ def recheck(db: Session, rep: Report, *, manual: bool = False,
         from .roster import attach_owners
         attach_owners(db, rep)
 
+    # AND THE ORDERS IT IS ABOUT, WORKED OUT AGAIN.
+    #
+    # The same shape as the impressions bug further down: this wrote back
+    # findings and left the ids exactly as the import first read them, so a fix
+    # to the rule that decides which orders belong to a client never reached a
+    # single stored report. A year in a campaign name was read as an order id -
+    # "LMSD - Z90 Secret Contest 2026" filed under 2026, along with every other
+    # campaign named after the year - and Z90's report came out carrying seven
+    # orders, one of them Z90's and one of them Red Pony Marketing's. It was
+    # paced against all seven, and still was after the rule was fixed.
+    #
+    # Before the lookups below, not after: they are what the ids are for.
+    from .naming import canonical_name, rebuild_ids
+    fresh = rebuild_ids(db, rep)
+    if fresh and fresh != (rep.account_ids or ""):
+        rep.account_ids = fresh
+        rep.filename = canonical_name(rep)
+
     # A lifetime is measured against the campaign that ended, so its flight
     # stops at this cycle's lifetime window rather than at whatever else the
     # client still has running.
