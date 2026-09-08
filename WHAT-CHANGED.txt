@@ -1,24 +1,26 @@
-build 2026.09.08-217
+build 2026.09.08-218
 Changed files only. Everything since 130 - install this one.
 35 checks.
+
+A row shows the copy that was signed off. A row takes the first report that
+matches it and the query had no order, so where a client has two files the
+board showed whichever the database returned first - open the row and it says
+Reviewed, the row says in, unreviewed, because they are different files.
+Signed off first, then the newest. And the row now says "+1 file" when another
+report this cycle names the same client.
 
 A completion grid is not more rows of the grid above it. The next widget only
 ended a table when its own header carried three known metric labels, and "Line
 Item Name | 25% Completed | 50% | 75% | 100%" carries none - so those rows were
 read as more of the creative grid above them and their completion percentages
-judged as impressions, clicks and a CTR. That is the Muny, Piedmont and WVU
-Parkersburg row-CTR findings.
+judged as impressions, clicks and a CTR. Muny, Piedmont and WVU Parkersburg.
 
-A row is read one number per column. A table does not always keep the same
-column widths all the way down; where it narrows, the impressions figure landed
-near no heading and was dropped and the other three each slid one column left.
+A row is read one number per column, wherever the table narrows.
 
-A replacement takes the new file's logo. The hash was taken, handed to the
-checks and thrown away, so a report whose default logo had been fixed went on
-carrying the old file's fingerprint.
+A replacement takes the new file's logo.
 
 LinkedIn is read off the report.
 
 Order ids and line item ids show five, then a count. The rest on hover.
 
-932 tests pass.
+933 tests pass.

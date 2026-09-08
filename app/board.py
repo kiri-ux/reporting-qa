@@ -72,6 +72,10 @@ class Expected:
     account_ids: str = ""
     line_ids: str = ""
     products: list = field(default_factory=list)
+    # How many OTHER reports this cycle name the same client. A row shows one
+    # of them; the rest sit in the database saying something else, and nothing
+    # on the board used to mention they were there.
+    also: int = 0
     # The client's whole flight: FIRST start and LAST end across every order,
     # because two overlapping orders are one continuous campaign even though
     # the export lists them separately. This is the range a lifetime has to
@@ -1287,8 +1291,23 @@ def _attach_reports(db: Session, period: str,
     # prints it - it is a JSON column decoded for every report on the cycle for
     # nothing. Deferred, so the report page still gets it on demand.
     from sqlalchemy.orm import defer
-    reports = db.scalars(select(Report).where(Report.period == period)
-                         .options(defer(Report.checks))).all()
+    reports = list(db.scalars(select(Report).where(Report.period == period)
+                              .options(defer(Report.checks))).all())
+    # THE COPY SOMEBODY SIGNED OFF IS THE COPY THE ROW IS ABOUT.
+    #
+    # A row takes the first report that matches it and the query had no order,
+    # so where a client ended up with two files - which is easier than it
+    # should be, between the feed, a hand upload and a replacement - which one
+    # the board showed was whichever the database happened to return first.
+    # Open the row and it said Reviewed; the row itself said in, unreviewed,
+    # because the two were different files.
+    #
+    # Signed off first, then the newest. The signed-off copy is the one that
+    # goes to the partner, so it is the one the board has to be talking about.
+    reports.sort(key=lambda r: (
+        0 if (getattr(r, "review_state", "") or "") in ("reviewed", "waived")
+        else 1,
+        -(getattr(r, "id", 0) or 0)))
     # EVERY ROW THAT MATCHES, NOT THE LAST ONE WRITTEN.
     #
     # These were single-value maps, so two rows carrying the same account id
@@ -1392,6 +1411,20 @@ def _attach_reports(db: Session, period: str,
                     break
         if hit is not None and hit.report is None:
             hit.report = r
+
+    # AND SAY WHEN A CLIENT HAS MORE THAN ONE FILE. A row shows one report;
+    # a second one for the same client sits in the database saying something
+    # else, and until now nothing on the board mentioned it existed.
+    taken = {id(e.report) for e in rows.values() if e.report is not None}
+    for r in reports:
+        if id(r) in taken:
+            continue
+        kind = ("lifetime" if r.is_lifetime else
+                "seo" if getattr(r, "is_seo", False) else "monthly")
+        for e in by_client.get((_key(r.client), kind)) or []:
+            if e.report is not None:
+                e.also += 1
+                break
 
 
 @dataclass

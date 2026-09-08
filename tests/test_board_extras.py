@@ -4121,3 +4121,48 @@ def test_a_long_list_of_ids_shows_five_and_hides_the_rest():
     orders = (TPL / "orders.html").read_text()
     assert orders.count("|first_ids") == 3
     assert ".idmore{" in (TPL / "base.html").read_text()
+
+
+def test_a_row_shows_the_copy_that_was_signed_off():
+    """A row takes the first report that matches it and the query had no order,
+    so where a client ended up with two files - which is easier than it should
+    be, between the feed, a hand upload and a replacement - which one the board
+    showed was whichever the database returned first. Open the row and it said
+    Reviewed; the row itself said in, unreviewed, because the two were
+    different files."""
+    from app.board import Expected, _attach_reports
+
+    class R:
+        def __init__(self, rid, state):
+            self.id, self.review_state = rid, state
+            self.client, self.market = "The Well Comedy Club", "Amazing Results LLC"
+            self.account_ids = "55201"
+            self.is_lifetime = self.is_seo = False
+
+    rows = {("a", "w", "monthly"): Expected(
+        market="Amazing Results LLC", group="Amazing Results LLC",
+        client="The Well Comedy Club", kind="monthly", account_ids="55201")}
+    reports = [R(10, "new"), R(11, "reviewed")]
+
+    class FakeDB:
+        def scalars(self, *a, **k):
+            class S:
+                def all(_s):
+                    return reports
+            return S()
+
+    _attach_reports(FakeDB(), "2026-08", rows)
+    e = list(rows.values())[0]
+    assert e.report.id == 11, "the signed-off copy is the one the row is about"
+    # And the row says the other file is there rather than hiding it.
+    assert e.also == 1
+    html = (TPL / "cycle.html").read_text()
+    assert "{% if e.also %}" in html
+
+    # With nothing signed off, the newest wins - and it is deterministic.
+    rows2 = {("a", "w", "monthly"): Expected(
+        market="Amazing Results LLC", group="Amazing Results LLC",
+        client="The Well Comedy Club", kind="monthly", account_ids="55201")}
+    reports = [R(10, "new"), R(11, "new")]
+    _attach_reports(FakeDB(), "2026-08", rows2)
+    assert list(rows2.values())[0].report.id == 11

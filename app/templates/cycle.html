@@ -686,7 +686,7 @@
           <span class="pill p-info"
                 data-tip="SEO is a separate report, pulled outside TapClicks and uploaded here. It goes into the partner's folder with the rest, and the checks are not run on it.">SEO</span>
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
-        <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span></td>
+        <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
           {% if e.report and e.report.renamed_from %}
             <span class="wpill" title="Arrived as {{ e.report.renamed_from }} - the order id was missing or wrong, so it was renamed.">renamed</span>
