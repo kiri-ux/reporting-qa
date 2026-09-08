@@ -186,12 +186,9 @@
                them out of the total silently would read as the total being
                wrong. #}
             {% if p.total and p.flat %}
-              <tr class="sub2"><td colspan="3" class="acct">
-                A further {{ '{:,.0f}'.format(p.flat) }} impressions are on products
-                sold by the month - SEO, Live Chat, Website Visitor ID and
-                Additional Billing. They are bought flat, with nothing to
-                deliver against, so they are not paced and are not in this
-                total.</td></tr>
+              <tr class="sub2"><td colspan="3" class="acct"
+                  data-tip="Products bought flat - SEO, Live Chat, Website Visitor ID, Additional Billing, Performance Max, PPC. Nothing to deliver against, so they are not paced.">
+                {{ '{:,.0f}'.format(p.flat) }} not paced</td></tr>
             {% endif %}
           {% endfor %}
         </tbody>

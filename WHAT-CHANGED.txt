@@ -1,40 +1,23 @@
-build 2026.09.08-204
+build 2026.09.08-205
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-THE STALL AT "0 OF 15" WAS MINE
-===============================
-199 made the sweep wait for a gap in the traffic between every batch. A partner
-Re-check is pressed BY the person whose traffic it then waits for, so it sat at
-0 of 15 for as long as you kept looking at the board.
+The pacing panel's flat-impressions paragraph is now "218,084 not paced" with
+the list on hover.
 
-The wait now only applies when the queue is LONG - the deploy-driven full sweep
-it was written for. A re-check somebody asked for runs.
+Performance Max and PPC are out of the impressions total and out of the
+device-eligible total. The device pattern is no longer anchored to the end of
+the line item name, which wraps.
 
+Part-month lines are paced against a part-month goal.
 
-PERFORMANCE MAX AND PPC ARE SPEND-ONLY
-======================================
-Two separate faults, same product.
+The sweep only waits for quiet traffic on a long deploy-driven queue, so a
+partner Re-check runs when you press it.
 
-IMPRESSIONS PACING: they have no impression goal, so the goal side already left
-them out - but their delivery was still counted. Peters - Troy's 218,084 PMax
-impressions went into the numerator against an 80,000 goal that was Online
-Audio's alone: "+226% over". Out of both sides now.
+Amazing Results LLC, Ampersand, Grace Impressions: no default-logo finding.
 
-DEVICE TOTAL: Performance Max was already excluded, by a pattern anchored to
-the END of the line item name. Peters - Troy's name wraps mid-product across
-two lines, so it never matched and 218,084 impressions counted as
-device-eligible on a widget that does not describe them - "84% short". The
-pattern is no longer anchored and the name is collapsed to single spaces first.
+An upload can only replace a report on its own market.
 
-
-HALF A MONTH IS PACED AGAINST HALF A MONTH'S GOAL
-=================================================
-Dunham Poughkeepsie's Meta line launched 17 August and ran 15 of 31 days. The
-order's 100,000 is a MONTH's goal, so 33,241 against it read "67% short" - a
-number about the calendar. Against what it was actually asked for over those
-fifteen days it is inside the band. The finding was already printing the launch
-date and the day count, so it carried the explanation for its own wrongness.
-
+CLAUDE.md now carries the rule about not explaining fixes on screen.
 
 901 tests pass.
