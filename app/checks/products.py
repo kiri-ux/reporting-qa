@@ -13,6 +13,13 @@ from __future__ import annotations
 
 import re
 
+# The tiles under a spend product's page: "PPC Ad Cost", "LinkedIn
+# Cost-Per-Click", "Performance Max Cost". Anchored at the front so the "Client
+# Ad Cost" column inside a creative table is not read as a widget title.
+COST_TILE = re.compile(
+    r"^[A-Z][\w+/.-]*(?: [A-Z][\w+/.-]*){0,2} "
+    r"(?:Ad Cost|Cost-Per-Click|Cost Per Click|Cost-Per-Event|Cost)\b")
+
 # Section title fragment -> product. Longest first so "Social Mirror CTV" wins
 # over "Social Mirror".
 SECTION_PATTERNS: list[tuple[str, str]] = [
@@ -336,7 +343,16 @@ def detect(text: str, tables) -> set[str]:
     for line in text.split("\n"):
         s = line.strip()
         if s and not s.startswith("*") and len(s) < 80 and (
-                "Performance" in s or "Submission Details" in s):
+                "Performance" in s or "Submission Details" in s
+                # A SPEND PRODUCT'S OWN PAGE IS TITLED "Spend Performance",
+                # which names no product. The only place PPC appears in words
+                # on Mad Hatter Chimney Cleaning is the pair of tiles under it
+                # - "PPC Ad Cost" and "PPC Cost-Per-Click" - and neither was
+                # being read, so a report with a full page of PPC on it was
+                # failed for a product ordered but not on the report. Its line
+                # items are no help either: they are named "... - Keywords",
+                # which is the strategy, not the product.
+                or COST_TILE.search(s)):
             titles.append(s)
 
     for title in titles:

@@ -1530,3 +1530,24 @@ def test_a_completion_grid_is_not_more_rows_of_the_grid_above_it():
     assert row[0].startswith("Muny_Newsies")
     assert row[1]["Impressions"] == 52005.0
     assert row[1]["CTR"] == 0.31
+
+
+def test_a_spend_product_is_read_off_its_own_tiles():
+    """A spend product's page is titled "Spend Performance", which names no
+    product. The only place PPC appears in words on Mad Hatter Chimney Cleaning
+    is the pair of tiles under it - "PPC Ad Cost" and "PPC Cost-Per-Click" -
+    and neither was read, so a report with a full page of PPC on it was failed
+    for a product ordered but not on the report. Its line items are no help:
+    they are named "... - Keywords", which is the strategy, not the product."""
+    from app.checks.products import detect
+
+    mad = ("Spend Performance\nDoes not include management fee\n"
+           "PPC Ad Cost                    PPC Cost-Per-Click\n"
+           "Amount spent on the campaign        Cost/Clicks\n"
+           "1,762.52                            3.94\n")
+    assert detect(mad, []) == {"PPC"}
+    swe = "LinkedIn Spend Performance\nLinkedIn Ad Cost   LinkedIn Cost-Per-Click\n"
+    assert detect(swe, []) == {"LinkedIn"}
+    # The "Client Ad Cost" column inside a creative table is not a widget title.
+    assert detect("Creative Group Name   Search Themes   Client Ad Cost   "
+                  "Client CPE   Impressions   Events   Event Rate\n", []) == set()

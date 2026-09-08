@@ -1,14 +1,15 @@
-build 2026.09.08-219
+build 2026.09.08-220
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-The same client spelled two ways is one report, not two. A report is recognized
-as a replacement by its name first, then by its order ids - and by the ids only
-when they name exactly one report. Requiring the name AND the ids to agree was
-too strict by exactly one real case, and it is the case that makes duplicates:
-the two systems spell clients differently, so an upload under the order
-export's spelling did not recognize the feed's copy of the same client and made
-a second file for it. Both the hand upload and the feed.
+A spend product is read off its own tiles. Its page is titled "Spend
+Performance", which names no product, so the only place PPC appears in words on
+Mad Hatter Chimney Cleaning is "PPC Ad Cost" and "PPC Cost-Per-Click" - and
+neither was being read. Same shape as LinkedIn.
+
+The same client spelled two ways is one report, not two. Name first, then the
+order ids, and the ids only when they name exactly one report. Requiring both
+to agree is what was making the duplicate files.
 
 A row shows the copy that was signed off, then the newest, and says "+1 file"
 when another report this cycle names the same client.
@@ -19,6 +20,4 @@ A row is read one number per column, wherever the table narrows.
 
 A replacement takes the new file's logo.
 
-LinkedIn is read off the report.
-
-934 tests pass.
+935 tests pass.
