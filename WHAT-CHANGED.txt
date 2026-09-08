@@ -1,22 +1,22 @@
-build 2026.09.08-213
+build 2026.09.08-214
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
+Market codes come from the onboarding workbook, columns H and J. 453 of them.
+LOCK KNOX is Lockwood Digital Solutions Knoxville, INNO is Innovision
+Advertising, 3P is 3-Piece Media. A row approved off the reporting tracker
+carries the code, and unresolved each one became a partner card of its own.
+Rows already on the board move without being re-added. LOT SAC, MM and CMP each
+stand for two markets and are left showing.
+
+The partners page reads the workbook again, for when a market is onboarded.
+
 Sync all, on the links page. It walks every packaged partner whose folder is
-not the current work, one at a time, signed-off reports only. The button says
-how many are behind; nothing shows when nothing is.
+not the current work, one at a time, signed-off reports only.
 
 A line item that says Social Mirror is a Social Mirror line. "Cross Platform
 Mobile Retargeting Social Mirror" matched the one-word `mobile` nickname before
 the full product name, so 37,128 impressions came off Social Mirror and went on
-to Mobile Conquesting - Social Mirror 91% short, Mobile Conquesting 73% over,
-on a report where both were fine. A nickname now only decides a name that names
-nothing else.
+to Mobile Conquesting.
 
-LOCK KNOX and INNO are not partners. They are what the reporting tracker calls
-Lockwood Digital Solutions Knoxville and Innovision, and a row approved off
-that tracker carried the code onto the board as a partner of its own. Codes
-resolve to the partner when exactly one fits, and the rows already on the board
-move without being re-added.
-
-920 tests pass.
+922 tests pass.

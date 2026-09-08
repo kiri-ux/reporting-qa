@@ -3011,11 +3011,14 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
                                "is findable only by the client's spelling"
     assert mark.products == "Social Mirror, Display"
 
-    # It reaches the board as an ordinary row, carrying its products.
+    # It reaches the board as an ordinary row, carrying its products - and
+    # under the market's name rather than the code it was typed as. MOXII is
+    # Moxii on the onboarding sheet; LOCK KNOX is Lockwood Digital Solutions
+    # Knoxville, and unresolved it became a partner card of its own.
     from app.board import expected_for
     got = expected_for(db, "2026-08")
     assert [(e.market, e.client, e.kind, tuple(e.products)) for e in got] == [
-        ("MOXII", "C & W Roofing", "lifetime", ("Social Mirror", "Display"))]
+        ("Moxii", "C & W Roofing", "lifetime", ("Social Mirror", "Display"))]
     assert got[0].forced_by == "k"
 
     page = c.get("/cycle?period=2026-08").text
@@ -3976,3 +3979,47 @@ def test_a_tracker_market_code_resolves_to_the_partner(tmp_path, monkeypatch):
     assert "by_code(db, hint)" in inspect.getsource(main.cycle_audit_call)
     # And rows already on the board are healed, not only new ones.
     assert "by_code(db, market)" in inspect.getsource(board._add_hand_rows)
+
+
+def test_the_market_codes_come_from_the_onboarding_workbook():
+    """Guessing from the letters got LOCK KNOX right and would never have got
+    3P or 270M. Columns H and J of Partner Onboarding.xlsx are where these are
+    decided."""
+    from app.market_abbr import market_for, reload
+
+    assert reload() > 400
+    assert market_for("LOCK KNOX") == "Lockwood Digital Solutions Knoxville"
+    assert market_for("lock  knox") == "Lockwood Digital Solutions Knoxville"
+    assert market_for("INNO") == "Innovision Advertising"
+    assert market_for("3P") == "3-Piece Media"
+    assert market_for("7MOU KY") == "7 Mountains KY"
+    # Every Lockwood market has its own code, so none of them is a guess.
+    assert market_for("LOCK DEN") == "Lockwood Digital Solutions Denison"
+    assert market_for("LOCK WICH") == "Lockwood Digital Solutions Wichita"
+    # Two markets on one code is no answer at all.
+    assert market_for("LOT SAC") == ""
+    assert market_for("MM") == ""
+    assert market_for("nonsense") == ""
+
+
+def test_the_abbreviation_sheet_is_read_by_column(tmp_path):
+    import openpyxl
+    from app.market_abbr import read_sheet
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["id", "Active", "Rate Card", "Min", "Trainer", "Order Form",
+               "Form Types", "Market Abbr", "Color", "Market/Agency Name"])
+    ws.append([1, "YES", "Agency", 1500, "Jennaya", "", "", "LOCK KNOX", "sky",
+               "Lockwood Digital Solutions Knoxville"])
+    ws.append([2, "YES", "Agency", 1500, "Greg", "", "", " inno ", "pink",
+               "Innovision Advertising"])
+    # One code, two markets: dropped.
+    ws.append([3, "YES", "Agency", 1500, "Greg", "", "", "MM", "", "media mea"])
+    ws.append([4, "YES", "Agency", 1500, "Greg", "", "", "MM", "",
+               "Millennial Marketing"])
+    f = tmp_path / "onboarding.xlsx"
+    wb.save(f)
+    got = read_sheet(f.read_bytes())
+    assert got == {"LOCK KNOX": "Lockwood Digital Solutions Knoxville",
+                   "INNO": "Innovision Advertising"}

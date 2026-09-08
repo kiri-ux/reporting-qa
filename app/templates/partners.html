@@ -138,6 +138,24 @@
 {% endif %}
 
 <section>
+  <h2>Market abbreviations</h2>
+  <div class="panel">
+    <form action="/partners/abbr" method="post" enctype="multipart/form-data"
+          style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input type="file" name="file" accept=".xlsx,.xlsm" required>
+      <button class="btn" type="submit">Read the workbook</button>
+      <span class="sub" style="font-size:13px">{{ codes }} codes.{% if codes_set %}
+        Just read.{% endif %}</span>
+    </form>
+    <p class="sub" style="font-size:13px;margin-top:12px">
+      Partner Onboarding.xlsx, columns H and J. LOCK KNOX is Lockwood Digital
+      Solutions Knoxville; a row approved off the reporting tracker carries the
+      code, and this is what turns it back into the partner. An abbreviation
+      standing for two markets is left out.</p>
+  </div>
+</section>
+
+<section>
   <h2>Replace the roster by hand</h2>
   <div class="panel">
     <form action="/partners/import" method="post" enctype="multipart/form-data"

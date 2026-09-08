@@ -1247,10 +1247,15 @@ def _add_hand_rows(db: Session, period: str,
         # board move without anybody re-adding them.
         market = m.market or ""
         if p is None:
+            from .market_abbr import market_for
             from .partners import by_code
             found = by_code(db, market)
             if found is not None:
                 p, market = found, found.partner
+            else:
+                # On the list but not on the roster: the name is still better
+                # than the code.
+                market = market_for(market) or market
         rows[(mk, ck, kind)] = Expected(
             market=market, group=(p.group if p and p.group else market) or "",
             client=m.client or "", kind=kind or "monthly",

@@ -50,9 +50,7 @@
 {% elif behind %}
   <form method="post" action="/cycle/{{ period }}/sync-all" class="syncall">
     <button class="btn" type="submit">Sync all {{ behind|length }}</button>
-    <span class="acct">{{ behind|length }} packaged partner{{ '' if behind|length == 1 else 's' }}
-      {{ 'is' if behind|length == 1 else 'are' }} not the current work.
-      Signed-off reports only.</span>
+    <span class="acct">Signed-off reports only.</span>
   </form>
 {% endif %}
 

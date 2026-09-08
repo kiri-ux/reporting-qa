@@ -303,6 +303,18 @@ def by_code(db: Session, code: str) -> Partner | None:
     Putting a client under the wrong partner is worse than an odd name on a
     card.
     """
+    # THE LIST FIRST. Columns H and J of the onboarding workbook are where
+    # these codes are decided; the letters are only a fallback, and the letters
+    # would never have got 3P or 270M right.
+    from .market_abbr import market_for
+
+    named = market_for(code or "")
+    if named:
+        k = _key(named)
+        for p in all_partners(db):
+            if _key(p.partner) == k:
+                return p
+
     chunks = [c for c in re.split(r"[^A-Za-z0-9]+", code or "") if c]
     if not chunks:
         return None

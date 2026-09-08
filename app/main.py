@@ -2249,10 +2249,12 @@ def cycle_audit_call(request: Request, period: str = Form(""),
         # one report. Resolved when exactly one partner fits it; left showing
         # when nothing does, because an odd name on a card beats a client filed
         # under the wrong partner.
+        from .market_abbr import market_for
         from .partners import by_code
         hint = (market_hint or "").strip()
         found = by_code(db, hint) if hint else None
-        market = (found.partner if found else hint) or "(not in the export)"
+        market = (found.partner if found else market_for(hint) or hint) \
+            or "(not in the export)"
     if call == "approved" and market and client:
         ident = f"{_ident_key(market)}|{_ident_key(client)}|{kind}"
         mark = db.scalars(select(CycleDone).where(
@@ -3417,6 +3419,12 @@ def cycle_recheck_status(period: str = Query(""), db: Session = Depends(get_db))
             "stale": stale_count(db, period=period or None)}
 
 
+def _codes() -> int:
+    from .market_abbr import market_for, reload as _r
+    market_for("")                    # loads on first use
+    return _r()
+
+
 @app.get("/partners", response_class=HTMLResponse)
 def partners_view(request: Request, db: Session = Depends(get_db)):
     from .partners import all_partners
@@ -3440,7 +3448,8 @@ def partners_view(request: Request, db: Session = Depends(get_db)):
         "sync_every": settings.sync_every_minutes,
         "sheet_url": (f"https://docs.google.com/spreadsheets/d/{sheet_id()}/edit"
                       if _sheet_on() else ""),
-        "tally": sorted(tally.items()), "just_set": just_set})
+        "tally": sorted(tally.items()), "just_set": just_set,
+        "codes": _codes(), "codes_set": request.query_params.get("codes") or ""})
 
 
 @app.post("/partners/sheet")
@@ -3505,6 +3514,26 @@ async def partners_import(file: UploadFile = File(...), db: Session = Depends(ge
     from .partners import import_partners
     import_partners(db, await file.read())
     return RedirectResponse("/partners", status_code=303)
+
+
+@app.post("/partners/abbr")
+async def partners_abbr(file: UploadFile = File(...)):
+    """Re-read the market abbreviations from the onboarding workbook."""
+    import json
+
+    from .market_abbr import read_sheet, reload as _reload
+
+    try:
+        pairs = read_sheet(await file.read())
+    except Exception as exc:                             # noqa: BLE001
+        raise HTTPException(400, f"That workbook could not be read: {exc}")
+    if not pairs:
+        raise HTTPException(400, "No abbreviations in columns H and J.")
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    (settings.data_dir / "market_abbr.json").write_text(
+        json.dumps(dict(sorted(pairs.items())), indent=0, ensure_ascii=False),
+        encoding="utf-8")
+    return RedirectResponse(f"/partners?codes={_reload()}", status_code=303)
 
 
 # TapClicks will not export more than this many days in one go.
