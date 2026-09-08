@@ -1541,12 +1541,18 @@ def test_a_spend_product_is_read_off_its_own_tiles():
     they are named "... - Keywords", which is the strategy, not the product."""
     from app.checks.products import detect
 
+    # THE REAL SPACING. Two tiles side by side are one line with the width of
+    # the page between them - Peters - Troy's is 107 characters - and the
+    # eighty-character cap on widget titles threw it away. A fixture padded to
+    # fit under the cap passes while the report it is modelled on fails.
+    gap = " " * 60
     mad = ("Spend Performance\nDoes not include management fee\n"
-           "PPC Ad Cost                    PPC Cost-Per-Click\n"
-           "Amount spent on the campaign        Cost/Clicks\n"
-           "1,762.52                            3.94\n")
+           f"PPC Ad Cost{gap}PPC Cost-Per-Click\n"
+           f"Amount spent on the campaign{gap}Cost/Clicks\n"
+           f"1,762.52{gap}3.94\n")
+    assert max(len(x) for x in mad.split("\n")) > 80, "the fixture is the point"
     assert detect(mad, []) == {"PPC"}
-    swe = "LinkedIn Spend Performance\nLinkedIn Ad Cost   LinkedIn Cost-Per-Click\n"
+    swe = f"LinkedIn Spend Performance\nLinkedIn Ad Cost{gap}LinkedIn Cost-Per-Click\n"
     assert detect(swe, []) == {"LinkedIn"}
     # The "Client Ad Cost" column inside a creative table is not a widget title.
     assert detect("Creative Group Name   Search Themes   Client Ad Cost   "

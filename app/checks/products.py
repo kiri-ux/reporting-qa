@@ -342,17 +342,25 @@ def detect(text: str, tables) -> set[str]:
     # Live Chat and a few others head a page without forming a metric table.
     for line in text.split("\n"):
         s = line.strip()
-        if s and not s.startswith("*") and len(s) < 80 and (
-                "Performance" in s or "Submission Details" in s
-                # A SPEND PRODUCT'S OWN PAGE IS TITLED "Spend Performance",
-                # which names no product. The only place PPC appears in words
-                # on Mad Hatter Chimney Cleaning is the pair of tiles under it
-                # - "PPC Ad Cost" and "PPC Cost-Per-Click" - and neither was
-                # being read, so a report with a full page of PPC on it was
-                # failed for a product ordered but not on the report. Its line
-                # items are no help either: they are named "... - Keywords",
-                # which is the strategy, not the product.
-                or COST_TILE.search(s)):
+        if not s or s.startswith("*"):
+            continue
+        if len(s) < 80 and ("Performance" in s or "Submission Details" in s):
+            titles.append(s)
+            continue
+        # A SPEND PRODUCT'S OWN PAGE IS TITLED "Spend Performance", which names
+        # no product. The only place PPC appears in words on Mad Hatter Chimney
+        # Cleaning is the pair of tiles under it - "PPC Ad Cost" and "PPC
+        # Cost-Per-Click" - so a report with a full page of PPC on it was
+        # failed for a product ordered but not on the report. Its line items
+        # are no help: they are named "... - Keywords", the strategy, not the
+        # product.
+        #
+        # NOT UNDER THE 80-CHARACTER CAP. Two tiles side by side are one line
+        # of text with the width of the page between them: Peters - Troy's
+        # "Performance Max Cost ... Performance Max Cost-Per-Event" is 107
+        # characters. The cap is there to keep table rows out, and the pattern
+        # below already does that by anchoring at the front.
+        if len(s) < 200 and COST_TILE.search(s):
             titles.append(s)
 
     for title in titles:
