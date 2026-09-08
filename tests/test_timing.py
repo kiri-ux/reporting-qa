@@ -1573,3 +1573,20 @@ def test_a_fit_page_snaps_back_if_something_scrolls_it():
     # And not on a narrow screen, where the fit layout gives up and the page is
     # supposed to scroll.
     assert "min-width: 901px" in guard
+
+
+def test_the_sweep_stands_aside_too_not_only_the_order_re_read():
+    """185 gave the quiet-box wait to the order re-read and not to the sweep,
+    and the sweep is the longer of the two: a deploy that touches the rules
+    queues every report on the board for a full pdftotext, so on a day of
+    several builds it never drains and is simply always running."""
+    from pathlib import Path as _P
+    src = (_P(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
+    at = src.index("def start_sweeper")
+    body = src[at:]
+    assert body.count("_wait_for_a_quiet_box()") >= 2, \
+        "only the order re-read waits; the sweep runs straight through"
+    # After the rest, not instead of it: the rest paces the box, this waits for
+    # the person.
+    rest = body.index("MAX_REST_SECONDS))")
+    assert body.index("_wait_for_a_quiet_box()", rest) > rest

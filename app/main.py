@@ -2970,7 +2970,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
                           lifetime=bool(rep.is_lifetime), window=flight)
-    why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
+    why = expected_why(db, rep.client, rep.account_ids, period=rep.period,
+                       lifetime=bool(rep.is_lifetime))
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
                            lifetime=bool(rep.is_lifetime))
@@ -3096,7 +3097,8 @@ async def replace_report(report_id: int, request: Request,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
                           lifetime=bool(rep.is_lifetime), window=flight)
-    why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
+    why = expected_why(db, rep.client, rep.account_ids, period=rep.period,
+                       lifetime=bool(rep.is_lifetime))
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
                            lifetime=bool(rep.is_lifetime))

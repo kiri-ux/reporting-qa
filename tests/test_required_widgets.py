@@ -266,3 +266,22 @@ def test_a_top_something_widget_ends_the_device_table():
             "Telly                  131,648                   72.33%\n"
             "Vizio                  110,216                   99.13%\n")
     assert check_devices_known({"text": text}) == []
+
+
+def test_a_ctv_buy_beside_a_mobile_one_is_still_a_ctv_buy():
+    """STANLEY STEEMER DOTHAN. Runs Mobile Conquesting and Social Mirror CTV,
+    and its BARCK+ line is the CTV one - "Business Services/Offices/Cleaning
+    Services B2B Behavioral Social Mirror CTV". Failed for no Site and App
+    Performance widget, which Social Mirror CTV does not get: its inventory is
+    the publisher list, and that was on the report.
+
+    BARCK+ is the only thing that owes this widget."""
+    from app.checks.rules import W_CTV_PUBS, _site_app_not_owed
+
+    mixed = {"products": {"Mobile Conquesting", "Social Mirror CTV"}}
+    assert _site_app_not_owed(mixed, {W_CTV_PUBS: 1})
+    # The publisher list has to actually be there.
+    assert not _site_app_not_owed(mixed, {})
+    # And a buy with nothing that gets a publisher list still owes it.
+    assert not _site_app_not_owed({"products": {"Mobile Conquesting"}},
+                                  {W_CTV_PUBS: 1})

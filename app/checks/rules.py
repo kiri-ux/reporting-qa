@@ -1695,9 +1695,25 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
     if _dooh_only(ctx):
         return True
     products = {p for p in (ctx.get("products") or set())}
-    if not products or not products <= NO_SITE_APP_PRODUCTS:
+    if not products:
         return False
-    return heads.get(W_CTV_PUBS, 0) > 0 or heads.get(W_AMZ_SITE, 0) > 0
+    # THE INVENTORY WIDGET FOR WHAT RAN, which is the publisher list on a CTV
+    # buy. It has to actually be there.
+    inventory = heads.get(W_CTV_PUBS, 0) > 0 or heads.get(W_AMZ_SITE, 0) > 0
+    if products <= NO_SITE_APP_PRODUCTS:
+        return inventory
+    # AND A CTV BUY BESIDE A MOBILE ONE IS STILL A CTV BUY.
+    #
+    # Stanley Steemer Dothan runs Mobile Conquesting and Social Mirror CTV, and
+    # its BARCK+ line is the CTV one - "Business Services/Offices/Cleaning
+    # Services B2B Behavioral Social Mirror CTV". It was failed for having no
+    # Site and App Performance widget, which Social Mirror CTV does not get:
+    # its inventory is the publisher list, and that was on the report.
+    #
+    # BARCK+ is the ONLY thing that owes this widget, so when the report
+    # carries a product that gets a publisher list instead, and the publisher
+    # list is there, the targeting has already shown its inventory.
+    return bool(products & NO_SITE_APP_PRODUCTS) and inventory
 
 
 def check_required_widgets(ctx) -> list[dict]:

@@ -282,7 +282,7 @@ def test_a_product_out_of_flight_is_quiet_too():
 def test_the_trace_says_why_it_was_left_out():
     s = _paused_db()
     rows = dict(expected_why(s, "W&L Subaru", "14885", period="2026-07"))
-    assert "paused, so not owed either way" in rows["Meta · order 14885"]
+    assert rows["Meta · order 14885"].endswith("· paused")
 
 
 def test_a_product_live_on_one_order_and_paused_on_another_is_live():
@@ -474,3 +474,71 @@ def test_the_line_item_dates_out_of_the_detail_are_strings(db):
     got = expected_products(db, CLIENT, "51251", lifetime=True,
                             window=(dt.date(2026, 1, 1), dt.date(2026, 8, 31)))
     assert got == {"CTV"}
+
+
+def test_a_paused_product_is_still_owed_on_a_lifetime(db):
+    """A PAUSE MEANS IT RAN. A lifetime reports on everything the campaign
+    delivered, so a product paused in April belongs on it - unlike on a
+    monthly, where "not delivering now" is the whole question.
+
+    Order 51681's lifetime was failed for three of these under a trace reading
+    "paused, so not owed either way", which is the MONTHLY sentence printed on
+    a lifetime. The wording was wrong, not the check - I dropped them from the
+    expectation for one build on the strength of it, and that was the mistake.
+    """
+    from app.db import OrderLine
+    from app.roster import expected_products
+    db.add(OrderLine(market="M", client=CLIENT, account_ids="51681",
+                     line_ids="1", campaign="Display", product="Display",
+                     live=False, paused=True,
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 4, 30),
+                     detail=[{"line": "1", "canceled": False, "paused": True,
+                              "starts": "2026-01-01", "ends": "2026-04-30"}]))
+    db.add(OrderLine(market="M", client=CLIENT, account_ids="51681",
+                     line_ids="2", campaign="Performance Max",
+                     product="Performance Max",
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 12, 31),
+                     detail=[{"line": "2", "canceled": False, "paused": False,
+                              "starts": "2026-01-01", "ends": "2026-12-31"}]))
+    db.commit()
+    assert expected_products(db, CLIENT, "51681",
+                             lifetime=True) == {"Display", "Performance Max"}
+    # And NOT on the monthly, where paused means not delivering.
+    assert expected_products(db, CLIENT, "51681",
+                             period="2026-08") == {"Performance Max"}
+
+
+def test_a_product_paused_on_one_line_and_running_on_another_still_counts(db):
+    """Paused for a while and back is not paused."""
+    from app.db import OrderLine
+    from app.roster import expected_products
+    db.add(OrderLine(market="M", client=CLIENT, account_ids="51681",
+                     line_ids="1 2", campaign="Display", product="Display",
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 12, 31),
+                     detail=[{"line": "1", "canceled": False, "paused": True,
+                              "starts": "2026-01-01", "ends": "2026-04-30"},
+                             {"line": "2", "canceled": False, "paused": False,
+                              "starts": "2026-05-01", "ends": "2026-12-31"}]))
+    db.commit()
+    assert expected_products(db, CLIENT, "51681", lifetime=True) == {"Display"}
+
+
+def test_the_trace_states_the_fact_and_stops(db):
+    """It said "paused, so not owed either way" on both kinds of report, which
+    is true of a monthly and the reverse of true on a lifetime - so a lifetime
+    finding sat above a line contradicting it."""
+    from app.db import OrderLine
+    from app.roster import expected_why
+    db.add(OrderLine(market="M", client=CLIENT, account_ids="51681",
+                     line_ids="1", campaign="Display", product="Display",
+                     live=False, paused=True,
+                     starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2026, 4, 30)))
+    db.commit()
+    life = dict(expected_why(db, CLIENT, "51681", period="2026-08",
+                             lifetime=True))
+    key = next(iter(life))
+    # The FACT and nothing else. "paused, so not owed either way" was true of a
+    # monthly and the reverse of true on a lifetime; "paused" cannot be wrong
+    # on either.
+    assert life[key].endswith("· paused")
+    assert "not owed" not in life[key] and "belongs" not in life[key]

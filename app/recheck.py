@@ -258,7 +258,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False,
                             lifetime=bool(rep.is_lifetime), window=flight)
     ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
                           lifetime=bool(rep.is_lifetime), window=flight)
-    why = expected_why(db, rep.client, rep.account_ids, period=rep.period)
+    why = expected_why(db, rep.client, rep.account_ids, period=rep.period,
+                       lifetime=bool(rep.is_lifetime))
     any_of = expected_any(db, rep.client, rep.account_ids, period=rep.period)
     quiet = quiet_products(db, rep.client, rep.account_ids, period=rep.period,
                            lifetime=bool(rep.is_lifetime))
@@ -689,6 +690,15 @@ def start_sweeper() -> None:
                         time.sleep(min(took * REST_MULTIPLIER, MAX_REST_LONG))
                     else:
                         time.sleep(min(took, MAX_REST_SECONDS))
+                    # AND STAND ASIDE WHILE SOMEBODY IS ON THE BOARD.
+                    #
+                    # Build 185 gave this to the order re-read and not to the
+                    # sweep, and the sweep is the longer of the two: a deploy
+                    # that touches the rules queues every report on the board
+                    # for a full pdftotext, so on a day of several builds it
+                    # never drains and is simply always running. Ten batches
+                    # deep it is indistinguishable from an outage.
+                    _wait_for_a_quiet_box()
         finally:
             db2 = SessionLocal()
             try:

@@ -1,554 +1,65 @@
-build 2026.09.04-195
+build 2026.09.04-200  (builds 196-200 in one)
 Changed files only. Everything since 130 - install this one.
 35 checks, down from 38.
 
-THE DESCRIPTIONS SAY THE THING AND STOP
-=======================================
-Every one you highlighted, cut to what you highlighted:
+Every zip is cumulative from build 130, so this single file is all of 196
+through 200. Five things landed:
 
-  variant preview links   A variant with no PREVIEW LINK. Separate from the
-                          screenshot check above.
-  creative previews       A creative preview that did not render - an empty box
-                          where the ad should be, or a thumbnail missing
-                          message.
-  creative totals         The creative rows add up to MORE than the line item
-                          they belong to.
-  completion rates        A completion rate above 100%, in any widget that has
-                          the column.
-  pacing                  Delivery or spend more than 50% off what the order
-                          asked for, either way. Not flagged when it is OVER
-                          and a cancelled line item ran that month - that buy
-                          served before it was stopped.
 
-And the admin key line: "Data error, send to Alyssa on the reporting team to
-look into."
-
-The two longest left are yours from the start and I have not touched them.
-
-Every one of those explanations was me arguing with a reader who was not there.
-The reasoning still exists - it is in the code, where the next person changing
-the check will actually need it, and where it costs nobody a paragraph.
-
-
-YOU WERE RIGHT ABOUT THE RATE CEILING. IT IS GONE.
-==================================================
-Your question was the right one and I should have asked it instead of writing
-another paragraph defending the thing. So I ran it against every stored report
-with the completion widgets excluded, and it found exactly ONE figure:
-
-  Pluto TV - Live TV and Movies    198    100.51%
-
-in Watsontown's Top CTV Publishers grid. Which is a completion rate. It was in
-a widget that is not CALLED "Completion Performance", so the completion check
-could not see it and a whole separate rule existed to catch it from the other
-side of the report.
-
-So the completion check reads the COLUMN now instead of the widget's title. It
-catches that row by name - "Pluto TV shows 100.51%" - and check_rate_ceiling is
-deleted. Nothing lost, one fewer row, and the finding is on the check that can
-actually say which row it is.
-
-The answer to "what else is ever over 100%": nothing. You were right.
-
-
-THE TWO CLIENT CHECKS ARE ONE ROW
-=================================
-Merged, and your text kept as you wrote it. Both halves still run - the line
-items against the cover page, and the cover page against the row it arrived in
-- they just report as one line. My paragraph explaining why they were different
-is gone; it was the explanation that needed deleting, not the check.
-
-
-GREEN TICK ON OKAY TO PACKAGE
-=============================
-Four of them: pacing, lifetime goal, geo-fence names, site CTR. A green tick
-beside the owner, and the key says what it means - the report can still go out,
-the fix is a message to send rather than something to hold delivery for.
-
-It is read out of your own how-to, not kept as a separate setting: any fix
-containing the word "package" gets the tick. So the icon cannot say one thing
-while the words next to it say another, and you control it by wording.
-
-
-THE NEW RULE - A CANCELLED LINE THAT RAN EXPLAINS THE OVER
-==========================================================
-Collective Heads 1809. Mobile Conquesting is 233,333 live on 51012 and 266,666
-cancelled on 55157, both flighted across August, and the report shows 403,589 -
-"73% over". It is not over. The cancelled line delivered for part of the month
-before somebody stopped it, so the report counts what it served and the goal
-correctly does not. The gap between them is arithmetic, and there is nothing
-for anybody to do about it.
-
-So: OVER by more than the band, with a cancelled line item of that product
-overlapping the report's month, and a live one beside it - not flagged.
-
-OVER ONLY, deliberately. A product that is SHORT with a cancelled line beside
-it is short of what is still being asked for, which is a real number about a
-real buy. Social Mirror on that same report is 91% short and still says so.
-
-And it has to OVERLAP the month. One cancelled in March explains nothing about
-August.
-
-
-CHECK_RATE_CEILING - YOU WERE RIGHT, IT WAS A DUPLICATE
-=======================================================
-It fired on 16 August reports, which is the answer to "is it active anywhere" -
-and looking at why: it was reading the completion widgets a second time and
-printing a vaguer version of a finding the completion check had already made,
-by name and by row. On every report that has a completion widget, which is most
-of them, it was a duplicate.
-
-It skips them now. What is left is the part nothing else covers - a CTR column
-at 250%, a rate in a widget with no check of its own. Which makes the count on
-the flags page the answer to your question: if it comes back 0 next cycle, then
-nothing but the completion check ever needed it and I will delete it.
-
-Description cut to one line. You were right about that too.
-
-
-PACING IS ONE CHECK
-===================
-Impressions and dollars were two rows on the page and two lines on every
-report's checklist for one question. They are the same fault seen through
-different columns and the report goes to the same buyer either way, so they are
-one row now, named check_pacing_off.
-
-Both halves still run - most products print no spend at all, and a report
-carrying only one of them is checked on the one it has. It reports as a single
-line.
-
-
-AND YOUR HOW-TO FOR check_some_zero_completion IS IN.
-One left blank: check_rate_ceiling, which may not survive the next cycle.
-
-
-NO, I HAD NOT READ THE NOTES COLUMN
-===================================
-I read WHO and HOW and stopped. That is on me - you wrote five questions in
-there and none of them got an answer. All five are answered below and in the
-sheet, and NOTES is now a column the sheet carries both ways, so a question
-asked once does not have to be asked twice. It does not appear on the page:
-it is a conversation about the check, not something a person reading a finding
-needs.
-
-
-CHECK_CREATIVE - ONLY WHEN IT CLAIMS TOO MUCH
-=============================================
-You are right, and it was worse than a preference. It also spoke up when the
-creative tables came to LESS than the top line, which is the ORDINARY case: a
-channel reporting completions rather than clicks - CTV, Performance Max - has
-no creative rows to add up. So nearly every report carrying one was told its
-creative tables "cover part of the campaign". True, useless, and sitting beside
-things that are actually wrong. That half is gone.
-
-
-CHECK_RATE_CEILING - NOT A DUPE, BUT THE DESCRIPTION WAS WRONG
-==============================================================
-"A CTR over 5%" was never true of this check. It has only ever looked for
-figures over 100%, which are impossible rather than suspicious - a CTR that is
-merely high is check_site_ctr, with its own thresholds. So the dupe you spotted
-was in my words, not in the code, and the words are fixed.
-
-The 100% half is a real overlap with the completion check and worth keeping:
-that one reads INSIDE a Completion Performance widget and names the row, this
-one reads the whole document, so a CTR column printing 250% or a rate in a
-widget nobody has written a check for still gets caught. That is a backstop
-doing its job rather than a duplicate.
-
-
-CHECK_PACING - "WHAT IS THIS"
-=============================
-A full month's SPEND against the month's budget, in dollars. The impressions
-version is check_impression_pacing, directly above it. Whole months only.
-The catalog says so now.
-
-
-CHECK_CLIENT_MATCHES_ORDER - NOT THE SAME AS THE ONE ABOVE
-==========================================================
-You struck it out as a duplicate of check_client_data. They are opposites:
-
-  check_client_data           cover page against the report's OWN LINE ITEMS
-  check_client_matches_order  cover page against THE ROW IT ARRIVED IN
-
-A report pulled entirely on the wrong client agrees with itself perfectly, so
-the first one says nothing. St. Francis AMT Program's July slot held six pages
-of Everett Railroad - cover page, line items, every widget - and nothing inside
-the file was wrong. Only the slot disagreed. Keeping it.
-
-
-CHECK_STRATEGY_CATEGORIZED - THE DONUT IS WHAT IT ALREADY MEANS
-==============================================================
-The donut on page one IS the product breakout, and a strategy line with no
-product word in its name is exactly what lands on it as its own slice. So it is
-already the condition you asked for, just spotted from the line item names
-rather than from the chart. If you have one that is flagged and does NOT show
-on the donut, send it and I will narrow it.
-
-
-COLUMNS IN YOUR ORDER
-=====================
-What it means · what passing claims · who fixes it · how to fix it. On the page
-and in the sheet, with a test pinning it so a tidy-up cannot reverse it.
-
-
-THE OUTLINE ON THE NAMES - MY CLASS LANDED ON YOUR CARDS
-========================================================
-`.who` was already the block of buyer/reporter/trainer tags on every partner
-card. I gave the new owner pill the same name, so every name on the board grew
-a border. It is `.ownr` now and nothing else uses it.
-
-That was also why the pills looked stretched: they were inheriting card layout,
-not sizing themselves.
-
-
-YOUR SHEET IS IN - ALL 38
-=========================
-Every WHO and every HOW, as you wrote them. 3 still blank: rate above its
-ceiling, a month's spend that does not look like a month's budget, and one row
-at 0% among others that watched fine.
-
-AND "VERIFY, THEN X" IS NOW A THING THE PAGE UNDERSTANDS. You wrote it on 20 of
-them and it is the honest shape of this: a finding is the tool's reading of a
-PDF, and the tool misreads pages. So those rows show a dashed VERIFY pill, an
-arrow, then the owner - the escalation is the second step, not the first. The
-key explains it.
-
-HOW TO FIX now sits next to what the finding means, where you asked. Reading
-the finding and then jumping a column of tags to find out what to do about it
-had the two halves of one thought apart.
-
-FLAGGING NOW IS THE DEFAULT TAB. The full 38 is a reference; the ones actually
-firing this cycle are the work.
-
-
-MOBILE CONQUESTING IS OUT OF THE DEVICE TOTAL
-=============================================
-"Device totals 8,558 against 82,911 eligible (-89.7%)" - and 74,353 of that
-82,911 was a single Mobile Conquesting line.
-
-Mobile Conquesting has always been excluded from the device-eligible total. The
-pattern was anchored on the word "Mobile" at the end of the line item name, so
-it caught "Geo-Fencing Mobile" and "Geo-Retargeting Mobile" and missed
-"Behavioral Mobile Conquesting", which is the same product spelled out in full.
-
-It takes either ending now. Still anchored, deliberately: this client is NAMED
-"Belmont Park Mobile Conquesting", so matching those words anywhere in the line
-would have taken their Facebook rows out as well and left nothing eligible at
-all - which reads as a check that passed rather than one that broke.
-
-
-BELMONT PARK - NOT A DIFFERENT CLIENT'S REPORT
-==============================================
-On the board as "Belmont Park Branding Meta Pmax", cover page reads "Belmont
-Park LEISURE Meta + Pmax". Two campaigns of one advertiser, one order, one
-report - and past "Belmont Park" the two names have nothing in common, so the
-fuzzy match said different client and the loudest finding this tool has went on
-a correct report.
-
-Comparing the two names could never have settled it. "Ashley HomeStore -
-Blacksburg" and "Ashley HomeStore - Roanoke" look exactly as alike and ARE two
-clients, and a report pulled on the wrong one of those still has to be caught.
-
-The line items settle it. Five of Belmont Park's six read "Belmont Park - ...",
-which is the FILED client on the page in its own data. St. Francis's slot full
-of Everett Railroad had nothing on any page that said St. Francis, and still
-fails. Weighted by impressions, so one small line naming the right client does
-not rescue five large ones naming somebody else.
-
-
-HOW MANY REPORTS EACH FLAG IS ACTUALLY HITTING
-==============================================
-A count beside every one of the 38, off this cycle's reports, and two buttons:
-
-  All 38  |  Flagging now  (n)   in August 2026
-
-"Flagging now" hides everything at zero, groups included. A check firing on
-sixty reports and one that has never fired read exactly the same before, on the
-page you use to decide where to look first.
-
-Counted off each report's own stored checklist rather than its findings,
-because that is what carries the check's NAME - a finding carries a code and
-several checks share one. One report counts once per check however many lines
-it printed. And it is best effort: this page needs no database to be useful, so
-a database problem costs the numbers rather than the page.
-
-
-THE PILLS, AND ADMIN
-====================
-They fit the word now - width:max-content and align-self, which hold that size
-inside a flex or grid parent too, where a plain inline-block gets stretched to
-the row. Smaller type, tighter padding. The key is one line each rather than
-three stacked.
-
-Admin now reads "Send it to Alyssa."
-
-
-THE SHEET
-=========
-report-qa-flags.xlsx, sent alongside. All 38 rows, two yellow columns to edit -
-WHO FIXES IT and HOW TO FIX IT - and the rest grey for reference. The who column
-is a dropdown of the three so a typo cannot become a fourth owner. Send it back
-and I will put it in; that file is outside app/checks/ so wording costs no
-re-check.
-
-
-WHO FIXES IT, AND HOW - ON THE FLAGS TAB
-========================================
-Two new columns on all 38, and a key at the top of the tab:
-
-  REPORTER  whoever pulls the report. Template, widgets, filters, the date
-            range, the logo, whatever got left switched on.        14 flags
-  BUYER     whoever set the campaign up. The order, its products and budget,
-            and the names given to strategies, fences, conversions.  10 flags
-  ADMIN     nobody at this end. The figures do not agree with each other or a
-            widget did not render, so it goes upstream.            14 flags
-
-Every one has an owner. Argue with any of them - they are one word each in
-app/flag_catalog.py and nothing else reads them.
-
-HOW TO FIX: 24 WRITTEN, 14 BLANK, AND THE BLANKS SAY SO
-=======================================================
-The 24 are what the checking code itself knows - which is mostly how to tell
-WHICH cause it is, since most of these findings have two or three. "The line
-items do not add up" is usually a line filtered out of the widget rather than a
-wrong number, and that is worth saying because it changes what you look at
-first.
-
-The other 14 are process rather than code, and I left them empty on purpose. A
-plausible-sounding fix in that column would be worse than a blank one, because
-somebody would follow it. The page prints "not written yet" on each and counts
-them at the bottom, so a half-filled column cannot look finished from a
-distance.
-
-Here they are, by owner, if you want to send them round:
-
-  ADMIN     device breakout describes more impressions than were served
-  ADMIN     Facebook and Instagram placements exceed the platform tiles
-  ADMIN     store visit figure disagrees with its own table
-  ADMIN     a rate above its ceiling - CTR over 5%, completion over 100%
-  ADMIN     an ad screenshot cell with no screenshot in it
-  ADMIN     a completion rate above 100%
-  ADMIN     one video, CTV or audio row at 0% among others that watched fine
-  ADMIN     a device breakout row that is not an actual device
-  BUYER     a full month's spend that does not look like a full month's budget
-  REPORTER  geo-fenced Mobile Conquesting with no fence breakout behind it
-  REPORTER  a video or audio product that never says how much got watched
-  REPORTER  a page that came out blank where a widget should be
-  REPORTER  the template's section banners left switched on
-  REPORTER  text cut off for want of space
-
-Send me the wording and I will put it in. This file is deliberately outside
-app/checks/, so editing it costs no re-check - wording here is free.
-
-
-VARIANT PREVIEW LINKS - THEIR OWN NAME NOW
-==========================================
-The finding was right, which is why it needed renaming rather than fixing. Eight
-of those rows really are blank and really cannot be opened. What was wrong was
-that it sounded like the OTHER check - the one about a preview cell with no
-screenshot in it - and on this grid the preview is not a picture at all. It is
-a link, "Click to View" with the ad's URL behind it, and a blank cell means
-nobody reading the report can open that variant.
-
-Two columns, two repairs, and one word for both. So:
-
-  check name    Every variant carries its preview link
-  the finding   8 of 160 variants have no preview link
-  where         p12 · Variant preview links
-  the catalog   says outright that it is separate from the screenshot check
-                and why
-
-The location chip is the other half of it. It used to print whatever line sat
-above the column headers, which on this grid is the merged group header - the
-single word "Creative". So a finding about missing links was labeled with the
-name of the check it was being confused with. It says what it is now.
-
-Findings already accepted stay accepted: the stored code did not change, only
-what it says.
-
-
-TAYLOR AGAIN - THE PAGE THAT SHIFTS UP AND WILL NOT COME BACK
+1. SOCIAL MIRROR CTV OWES NO SITE AND APP WIDGET          (200)
 =============================================================
-Not a stream of bugs, a stream of good reports. This one is a real find and it
-would have been very hard to describe any better than he did.
+Stanley Steemer Dothan 52493 runs Mobile Conquesting and Social Mirror CTV, and
+its BARCK+ line is the CTV one. It was failed for a Site and App Performance
+widget that buy never gets - its inventory is the publisher list, and the
+publisher list was on the report.
 
-The report page is the only page in the tool laid out to NOT scroll: two panes
-that scroll inside themselves so the checks and the PDF stay on screen
-together. It gets that by way of overflow:hidden on the body.
-
-overflow:hidden stops a PERSON scrolling. It does not stop a script.
-
-The hidden file input behind the drop zone was a 1px box positioned absolutely
-with nothing to be absolute inside of - and on this page, and only this page,
-its containing block ends up being the whole document rather than the drop
-zone. So it sat hundreds of pixels below the fold. Choose a file, the OS dialog
-closes, the browser hands focus back to the input and scrolls it into view -
-and there is no scrollbar to scroll back with. Stuck, exactly as he said.
-
-The input covers the drop zone now, so there is nothing to scroll to: the thing
-being focused is the thing you just clicked. And a page in that layout snaps
-back to the top if anything scrolls it, so the next one of these cannot do it
-either.
+The exemption existed and was too strict: it needed EVERY product to be a CTV
+kind, so one Mobile Conquesting line put the widget back on the hook. BARCK+ is
+the only thing that owes this widget at all, so nothing else moves.
 
 
-CENTRAL COAST TRAILERS - NOTHING COULD CLEAR IT BECAUSE NOTHING WAS WRONG
-=========================================================================
-The row said NOT RECEIVED with an Upload button. The report was in the
-database - eleven pages, 1,613,199 impressions, order 46423, open in your other
-tab carrying a Needs fix. Two different things about the same client, and no
-button anywhere joined them, which is why nothing you pressed did anything.
+2. THE SWEEP STANDS ASIDE WHILE YOU ARE ON THE BOARD      (199)
+=============================================================
+Eight builds in a day, each queueing an 850 MB order re-read AND all ~880
+reports back through pdftotext. The queue never drained between them, so the
+box ran the sweep all afternoon while you were using it - which is the health
+check alarm.
 
-The rows you add by hand were built at the very END of the board, after every
-arrived report had already been matched to a row. So a hand-added row could
-never be given one. It sat there offering to upload a file that turned up days
-ago, forever.
+185 taught the ORDER RE-READ to wait for a gap in the traffic. The sweep, which
+is much the longer of the two, now waits too: 25 quiet seconds between batches.
 
-They are built before the matching now. Central Coast Trailers will pick up
-1793 the moment you load the board.
-
-WHILE YOU ARE THERE: that report is marked Needs fix and the card says 0 errors
-or needs fix, because the board could not see it. That number will move when
-the row joins up.
+Still true: taking fewer builds is worth more than anything I can do in code.
 
 
-TAYLOR'S NOTE FIELD - ENTER WAS PRESSING THE WRONG BUTTON
-=========================================================
-He is exactly right, and the cause is plain HTML: Enter in a text box presses
-the form's FIRST submit button. The note box sat in the same form as the two
-decision icons, and the first of those is "Done, no report". So writing down
-why you are chasing a file checked the row off the board.
+3. PAUSED BELONGS ON A LIFETIME                       (196-198)
+=============================================================
+You were right and I took the wrong half out. A pause means it RAN and was
+stopped, so a product paused in April belongs on a campaign-to-date report.
+That is what makes it different from a cancelled buy, which was called off.
+Still not flagged on a monthly.
 
-Worse underneath: the route treated ANY unrecognized action as "done". Even a
-typo would have marked a report complete. That now returns an error instead.
+The real fault was the sentence under the finding, which printed the monthly
+line on both kinds of report - "paused, so not owed either way", true of a
+monthly and the reverse of true on a lifetime. It says the fact and stops now:
 
-The note has its own Save button, first in the form so Enter reaches it and
-last on the screen so it reads the way it always did. Saving a note does not
-touch the verdict - the row stays on the board asking for its report - and the
-note comes back in the box next time you load the page.
+  ran to 2026-04-30 · paused
 
-
-THE HEALTH CHECK ALARM, AND WHAT IT WAS
-=======================================
-The heaviest job this service runs is the order re-read: an 850 MB download and
-a two-million-row parse, in the same process that serves the board. Everything
-else heavy marks itself so a page load outranks it. That one never did. It ran
-at full priority, and it starts one minute after a deploy - which is the minute
-the person who deployed spends reloading the page to see whether it worked.
-
-So the alarm was not random and it was not the box being small. It was the
-deploy, every time, and this deploy triggered it twice over: roster.py moved,
-which re-reads the orders AND re-checks every report.
-
-Two changes:
-
-  * It runs niced now, like everything else. A page outranks it.
-  * It waits for a gap in the traffic first - no real page request for 25
-    seconds - up to a fifteen minute cap, then goes anyway. Health checks do
-    not count as traffic, or the gap would never come.
-
-Why-slow says this in the half hour after a deploy, so the next alarm has an
-answer on the page rather than a guess.
-
-WHAT THIS DOES NOT FIX: the instance is one box running two workers, so a
-health check that fails is the whole service, not one of a pool. If these keep
-arriving on quiet days rather than deploy days, that is a size problem and
-costs money.
+Order 51681's three products are still flagged. They ran, they are on the
+campaign, and the report does not show them.
 
 
-183 BROKE THE RE-CHECK BUTTON. DO NOT RUN IT.
-=============================================
-"'>' not supported between instances of 'str' and 'datetime.date'", on every
-re-check of a lifetime, which on 183 is every lifetime on the board.
-
-The new cancelled-buy test reads each line item's own flight out of the stored
-detail. That detail is JSON, so its dates come back as ISO STRINGS, and the
-campaign window it is compared against is real dates. Python does not compare
-the two, it raises. My tests passed it a window of None and never hit the line.
-
-Both go through the date parser now, and there is a test with the window set
-and strings in the detail.
-
-Dockerfile
-app/audit.py
-app/board.py
-app/checks/parser.py
-app/checks/products.py
-app/checks/rules.py
-app/checks/served.py
-app/checks/spend.py
-app/config.py
-app/db.py
-app/flag_catalog.py
-app/main.py
-app/orders_io.py
-app/recheck.py
-app/roster.py
-app/serving.py
-app/templates/audit.html
-app/templates/base.html
-app/templates/cycle.html
-app/templates/rules_body.html
-app/templates/order_lines.html   (new)
-app/templates/orders.html
-app/templates/report_orders_body.html
-app/templates/viewer.html
-app/templates/why_slow.html
-app/timing.py
-app/version.py
-tests/fixtures/mcnutt_site_services.pdf   (new)
-tests/test_board_extras.py
-tests/test_expected_products.py
-tests/test_manual_upload.py
-tests/test_order_remap.py
-tests/test_rules.py
-tests/test_serving.py
-tests/test_timing.py
+4. THE DESCRIPTIONS SAY THE THING AND STOP                (195)
+=============================================================
+Cut to what you highlighted: variant preview links, creative previews, creative
+totals, completion rates, pacing. And the admin key line now reads "Data error,
+send to Alyssa on the reporting team to look into."
 
 
-SKYPAC 51251 - THE CANCELLED PRODUCTS
-=====================================
-You were right and the screen was arguing with itself. "Ordered but not on the
-report: CTV, Performance Max, Video" sat directly above a panel saying of those
-same three that a cancelled buy "is not part of what the campaign was asked to
-deliver". Both cannot be true.
-
-Build 162 took cancelled lines out of the pacing goal and did not take them out
-of the products list, which still said a lifetime carries everything the client
-ever bought, cancelled included. That is right for a buy that RAN and was then
-stopped - the lifetime is what closes it out. It is wrong for a buy that was
-called off, and 120731 and 120736 were called off.
-
-So: a product is dropped from the list when EVERY line item of it inside the
-campaign was cancelled. Not the row's flag - Social Mirror CTV is one row
-holding a cancelled 120751 and a complete 122725 and 128151, and the flag alone
-would have dropped a product that plainly ran. It reads the line items.
+5. AND WHAT WAS ALREADY IN THE EARLIER ONES
+=============================================================
+check_rate_ceiling deleted, the two client checks merged into one row, the
+green tick on okay-to-package, the cancelled-line pacing rule, and your sheet
+applied across all 35.
 
 
-AND "STOPPED 2026-08-28", WHICH THE FILE DISPROVES
-==================================================
-1,277 impressions on 1 September, in the file you sent. The tag was reading the
-last day inside AUGUST, so a campaign that ran to the 28th and kept going looks
-exactly like one somebody switched off on the 28th - the September rows were
-sitting right there and nothing looked at them.
-
-It looks past the cycle's month now. Delivery in any later month and the tag
-does not go on. A campaign with nothing after it still says when it stopped,
-which is the half worth keeping.
-
-
-THE FIX HAD TO REACH THE REPORTS, SO THERE IS A RE-CHECK
-========================================================
-Worth saying plainly because you asked about a pointless one last week: this
-one is not pointless, and it is the reason for it.
-
-Half of what a report is judged against is not the PDF - it is the order behind
-it. "Ordered but not on the report" is roster.py, and every pacing number is
-roster.py, and roster.py was not part of what a fix "reaching" a report means.
-SKyPAC would have kept failing for three cancelled products with the fix
-already installed. It is in now.
-
-The Skip button is still there if you would rather. Skipping this one keeps the
-old answer on every report already stored.
-
-
-890 tests pass.
+895 tests pass.

@@ -344,6 +344,17 @@ def _wanted_on_lifetime(line, window) -> bool:
                              _as_date(window[0]), _as_date(window[1])):
                 continue
         inside = True
+        # A PAUSED LINE STAYS. A pause means it RAN and was stopped, and a
+        # lifetime reports on everything the campaign delivered - so it belongs
+        # there, unlike on a monthly, where "not delivering now" is the whole
+        # question. That is the difference between this and a cancelled buy,
+        # which was called off and never became what the campaign was asked
+        # for.
+        #
+        # I had this the other way round for one build, on the strength of the
+        # trace under the finding reading "paused, so not owed either way" -
+        # which was the MONTHLY sentence printed on a lifetime. The wording was
+        # wrong, not the check.
         if not d.get("canceled"):
             return True
     # Every line item inside the campaign was cancelled, so nothing is owed.
@@ -797,7 +808,8 @@ def client_lines(db: Session, client: str, account_ids: str):
 
 
 def expected_why(db: Session, client: str, account_ids: str,
-                 period: str | None = None) -> list[tuple[str, str]]:
+                 period: str | None = None,
+                 lifetime: bool = False) -> list[tuple[str, str]]:
     """Why each product is or is not expected, as trace rows.
 
     Three rounds of "this is a false positive" all needed the same thing to
@@ -854,9 +866,15 @@ def expected_why(db: Session, client: str, account_ids: str,
 
     rows: list[tuple[str, str]] = []
     for l in sorted(hit, key=lambda x: (x.product or "", x.account_ids or "")):
-        if not getattr(l, "live", True):
-            verdict = "paused, so not owed either way"
-        elif period and not _ran_during(l, period):
+        # THE FACT, NOT WHAT IT MEANS. This said "paused, so not owed either
+        # way" on both kinds of report - true of a monthly and the reverse of
+        # true on a lifetime, where a pause means it ran. Saying "paused" and
+        # stopping cannot be wrong on either.
+        if getattr(l, "canceled", False):
+            verdict = "cancelled"
+        elif not getattr(l, "live", True):
+            verdict = "paused"
+        elif not lifetime and period and not _ran_during(l, period):
             verdict = f"not running in {month_label(period)}"
         else:
             verdict = "counted"
