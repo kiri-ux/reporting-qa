@@ -2841,23 +2841,27 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
 
     # If one already exists for this client and cycle, this is a replacement
     # and should go through the route that knows how to handle one.
+    # THE SAME MARKET, WHICH THIS NEVER CHECKED.
+    #
+    # The match was an order-id intersection across every report in the cycle,
+    # so an upload made against one partner's row landed on another partner's
+    # report whenever the two shared an id - three LMSD files opened a
+    # different market and a different campaign. An upload is made from a row;
+    # it can only replace something in that row's market.
+    #
+    # THE NAME FIRST, THEN THE IDS - AND THE IDS ONLY WHEN THEY POINT AT ONE
+    # REPORT. Requiring both was too strict by exactly one real case: the two
+    # systems spell clients differently, so a hand upload under the order
+    # export's spelling did not recognize the feed's copy of the same client,
+    # and made a SECOND file for it. Then the board showed one and you opened
+    # the other. LMSD is why the id match cannot stand on its own; a client
+    # spelled two ways is why the name cannot either. An id that names exactly
+    # one report in the market is not ambiguous, and that is the test.
     from .ingest import _rkey, same_client
+    here, by_ids = [], []
+    ids, _n = _rkey(client, account_ids, is_lifetime)
     for r in db.scalars(select(Report).where(Report.period == period)).all():
-        # THE SAME MARKET, WHICH THIS NEVER CHECKED.
-        #
-        # The match is an order-id intersection across every report in the
-        # cycle, so an upload made against one partner's row landed on another
-        # partner's report whenever the two shared an id - three LMSD files
-        # opened a different market and a different campaign, twice, including
-        # after a manual re-pull. An upload is made from a row; it can only
-        # replace that row's report.
         if (r.market or "") != (market or ""):
-            continue
-        # AND THE SAME CLIENT. The market was not enough: LMSD's three Secret
-        # Contest campaigns are one market, they carry each other's order ids,
-        # and uploading the Z90 file opened 91X - a different campaign under
-        # somebody else's numbers.
-        if not same_client(client, r.client or ""):
             continue
         if bool(r.is_lifetime) != is_lifetime:
             continue
@@ -2866,10 +2870,14 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         # a replacement for the first.
         if bool(getattr(r, "is_seo", False)) != is_seo_report:
             continue
-        ids, _n = _rkey(client, account_ids, is_lifetime)
+        if same_client(client, r.client or ""):
+            here.append(r)
         mine, _m = _rkey(r.client, r.account_ids, bool(r.is_lifetime))
         if ids & mine:
-            return RedirectResponse(f"/report/{r.id}/view", status_code=303)
+            by_ids.append(r)
+    hit = here[0] if here else (by_ids[0] if len(by_ids) == 1 else None)
+    if hit is not None:
+        return RedirectResponse(f"/report/{hit.id}/view", status_code=303)
 
     batch = open_batch(db, market, period)
     if batch is None:

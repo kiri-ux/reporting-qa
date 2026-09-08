@@ -4166,3 +4166,53 @@ def test_a_row_shows_the_copy_that_was_signed_off():
     reports = [R(10, "new"), R(11, "new")]
     _attach_reports(FakeDB(), "2026-08", rows2)
     assert list(rows2.values())[0].report.id == 11
+
+
+def test_the_same_client_spelled_two_ways_is_one_report():
+    """The two systems spell clients differently. Requiring the name AND the
+    order ids to agree was too strict by exactly that case: a hand upload under
+    the order export's spelling did not recognize the feed's copy of the same
+    client and made a SECOND file for it - so the board showed one and opening
+    the row showed the other.
+
+    LMSD is why an id match cannot stand on its own. A client spelled two ways
+    is why the name cannot either. An id that names exactly one report is not
+    ambiguous, and that is the test."""
+    from app.ingest import _index, _match_existing
+
+    class R:
+        def __init__(self, rid, client, ids):
+            self.id, self.client, self.account_ids = rid, client, ids
+            self.is_lifetime = False
+
+    def index(*reports):
+        idx = {"by_id": {}, "by_name": {}}
+        for r in reports:
+            _index(idx, r)
+        return idx
+
+    feed = R(1, "NORTH CAROLINA FURNITURE MART", "51742")
+    idx = index(feed)
+    # The same client, spelled the way the order export spells it.
+    got = _match_existing(idx, {"client": "North Carolina Furniture Mart",
+                                "account_ids": "51742"})
+    assert got is feed
+    # And by name alone, with no id on the incoming file at all.
+    assert _match_existing(idx, {"client": "north carolina furniture mart",
+                                 "account_ids": ""}) is feed
+
+    # Three campaigns sharing an id: the id decides nothing, so a file that
+    # matches no name is a new report rather than a guess at one of them.
+    a = R(2, "LMSD - Z90 Secret Contest 2026", "54824 54822")
+    b = R(3, "LMSD - MAGIC Secret Contest 2026", "54824 54822")
+    idx = index(a, b)
+    assert _match_existing(idx, {"client": "Something Else",
+                                 "account_ids": "54824"}) is None
+    assert _match_existing(idx, {"client": "LMSD - MAGIC Secret Contest 2026",
+                                 "account_ids": "54824"}) is b
+
+    # The upload route reads the same way.
+    import inspect
+    from app import main
+    src = inspect.getsource(main.upload_for_expected)
+    assert "here[0] if here else (by_ids[0] if len(by_ids) == 1 else None)" in src

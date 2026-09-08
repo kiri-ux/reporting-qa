@@ -139,18 +139,36 @@ def _reports_for_period(db: Session, period: str) -> dict:
 def _match_existing(idx: dict, meta: dict):
     """The report this one replaces, if there is one.
 
-    Account id first - clients are typed differently in the two systems - then
-    the name. A monthly never replaces a lifetime or the other way round.
+    THE NAME FIRST, THEN THE IDS - AND THE IDS ONLY WHEN THEY POINT AT ONE
+    REPORT. Clients are typed differently in the two systems, so the name
+    cannot be the only test; LMSD's three Secret Contest campaigns carried each
+    other's order ids, so the ids cannot be either. Requiring both agreed was
+    too strict by exactly one real case - the same client spelled two ways -
+    and the answer to that was a SECOND file for it, with the board showing one
+    and the report page the other.
+
+    An id that names exactly one report is not ambiguous. That is the test.
+    A monthly never replaces a lifetime or the other way round.
     """
     who = meta.get("client", "") or ""
     ids, name = _rkey(who, meta.get("account_ids", ""),
                       bool(meta.get("is_lifetime")))
+    named = idx["by_name"].get(name) if name else None
+    if named is not None:
+        return named
+    seen: list = []
     for k in ids:
         for hit in idx["by_id"].get(k) or []:
-            # THE ID GOT US HERE; THE NAME DECIDES. See same_client.
-            if same_client(who, getattr(hit, "client", "") or ""):
-                return hit
-    return idx["by_name"].get(name) if name else None
+            if not any(h is hit for h in seen):
+                seen.append(hit)
+    if len(seen) == 1:
+        return seen[0]
+    # More than one report answers to these ids. Which of them this is cannot
+    # be told from an id they share, so it is a new report rather than a guess.
+    for hit in seen:
+        if same_client(who, getattr(hit, "client", "") or ""):
+            return hit
+    return None
 
 
 def open_batch(db: Session, market: str, period: str) -> Batch | None:
