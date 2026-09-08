@@ -1450,3 +1450,54 @@ def test_a_tile_reads_its_own_column_not_the_one_beside_it():
     # The grid and the tiles agree, so there is nothing to say.
     assert check_social_placement_totals(
         {"text": text, "page_of": lambda _o: 15}) == []
+
+
+def test_a_narrower_row_further_down_the_table_still_lines_up():
+    """A table does not always keep the same column widths all the way down.
+    St Louis Muny Theater's line item grid narrows partway through - the last
+    rows print a dozen characters left of the ones above them - so the
+    impressions figure landed near no heading and was dropped, and the other
+    three each slid one column left: 4,770 impressions, 5.56 clicks, a CTR of
+    79.39%. Five rows on one report flagged for a CTR that does not match its
+    own numbers, all of it arithmetic this tool had done to itself."""
+    from app.checks.parser import extract_tables
+
+    text = "\n".join([
+        "Line Item Performance",
+        "Line Item Name                                    Impressions       Clicks     CTR                       X the National Avg (.07%)",
+        "",
+        "St. Louis Muny Theater in Forest Park - Weather          137,278         656     0.48%                         6.83",
+        "Trigger Mobile",
+        "",
+        "St. Louis Muny Theater in Forest Park - Ain't Too     85,835   4,770    5.56%    79.39",
+        "Proud Concerts/Live Theater/Age 25-54",
+        "Behavioral Social Mirror",
+        "",
+        "St. Louis Muny Theater in Forest Park - South         84,511    243     0.29%     4.11",
+        "Pacific Live Event Attendees/Live",
+        "Theater/Concerts Behavioral",
+        "",
+    ])
+    got = {n.split(" - ")[1][:12]: v for n, v in extract_tables(text)[0].body}
+    assert got["Weather Trig"]["Impressions"] == 137278.0
+    assert got["Ain't Too Pr"]["Impressions"] == 85835.0
+    assert got["Ain't Too Pr"]["Clicks"] == 4770.0
+    assert got["Ain't Too Pr"]["CTR"] == 5.56
+    assert got["South Pacifi"]["Impressions"] == 84511.0
+    assert got["South Pacifi"]["CTR"] == 0.29
+    # Every row's printed CTR now agrees with its own two columns.
+    for v in got.values():
+        assert abs(v["Clicks"] / v["Impressions"] * 100 - v["CTR"]) < 0.05
+
+
+def test_linkedin_is_read_off_the_report():
+    """Its widgets are titled "LinkedIn Spend Performance", "LinkedIn Ad Cost"
+    and "LinkedIn Cost-Per-Click", and none of them was read as anything - so
+    Society of Women Engineers, which runs LinkedIn and prints a full page of
+    it, was failed for a product ordered but not on the report while the page
+    was open beside the finding."""
+    from app.checks.products import detect
+
+    text = ("LinkedIn Spend Performance\nDoes not include management fee\n"
+            "LinkedIn Ad Cost                    LinkedIn Cost-Per-Click\n")
+    assert detect(text, []) == {"LinkedIn"}

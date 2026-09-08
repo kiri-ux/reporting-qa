@@ -27,6 +27,12 @@ SECTION_PATTERNS: list[tuple[str, str]] = [
     ("TikTok", r"^TikTok\b"),
     ("DOOH", r"^DOOH\b"),
     ("PPC", r"^PPC\b"),
+    # LINKEDIN HAD NO SECTION PATTERN. Its widgets are titled "LinkedIn Spend
+    # Performance", "LinkedIn Ad Cost" and "LinkedIn Cost-Per-Click", and none
+    # of them was read as anything - so Society of Women Engineers, which runs
+    # LinkedIn and prints a full page of it, was failed for a product ordered
+    # but not on the report while the page was open beside the finding.
+    ("LinkedIn", r"^LinkedIn\b"),
     ("YouTube", r"^YouTube\b"),
     ("Live Chat", r"^Live Chat\b"),
     ("Video", r"^Video (?:Creative|Completion|Click|View-through)"),

@@ -633,8 +633,13 @@
              words on hover. It was one gray block of ids with a row of dots
              beside it, which said two orders and two statuses and nothing at
              all about which was which. #}
+          {# FIVE, THEN THE COUNT. St Louis Muny Theater's lifetime covers
+             thirty-seven orders and Piedmont Advantage ninety-eight; printed
+             in full they are five wrapped lines of digits on a row somebody is
+             trying to read something else off. #}
           {% if e.account_ids %}<br><span class="oids">
-            {%- for oid in e.account_ids.replace(',', ' ').split() %}
+            {%- set _oids = e.account_ids.replace(',', ' ').split() %}
+            {%- for oid in _oids[:5] %}
               {%- set st = e.order_status.get(oid, '') %}
               <a class="oidp io-{{ st|iokind }}" href="{{ io_order_url }}{{ oid }}"
                  target="_blank" rel="noopener"
@@ -644,7 +649,9 @@
                     The pill is gray because there is nothing to color it
                     with. #}
                  data-tip="Order {{ oid }}{% if st %} - {{ st }}{% else %} - no status on it in the order export{% endif %}. Opens in the IO tool.">{{ oid }}</a>
-            {%- endfor %}</span>{% endif %}</td>
+            {%- endfor %}
+            {%- if _oids|length > 5 %}<span class="idmore"
+              data-tip="{{ _oids[5:]|join(', ') }}">+{{ _oids|length - 5 }}</span>{% endif %}</span>{% endif %}</td>
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
           <span class="chip" data-name="{{ p.name }}" tabindex="0"
                 style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
@@ -652,7 +659,7 @@
           {# Line item ids sit with the products they belong to, not with the
              client - one client can run several, and the order id above is
              what identifies the client. #}
-          {% if e.line_ids %}<span class="oid lid" title="Line item ids">{{ e.line_ids }}</span>{% endif %}
+          {% if e.line_ids %}<span class="oid lid" title="Line item ids">{% set _i = e.line_ids|first_ids %}{{ _i.shown }}{% if _i.more %}<span class="idmore" data-tip="{{ _i.rest }}">+{{ _i.more }}</span>{% endif %}</span>{% endif %}
           <span class="sr">{% for p in chips.get(e.ident, []) %}{{ p.name }} {% endfor %}</span></td>
         <td class="nw" data-v="{{ e.kind }}">{% if e.kind == 'lifetime' %}
           <span class="pill p-info"

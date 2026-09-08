@@ -228,7 +228,7 @@
               <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
                 <td>{{ l.product }}</td>
                 <td class="acct">{{ l.account_ids }}</td>
-                <td class="acct">{{ l.line_ids }}</td>
+                <td class="acct">{% set _i = l.line_ids|first_ids %}{{ _i.shown }}{% if _i.more %}<span class="idmore" data-tip="{{ _i.rest }}">+{{ _i.more }}</span>{% endif %}</td>
                 <td>{{ l.status }}</td>
                 <td class="nw">{{ l.starts_on or '' }}</td>
                 <td class="nw">{{ l.ends_on or '' }}</td></tr>
@@ -745,7 +745,7 @@
                   style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
           {% endfor %}</span><span class="sr">{% for p in c.products %}{{ p.name }} {% endfor %}</span></td>
           <td class="acct">{{ c.orders }}
-            {% if c.line_ids %}<br><span style="color:var(--muted)">{{ c.line_ids }}</span>{% endif %}</td>
+            {% if c.line_ids %}<br><span style="color:var(--muted)">{% set _i = c.line_ids|first_ids %}{{ _i.shown }}{% if _i.more %}<span class="idmore" data-tip="{{ _i.rest }}">+{{ _i.more }}</span>{% endif %}</span>{% endif %}</td>
           <td class="mono nw">{{ c.starts or '' }}</td>
           <td class="mono nw">{{ c.ends or '' }}</td>
           <td>{{ c.buyer }}</td>
@@ -778,7 +778,7 @@
         <tr><td>{{ l.market }}</td><td>{{ l.client }}</td>
             <td>{{ l.product }}</td>
             <td class="acct">{{ l.account_ids }}
-              {% if l.line_ids %}<br><span style="color:var(--muted)">{{ l.line_ids }}</span>{% endif %}</td>
+              {% if l.line_ids %}<br><span style="color:var(--muted)">{% set _i = l.line_ids|first_ids %}{{ _i.shown }}{% if _i.more %}<span class="idmore" data-tip="{{ _i.rest }}">+{{ _i.more }}</span>{% endif %}</span>{% endif %}</td>
             <td class="mono nw">{{ l.starts_on or '' }}</td>
             <td class="mono nw">{{ l.ends_on or '' }}</td>
             <td class="nw">{{ l.buyer }}</td></tr>

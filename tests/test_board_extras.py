@@ -4087,3 +4087,37 @@ def test_a_social_square_is_not_an_ad_size():
     assert not run("LMSD Z90 Secret Contest_Social Mirror_X_8.24_z90-secret-"
                    "travel- 1080x1080.jpg")
     assert run("Acme_Social Mirror_300x250.jpg")
+
+
+def test_a_replacement_takes_the_new_files_logo():
+    """The logo was taken off the replacement, handed to the checks, and thrown
+    away - so a report whose default logo had been FIXED went on carrying the
+    old file's fingerprint. It stayed grouped with the reports that still print
+    the tool's default, failed for a logo it no longer has, and marking from it
+    re-checked 154 other reports that had nothing to do with it."""
+    import inspect
+    from app import main
+    src = inspect.getsource(main.replace_report)
+    assert "rep.logo_hash = logo" in src
+    # The pending-file path already did this; the upload path stamps at insert.
+    assert "rep.logo_hash = logo" in inspect.getsource(main.resolve_pending)
+
+
+def test_a_long_list_of_ids_shows_five_and_hides_the_rest():
+    """Piedmont Advantage Credit Union carries ninety-eight line item ids and
+    St Louis Muny Theater's lifetime covers thirty-seven orders. Printed in
+    full they are five wrapped lines of digits on a row somebody is trying to
+    read something else off."""
+    from app.main import _first_ids
+
+    got = _first_ids("104356, 104357, 106450, 119696, 122396, 122397, 128567")
+    assert got["shown"] == "104356, 104357, 106450, 119696, 122396"
+    assert got["more"] == 2 and got["rest"] == "122397, 128567"
+    assert _first_ids("104356 104357")["more"] == 0
+    assert _first_ids("")["shown"] == "" and _first_ids(None)["more"] == 0
+
+    cycle = (TPL / "cycle.html").read_text()
+    assert "_oids[:5]" in cycle and "_oids[5:]|join" in cycle
+    orders = (TPL / "orders.html").read_text()
+    assert orders.count("|first_ids") == 3
+    assert ".idmore{" in (TPL / "base.html").read_text()

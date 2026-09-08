@@ -255,17 +255,41 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
             if len([c for c in cells if c[0] in METRIC_LABELS]) >= need:
                 break
             values: dict[str, float] = {}
-            for tok, _start, end in cells:
-                n = as_number(tok)
-                if n is None:
-                    continue
-                best, best_d = None, 99
-                for label, _ls, le in labeled:
-                    d = abs(end - le)
-                    if d < best_d:
-                        best_d, best = d, label
-                if best_d <= 4 and best:
-                    values.setdefault(best, n)
+            nums = [(as_number(t), e) for t, _s, e in cells]
+            nums = [(n, e) for n, e in nums if n is not None]
+            if len(nums) == len(labeled):
+                # ONE NUMBER PER COLUMN IS THE ANSWER, WHEREVER THEY ARE
+                # PRINTED. Columns are matched to their heading by how close
+                # the number ends to the heading's end, within four characters,
+                # and a table does not always keep the same column widths all
+                # the way down. St Louis Muny Theater's line item grid narrows
+                # partway through: the last five rows print
+                #
+                #     ... - Ain't Too     85,835   4,770    5.56%    79.39
+                #
+                # a dozen characters left of the rows above them, so the
+                # impressions figure landed near no heading and was dropped,
+                # and the other three each slid one column left - 4,770
+                # impressions, 5.56 clicks, a CTR of 79.39%. Those rows were
+                # then flagged for a CTR that does not match their own numbers,
+                # five times on one report.
+                #
+                # A row carrying exactly one number per heading needs no
+                # guessing about which is which.
+                for (label, _ls, _le), (n, _e) in zip(labeled, nums):
+                    values[label] = n
+            else:
+                for tok, _start, end in cells:
+                    n = as_number(tok)
+                    if n is None:
+                        continue
+                    best, best_d = None, 99
+                    for label, _ls, le in labeled:
+                        d = abs(end - le)
+                        if d < best_d:
+                            best_d, best = d, label
+                    if best_d <= 4 and best:
+                        values.setdefault(best, n)
 
             # A wrapped row name continues on the next line with no numbers in
             # the metric columns. Append it, or the product suffix that decides

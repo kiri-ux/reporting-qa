@@ -404,6 +404,21 @@ def _io_kind(status: str) -> str:
 
 
 templates.env.filters["iokind"] = _io_kind
+
+
+def _first_ids(raw, keep: int = 5) -> dict:
+    """The first few ids, and the rest for a tooltip.
+
+    Piedmont Advantage Credit Union carries ninety-eight line item ids. Printed
+    in full they are five wrapped lines of digits on a row somebody is trying
+    to read something else off.
+    """
+    ids = [i for i in re.split(r"[,\s]+", str(raw or "").strip()) if i]
+    return {"shown": ", ".join(ids[:keep]), "more": max(0, len(ids) - keep),
+            "rest": ", ".join(ids[keep:]), "all": ", ".join(ids)}
+
+
+templates.env.filters["first_ids"] = _first_ids
 # Chrome that every page needs and no view should have to remember to pass.
 # ---------------------------------------------------------------- who is here
 #
@@ -3216,6 +3231,12 @@ async def replace_report(report_id: int, request: Request,
     _old_findings = list(rep.findings or [])
     _old_acked = list(rep.acked or [])
     rep.stored_path = str(path)
+    # AND THE NEW FILE'S LOGO. This was taken and handed to the checks and then
+    # thrown away, so a report whose default logo had been FIXED went on
+    # carrying the old file's fingerprint - grouped with the reports that still
+    # have the tool's default, failing for a logo it no longer prints, and
+    # dragging 154 other reports along whenever anybody marked from it.
+    rep.logo_hash = logo
     rep.pages = result["pages"]
     rep.impressions = result["impressions"]
     rep.clicks = result["clicks"]
