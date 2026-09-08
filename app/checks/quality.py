@@ -1148,6 +1148,9 @@ def check_creative_names(ctx) -> list[dict]:
 # Not \b: an underscore is a word character, so "\b" refused to start on the
 # "_300x250" the sizes are actually written as.
 AD_SIZE = re.compile(r"(?<!\d)\d{2,4}\s*[xX]\s*\d{2,4}(?!\d)")
+# 1080x1080 is the square a social ad is built at. It is not a display size
+# left over from a display build.
+SIZE_OK = re.compile(r"(?<!\d)1080\s*[xX]\s*1080(?!\d)")
 SOCIAL_MIRROR_GRID = re.compile(r"Social Mirror.*Creative Performance", re.I)
 
 # Curtis asked for the sizes and gets to keep them.
@@ -1163,6 +1166,8 @@ def check_social_mirror_sizes(ctx) -> list[dict]:
     bad, at_of = [], {}
     for title, name, at in creative_rows(text):
         if not SOCIAL_MIRROR_GRID.search(title):
+            continue
+        if SIZE_OK.search(name):
             continue
         if AD_SIZE.search(name) and name not in bad:
             bad.append(name)
@@ -1289,6 +1294,63 @@ def _row_numbers(text: str, at: int, name: str) -> tuple[float, float] | None:
     return (vals[0], vals[1]) if len(vals) >= 2 else None
 
 
+def _column(text: str, at: int) -> int:
+    return at - (text.rfind("\n", 0, at) + 1)
+
+
+def _tile_band(text: str, at: int, title: str) -> tuple[int, float]:
+    """Which columns belong to the tile whose title starts at `at`.
+
+    Its heading line may carry another tile's heading beside it, and the two
+    tiles' numbers then share the lines underneath. The boundary is halfway
+    between one heading and the next - the numbers are centered under their own
+    circle, so the gap between the headings is the widest thing available and
+    the middle of it is the safest place to cut.
+    """
+    line_start = text.rfind("\n", 0, at) + 1
+    eol = text.find("\n", at)
+    line = text[line_start:eol if eol > 0 else len(text)]
+    spans = [(m.start(), m.end()) for m in re.finditer(r"\S+(?: \S+)*", line)]
+    mine = at - line_start
+    which = next((k for k, (s, _e) in enumerate(spans) if s == mine), 0)
+    if len(spans) < 2:
+        return 0, float("inf")
+
+    # THE LABELS BELOW, NOT THE HEADINGS. A tile's three figures are centered
+    # under its circles and reach a good way right of its own heading - the
+    # Facebook News Feed CTR sits past the midpoint between the two headings,
+    # so cutting there still handed it to Audience Network. The "Impressions
+    # Clicks CTR" strip under the tiles is drawn in the same columns as the
+    # figures, one group per tile, left to right in the same order.
+    groups = _label_groups(text, eol if eol > 0 else len(text))
+    if len(groups) == len(spans) and which < len(groups):
+        lo = 0 if not which else (groups[which - 1][1] + groups[which][0]) // 2
+        hi = (float("inf") if which + 1 >= len(groups)
+              else (groups[which][1] + groups[which + 1][0]) // 2)
+        return lo, hi
+
+    lo = 0 if not which else (spans[which - 1][1] + mine) // 2
+    hi = (float("inf") if which + 1 >= len(spans)
+          else (spans[which][1] + spans[which + 1][0]) // 2)
+    return lo, hi
+
+
+def _label_groups(text: str, at: int) -> list[tuple[int, int]]:
+    """Column spans of each "Impressions ... Clicks ... CTR" strip below `at`."""
+    for line in text[at:at + 900].split("\n"):
+        if "Impressions" not in line or "CTR" not in line:
+            continue
+        out, start = [], None
+        for m in re.finditer(r"Impressions|Clicks|CTR", line):
+            if m.group() == "Impressions":
+                start = m.start()
+            elif m.group() == "CTR" and start is not None:
+                out.append((start, m.end()))
+                start = None
+        return out
+    return []
+
+
 def _tile(text: str, title: str) -> tuple[float, float, float] | None:
     """(impressions, clicks, ctr) off a three-number platform tile."""
     i = text.find(title)
@@ -1306,14 +1368,32 @@ def _tile(text: str, title: str) -> tuple[float, float, float] | None:
     #
     # So: read the numbers in the order they appear, however they are laid out,
     # and stop at the next widget rather than running into it.
-    block = text[i + len(title):i + 1500]
+    # AND IN ITS OWN COLUMN. Two tiles sit side by side under one line of
+    # headings, and their numbers share the line under that. Reading in
+    # document order gave the right-hand tile the left-hand tile's figures:
+    # LMSD's Audience Network came back 7,550 / 214 / 2.83%, which is the
+    # Facebook News Feed beside it, and the placement grid's 25,873 Audience
+    # Network impressions were failed for exceeding a total that was not
+    # theirs. The band is this title's share of the heading line.
+    lo, hi = _tile_band(text, i, title)
+    # FROM THE END OF THE HEADING LINE. Starting just past the title left the
+    # tile beside it sitting at the front of the block, which reads as the next
+    # widget - so the left-hand tile of every pair was skipped entirely and
+    # never checked against its own grid rows.
+    eol = text.find("\n", i)
+    start = eol if eol > 0 else i + len(title)
+    block = text[start:start + 1500]
     from .rules import WIDGET_END
     end = WIDGET_END.search(block)
     if end:
         block = block[:end.start()]
     plain: list[str] = []
     pct: list[str] = []
-    for tok in NUM.findall(block):
+    for m in NUM.finditer(block):
+        col = _column(text, start + m.start())
+        if not (lo <= col < hi):
+            continue
+        tok = m.group()
         (pct if tok.endswith("%") else plain).append(tok)
         if len(plain) >= 2 and pct:
             break

@@ -1371,3 +1371,82 @@ def test_performance_max_is_not_device_eligible():
     assert is_device_excluded("Peters - Troy - HVAC Services/Homeowners/"
                               "Retargeting Performance Max", ex)
     assert not is_device_excluded("Peters - Troy - AI Audio", ex)
+
+
+def test_an_impressions_figure_stuck_to_the_name_is_still_a_column():
+    """Columns are found by the gap between them, and the gap is two spaces. A
+    long line item name reaches far enough right to leave only one space before
+    its own impressions figure, and the two are then read as a single cell - so
+    the row comes out a column short and every value shifts left.
+
+    St Louis Muny Theater's "Ain't Too Proud" line is 85,835 impressions, 4,770
+    clicks, 5.56% CTR and 79.39 times the national average. Swallowed, it read
+    as 4,770 impressions, 5.56 clicks and a CTR of 79.39% - and the row was
+    flagged for a CTR that does not match its own numbers, five times over on
+    one report, every one of them arithmetic this tool had done to itself."""
+    from app.checks.parser import extract_tables
+
+    hdr = ("Line Item Name                              Impressions"
+           "       Clicks    CTR    X the National Avg (.07%)")
+    imp_end = hdr.index("Impressions") + len("Impressions")
+    name = "St. Louis Muny Theater in Forest Park - Ain't Too Proud Con"
+    line = name[:imp_end - len(" 85,835")] + " 85,835"
+    for val, col, width in (("4,770", "Clicks", len("Clicks")),
+                            ("5.56%", "CTR", len("CTR")),
+                            ("79.39", "X the National Avg", 5)):
+        line += " " * (hdr.index(col) + width - len(line) - len(val)) + val
+    assert "  85,835" not in line, "the point of the fixture is the single space"
+
+    text = "\n".join(["Line Item Performance", hdr, "", line,
+                      "Proud Concerts/Live Theater/Age 25-54", ""])
+    (row,) = extract_tables(text)[0].body
+    assert row[1]["Impressions"] == 85835.0
+    assert row[1]["Clicks"] == 4770.0
+    assert row[1]["CTR"] == 5.56
+
+
+def test_a_number_in_a_name_is_not_pulled_out_of_it():
+    """Line item names carry figures of their own - "Age 25-54", "6.15
+    Concerts". Only a thousands separator, a percentage or a dollar sign says
+    the thing on the end of the name is a column that has drifted into it."""
+    from app.checks.parser import _split_glued, tokens
+
+    for line in ("Acme - Concerts/Live Theater/Age 25-54    12,000   3   0.03%",
+                 "Acme - 6.15 Concerts Behavioral    12,000   3   0.03%"):
+        assert [c[0] for c in _split_glued(tokens(line))] == \
+            [line.split("   ")[0].strip(), "12,000", "3", "0.03%"]
+
+
+def test_a_tile_reads_its_own_column_not_the_one_beside_it():
+    """Two tiles sit side by side under one line of headings and their figures
+    share the line under that. Read in document order, the right-hand tile came
+    back with the left-hand tile's numbers: LMSD's Audience Network read 7,550
+    / 214 / 2.83%, which is the Facebook News Feed, and the placement grid's
+    25,873 Audience Network impressions were failed for exceeding a total that
+    was not theirs.
+
+    And the left-hand tile of every pair was never read at all - the tile
+    beside it sat at the front of the block and looked like the next widget."""
+    from app.checks.quality import _tile, check_social_placement_totals
+
+    text = (
+        "Social Placement Performance\n"
+        " Placement                   Where your ads appear      Impressions   Clicks   CTR\n\n"
+        " Audience Network (Native, Banner, and Interstitial)   Apps.   25,873   128   0.49%\n"
+        " Facebook Feed    The desktop Feed.                     4,361   150   3.44%\n\n"
+        "Facebook News Feed Performance                    Audience Network Performance\n"
+        "\n\n"
+        "                        7,550    214      2.83%                       25,873      128                     0.49%\n"
+        "\n\n"
+        "                   Impressions   Clicks    CTR                      Impressions   Clicks                    CTR\n"
+        "\n\n"
+        "Instagram Performance\n\n\n"
+        "                        4,622     90      1.95%\n\n"
+        "                   Impressions   Clicks    CTR\n")
+
+    assert _tile(text, "Audience Network Performance") == (25873.0, 128.0, 0.49)
+    assert _tile(text, "Facebook News Feed Performance") == (7550.0, 214.0, 2.83)
+    assert _tile(text, "Instagram Performance") == (4622.0, 90.0, 1.95)
+    # The grid and the tiles agree, so there is nothing to say.
+    assert check_social_placement_totals(
+        {"text": text, "page_of": lambda _o: 15}) == []

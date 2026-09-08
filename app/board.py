@@ -1327,6 +1327,16 @@ def _attach_reports(db: Session, period: str,
         for e in free:
             if _key(e.client or "") == _key(report.client or ""):
                 return e
+        # A REPORT WHOSE OWN CLIENT IS ON THE BOARD BELONGS TO THAT ROW AND NO
+        # OTHER. The loose pass exists for a report whose client is spelled
+        # differently here - not for one whose client is sitting right there
+        # under its own name. Without this, a shared order id put Manning
+        # Media's Visit Hagerstown report on somebody else's row: clicking the
+        # row opened a different client, in a different partner, and the
+        # findings were about neither.
+        if any((_key(report.client or ""), k) in by_client
+               for k in ("monthly", "lifetime", "seo")):
+            return None
         if strict:
             mk = _key(report.market or "")
             for e in free:

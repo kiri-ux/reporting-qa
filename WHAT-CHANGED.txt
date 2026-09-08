@@ -1,22 +1,25 @@
-build 2026.09.08-214
+build 2026.09.08-215
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-Market codes come from the onboarding workbook, columns H and J. 453 of them.
-LOCK KNOX is Lockwood Digital Solutions Knoxville, INNO is Innovision
-Advertising, 3P is 3-Piece Media. A row approved off the reporting tracker
-carries the code, and unresolved each one became a partner card of its own.
-Rows already on the board move without being re-added. LOT SAC, MM and CMP each
-stand for two markets and are left showing.
+A tile reads its own column. Two tiles sit side by side under one line of
+headings and share the line of figures below, so the right-hand tile came back
+with the left-hand tile's numbers - LMSD's Audience Network read 7,550 / 214 /
+2.83%, which is the Facebook News Feed, and the grid's 25,873 was failed for
+exceeding a total that was not its own. The left-hand tile of every pair was
+not being read at all.
 
-The partners page reads the workbook again, for when a market is onboarded.
+An impressions figure stuck to the name is still a column. Columns are found by
+the gap between them and the gap is two spaces, so a long line item name leaves
+one space before its own figure and the two read as one cell - the row comes
+out a column short and everything shifts left. St Louis Muny Theater's rows
+read as 4,770 impressions and 5.56 clicks at a CTR of 79.39%, flagged five
+times over.
 
-Sync all, on the links page. It walks every packaged partner whose folder is
-not the current work, one at a time, signed-off reports only.
+A report whose client is on the board belongs to that row and no other. A
+shared order id put Visit Hagerstown's report on somebody else's row, so
+clicking the row opened a different client in a different partner.
 
-A line item that says Social Mirror is a Social Mirror line. "Cross Platform
-Mobile Retargeting Social Mirror" matched the one-word `mobile` nickname before
-the full product name, so 37,128 impressions came off Social Mirror and went on
-to Mobile Conquesting.
+1080x1080 is not an ad size.
 
-922 tests pass.
+927 tests pass.

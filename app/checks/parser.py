@@ -101,6 +101,41 @@ def tokens(line: str) -> list[tuple[str, int, int]]:
     ]
 
 
+def _split_glued(cells: list[tuple[str, int, int]]) -> list[tuple[str, int, int]]:
+    """Pull a number off the end of the name cell when it has stuck to it.
+
+    Columns are found by the gap between them, and the gap is two spaces. A
+    long line-item name reaches far enough right to leave only one space before
+    its own impressions figure, and then the two are read as a single cell -
+    the name keeps the number and the row comes out one column short.
+
+    Which is not a row that fails; it is a row that shifts. St Louis Muny
+    Theater's "Ain't Too Proud" line is 85,835 impressions, 4,770 clicks, 5.56%
+    CTR and 79.39 times the national average, and with the impressions swallowed
+    it read as 4,770 impressions, 5.56 clicks and a CTR of 79.39% - so the row
+    was flagged for a CTR that does not match its own numbers, five times over
+    on one report, every one of them arithmetic this tool had done to itself.
+    """
+    if not cells:
+        return cells
+    text, start, end = cells[0]
+    if as_number(text) is not None:
+        return cells
+    m = re.search(r"\s(\$?-?[\d,]+(?:\.\d+)?%?)$", text)
+    if not m or as_number(m.group(1)) is None:
+        return cells
+    # Only when it looks like a figure rather than part of the name. A name
+    # ending "Age 25-54" or "6.15 Concerts" is common; a name ending in a
+    # thousands-separated number, a percentage or a dollar amount is not.
+    tok = m.group(1)
+    if not ("," in tok or "%" in tok or "$" in tok):
+        return cells
+    head = text[:m.start()].rstrip()
+    at = start + m.start(1)
+    return ([(head, start, start + len(head))] if head else []) + \
+        [(tok, at, at + len(tok))] + cells[1:]
+
+
 def as_number(tok: str) -> float | None:
     t = tok.replace(",", "").replace("%", "").replace("$", "").strip()
     return float(t) if re.fullmatch(r"-?\d+(\.\d+)?", t) else None
@@ -216,7 +251,7 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
                 continue
             if SKIP_LINE.search(raw) or raw.lstrip().startswith("*Note"):
                 continue
-            cells = tokens(raw)
+            cells = _split_glued(tokens(raw))
             if len([c for c in cells if c[0] in METRIC_LABELS]) >= need:
                 break
             values: dict[str, float] = {}

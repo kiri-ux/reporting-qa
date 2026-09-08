@@ -4023,3 +4023,67 @@ def test_the_abbreviation_sheet_is_read_by_column(tmp_path):
     got = read_sheet(f.read_bytes())
     assert got == {"LOCK KNOX": "Lockwood Digital Solutions Knoxville",
                    "INNO": "Innovision Advertising"}
+
+
+def test_a_report_never_lands_on_another_clients_row():
+    """A shared order id put Manning Media's Visit Hagerstown report on
+    somebody else's row. Clicking the row opened a different client in a
+    different partner, and the findings were about neither. A report whose own
+    client is on the board belongs to that row and no other."""
+    from app.board import Expected, _attach_reports
+
+    class R:
+        def __init__(self, client, market, ids):
+            self.client, self.market, self.account_ids = client, market, ids
+            self.is_lifetime = self.is_seo = False
+
+    rows = {
+        ("m", "hagerstown", "monthly"): Expected(
+            market="Manning Media", group="Manning Media",
+            client="Visit Hagerstown 2026", kind="monthly", account_ids="51666"),
+        ("e", "symphony", "monthly"): Expected(
+            market="Envision Marketing Consultants", group="Envision",
+            client="St. Louis Symphony Orchestra", kind="monthly",
+            account_ids="51666 55329"),
+    }
+    # Only the symphony's file has arrived, and it carries the shared id.
+    reports = [R("St. Louis Symphony Orchestra",
+                 "Envision Marketing Consultants", "51666 55329")]
+
+    class FakeDB:
+        def scalars(self, *a, **k):
+            class S:
+                def all(_s):
+                    return reports
+            return S()
+
+    _attach_reports(FakeDB(), "2026-08", rows)
+    got = {e.client: (e.report.client if e.report else None) for e in rows.values()}
+    assert got["St. Louis Symphony Orchestra"] == "St. Louis Symphony Orchestra"
+    assert got["Visit Hagerstown 2026"] is None, got
+
+    # And a client spelled differently to the row still finds it.
+    rows2 = {("m", "acme", "monthly"): Expected(
+        market="M", group="M", client="NORTH CAROLINA FURNITURE MART",
+        kind="monthly", account_ids="41111")}
+    reports = [R("North Carolina Furniture Mart", "M", "41111")]
+    _attach_reports(FakeDB(), "2026-08", rows2)
+    assert list(rows2.values())[0].report is not None
+
+
+def test_a_social_square_is_not_an_ad_size():
+    """1080x1080 is the square a social ad is built at. A display size in the
+    file name is left over from a display build; this is not."""
+    from app.checks.quality import check_social_mirror_sizes
+
+    def run(name):
+        text = ("Social Mirror Creative Performance\n"
+                " Creative Name          Impressions   Clicks    CTR\n\n"
+                f" {name}      12,000        3   0.03%\n")
+        return check_social_mirror_sizes({"text": text, "market": "M",
+                                          "client": "C",
+                                          "page_of": lambda _o: 8})
+
+    assert not run("LMSD Z90 Secret Contest_Social Mirror_X_8.24_z90-secret-"
+                   "travel- 1080x1080.jpg")
+    assert run("Acme_Social Mirror_300x250.jpg")
