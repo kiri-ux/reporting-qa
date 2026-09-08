@@ -3623,7 +3623,8 @@ def test_a_partner_who_never_sent_a_logo_is_not_flagged_for_the_default():
     """The default on their reports is not a mistake anybody is going to fix,
     so the finding says "chase this" about a thing with nothing behind it."""
     from app.checks.rules import NO_LOGO_MARKETS, check_market_logo
-    for m in ("Amazin Results LLC", "Ampersand", "ampersand"):
+    for m in ("Amazing Results LLC", "Amazin Results LLC", "Ampersand",
+              "Grace Impressions", "graceimpressions"):
         assert check_market_logo({"logo_generic": True, "market": m}) == [], m
     assert len(check_market_logo({"logo_generic": True,
                                   "market": "Lockwood Digital"})) == 1

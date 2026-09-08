@@ -1,4 +1,4 @@
-build 2026.09.08-201
+build 2026.09.08-202
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
@@ -16,8 +16,9 @@ An upload is made from a row. It can only replace that row's report now.
 
 NO-LOGO PARTNERS
 ================
-Amazin Results LLC, Ampersand, Grace Impressions. Never flagged for the default
-logo - they have never sent one, so there is nothing behind the finding. Send
+Amazing Results LLC, Ampersand, Grace Impressions. Never flagged for the
+default logo - they have never sent one, so there is nothing behind the
+finding. Both spellings of Amazing are in, in case the export has mine. Send
 more names and I will add them; they are one line in app/checks/rules.py.
 
 

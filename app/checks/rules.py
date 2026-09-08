@@ -1095,7 +1095,10 @@ def check_impression_pacing(ctx) -> list[dict]:
 
 # Partners who have never provided a logo. Add to this rather than acking the
 # same finding every month.
-NO_LOGO_MARKETS = {"amazinresultsllc", "ampersand", "graceimpressions"}
+# Both spellings of Amazing Results: I had it as "Amazin" and the export may
+# too, and a partner missed off this list is a finding nobody can act on.
+NO_LOGO_MARKETS = {"amazingresultsllc", "amazinresultsllc", "ampersand",
+                   "graceimpressions"}
 
 
 def check_market_logo(ctx) -> list[dict]:
