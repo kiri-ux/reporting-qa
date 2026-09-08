@@ -145,6 +145,20 @@ NEXT_TITLE = re.compile(
     r"|\S.*(?:Performance|Breakout|Publishers|Screenshots|Conversions|"
     r"by Day|by Strategy|by Ad Size))\s*$")
 
+# THE HALF THAT NEEDS A BLANK LINE ABOVE IT TO COUNT.
+#
+# "Top ..." is safe on its own - no line item is named that. The trailing-word
+# half is not, because a wrapped name can END on one of those words as easily
+# as carry it in the middle: Peters - Troy's Performance Max line item wraps
+# onto "Services/Homeowners/Retargeting Performance", which was read as the
+# next widget's title and thrown away. What was left, "Peters - Troy - HVAC
+# Max", no longer named a product, so 218,084 Performance Max impressions
+# stayed in the device-eligible total and the breakout was reported as 84%
+# short of a figure it was never part of.
+#
+# A widget title has a blank line above it. The lines a name wraps onto do not.
+TITLE_HEAD = re.compile(r"^\s*Top\s+\S.*$")
+
 
 def extract_tables(text: str, strict: bool = True) -> list[Table]:
     """A table starts at a header line carrying at least three metric labels.
@@ -174,6 +188,11 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
 
         table = Table(title=title)
         name_col_end = labeled[0][1] if labeled else 0
+        # WAS THERE A BLANK LINE IMMEDIATELY BEFORE THIS ONE? Rows are
+        # separated by one and the lines a wrapped name runs onto are not,
+        # which is the only thing that tells a continuation from the next
+        # widget's title. See where it is used below.
+        gap = True
         for j in range(i + 1, len(lines)):
             raw = lines[j]
             # A TABLE ENDS WHERE ITS PAGE DOES.
@@ -192,7 +211,10 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
             # its own header and starts a new table here.
             if PAGE_HEAD.search(raw):
                 break
-            if not raw.strip() or SKIP_LINE.search(raw) or raw.lstrip().startswith("*Note"):
+            if not raw.strip():
+                gap = True
+                continue
+            if SKIP_LINE.search(raw) or raw.lstrip().startswith("*Note"):
                 continue
             cells = tokens(raw)
             if len([c for c in cells if c[0] in METRIC_LABELS]) >= need:
@@ -213,20 +235,27 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
             # A wrapped row name continues on the next line with no numbers in
             # the metric columns. Append it, or the product suffix that decides
             # device eligibility ("... B2B CTV", "... Mobile") is lost.
+            #
+            # See TITLE_HEAD for why the blank line matters.
             if not values and table.rows and cells:
                 head = cells[0]
-                looks_like_heading = bool(NEXT_TITLE.match(raw))
+                looks_like_heading = bool(
+                    TITLE_HEAD.match(raw) or (gap and NEXT_TITLE.match(raw)))
                 if (head[1] < name_col_end and as_number(head[0]) is None
                         and not looks_like_heading and len(cells) == 1):
                     prev_name, prev_vals = table.rows[-1]
                     table.rows[-1] = ((prev_name + " " + raw.strip()).strip(), prev_vals)
+                gap = False
                 continue
             if not values:
+                gap = False
                 continue
             if strict and not all(k in values for k in CORE):
+                gap = False
                 continue
             name = cells[0][0] if cells and as_number(cells[0][0]) is None else ""
             table.rows.append((name, values))
+            gap = False
         if table.rows:
             out.append(table)
     return out

@@ -542,3 +542,26 @@ def test_the_trace_states_the_fact_and_stops(db):
     # on either.
     assert life[key].endswith("· paused")
     assert "not owed" not in life[key] and "belongs" not in life[key]
+
+
+def test_a_year_in_a_campaign_name_is_not_an_order_id():
+    """Order ids are read out of the client name as well as the account column,
+    and four digits was wide enough to catch the year. "LMSD - Z90 Secret
+    Contest 2026" was filed under the id 2026, and so was every other campaign
+    named after the year in every market - so they all matched each other.
+
+    Z90's report came out carrying 51666 51923 53511 54820 54822 54824 55200,
+    of which one is Z90's; 55200 belongs to Excel Summer-Fall 2026 over at Red
+    Pony Marketing. Its pacing was measured against the lot - 303,201 served
+    against 1,957,689 ordered, 85% short - and uploading the Z90 file opened
+    the 91X report, because on this key they were the same client."""
+    from app.roster import _keyify
+
+    z90 = _keyify("LMSD - Z90 Secret Contest 2026", "54824")
+    excel = _keyify("Excel Summer-Fall 2026", "55200")
+    assert z90 == {"54824"}
+    assert not z90 & excel
+    # An id in the name is still an id.
+    assert _keyify("Acme - 51742", "") == {"51742"}
+    # And the account column is taken as it stands, whatever it looks like.
+    assert _keyify("Acme 2026", "1999") == {"1999"}

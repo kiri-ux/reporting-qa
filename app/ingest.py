@@ -99,16 +99,16 @@ def same_client(a: str, b: str) -> bool:
     numbers, under somebody else's name. It did that twice, including after a
     manual re-pull, which is how it looked like an upload problem.
 
-    Names are typed differently in the two systems, so this is deliberately
-    loose - case, punctuation and spacing do not count, and one name sitting
-    inside the other is a match. What it will not do is call two names the same
-    when they disagree on a word.
+    Client names are exact - "LMSD - Z90 Secret Contest 2026" is a different
+    client from "LMSD - MAGIC Secret Contest 2026", not a variant of it. Case,
+    punctuation and spacing are the only things allowed to differ, because the
+    two systems disagree about those and about nothing else.
     """
     ka = re.sub(r"[^a-z0-9]", "", (a or "").lower())
     kb = re.sub(r"[^a-z0-9]", "", (b or "").lower())
     if not ka or not kb:
         return True          # nothing to disagree about
-    return ka == kb or ka in kb or kb in ka
+    return ka == kb
 
 
 def _index(idx: dict, rep) -> None:

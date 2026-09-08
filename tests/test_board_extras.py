@@ -3746,7 +3746,8 @@ def test_an_upload_cannot_replace_a_different_campaign_in_the_same_market():
     # Still loose enough for the same client typed two ways.
     assert same_client("NORTH CAROLINA FURNITURE MART",
                        "North Carolina Furniture Mart")
-    assert same_client("Acme Inc.", "Acme")
+    assert same_client("Acme Inc", "ACME, INC."), "punctuation and case only"
+    assert not same_client("Acme Inc", "Acme")
     assert same_client("", "Acme")
     src = inspect.getsource(main.upload_for_expected)
     assert "same_client(client, r.client" in src

@@ -1,28 +1,34 @@
-build 2026.09.08-209
+build 2026.09.08-210
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
+A year in a campaign name was being read as an order id. "LMSD - Z90 Secret
+Contest 2026" was filed under the id 2026, and so was every other campaign
+named after the year, in every market - so they all matched each other. Z90's
+report carried 51666 51923 53511 54820 54822 54824 55200; one of those is
+Z90's, and 55200 is Excel Summer-Fall 2026 at Red Pony Marketing. Its pacing
+was measured against all of them. Fixed at the root, which also settles the
+Z90 file opening the 91X report.
+
+Client names are exact. Z90, MAGIC and 91X are three clients.
+
+A wrapped line item name that ends on a widget word is still the name. Peters -
+Troy's Performance Max line wraps onto "Services/Homeowners/Retargeting
+Performance", which was read as the next widget's title and thrown away - so
+218,084 Performance Max impressions stayed in the device-eligible total and
+the breakout was reported as 84% short.
+
 Sync reads the folder before it skips anything. Our record of what was filed
 was trusted over the folder itself, so a file moved, renamed or deleted after
-it went up left every report skipped and sync doing nothing. Drive and Dropbox
-both.
+it went up left every report skipped and sync doing nothing.
 
-Dropbox keeps its own record of what is in its folder, separate from Drive's.
-Drive was filing first and stamping every report, Dropbox read those stamps as
-work already done and sent nothing - so the folder was never made and the card
-said not_found.
+Dropbox keeps its own record, separate from Drive's. Drive was filing first and
+stamping every report, Dropbox read those stamps as work already done and sent
+nothing - so the folder was never made and the card said not_found.
 
 A Dropbox failure is written in words.
-
-An upload can only replace a report for the same client. LMSD's Z90, MAGIC and
-91X campaigns share a market and carry each other's order ids, so the Z90 file
-opened 91X.
-
-A report lands on the row that names it. Those three rows were one row between
-them, so two of the three files attached to nothing and read "report not
-received".
 
 The partner search on the Packaged links page filters the list, not just the
 counter.
 
-909 tests pass.
+912 tests pass.

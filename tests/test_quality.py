@@ -1324,3 +1324,50 @@ def test_a_flat_clipped_logo_is_not_an_empty_cell(tmp_path):
 
     got = blank_previews(path, page_words(path))
     assert len(got) == 1, "only the row with nothing in it at all"
+
+
+def test_a_wrapped_name_ending_in_a_widget_word_is_still_the_name():
+    """Peters - Troy's Performance Max line item wraps as
+
+        Peters - Troy - HVAC                    218,084  6,004 ...
+        Services/Homeowners/Retargeting Performance
+        Max
+
+    and the middle line ends in "Performance", so it was read as the next
+    widget's title and thrown away. The row came out as "Peters - Troy - HVAC
+    Max", the product was gone from the name, and 218,084 Performance Max
+    impressions stayed in the device-eligible total - a breakout of 41,737
+    judged against a figure it was never part of, reported as 84% short.
+
+    A heading has a blank line above it. A wrapped name does not."""
+    from app.checks.parser import extract_tables
+
+    text = "\n".join([
+        "Line Item Performance",
+        "Line Item Name                     Impressions   Clicks    CTR",
+        "",
+        "Peters - Troy - HVAC                    218,084    6,004  2.75%",
+        "Services/Homeowners/Retargeting Performance",
+        "Max",
+        "",
+        "Peters - Troy - Homeowners/HVAC/Air      24,115        0  0.00%",
+        "Conditioning Audio",
+        "",
+        "Online Audio Creative Performance",
+    ])
+    t = [x for x in extract_tables(text) if x.title == "Line Item Performance"][0]
+    names = [n for n, _v in t.body]
+    assert names[0] == ("Peters - Troy - HVAC Services/Homeowners/"
+                        "Retargeting Performance Max")
+    assert names[1] == "Peters - Troy - Homeowners/HVAC/Air Conditioning Audio"
+    # And the widget title after the blank line is not swallowed into the name.
+    assert len(names) == 2
+
+
+def test_performance_max_is_not_device_eligible():
+    from app.checks.rules import is_device_excluded
+    from app.config import settings
+    ex = settings.excluded_products
+    assert is_device_excluded("Peters - Troy - HVAC Services/Homeowners/"
+                              "Retargeting Performance Max", ex)
+    assert not is_device_excluded("Peters - Troy - AI Audio", ex)

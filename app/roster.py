@@ -55,6 +55,21 @@ def _date(v):
 
 ACC = re.compile(r"\b\d{4,6}\b")
 
+# A YEAR IN A CAMPAIGN NAME IS NOT AN ORDER ID.
+#
+# Order ids are read out of the client name as well as the account column,
+# because half the time the name is the only place they appear. Four digits
+# was wide enough to catch the year, so "LMSD - Z90 Secret Contest 2026" was
+# filed under the id 2026 - and so was every other campaign named after the
+# year, in every market. They all matched each other.
+#
+# Z90's report came out carrying 51666 51923 53511 54820 54822 54824 55200,
+# of which one is Z90's; 55200 belongs to Excel Summer-Fall 2026 over at Red
+# Pony Marketing. Its pacing was measured against all of them - 303,201 served
+# against 1,957,689 ordered, 85% short - and uploading the Z90 file opened the
+# 91X report, because on this key they were the same client.
+YEARISH = re.compile(r"^(?:19|20)\d{2}$")
+
 
 def _rows_from_csv(raw: bytes) -> list[list[str]]:
     text = raw.decode("utf-8-sig", errors="replace")
@@ -180,7 +195,10 @@ def _import_rows(db: Session, rows: list[list[str]], replace: bool = True) -> in
 
 
 def _keyify(client: str, accounts: str) -> set[str]:
-    ids = set(ACC.findall(accounts or "")) | set(ACC.findall(client or ""))
+    # The account column is taken as it stands - a number there is an order id
+    # whatever it looks like. The name is where the year lives. See YEARISH.
+    ids = set(ACC.findall(accounts or ""))
+    ids |= {a for a in ACC.findall(client or "") if not YEARISH.match(a)}
     return ids
 
 
