@@ -3707,3 +3707,30 @@ def test_a_spend_only_product_is_not_in_the_impressions_total():
     assert "Performance Max" in SPEND_PRODUCTS and "PPC" in SPEND_PRODUCTS
     assert got["total"] == 42704.0, got
     assert got["flat"] == 218084.0
+
+
+def test_a_row_that_lost_a_cell_is_not_judged():
+    """BAIR FOUNDATION. The "Ohio - Geo-Fencing Mobile" row sits at a page
+    break, pdftotext lays it out with narrow gaps, its first number is dropped
+    and the rest shift one column left - 16,738 / 327 / 1.95% read as 327 /
+    1.95 / 27.91% and reported as "shows 27.91%, 2/327"."""
+    from app.checks.rules import check_row_math
+
+    class T:
+        title = "Line Item Performance"
+        body = [("Good A", {"Impressions": 16741.0, "Clicks": 508.0,
+                            "CTR": 3.03, "X the National Avg (.07%)": 43.35}),
+                ("Good B", {"Impressions": 16745.0, "Clicks": 373.0,
+                            "CTR": 2.23, "X the National Avg (.07%)": 31.82}),
+                ("Drifted", {"Impressions": 327.0, "Clicks": 1.95,
+                             "CTR": 27.91})]
+    assert check_row_math({"text": "", "tables": [T()], "page_of": None}) == []
+
+    # A genuinely wrong row in a full table is still said.
+    class U(T):
+        body = [("Good A", {"Impressions": 1000.0, "Clicks": 10.0, "CTR": 1.0,
+                            "X the National Avg (.07%)": 1.0}),
+                ("Bad", {"Impressions": 1000.0, "Clicks": 10.0, "CTR": 9.0,
+                         "X the National Avg (.07%)": 1.0})]
+    out = check_row_math({"text": "", "tables": [U()], "page_of": None})
+    assert len(out) == 1 and "Bad" in out[0]["detail"]

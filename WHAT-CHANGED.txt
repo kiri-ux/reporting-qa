@@ -1,23 +1,23 @@
-build 2026.09.08-205
+build 2026.09.08-206
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-The pacing panel's flat-impressions paragraph is now "218,084 not paced" with
-the list on hover.
+Bair Foundation's five "Row CTR does not match" findings are gone. That row
+sits at a page break, pdftotext gives it narrow gaps, its first number drops
+and the rest shift one column left. A row missing a column the rest of the
+table fills in is no longer judged.
 
-Performance Max and PPC are out of the impressions total and out of the
-device-eligible total. The device pattern is no longer anchored to the end of
-the line item name, which wraps.
+The pacing panel's flat-impressions line is "218,084 not paced", list on hover.
+
+Performance Max and PPC are out of the impressions total and the
+device-eligible total.
 
 Part-month lines are paced against a part-month goal.
 
-The sweep only waits for quiet traffic on a long deploy-driven queue, so a
-partner Re-check runs when you press it.
+The sweep only waits for quiet traffic on a long deploy-driven queue.
 
 Amazing Results LLC, Ampersand, Grace Impressions: no default-logo finding.
 
 An upload can only replace a report on its own market.
 
-CLAUDE.md now carries the rule about not explaining fixes on screen.
-
-901 tests pass.
+902 tests pass.

@@ -501,7 +501,26 @@ def check_device(ctx) -> list[dict]:
 def check_row_math(ctx) -> list[dict]:
     out = []
     for t in ctx["tables"]:
+        # A ROW THAT LOST A CELL HAS EVERY OTHER CELL IN THE WRONG COLUMN.
+        #
+        # Bair Foundation's "Ohio - Geo-Fencing Mobile" row sits at a page
+        # break and pdftotext lays it out with narrow gaps, so its first number
+        # is dropped and the rest shift one column left: Impressions gets the
+        # clicks, Clicks gets the CTR, CTR gets the National Avg multiplier.
+        # 16,738 / 327 / 1.95% was read as 327 / 1.95 / 27.91% and reported as
+        # "shows 27.91%, 2/327".
+        #
+        # The tell is the missing column at the end. Judged against the columns
+        # the rest of the table fills in, such a row is not a row anybody read.
+        full = [set(v) for _n, v in t.body]
+        common = set.intersection(*full) if full else set()
+        if len(full) > 2:
+            widest = max(full, key=len)
+            common = {k for k in widest
+                      if sum(1 for f in full if k in f) > len(full) / 2}
         for name, v in t.body:
+            if common and not common <= set(v):
+                continue
             imps, clicks, ctr = v.get("Impressions"), v.get("Clicks"), v.get("CTR")
             if not imps or clicks is None or ctr is None:
                 continue
