@@ -147,8 +147,16 @@
       <h2 style="margin-top:22px">Pacing{% if rep.is_lifetime %} · campaign to date{% endif %}</h2>
       <table class="pacing">
         <tbody>
-          {% set ns = namespace(unit='') %}
+          {# A unit with nothing to compare on any of its rows is not a
+             section. Performance Max with no figures printed a Spend heading
+             and one "-/- no comparison" line. #}
+          {% set live_units = [] %}
           {% for p in pacing %}
+            {% if p.pace is not none and p.unit not in live_units %}
+              {% set _ = live_units.append(p.unit) %}{% endif %}
+          {% endfor %}
+          {% set ns = namespace(unit='') %}
+          {% for p in pacing if p.unit in live_units %}
             {% if p.unit != ns.unit %}
               {% set ns.unit = p.unit %}
               <tr class="phead"><td colspan="3">{{ 'Spend' if p.unit == 'money' else 'Impressions' }}</td></tr>
