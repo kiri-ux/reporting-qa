@@ -759,8 +759,8 @@
               <input type="hidden" name="client" value="{{ e.client }}">
               <input type="hidden" name="account_ids" value="{{ e.account_ids }}">
               <input type="hidden" name="kind" value="{{ e.kind }}">
-              <label class="uplabel" title="Put a PDF against this row by hand">
-                <input type="file" name="file" accept="application/pdf,.pdf"
+              <label class="uplabel" title="Put a file against this row by hand">
+                <input type="file" name="file" accept=".pdf,.pptx"
                        onchange="this.form.submit()">
                 Upload
               </label>
@@ -782,7 +782,7 @@
               <input type="hidden" name="kind" value="{{ e.kind }}">
               <input type="hidden" name="skip_checks" value="1">
               <label class="uplabel" data-tip="Store it, name it and package it with the rest, without running the checks. For SEO and anything else that is not a Digital Marketing Report.">
-                <input type="file" name="file" accept="application/pdf,.pdf"
+                <input type="file" name="file" accept=".pdf,.pptx"
                        onchange="this.form.submit()">
                 No checks
               </label>

@@ -1,31 +1,19 @@
-build 2026.09.08-211
+build 2026.09.08-212
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-A re-check now works out a report's order ids again. It was writing back
-findings and leaving the ids as the import first read them, so fixing the rule
-in 210 reached no stored report - the seven orders were still on the Z90 page.
-Every report re-checks itself on this deploy; the ids and the filename correct
-themselves as it goes.
+Corrected reports now reach Drive. The Drive upload recorded the name it filed
+under and never the file - and a corrected report keeps its name, only the file
+underneath changes. So sync compared a name to itself, decided nothing had
+moved, and skipped it. Dropbox had always recorded both.
 
-A year in a campaign name is not an order id. "LMSD - Z90 Secret Contest 2026"
-was filed under 2026, along with every other campaign named after the year, so
-they all matched each other. 55200 is Excel Summer-Fall 2026 at Red Pony
-Marketing.
+Nothing goes out unstamped. Every report filed to Drive has no record of which
+file went up, so the first sync of each partner after this deploy sends the
+month in full and writes it down. After that it sends only what moved.
 
-Client names are exact. Z90, MAGIC and 91X are three clients.
+PowerPoint uploads. Some SEO comes back as a deck: stored, named, signed off
+and packaged like anything else, checks not run - there is nothing in a deck
+for a rule about a Digital Marketing Report widget to read. The report page
+offers it for download instead of embedding it.
 
-A wrapped line item name that ends on a widget word is still the name. Peters -
-Troy's Performance Max line wraps onto "Services/Homeowners/Retargeting
-Performance", which was read as a heading and thrown away, so 218,084
-Performance Max impressions stayed in the device-eligible total.
-
-Sync reads the folder before it skips anything.
-
-Dropbox keeps its own record, separate from Drive's.
-
-A Dropbox failure is written in words.
-
-The partner search on the Packaged links page filters the list.
-
-913 tests pass.
+917 tests pass.

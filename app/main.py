@@ -896,7 +896,9 @@ def report_file(report_id: int, db: Session = Depends(get_db)):
     # And never cached. The URL does not change when a corrected PDF replaces
     # the old one, so the browser kept showing the file that had just been
     # fixed - findings updated, page did not.
-    return FileResponse(rep.stored_path, media_type="application/pdf",
+    from .filekind import kind_of_path, media_type
+    return FileResponse(rep.stored_path,
+                        media_type=media_type(kind_of_path(rep.stored_path)),
                         headers={"Content-Disposition":
                                  f'inline; filename="{rep.filename}"',
                                  "Cache-Control": "no-store, must-revalidate",
@@ -2757,9 +2759,11 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                      budgets_for)
     from .version import rules_version as _rv
 
+    from .filekind import PPTX, extension, kind_of_blob, slide_count
     blob = await file.read()
-    if not blob[:5] == b"%PDF-":
-        raise HTTPException(400, "That is not a PDF.")
+    filekind = kind_of_blob(blob, file.filename or "")
+    if not filekind:
+        raise HTTPException(400, "That is not a PDF or a PowerPoint.")
     period = period or settings.default_period or ""
     is_lifetime = kind == "lifetime"
     # A REPORT THE CHECKS CANNOT JUDGE.
@@ -2782,7 +2786,12 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     # An SEO-only client's row IS the SEO row, so an upload against it belongs
     # there whichever kind the form happened to post.
     is_seo_report = kind == "seo" or _is_seo_row(db, client, account_ids, period)
-    no_checks = (skip_checks == "1") or is_seo_report
+    # A DECK IS NEVER CHECKED. Every rule is written about a widget on a page
+    # of a Digital Marketing Report; there is nothing in a PowerPoint for any
+    # of them to read, and a screen of failures about the wrong kind of
+    # document is worse than no screen at all. Which is the SEO argument
+    # already, and SEO is where the decks come from.
+    no_checks = (skip_checks == "1") or is_seo_report or filekind == PPTX
 
     # If one already exists for this client and cycle, this is a replacement
     # and should go through the route that knows how to handle one.
@@ -2825,7 +2834,13 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
 
     store = settings.data_dir / f"batch-{batch.id}"
     store.mkdir(parents=True, exist_ok=True)
-    safe = re.sub(r"[^A-Za-z0-9._ -]", "_", file.filename or "")[:180] or f"{client}.pdf"
+    safe = (re.sub(r"[^A-Za-z0-9._ -]", "_", file.filename or "")[:180]
+            or f"{client}{extension(filekind)}")
+    # THE NAME ON DISK HAS TO CARRY THE KIND. Everything downstream reads the
+    # extension to know what it is holding, so a deck saved as .pdf is a deck
+    # nothing can open.
+    if not safe.lower().endswith(extension(filekind)):
+        safe += extension(filekind)
     path = store / safe
     path.write_bytes(blob)
 
@@ -2848,8 +2863,10 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     # question, and a check is handed facts rather than going looking.
     from .checks.logo import header_logo_hash, is_generic
     from .recheck import sibling_for, sibling_of
-    logo = header_logo_hash(path)
-    logo_bad = is_generic(db, logo)
+    # The logo is taken by rendering page one, which needs a page one. A deck
+    # has no hash and nothing compares it to anything.
+    logo = header_logo_hash(path) if filekind != PPTX else ""
+    logo_bad = is_generic(db, logo) if logo else False
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
     if no_checks:
         # Read for its page count and nothing else. A report nobody is judging
@@ -2857,6 +2874,8 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         # sensible name.
         from .checks.parser import quick_meta
         result = quick_meta(path, file.filename or safe)
+        if filekind == PPTX:
+            result["pages"] = slide_count(path)
     else:
       try:
         result = run_all(path, filename=file.filename,
@@ -3063,9 +3082,11 @@ async def replace_report(report_id: int, request: Request,
     rep = db.get(Report, report_id)
     if not rep:
         raise HTTPException(404)
+    from .filekind import PPTX, extension, kind_of_blob, slide_count
     blob = await file.read()
-    if not blob[:5] == b"%PDF-":
-        raise HTTPException(400, "That is not a PDF.")
+    filekind = kind_of_blob(blob, file.filename or "")
+    if not filekind:
+        raise HTTPException(400, "That is not a PDF or a PowerPoint.")
 
     # Whatever the file is called on your machine, it is filed under the name
     # this report already has. A corrected copy comes back as "... (1).pdf" or
@@ -3094,12 +3115,18 @@ async def replace_report(report_id: int, request: Request,
         rep.is_lifetime = True
     if up.get("client") and not rep.client:
         rep.client = up["client"]
-    _rename(rep, file.filename or "", db)
+    # A DECK REPLACING A PDF CHANGES THE FILE'S NAME, not only its contents.
+    # The stored path decides the extension, so it is set before the rename.
     path = Path(rep.stored_path) if rep.stored_path else None
+    if path is not None and not str(path).lower().endswith(extension(filekind)):
+        path = path.with_suffix(extension(filekind))
+        rep.stored_path = str(path)
+    _rename(rep, file.filename or "", db)
     if path is None:
         store = settings.data_dir / f"batch-{rep.batch_id}"
         store.mkdir(parents=True, exist_ok=True)
         path = store / rep.filename
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(blob)
 
     # A lifetime is measured against the campaign that ended, so its flight
@@ -3122,10 +3149,18 @@ async def replace_report(report_id: int, request: Request,
     orders_ok = not _orders_stale(db)
     from .checks.logo import header_logo_hash, is_generic
     from .recheck import sibling_for, sibling_of
-    logo = header_logo_hash(path)
-    logo_bad = is_generic(db, logo)
+    logo = header_logo_hash(path) if filekind != PPTX else ""
+    logo_bad = is_generic(db, logo) if logo else False
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    try:
+    if filekind == PPTX or rep.checks_skipped:
+        # Nothing in a deck for the rules to read. See the upload route.
+        from .checks.parser import quick_meta
+        result = quick_meta(path, file.filename or rep.filename)
+        if filekind == PPTX:
+            result["pages"] = slide_count(path)
+        rep.checks_skipped = True
+    else:
+      try:
         result = run_all(path, filename=rep.filename,
                          for_client=rep.client, expected_products=exp,
                          flight=flight,
@@ -3138,7 +3173,7 @@ async def replace_report(report_id: int, request: Request,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok,
                      sibling=sibling_of(db, rep))
-    except Exception as exc:  # noqa: BLE001
+      except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
         rep.findings = [{"code": "unreadable", "severity": "fail",
                          "title": "The replacement could not be read",

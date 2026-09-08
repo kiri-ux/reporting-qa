@@ -40,6 +40,21 @@ def ids_of(raw: str) -> str:
     return " ".join(dict.fromkeys(p for p in parts if p))
 
 
+def _extension_of(rep) -> str:
+    """The extension this report's file actually has - the stored file first.
+
+    The stored path is the fact; the name is only what it was last called, and
+    on a report whose deck replaced a PDF the two disagree for one save.
+    """
+    for attr in ("stored_path", "filename"):
+        v = (getattr(rep, attr, "") or "").lower()
+        if v.endswith(".pptx"):
+            return ".pptx"
+        if v.endswith(".pdf"):
+            return ".pdf"
+    return ".pdf"
+
+
 def canonical_name(rep) -> str:
     """The name this report should be filed under.
 
@@ -52,9 +67,13 @@ def canonical_name(rep) -> str:
     ids = ids_of(getattr(rep, "account_ids", "") or "")
     prefix = ("Lifetime" if getattr(rep, "is_lifetime", False)
               else month_label(getattr(rep, "period", "") or ""))
+    # NOT ALWAYS .pdf. Some SEO comes back as a PowerPoint deck, and a deck
+    # filed as a .pdf is a file the partner cannot open. The extension comes
+    # from what is actually on disk.
+    ext = _extension_of(rep)
     if client and prefix:
         stem = f"{prefix}_{client}" + (f" {ids}" if ids else "")
-        return f"{stem}.pdf"
+        return f"{stem}{ext}"
 
     raw = (getattr(rep, "filename", "") or "").strip()
     stem, dot, ext = raw.rpartition(".")

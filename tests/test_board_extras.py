@@ -3784,3 +3784,95 @@ def test_a_report_lands_on_the_row_that_names_it():
     for e in rows.values():
         assert e.report is not None, e.client
         assert e.report.client == e.client
+
+
+def test_drive_records_which_file_it_filed(tmp_path):
+    """A report keeps its name when it is corrected - only the file underneath
+    changes, and the stamp is the only thing that describes the file. The Drive
+    path never wrote one, so needs_send compared a name to itself, said nothing
+    had moved and skipped it. Somebody fixed a report, pressed sync, and the
+    partner's folder went on holding yesterday's file with the board saying it
+    was synced."""
+    import inspect
+    from app import delivery
+    src = inspect.getsource(delivery.upload_drive_folder)
+    assert "r.delivered_stamp = file_stamp(r.stored_path)" in src
+    # And nothing goes out unstamped, so the first sync after this writes them.
+    assert "not unstamped(e)" in src
+    dbx = inspect.getsource(delivery.upload_dropbox_folder)
+    assert 'not unstamped(e, "dropbox")' in dbx
+
+
+def test_an_unrecorded_file_is_sent(tmp_path):
+    """An unknown stamp on the board is a guess either way. To a sync it is
+    not: it means nobody knows whether the folder holds the current file."""
+    from app.board import Expected
+    from app.db import Report
+    from app.delivery import needs_send, unstamped
+
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    r = Report(filename="August 2026_Acme 1.pdf", stored_path=str(pdf),
+               client="Acme", severity="pass", findings=[],
+               delivered_as="August 2026_Acme 1.pdf", delivered_stamp="")
+    e = Expected(market="M", group="P", client="Acme", kind="monthly", report=r)
+    assert needs_send(e, "drive") is False     # the board stays quiet
+    assert unstamped(e, "drive") is True       # the sync does not
+    from app.delivery import file_stamp
+    r.delivered_stamp = file_stamp(str(pdf))
+    assert unstamped(e, "drive") is False
+
+
+def test_a_powerpoint_can_be_uploaded():
+    """Some SEO comes back as a deck. It still has to be stored, named, signed
+    off and packaged - it just cannot be read by rules written about the
+    widgets on a Digital Marketing Report."""
+    import inspect
+    from app import main
+    from app.filekind import PDF, PPTX, extension, kind_of_blob, media_type
+    from app.naming import canonical_name
+
+    assert kind_of_blob(b"%PDF-1.4 ...", "x.pdf") == PDF
+    assert kind_of_blob(b"PK\x03\x04rest", "seo.pptx") == PPTX
+    # A zip that is not a deck is not a report.
+    assert kind_of_blob(b"PK\x03\x04rest", "books.xlsx") == ""
+    assert kind_of_blob(b"GIF89a", "x.gif") == ""
+    assert extension(PPTX) == ".pptx" and "presentationml" in media_type(PPTX)
+
+    class R:
+        client = "Acme"
+        account_ids = "51742"
+        period = "2026-08"
+        is_lifetime = False
+        filename = "whatever.pptx"
+        stored_path = "/data/batch-1/whatever.pptx"
+    assert canonical_name(R()) == "August 2026_Acme 51742.pptx"
+    R.stored_path = "/data/batch-1/whatever.pdf"
+    R.filename = "whatever.pdf"
+    assert canonical_name(R()) == "August 2026_Acme 51742.pdf"
+
+    # A deck is never judged, and never has its page-one logo taken.
+    src = inspect.getsource(main.upload_for_expected)
+    assert "or filekind == PPTX" in src
+    assert "header_logo_hash(path) if filekind != PPTX" in src
+    assert "slide_count(path)" in src
+    html = (TPL / "viewer.html").read_text()
+    assert "endswith('.pptx')" in html
+    assert 'accept=".pdf,.pptx"' in html
+
+
+def test_slide_count_reads_the_package(tmp_path):
+    import zipfile
+    from app.filekind import slide_count
+
+    deck = tmp_path / "d.pptx"
+    with zipfile.ZipFile(deck, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        for i in (1, 2, 3):
+            z.writestr(f"ppt/slides/slide{i}.xml", "<sld/>")
+        z.writestr("ppt/slides/_rels/slide1.xml.rels", "<rels/>")
+    assert slide_count(deck) == 3
+    # Anything that will not open counts as nothing, like a broken PDF does.
+    bad = tmp_path / "b.pptx"
+    bad.write_bytes(b"not a zip")
+    assert slide_count(bad) == 0

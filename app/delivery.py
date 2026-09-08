@@ -348,7 +348,8 @@ def upload_drive_folder(group, period: str, cycle_label: str,
         # pressing sync again changes nothing at all - a partner reading
         # "synced, 13 files" over a folder holding two, which is exactly what
         # Stephens Tulsa was doing. If the name is not in the folder, it goes.
-        if not tag and not needs_send(e) and name in dest_files[dest]:
+        if (not tag and not needs_send(e) and not unstamped(e)
+                and name in dest_files[dest]):
             skipped += 1
             continue
         # AND A RENAME LEAVES NO SECOND COPY BEHIND.
@@ -406,6 +407,15 @@ def upload_drive_folder(group, period: str, cycle_label: str,
             # folder somebody asked for; recording it here would make the next
             # real delivery hunt for a stale name in the wrong place.
             r.delivered_as = name[:255]
+            # AND WHICH FILE IT WAS. This line was missing, and it is the whole
+            # of the corrected-report problem: a report keeps its name when it
+            # is corrected, only the file underneath changes, and the file is
+            # what the stamp is for. With no stamp ever written on the Drive
+            # side, needs_send compared a name to itself, said nothing had
+            # moved, and skipped it. Somebody fixed a report, pressed sync, and
+            # the partner's folder went on holding yesterday's file - with the
+            # board saying it was synced. Dropbox had always written it.
+            r.delivered_stamp = file_stamp(r.stored_path)
         n += 1
         if progress:
             progress(n, f"filing {e.client} in Drive")
@@ -498,6 +508,7 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         # ONLY WHAT HAS CHANGED, and only when it is really in there. See the
         # same rule in the Drive path.
         if (not tag and not needs_send(e, "dropbox")
+                and not unstamped(e, "dropbox")
                 and report_filename(e) in there):
             skipped += 1
             continue
@@ -762,6 +773,26 @@ def filed_fields(target: str) -> tuple[str, str]:
     return "delivered_as", "delivered_stamp"
 
 
+def unstamped(e, target: str = "drive") -> bool:
+    """Did this report go up without us recording WHICH file went up?
+
+    The board treats an unknown stamp as "not changed", which is right for the
+    board - it is a guess either way and crying wolf about it teaches people to
+    ignore the flag. A sync cannot afford the same guess. It has to be sure the
+    folder holds the current file, and an unknown stamp means it does not know.
+
+    Every report filed to Drive has an unknown stamp, because until now the
+    Drive path never wrote one. So the first sync after this lands sends each
+    Drive partner's month in full, writes the stamps, and from then on sends
+    only what actually moved.
+    """
+    r = getattr(e, "report", None)
+    if not r or not getattr(r, "stored_path", ""):
+        return False
+    _as, stamp_col = filed_fields(target)
+    return not (getattr(r, stamp_col, "") or "")
+
+
 def needs_send(e, target: str = "drive") -> bool:
     """Is this report different from what is sitting in the partner's folder?
 
@@ -925,7 +956,9 @@ def start_delivery(db: Session, period: str, group_name: str, *,
         row.total = len([e for e in g.expected if e.report and e.report.stored_path])
     else:
         rows_ = [e for e in g.expected if not ready_only or e.ready]
-        row.total = len([e for e in rows_ if needs_send(e, _group_target(g))])
+        t = _group_target(g)
+        row.total = len([e for e in rows_
+                         if needs_send(e, t) or unstamped(e, t)])
     row.note = "starting"
     row.started_at = row.updated_at = dt.datetime.utcnow()
     db.commit()

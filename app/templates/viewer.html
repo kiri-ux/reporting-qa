@@ -322,13 +322,13 @@
     <form method="post" action="/report/{{ rep.id }}/replace"
           enctype="multipart/form-data" class="repform">
       <label class="drop" id="drop">
-        <input type="file" name="file" accept="application/pdf,.pdf" required>
+        <input type="file" name="file" accept=".pdf,.pptx" required>
         <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20">
           <path d="M12 16V4m0 0L7 9m5-5l5 5M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"
                 fill="none" stroke="currentColor" stroke-width="1.8"
                 stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span class="dtext">Drop the corrected PDF here, or <u>choose a file</u></span>
+        <span class="dtext">Drop the corrected file here, or <u>choose a file</u></span>
       </label>
       {# What it will be called once it is here, so nobody has to wonder
          whether "(1)" or "download.pdf" matters. It does not. #}
@@ -343,7 +343,7 @@
           the order id was missing or wrong, so it was filed under the name
           above.</p>
       {% endif %}
-      <button class="mini" type="submit" title="Re-runs every check. Accepted findings and the sign-off reset, since they described the old file. Your note is kept.">Upload the corrected PDF</button>
+      <button class="mini" type="submit" title="Re-runs every check. Accepted findings and the sign-off reset, since they described the old file. Your note is kept.">Upload the corrected file</button>
     </form>
 
     {# THE PANEL SHOWS WHENEVER THERE IS A FILE, not only when a fingerprint
@@ -432,7 +432,15 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
   </aside>
 
   <section class="pdfwrap">
-    {% if rep.stored_path %}
+    {% if rep.stored_path and rep.stored_path.lower().endswith('.pptx') %}
+      {# No browser opens a deck. #}
+      <div class="panel">
+        <h3>PowerPoint</h3>
+        <p class="sub">{{ rep.pages }} slide{{ '' if rep.pages == 1 else 's' }}.</p>
+        <p><a class="btn" href="/report/{{ rep.id }}/file?v={{ file_v }}"
+              download="{{ rep.filename }}">Download the deck</a></p>
+      </div>
+    {% elif rep.stored_path %}
       {# The browser's own viewer. No library to load, and it prints, searches
          and scrolls the way people already expect a PDF to. #}
       <object data="/report/{{ rep.id }}/file?v={{ file_v }}#zoom=page-width" type="application/pdf">
