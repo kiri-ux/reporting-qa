@@ -1294,20 +1294,37 @@ def _tile(text: str, title: str) -> tuple[float, float, float] | None:
     i = text.find(title)
     if i < 0:
         return None
-    for line in text[i + len(title):i + 1500].split("\n"):
-        nums = NUM.findall(line)
-        if len(nums) < 3:
-            continue
-        pct = [n for n in nums if n.endswith("%")]
-        plain = [n for n in nums if not n.endswith("%")]
+    # ALL THREE ON ONE LINE, OR ONE UNDER EACH CIRCLE.
+    #
+    # This only ever accepted a single line carrying two numbers and a percent.
+    # Lakehouse Resort's Audience Network tile draws three donuts with 10,612,
+    # 3,983 and 37.53% each on their OWN line, so no line matched - and the
+    # scan ran on into the next widget and took the first line there that did.
+    # It came back with 1,311 clicks, which is not on that tile or anywhere
+    # near it, and the report was failed for a grid row that agreed with its
+    # tile exactly.
+    #
+    # So: read the numbers in the order they appear, however they are laid out,
+    # and stop at the next widget rather than running into it.
+    block = text[i + len(title):i + 1500]
+    from .rules import WIDGET_END
+    end = WIDGET_END.search(block)
+    if end:
+        block = block[:end.start()]
+    plain: list[str] = []
+    pct: list[str] = []
+    for tok in NUM.findall(block):
+        (pct if tok.endswith("%") else plain).append(tok)
         if len(plain) >= 2 and pct:
-            try:
-                return (float(plain[0].replace(",", "")),
-                        float(plain[1].replace(",", "")),
-                        float(pct[0].rstrip("%").replace(",", "")))
-            except ValueError:
-                return None
-    return None
+            break
+    if len(plain) < 2 or not pct:
+        return None
+    try:
+        return (float(plain[0].replace(",", "")),
+                float(plain[1].replace(",", "")),
+                float(pct[0].rstrip("%").replace(",", "")))
+    except ValueError:
+        return None
 
 
 def _placement_rows(text: str, start: int) -> list[tuple[str, float, float]]:

@@ -1,31 +1,42 @@
-build 2026.09.08-202
+build 2026.09.08-203
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
+LAKEHOUSE - THERE IS NO ERROR, AND 1,311 IS NOT ON THAT PAGE
+============================================================
+You are right. The Audience Network tile says 10,612 / 3,983 / 37.53% and the
+grid row says exactly the same thing. They agree.
+
+The tile reader only ever accepted all three numbers ON ONE LINE. That tile
+draws three donuts with one figure under each, so every number is on its own
+line and nothing matched - and the scan then ran on into the NEXT widget and
+took the first line there that fit. 1,311 came from that. It is not on the
+tile, it is not in the grid, and the report was failed for two numbers that
+match.
+
+It reads the numbers in the order they appear now, however they are laid out,
+and stops at the next widget instead of borrowing from it.
+
+
+THE SYNC ERROR NOW SAYS WHAT IT WAS
+===================================
+"Last sync failed" was a card telling you something went wrong and refusing to
+say what. The message was stored the whole time. It is printed on the card.
+
+
 THE UPLOAD THAT OPENED A DIFFERENT MARKET
 =========================================
-Real bug, and a bad one. When you upload a file, the tool first looks for an
-existing report to replace. That lookup matched on ORDER ID ACROSS EVERY REPORT
-IN THE CYCLE and never checked the market - so an upload made against one
-partner's row landed on another partner's report the moment the two shared an
-id. Which is exactly what you saw: a different market and a different campaign,
-twice, including after a manual re-pull.
-
-An upload is made from a row. It can only replace that row's report now.
+The replacement lookup matched on ORDER ID ACROSS EVERY REPORT IN THE CYCLE and
+never checked the market, so an upload made against one partner's row landed on
+another partner's report the moment the two shared an id. That is the LMSD
+video: different market, different campaign, twice, including after a manual
+re-pull. An upload can only replace its own row's report now.
 
 
 NO-LOGO PARTNERS
 ================
-Amazing Results LLC, Ampersand, Grace Impressions. Never flagged for the
-default logo - they have never sent one, so there is nothing behind the
-finding. Both spellings of Amazing are in, in case the export has mine. Send
-more names and I will add them; they are one line in app/checks/rules.py.
+Amazing Results LLC, Ampersand, Grace Impressions - never flagged for the
+default logo. Send more names and I will add them.
 
 
-THE BANNER STOPS REPEATING THE BUILD NOTE
-=========================================
-It named the build and then printed a sentence about the deploy on a banner
-about a queue. The build number identifies the deploy; that is enough.
-
-
-897 tests pass.
+898 tests pass.

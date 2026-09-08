@@ -521,7 +521,11 @@
              on the links page now, so an error from it turning up on this card
              reads as a problem with the partner's reports - which is what this
              card is otherwise entirely about. #}
-          <p class="dfail small">Last sync failed.
+          {# AND WHAT IT SAID. "Last sync failed" on its own is a card telling
+             you something went wrong and refusing to say what, so the only way
+             to find out was to ask. The message is stored; print it. #}
+          <p class="dfail small">Last sync failed{% if d.message %} -
+            {{ d.message }}{% endif %}.
             <a href="/cycle/links?period={{ period }}">Try again on the links page</a>.</p>
           {% if d.local_path %}
             <div class="gfoot">

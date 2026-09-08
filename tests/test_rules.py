@@ -3629,3 +3629,22 @@ def test_a_partner_who_never_sent_a_logo_is_not_flagged_for_the_default():
     assert len(check_market_logo({"logo_generic": True,
                                   "market": "Lockwood Digital"})) == 1
     assert NO_LOGO_MARKETS
+
+
+def test_a_platform_tile_can_be_stacked_under_its_circles():
+    """LAKEHOUSE RESORT 54536. The Audience Network tile draws three donuts
+    with 10,612, 3,983 and 37.53% each on its OWN line, so the reader - which
+    only accepted all three on one line - found nothing and ran on into the
+    next widget, taking the first line there that fit. It came back with 1,311
+    clicks, which is not on that tile or anywhere near it, and the report was
+    failed for a grid row that agreed with its tile exactly."""
+    from app.checks.quality import _tile
+    stacked = ("Audience Network Performance\n\n  10,612\n\n  3,983\n\n"
+               "  37.53%\n\nImpressions      Clicks       CTR\n")
+    assert _tile(stacked, "Audience Network Performance") == (10612.0, 3983.0, 37.53)
+    # The one-line layout still reads.
+    assert _tile("Instagram Performance\n  6,529   161   2.47%\n",
+                 "Instagram Performance") == (6529.0, 161.0, 2.47)
+    # And it stops at the next widget rather than borrowing its numbers.
+    assert _tile("Audience Network Performance\n\nSocial Placement Performance\n"
+                 "  row   1,311   2.00%\n", "Audience Network Performance") is None
