@@ -94,12 +94,19 @@ PRODUCT_TAIL = {
     "PPC": r"\bPPC$",
     "YouTube": r"\bYouTube\b",
     "LinkedIn": r"\bLinkedIn\b",
-    "Performance Max": r"\bPerformance Max$",
+    # NOT ANCHORED, because the name wraps. Peters - Troy's line reads
+    # "...Retargeting Performance Max" and comes out of the PDF broken across
+    # two lines, so "$" never matched and 218,084 impressions were counted as
+    # device-eligible on a product the device widget does not describe - the
+    # breakout read 84% short of a total it was never part of.
+    "Performance Max": r"\bPerformance\s+Max\b",
 }
 
 
 def is_device_excluded(line_item_name: str, excluded: set[str]) -> bool:
-    name = (line_item_name or "").strip()
+    # ONE SPACE, whatever the PDF did. A line item name that wrapped comes back
+    # with a newline in the middle of the product's own name.
+    name = re.sub(r"\s+", " ", (line_item_name or "")).strip()
     for product in excluded:
         pattern = PRODUCT_TAIL.get(product, r"\b" + re.escape(product) + r"\b")
         if re.search(pattern, name, re.I):
@@ -1012,6 +1019,31 @@ def _when_rows(row) -> list[tuple[str, str]]:
     return out
 
 
+def _within_band_pro_rata(ctx, row, days: int) -> bool:
+    """Is this row on pace once the goal is cut to the days it actually ran?
+
+    False whenever the answer is not knowable - no period, no figures, or a
+    line that ran the whole month, where the goal is already the right one.
+    """
+    import calendar
+
+    period = ctx.get("period") or ""
+    served, ordered = row.get("served"), row.get("ordered")
+    if not period or served is None or not ordered or not days:
+        return False
+    try:
+        y, m = (int(x) for x in period.split("-"))
+        in_month = calendar.monthrange(y, m)[1]
+    except (ValueError, calendar.IllegalMonthError):
+        return False
+    if days >= in_month:
+        return False
+    goal = float(ordered) * days / in_month
+    if not goal:
+        return False
+    return abs((float(served) / goal * 100.0) - 100.0) < PACE_BAND
+
+
 def check_impression_pacing(ctx) -> list[dict]:
     """Impressions more than 50% off the order, either way.
 
@@ -1072,6 +1104,20 @@ def check_impression_pacing(ctx) -> list[dict]:
         # A WEEK OR LESS OF THE MONTH IS NOT OFF PACE, IT IS NEW.
         days = row.get("days")
         if days is not None and days <= MIN_DAYS_TO_PACE:
+            continue
+        # AND HALF A MONTH IS JUDGED AGAINST HALF A MONTH'S GOAL.
+        #
+        # Dunham Poughkeepsie's Meta line launched on 17 August and ran 15 of
+        # the 31 days. The order's 100,000 is a MONTH's goal, so the most it
+        # could have delivered is about half of it, and 33,241 against the
+        # whole thing reads "67% short" - a number about the calendar rather
+        # than about the campaign. Against the 48,000-odd it was actually asked
+        # for over those fifteen days it is inside the band, so nothing is
+        # said.
+        #
+        # The finding already prints the launch date and the day count, so it
+        # was carrying the explanation for its own wrongness.
+        if days is not None and _within_band_pro_rata(ctx, row, days):
             continue
 
         def fmt(v):

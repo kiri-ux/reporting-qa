@@ -1586,7 +1586,10 @@ def test_the_sweep_stands_aside_too_not_only_the_order_re_read():
     body = src[at:]
     assert body.count("_wait_for_a_quiet_box()") >= 2, \
         "only the order re-read waits; the sweep runs straight through"
-    # After the rest, not instead of it: the rest paces the box, this waits for
-    # the person.
+    # ONLY ON A LONG QUEUE. Put on every batch, it stalled the thing it was
+    # meant to protect: a partner Re-check of 15 reports is pressed BY the
+    # person whose traffic it then waits for, and it sat at "0 of 15".
     rest = body.index("MAX_REST_SECONDS))")
-    assert body.index("_wait_for_a_quiet_box()", rest) > rest
+    tail = body[rest:rest + 700]
+    at = tail.index("_wait_for_a_quiet_box()")
+    assert "if left > LONG_QUEUE:" in tail[:at]

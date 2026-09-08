@@ -1,42 +1,40 @@
-build 2026.09.08-203
+build 2026.09.08-204
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
-LAKEHOUSE - THERE IS NO ERROR, AND 1,311 IS NOT ON THAT PAGE
-============================================================
-You are right. The Audience Network tile says 10,612 / 3,983 / 37.53% and the
-grid row says exactly the same thing. They agree.
+THE STALL AT "0 OF 15" WAS MINE
+===============================
+199 made the sweep wait for a gap in the traffic between every batch. A partner
+Re-check is pressed BY the person whose traffic it then waits for, so it sat at
+0 of 15 for as long as you kept looking at the board.
 
-The tile reader only ever accepted all three numbers ON ONE LINE. That tile
-draws three donuts with one figure under each, so every number is on its own
-line and nothing matched - and the scan then ran on into the NEXT widget and
-took the first line there that fit. 1,311 came from that. It is not on the
-tile, it is not in the grid, and the report was failed for two numbers that
-match.
-
-It reads the numbers in the order they appear now, however they are laid out,
-and stops at the next widget instead of borrowing from it.
+The wait now only applies when the queue is LONG - the deploy-driven full sweep
+it was written for. A re-check somebody asked for runs.
 
 
-THE SYNC ERROR NOW SAYS WHAT IT WAS
-===================================
-"Last sync failed" was a card telling you something went wrong and refusing to
-say what. The message was stored the whole time. It is printed on the card.
+PERFORMANCE MAX AND PPC ARE SPEND-ONLY
+======================================
+Two separate faults, same product.
+
+IMPRESSIONS PACING: they have no impression goal, so the goal side already left
+them out - but their delivery was still counted. Peters - Troy's 218,084 PMax
+impressions went into the numerator against an 80,000 goal that was Online
+Audio's alone: "+226% over". Out of both sides now.
+
+DEVICE TOTAL: Performance Max was already excluded, by a pattern anchored to
+the END of the line item name. Peters - Troy's name wraps mid-product across
+two lines, so it never matched and 218,084 impressions counted as
+device-eligible on a widget that does not describe them - "84% short". The
+pattern is no longer anchored and the name is collapsed to single spaces first.
 
 
-THE UPLOAD THAT OPENED A DIFFERENT MARKET
-=========================================
-The replacement lookup matched on ORDER ID ACROSS EVERY REPORT IN THE CYCLE and
-never checked the market, so an upload made against one partner's row landed on
-another partner's report the moment the two shared an id. That is the LMSD
-video: different market, different campaign, twice, including after a manual
-re-pull. An upload can only replace its own row's report now.
+HALF A MONTH IS PACED AGAINST HALF A MONTH'S GOAL
+=================================================
+Dunham Poughkeepsie's Meta line launched 17 August and ran 15 of 31 days. The
+order's 100,000 is a MONTH's goal, so 33,241 against it read "67% short" - a
+number about the calendar. Against what it was actually asked for over those
+fifteen days it is inside the band. The finding was already printing the launch
+date and the day count, so it carried the explanation for its own wrongness.
 
 
-NO-LOGO PARTNERS
-================
-Amazing Results LLC, Ampersand, Grace Impressions - never flagged for the
-default logo. Send more names and I will add them.
-
-
-898 tests pass.
+901 tests pass.

@@ -690,6 +690,16 @@ def start_sweeper() -> None:
                         time.sleep(min(took * REST_MULTIPLIER, MAX_REST_LONG))
                     else:
                         time.sleep(min(took, MAX_REST_SECONDS))
+                    # ONLY ON A LONG QUEUE, WHICH IS THE DEPLOY-DRIVEN ONE.
+                    #
+                    # I put this on every batch in 199 and it stalled the thing
+                    # it was meant to protect: a partner Re-check of 15 reports
+                    # is pressed BY the person whose traffic it then waits for,
+                    # so it sat at "0 of 15" for as long as she kept looking at
+                    # the board. A queue somebody asked for is not the queue
+                    # that needed slowing down.
+                    if left > LONG_QUEUE:
+                        _wait_for_a_quiet_box()
                     # AND STAND ASIDE WHILE SOMEBODY IS ON THE BOARD.
                     #
                     # Build 185 gave this to the order re-read and not to the

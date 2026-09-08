@@ -74,7 +74,14 @@ def served_impressions(text: str) -> dict:
         # A FLAT PRODUCT'S IMPRESSIONS ARE NOT PART OF THE DELIVERY TOTAL.
         # It has no goal and no row, so counting what it served put delivery
         # in the numerator that had nothing under it in the denominator.
-        if product and not is_paced(product):
+        # AND NEITHER ARE A SPEND-ONLY PRODUCT'S.
+        #
+        # Performance Max and PPC are bought in dollars: they have no
+        # impression goal, so want_total already leaves them out. Counting
+        # their impressions on the served side put 218,084 of Peters - Troy's
+        # PMax delivery in the numerator against an 80,000 goal that was Online
+        # Audio's alone, and the row read "+226% over".
+        if product and (not is_paced(product) or product in SPEND_PRODUCTS):
             flat += imps
             continue
         total += imps

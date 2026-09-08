@@ -3648,3 +3648,62 @@ def test_a_platform_tile_can_be_stacked_under_its_circles():
     # And it stops at the next widget rather than borrowing its numbers.
     assert _tile("Audience Network Performance\n\nSocial Placement Performance\n"
                  "  row   1,311   2.00%\n", "Audience Network Performance") is None
+
+
+def test_half_a_month_is_paced_against_half_a_month_s_goal():
+    """DUNHAM POUGHKEEPSIE. The Meta line launched 17 August and ran 15 of the
+    31 days. The order's 100,000 is a MONTH's goal, so the most it could have
+    delivered is about half - and 33,241 against the whole thing reads "67%
+    short", which is a number about the calendar rather than the campaign.
+
+    The finding printed the launch date and the day count, so it was carrying
+    the explanation for its own wrongness."""
+    from app.checks.rules import check_impression_pacing
+    text = " Line Item Performance\n Dunham - Meta   33,241   1,927  5.80%\n"
+
+    def run(days):
+        o = {"Meta": {"impressions": 100_000, "budget": None,
+                      "stopped": False, "days": days}}
+        return [f["title"] for f in check_impression_pacing(
+            {"text": text, "ordered": o, "is_lifetime": False,
+             "period": "2026-08"})]
+
+    assert run(15) == []
+    # A line that ran the whole month is judged against the whole month.
+    assert run(31) == ["Meta is 67% short"]
+    # And a part month that is still genuinely short is still said.
+    o = {"Meta": {"impressions": 400_000, "budget": None, "stopped": False,
+                  "days": 15}}
+    out = check_impression_pacing({"text": text, "ordered": o,
+                                   "is_lifetime": False, "period": "2026-08"})
+    assert len(out) == 1 and "short" in out[0]["title"]
+
+
+def test_performance_max_is_out_of_the_device_total_even_when_it_wraps():
+    """PETERS - TROY. The line reads "...Retargeting Performance Max" and comes
+    out of the PDF broken across two lines, so a pattern anchored on "$" never
+    matched and 218,084 impressions counted as device-eligible on a product the
+    device widget does not describe. The breakout read 84% short of a total it
+    was never part of."""
+    from app.checks.rules import is_device_excluded
+    ex = {"Mobile Conquesting", "PPC", "YouTube", "LinkedIn", "Performance Max"}
+    for n in ("Peters - Troy - HVAC Services/Homeowners/Retargeting Performance Max",
+              "Peters - Troy - HVAC\nServices/Homeowners/Retargeting Performance\nMax"):
+        assert is_device_excluded(n, ex), repr(n)
+    assert not is_device_excluded("Peters - Troy - AI Audio", ex)
+
+
+def test_a_spend_only_product_is_not_in_the_impressions_total():
+    """PETERS - TROY. Performance Max and PPC are bought in dollars and have no
+    impression goal, so want_total already left them out - but their delivery
+    was still counted on the served side. 218,084 of PMax impressions went into
+    the numerator against an 80,000 goal that was Online Audio's alone, and the
+    row read "+226% over"."""
+    from app.checks.served import SPEND_PRODUCTS, served_impressions
+    text = (" Line Item Performance\n"
+            " Peters - Retargeting Performance Max   218,084   6,004  2.75%\n"
+            " Peters - AI Audio                       42,704       0  0.00%\n")
+    got = served_impressions(text)
+    assert "Performance Max" in SPEND_PRODUCTS and "PPC" in SPEND_PRODUCTS
+    assert got["total"] == 42704.0, got
+    assert got["flat"] == 218084.0
