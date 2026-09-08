@@ -1501,3 +1501,32 @@ def test_linkedin_is_read_off_the_report():
     text = ("LinkedIn Spend Performance\nDoes not include management fee\n"
             "LinkedIn Ad Cost                    LinkedIn Cost-Per-Click\n")
     assert detect(text, []) == {"LinkedIn"}
+
+
+def test_a_completion_grid_is_not_more_rows_of_the_grid_above_it():
+    """The next widget only ended a table when its header carried three known
+    metric labels, and "Line Item Name | 25% Completed | 50% | 75% | 100%"
+    carries none - so Video Completion Performance was read as more rows of the
+    Video Creative grid above it, and 96.68% / 95.04% / 93.24% were judged as
+    impressions, clicks and a CTR that does not match them."""
+    from app.checks.parser import extract_tables
+
+    text = "\n".join([
+        "Video Creative Performance",
+        "Preview Image        Creative Name          Impressions      Clicks     CTR      X the National Avg (.07%)",
+        "",
+        "                     Muny_Newsies 5 sec - HD    52,005          159    0.31%                       4.37",
+        "                     1080p.mov",
+        "",
+        "",
+        "Video Completion Performance by Line Item",
+        "Line Item Name                      25% Completed     50% Completed    75% Completed    100% Completed",
+        "",
+        "Muny - Valentines Day/Live Theater      96.68%           95.04%           93.24%            89.34%",
+        "Age 25-54 Behavioral Video",
+        "",
+    ])
+    (row,) = extract_tables(text)[0].body
+    assert row[0].startswith("Muny_Newsies")
+    assert row[1]["Impressions"] == 52005.0
+    assert row[1]["CTR"] == 0.31

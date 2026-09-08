@@ -1,24 +1,24 @@
-build 2026.09.08-216
+build 2026.09.08-217
 Changed files only. Everything since 130 - install this one.
 35 checks.
 
+A completion grid is not more rows of the grid above it. The next widget only
+ended a table when its own header carried three known metric labels, and "Line
+Item Name | 25% Completed | 50% | 75% | 100%" carries none - so those rows were
+read as more of the creative grid above them and their completion percentages
+judged as impressions, clicks and a CTR. That is the Muny, Piedmont and WVU
+Parkersburg row-CTR findings.
+
 A row is read one number per column. A table does not always keep the same
-column widths all the way down: St Louis Muny Theater's line item grid narrows
-partway through, so the impressions figure landed near no heading and was
-dropped and the other three each slid one column left - 4,770 impressions, 5.56
-clicks, a CTR of 79.39%. Five rows on one report, flagged for a CTR that does
-not match its own numbers.
+column widths all the way down; where it narrows, the impressions figure landed
+near no heading and was dropped and the other three each slid one column left.
 
 A replacement takes the new file's logo. The hash was taken, handed to the
 checks and thrown away, so a report whose default logo had been fixed went on
-carrying the old file's fingerprint - failing for a logo it no longer prints,
-and marking from it re-checked 154 unrelated reports.
+carrying the old file's fingerprint.
 
-LinkedIn is read off the report. Its widgets are titled "LinkedIn Spend
-Performance", and nothing was reading that, so Society of Women Engineers was
-failed for a product ordered but not on the report with the page open beside
-the finding.
+LinkedIn is read off the report.
 
 Order ids and line item ids show five, then a count. The rest on hover.
 
-931 tests pass.
+932 tests pass.

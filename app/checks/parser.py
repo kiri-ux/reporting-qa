@@ -178,7 +178,7 @@ PAGE_HEAD = re.compile(r"(Digital Marketing Report|Date range \w{3} \d{2}, \d{4}
 NEXT_TITLE = re.compile(
     r"^\s*(?:Top\s+\S.*"
     r"|\S.*(?:Performance|Breakout|Publishers|Screenshots|Conversions|"
-    r"by Day|by Strategy|by Ad Size))\s*$")
+    r"by Day|by Strategy|by Ad Size|by Line Item))\s*$")
 
 # THE HALF THAT NEEDS A BLANK LINE ABOVE IT TO COUNT.
 #
@@ -254,6 +254,16 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
             cells = _split_glued(tokens(raw))
             if len([c for c in cells if c[0] in METRIC_LABELS]) >= need:
                 break
+            # A HEADER ROW ENDS THE TABLE EVEN WHEN ITS COLUMNS ARE NOT
+            # METRICS. The next widget only broke this loop when its header
+            # carried three known metric labels, and "Line Item Name | 25%
+            # Completed | 50% | 75% | 100%" carries none - so Video Completion
+            # Performance was read as more rows of the Video Creative grid
+            # above it and its completion percentages were judged as
+            # impressions, clicks and a CTR. Three or more columns and not a
+            # number among them is a heading, not data.
+            if len(cells) >= 3 and all(as_number(c[0]) is None for c in cells):
+                break
             values: dict[str, float] = {}
             nums = [(as_number(t), e) for t, _s, e in cells]
             nums = [(n, e) for n, e in nums if n is not None]
@@ -300,6 +310,16 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
                 head = cells[0]
                 looks_like_heading = bool(
                     TITLE_HEAD.match(raw) or (gap and NEXT_TITLE.match(raw)))
+                # AND A HEADING ENDS THE TABLE, it does not just get skipped.
+                #
+                # The next widget's header line only breaks this loop when it
+                # carries three metric labels of its own, and "Line Item Name |
+                # 25% Completed | 50% | 75% | 100%" carries none - so Video
+                # Completion Performance was read as more rows of the Video
+                # Creative grid above it, and its completion percentages were
+                # judged as impressions, clicks and a CTR.
+                if looks_like_heading and len(cells) == 1:
+                    break
                 if (head[1] < name_col_end and as_number(head[0]) is None
                         and not looks_like_heading and len(cells) == 1):
                     prev_name, prev_vals = table.rows[-1]
