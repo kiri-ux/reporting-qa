@@ -3640,15 +3640,20 @@ def test_dropbox_keeps_its_own_record_of_what_is_filed(tmp_path):
 
 
 def test_a_missing_dropbox_folder_gets_the_month_in_full():
-    """Nothing in a folder can be up to date if the folder is not there. The
-    record of what was filed outlives the folder it describes - somebody moves
-    it, renames it, empties it - and every report then gets skipped for a
-    folder that does not exist."""
+    """Our record of what was filed is not the folder. A file can be moved,
+    renamed or deleted after it went up, and then every report is skipped as
+    already sent and pressing sync again changes nothing - a partner reading
+    "synced, 13 files" over a folder holding two. And with nothing uploaded the
+    Dropbox folder is never created at all, which is what the not_found on the
+    card was."""
     import inspect
     from app import delivery
     src = inspect.getsource(delivery.upload_dropbox_folder)
-    assert "files_get_metadata" in src
-    assert "exists and not tag and not needs_send" in src
+    assert "files_list_folder" in src
+    assert "report_filename(e) in there" in src
+    # And Drive does the same - our record is not the folder either way.
+    drv = inspect.getsource(delivery.upload_drive_folder)
+    assert "name in dest_files[dest]" in drv
 
 
 def test_the_dropbox_failure_is_readable():
@@ -3724,3 +3729,57 @@ def test_three_campaigns_sharing_an_account_id_each_keep_their_report():
     # And each one landed on its own campaign, not just on some free row.
     for want, have in got.items():
         assert want == have, got
+
+
+def test_an_upload_cannot_replace_a_different_campaign_in_the_same_market():
+    """LMSD's three Secret Contest campaigns share a market and carry each
+    other's order ids. On an id alone, uploading the Z90 file opened 91X -
+    a different campaign, different numbers, under somebody else's name."""
+    import inspect
+    from app.ingest import same_client
+    from app import main
+
+    assert not same_client("LMSD - Z90 Secret Contest 2026",
+                           "LMSD - 91X Secret Contest 2026")
+    assert not same_client("LMSD - MAGIC Secret Contest 2026",
+                           "LMSD - 91X Secret Contest 2026")
+    # Still loose enough for the same client typed two ways.
+    assert same_client("NORTH CAROLINA FURNITURE MART",
+                       "North Carolina Furniture Mart")
+    assert same_client("Acme Inc.", "Acme")
+    assert same_client("", "Acme")
+    src = inspect.getsource(main.upload_for_expected)
+    assert "same_client(client, r.client" in src
+
+
+def test_a_report_lands_on_the_row_that_names_it():
+    """Three rows, three reports, one shared id and one shared market. The
+    name is the only thing left that tells them apart."""
+    from app.board import Expected, _attach_reports
+
+    class R:
+        def __init__(self, client):
+            self.client, self.market = client, "Local Media San Diego"
+            self.account_ids = "54824 54822 54820"
+            self.is_lifetime = self.is_seo = False
+
+    names = ["LMSD - Z90 Secret Contest 2026",
+             "LMSD - MAGIC Secret Contest 2026",
+             "LMSD - 91X Secret Contest 2026"]
+    rows = {(n, n, "monthly"): Expected(
+        market="Local Media San Diego", group="LMSD", client=n,
+        kind="monthly", account_ids="54824 54822 54820") for n in names}
+    # Reversed, so the right answer cannot come from the order they arrive in.
+    reports = [R(n) for n in reversed(names)]
+
+    class FakeDB:
+        def scalars(self, *a, **k):
+            class S:
+                def all(_s):
+                    return reports
+            return S()
+
+    _attach_reports(FakeDB(), "2026-08", rows)
+    for e in rows.values():
+        assert e.report is not None, e.client
+        assert e.report.client == e.client

@@ -1291,19 +1291,32 @@ def _attach_reports(db: Session, period: str,
         for a in ACC.findall(e.account_ids or ""):
             by_account.setdefault((a, e.kind), []).append(e)
 
-    def pick(cands: list[Expected], market: str) -> Expected | None:
-        """A row still waiting for a report, its own market first."""
+    def pick(cands: list[Expected], report, strict: bool) -> Expected | None:
+        """A row still waiting for a report - its own client, then its market.
+
+        LMSD's three Secret Contest campaigns are one market carrying each
+        other's order ids, so neither the id nor the market decides between
+        them and the name has to. `strict` is the first pass: it will leave a
+        report unmatched rather than put it on a row that disagrees about who
+        it is for. The loose pass afterward is the old behavior, kept because
+        names and markets are both spelled differently in the two systems and
+        insisting on either would turn matches that have worked for months into
+        "not received".
+        """
+        from .ingest import same_client
         free = [e for e in cands if e.report is None]
         if not free:
             return None
-        mk = _key(market or "")
-        if mk:
+        for e in free:
+            if _key(e.client or "") == _key(report.client or ""):
+                return e
+        if strict:
+            mk = _key(report.market or "")
             for e in free:
-                if _key(e.market or "") == mk:
+                if (mk and _key(e.market or "") == mk
+                        and same_client(e.client or "", report.client or "")):
                     return e
-        # The market is only a tie-breaker. Markets are spelled differently in
-        # the two systems often enough that insisting on one would turn a match
-        # that has worked for months into "not received".
+            return None
         return free[0]
 
     for r in reports:
@@ -1314,13 +1327,20 @@ def _attach_reports(db: Session, period: str,
         kind = ("lifetime" if r.is_lifetime else
                 "seo" if getattr(r, "is_seo", False) else "monthly")
         hit = None
-        for a in ACC.findall(r.account_ids or "") or []:
-            hit = pick(by_account.get((a, kind)) or [], r.market or "")
+        ids = ACC.findall(r.account_ids or "") or []
+        # THE NAME BEFORE THE GUESS. Ids first as always, but only onto a row
+        # that agrees who this report is for; the client index next, which is
+        # keyed by name; and the loose id match last, which is what this always
+        # did and is now the fallback rather than the rule.
+        for strict in (True, False):
+            for a in ids:
+                hit = pick(by_account.get((a, kind)) or [], r, strict)
+                if hit:
+                    break
+            if hit is None:
+                hit = pick(by_client.get((_key(r.client), kind)) or [], r, strict)
             if hit:
                 break
-        if hit is None:
-            hit = pick(by_client.get((_key(r.client), kind)) or [],
-                       r.market or "")
         # EVERY REPORT THAT ALREADY EXISTS PREDATES THE SPLIT.
         #
         # `is_seo` is new, so every report in the database is stamped False -
@@ -1333,13 +1353,16 @@ def _attach_reports(db: Session, period: str,
         # there, so a client owed both keeps both files apart.
         if hit is None and kind in ("monthly", "seo"):
             other = "seo" if kind == "monthly" else "monthly"
-            for a in ACC.findall(r.account_ids or "") or []:
-                hit = pick(by_account.get((a, other)) or [], r.market or "")
+            for strict in (True, False):
+                for a in ids:
+                    hit = pick(by_account.get((a, other)) or [], r, strict)
+                    if hit:
+                        break
+                if hit is None:
+                    hit = pick(by_client.get((_key(r.client), other)) or [],
+                               r, strict)
                 if hit:
                     break
-            if hit is None:
-                hit = pick(by_client.get((_key(r.client), other)) or [],
-                           r.market or "")
         if hit is not None and hit.report is None:
             hit.report = r
 

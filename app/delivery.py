@@ -318,19 +318,11 @@ def upload_drive_folder(group, period: str, cycle_label: str,
             cycle_folders[e.market] = _drive_folder(
                 svc, label, market_folders[e.market])
 
-        # ONLY WHAT HAS CHANGED GOES UP.
-        #
-        # Re-uploading every report every time takes several minutes on a big
-        # partner to change nothing, and nine megabytes a file is the whole of
-        # that time. A report still filed under the name it has, from the file
-        # it was filed from, is already in the folder. The folder above is
-        # still resolved for it, so the link comes back either way.
-        if not tag and not needs_send(e):
-            skipped += 1
-            continue
         name = report_filename(e)
         dest = cycle_folders[e.market]
 
+        # WHAT IS ACTUALLY IN THE FOLDER, read before anything is skipped.
+        #
         # Replace rather than duplicate, so re-running a delivery after a fix
         # does not leave the partner looking at two versions of one report.
         # The folder's contents are read once, not once per file.
@@ -341,6 +333,24 @@ def upload_drive_folder(group, period: str, cycle_label: str,
                     fields="files(id,name)", pageSize=1000,
                     supportsAllDrives=True, includeItemsFromAllDrives=True,
                     corpora="allDrives").execute().get("files", [])}
+
+        # ONLY WHAT HAS CHANGED GOES UP.
+        #
+        # Re-uploading every report every time takes several minutes on a big
+        # partner to change nothing, and nine megabytes a file is the whole of
+        # that time. A report still filed under the name it has, from the file
+        # it was filed from, is already in the folder. The folder above is
+        # still resolved for it, so the link comes back either way.
+        #
+        # AND THE FOLDER GETS THE LAST WORD. Our record of what was filed is
+        # not the folder: a file can be moved, renamed or deleted in Drive
+        # afterward, and then every report is skipped as already sent and
+        # pressing sync again changes nothing at all - a partner reading
+        # "synced, 13 files" over a folder holding two, which is exactly what
+        # Stephens Tulsa was doing. If the name is not in the folder, it goes.
+        if not tag and not needs_send(e) and name in dest_files[dest]:
+            skipped += 1
+            continue
         # AND A RENAME LEAVES NO SECOND COPY BEHIND.
         #
         # A report's name carries every order id touching it, so a re-read that
@@ -461,28 +471,34 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
     if tag:
         folder += f" - {_safe(tag)}"
 
-    # DOES THE FOLDER EVEN EXIST? Nothing in it can be up to date if it is not
-    # there. The records of what was filed are the only reason a report gets
-    # skipped, and a record can outlive the folder it describes - somebody
-    # moves it, renames it, empties the month out - at which point every report
-    # is skipped, no folder is made, and the link lookup fails on a path that
-    # was never created. Ask once, and send the month in full when the answer
-    # is no.
-    exists = True
+    # WHAT IS ACTUALLY IN THE FOLDER, before anything is skipped.
+    #
+    # Our record of what was filed is not the folder. A record outlives the
+    # folder it describes - somebody moves it, renames it, empties the month
+    # out - and then every report is skipped as already sent, nothing is
+    # uploaded, and the folder is never even created. Pressing sync again
+    # changes nothing, and the link lookup fails on a path that does not exist.
+    # A missing folder reads as an empty one, so the month goes up in full.
+    there: set[str] = set()
     try:
-        dbx.files_get_metadata(folder)
-    except Exception as exc:                             # noqa: BLE001
-        exists = "not_found" not in str(exc)
+        res = dbx.files_list_folder(folder)
+        while True:
+            there.update(x.name for x in res.entries)
+            if not getattr(res, "has_more", False):
+                break
+            res = dbx.files_list_folder_continue(res.cursor)
+    except Exception:                                    # noqa: BLE001
+        there = set()
     n = 0
     skipped = 0
     for e in group.expected:
         r = e.report
         if not r or not r.stored_path:
             continue
-        # ONLY WHAT HAS CHANGED. See the same rule in the Drive path: a report
-        # still filed under the name it has, from the file it was filed from,
-        # is already in this folder.
-        if exists and not tag and not needs_send(e, "dropbox"):
+        # ONLY WHAT HAS CHANGED, and only when it is really in there. See the
+        # same rule in the Drive path.
+        if (not tag and not needs_send(e, "dropbox")
+                and report_filename(e) in there):
             skipped += 1
             continue
         src = Path(r.stored_path)

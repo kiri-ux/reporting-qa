@@ -1,20 +1,28 @@
-build 2026.09.08-208
+build 2026.09.08-209
 Changed files only. Everything since 130 - install this one.
 35 checks.
+
+Sync reads the folder before it skips anything. Our record of what was filed
+was trusted over the folder itself, so a file moved, renamed or deleted after
+it went up left every report skipped and sync doing nothing. Drive and Dropbox
+both.
+
+Dropbox keeps its own record of what is in its folder, separate from Drive's.
+Drive was filing first and stamping every report, Dropbox read those stamps as
+work already done and sent nothing - so the folder was never made and the card
+said not_found.
+
+A Dropbox failure is written in words.
+
+An upload can only replace a report for the same client. LMSD's Z90, MAGIC and
+91X campaigns share a market and carry each other's order ids, so the Z90 file
+opened 91X.
+
+A report lands on the row that names it. Those three rows were one row between
+them, so two of the three files attached to nothing and read "report not
+received".
 
 The partner search on the Packaged links page filters the list, not just the
 counter.
 
-Dropbox now keeps its own record of what is in its folder. Drive was filing
-first and stamping every report, Dropbox read those stamps as work already
-done, sent nothing, and so never created the folder - which is why there are
-no August folders and why the card said not_found. The first sync after this
-sends each Dropbox partner's month in full.
-
-A Dropbox failure is written in words: what happened and what to do next.
-
-Three campaigns that share account ids each keep their own report. LMSD's
-Z90 / MAGIC / 91X rows were one row between them, so two of the three files
-attached to nothing and the rows read "report not received".
-
-907 tests pass.
+909 tests pass.

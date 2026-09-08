@@ -89,10 +89,35 @@ def _rkey(client: str, accounts: str, is_lifetime: bool):
     return ids, ((name, kind) if name else None)
 
 
+def same_client(a: str, b: str) -> bool:
+    """Are these two names the same client, allowing for the two systems?
+
+    A SHARED ORDER ID IS NOT PROOF THEY ARE THE SAME REPORT. LMSD runs three
+    Secret Contest campaigns - Z90, MAGIC and 91X - inside one market, and
+    their rows carry each other's order ids. On an id alone, uploading the Z90
+    file opened the 91X report and replaced it: a different campaign, different
+    numbers, under somebody else's name. It did that twice, including after a
+    manual re-pull, which is how it looked like an upload problem.
+
+    Names are typed differently in the two systems, so this is deliberately
+    loose - case, punctuation and spacing do not count, and one name sitting
+    inside the other is a match. What it will not do is call two names the same
+    when they disagree on a word.
+    """
+    ka = re.sub(r"[^a-z0-9]", "", (a or "").lower())
+    kb = re.sub(r"[^a-z0-9]", "", (b or "").lower())
+    if not ka or not kb:
+        return True          # nothing to disagree about
+    return ka == kb or ka in kb or kb in ka
+
+
 def _index(idx: dict, rep) -> None:
     ids, name = _rkey(rep.client, rep.account_ids, rep.is_lifetime)
     for k in ids:
-        idx["by_id"][k] = rep
+        # EVERY REPORT ON THIS ID, NOT THE LAST ONE INDEXED. Three campaigns
+        # sharing an id left one entry between them, so which report an id
+        # resolved to was whichever happened to be indexed last.
+        idx["by_id"].setdefault(k, []).append(rep)
     if name:
         idx["by_name"].setdefault(name, rep)
 
@@ -117,12 +142,14 @@ def _match_existing(idx: dict, meta: dict):
     Account id first - clients are typed differently in the two systems - then
     the name. A monthly never replaces a lifetime or the other way round.
     """
-    ids, name = _rkey(meta.get("client", ""), meta.get("account_ids", ""),
+    who = meta.get("client", "") or ""
+    ids, name = _rkey(who, meta.get("account_ids", ""),
                       bool(meta.get("is_lifetime")))
     for k in ids:
-        hit = idx["by_id"].get(k)
-        if hit is not None:
-            return hit
+        for hit in idx["by_id"].get(k) or []:
+            # THE ID GOT US HERE; THE NAME DECIDES. See same_client.
+            if same_client(who, getattr(hit, "client", "") or ""):
+                return hit
     return idx["by_name"].get(name) if name else None
 
 
