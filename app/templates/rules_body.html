@@ -7,8 +7,8 @@
    radio buttons and a sibling selector, which work the same in the sheet and
    on the full page. #}
 <div class="rtabs">
-  <input type="radio" name="rulestab" id="rtab-owed" checked>
-  <input type="radio" name="rulestab" id="rtab-flags">
+  <input type="radio" name="rulestab" id="rtab-owed"{% if tab != 'flags' %} checked{% endif %}>
+  <input type="radio" name="rulestab" id="rtab-flags"{% if tab == 'flags' %} checked{% endif %}>
   <div class="rtabbar">
     <label for="rtab-owed">What is owed</label>
     <label for="rtab-flags">Reporting flags
@@ -105,6 +105,7 @@
        finished and wrong while it is being worked on. #}
     <div class="holdbar{% if recheck_held %} onhold{% endif %}">
       <form method="post" action="/checks/hold">
+        <input type="hidden" name="back" value="{{ back_to }}">
         <input type="hidden" name="on" value="{{ '' if recheck_held else '1' }}">
         <button type="submit">{{ 'Start re-checking again' if recheck_held
                                  else 'Hold re-checks' }}</button>
@@ -137,18 +138,28 @@
       <div><span class="packs">&#10003;</span>{{ packs_means }}</div>
     </div>
 
+    {# ONE FORM ROUND ALL OF IT, so several can be switched at once without a
+       line of JavaScript - the sheet injects this as innerHTML and a script tag
+       put in that way never runs. A checkbox on each row, two submit buttons at
+       the top, and a per-row button that carries its own value so it acts on
+       that one whatever is ticked. #}
+    <form method="post" action="/checks/set" class="flagform">
+    <input type="hidden" name="back" value="{{ back_to }}">
     {# ALL, OR THE ONES ACTUALLY FIRING. Radio and a sibling selector, like the
-       tabs above - the sheet injects this as innerHTML and a script tag put in
-       that way never runs. #}
+       tabs above. #}
     {# FLAGGING NOW IS THE DEFAULT. The whole list is a reference; the ones
        actually firing this cycle are the work. #}
-    <input type="radio" name="flagonly" id="fo-all">
-    <input type="radio" name="flagonly" id="fo-live" checked>
+    <input type="radio" name="flagonly" id="fo-all"{% if show_all %} checked{% endif %}>
+    <input type="radio" name="flagonly" id="fo-live"{% if not show_all %} checked{% endif %}>
     <div class="fobar">
-      <label for="fo-all">All 38</label>
+      <label for="fo-all">All {{ flags|map(attribute='checks')|map('length')|sum }}</label>
       <label for="fo-live">Flagging now
         <span class="rcount">{{ flag_active }}</span></label>
       <span class="sub">in {{ flag_period }}</span>
+      <span class="bulk">
+        <button type="submit" name="on" value="">Switch off ticked</button>
+        <button type="submit" name="on" value="1">Switch on ticked</button>
+      </span>
     </div>
 
     {% for g in flags %}
@@ -158,6 +169,8 @@
           <tbody>
             {% for c in g.checks %}
               <tr class="{% if not c.on %}isoff{% elif not c.n %}quiet{% endif %}">
+                <td class="fl-tick"><input type="checkbox" name="pick"
+                  value="{{ c.key }}" aria-label="Select {{ c.label }}"></td>
                 <td class="fl-n">
                   {% if c.n %}<span class="ncount"
                        data-tip="Flagging {{ c.n }} report{{ '' if c.n == 1 else 's' }} in {{ flag_period }}">{{ c.n }}</span>
@@ -175,14 +188,15 @@
                 <td class="fl-how">
                   {% if c.how %}{{ c.how }}
                   {% else %}<span class="tbd">not written yet</span>{% endif %}</td>
+                {# A BUTTON'S OWN name/value IS ONLY SENT WHEN IT IS THE
+                   BUTTON PRESSED, so one row's switch and the bulk buttons
+                   share a form without getting in each other's way. #}
                 <td class="fl-on">
-                  <form method="post" action="/checks/toggle">
-                    <input type="hidden" name="name" value="{{ c.key }}">
-                    <input type="hidden" name="on" value="{{ '' if c.on else '1' }}">
-                    <button type="submit" class="onoff{% if c.on %} is-on{% endif %}"
-                      data-tip="{{ 'Stop running this check. Anything it has already flagged stops counting.' if c.on else 'Run this check again. The reports judged while it was off will be re-checked.' }}"
-                      >{{ 'On' if c.on else 'Off' }}</button>
-                  </form></td>
+                  <button type="submit" name="one"
+                    value="{{ c.key }}|{{ '' if c.on else '1' }}"
+                    class="onoff{% if c.on %} is-on{% endif %}"
+                    data-tip="{{ 'Stop running this check. Anything it has already flagged stops counting.' if c.on else 'Run this check again. The reports judged while it was off will be re-checked.' }}"
+                    >{{ 'On' if c.on else 'Off' }}</button></td>
               </tr>
             {% endfor %}
           </tbody>
@@ -192,6 +206,7 @@
     {% if not flag_active %}
       <p class="sub nonelive">Nothing is flagging in {{ flag_period }} yet.</p>
     {% endif %}
+    </form>
 
     <p class="sub" style="margin-top:20px;font-size:12.5px">
       What a finding means, then the same rule written as the claim the tool

@@ -28,7 +28,13 @@ class Settings(BaseSettings):
     # re-checked on demand: a finding on a cycle that shipped in March is not
     # in anybody's way, and re-reading four years of PDFs on every deploy is
     # work nobody asked for.
-    recheck_periods: int = 3
+    #
+    # ONE, WHICH IS THE CYCLE BEING WORKED. It was three, and three cycles is
+    # two and a half thousand PDFs behind a rule change on a board of twelve
+    # hundred - the queue was twice the size of the work and most of it was
+    # months that shipped. The other cycles are still re-checked from their own
+    # board, by pressing the button.
+    recheck_periods: int = 1
 
     notifications_enabled: bool = False
 

@@ -2003,39 +2003,65 @@ def _behind_count(db: Session) -> int:
         return 0
 
 
-@app.post("/checks/toggle")
-def checks_toggle(request: Request, name: str = Form(""), on: str = Form(""),
-                  who: str = Form(""), db: Session = Depends(get_db)):
-    """Switch one check on or off.
+@app.post("/checks/set")
+def checks_set(request: Request, pick: list[str] = Form(default=[]),
+               one: str = Form(""), on: str = Form(""), back: str = Form(""),
+               who: str = Form(""), db: Session = Depends(get_db)):
+    """Switch checks on or off - one from its own row, or every ticked one.
 
-    Off is immediate in both directions - the rule stops running and the
-    findings it already wrote stop counting, because those are read at display
-    time. On is not: that rule never ran on anything judged while it was off, so
-    the board goes behind and the sweep picks it up.
+    ONE FORM, TWO KINDS OF BUTTON. A button's own name and value are submitted
+    only when it is the button that was pressed, so a row's switch and the two
+    bulk buttons live in the same form without a line of JavaScript - which the
+    rules sheet could not run anyway, being injected as innerHTML.
+
+    Off is immediate in both directions: the rule stops running and the findings
+    it already wrote stop counting, because those are read at display time. On
+    is not - that rule never ran on anything judged while it was off, so the
+    board goes behind and the sweep picks it up.
     """
     from .checkctl import set_check
     from .checks.rules import CHECKS
 
     known = {fn.__name__ for fn, _ in CHECKS}
-    if name in known:
-        set_check(db, name, on == "1", who=who.strip() or whoami(request) or "")
-    back = request.headers.get("referer") or "/rules"
-    if not back.startswith("/") or back.startswith("//"):
-        back = "/rules"
-    return RedirectResponse(back, status_code=303)
+    name = who.strip() or whoami(request) or ""
+    if one:
+        key, _sep, want = one.partition("|")
+        if key in known:
+            set_check(db, key, want == "1", who=name)
+    else:
+        for key in pick:
+            if key in known:
+                set_check(db, key, on == "1", who=name)
+    return RedirectResponse(_back_to_rules(request, back), status_code=303)
+
+
+def _back_to_rules(request: Request, back: str = "") -> str:
+    """Where to land after a switch - the flags tab, where the switch was.
+
+    It went back to /rules, which opens on What is owed, so switching two checks
+    off meant finding the tab again in between. The tab is in the URL now
+    because the page has no script of its own to remember it with.
+    """
+    to = back or request.headers.get("referer") or "/rules"
+    if to.startswith("http"):
+        from urllib.parse import urlsplit
+        bits = urlsplit(to)
+        to = bits.path + (("?" + bits.query) if bits.query else "")
+    if not to.startswith("/") or to.startswith("//"):
+        to = "/rules"
+    if to.startswith("/rules") and "tab=" not in to:
+        to += ("&" if "?" in to else "?") + "tab=flags"
+    return to
 
 
 @app.post("/checks/hold")
 def checks_hold(request: Request, on: str = Form(""), who: str = Form(""),
-                db: Session = Depends(get_db)):
+                back: str = Form(""), db: Session = Depends(get_db)):
     """Hold the automatic re-check, or let it go again."""
     from .checkctl import set_hold
 
     set_hold(db, on == "1", who=who.strip() or whoami(request) or "")
-    back = request.headers.get("referer") or "/rules"
-    if not back.startswith("/") or back.startswith("//"):
-        back = "/rules"
-    return RedirectResponse(back, status_code=303)
+    return RedirectResponse(_back_to_rules(request, back), status_code=303)
 
 
 @app.post("/cycle/recheck/skip")
@@ -2481,6 +2507,13 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
            "flag_period": month_label(period),
            "checks_off": sorted(off), "recheck_held": held(),
+           # WHICH TAB, IN THE URL. The page has no script of its own - the
+           # sheet injects it as innerHTML - so a switch that reloaded it
+           # landed back on What is owed every time.
+           "tab": request.query_params.get("tab") or "",
+           "show_all": request.query_params.get("all") == "1",
+           "back_to": str(request.url.path)
+                      + ("?" + str(request.url.query) if request.url.query else ""),
            "behind": _behind_count(db),
            "flag_active": sum(1 for g in groups for c in g["checks"]
                               if c["n"] and c["on"]),

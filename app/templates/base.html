@@ -119,7 +119,8 @@ body{margin:0;background:var(--plane);color:var(--ink);
    has never fired - on the page somebody uses to decide what to look at first.
    Radio and a sibling selector, because the sheet injects this as innerHTML
    and a script tag put in that way never runs. */
-.rp-flags > input[name="flagonly"]{position:absolute;opacity:0;pointer-events:none}
+.flagform > input[name="flagonly"]{position:absolute;opacity:0;pointer-events:none}
+.flagform{margin:0}
 .fobar{display:flex;gap:6px;align-items:center;margin:0 0 12px}
 .fobar label{font-family:'GT Walsheim Pro',sans-serif;font-size:12.5px;
  font-weight:700;color:var(--muted);cursor:pointer;padding:3px 10px;
@@ -137,7 +138,20 @@ body{margin:0;background:var(--plane);color:var(--ink);
 #fo-live:checked ~ .flaggroup tr.isoff{display:none}
 .flagt tr.isoff td{color:var(--muted);opacity:.55}
 .fl-on{width:1%;text-align:right;white-space:nowrap}
-.fl-on form{margin:0}
+.fl-tick{width:1%;padding-right:8px !important}
+.fl-tick input{cursor:pointer}
+/* THE BULK BUTTONS. Off until something is ticked - two buttons that would do
+   nothing read as two buttons that are broken. :has is what makes that a
+   stylesheet question rather than a script one, and where it is missing they
+   are simply always live, which still works. */
+.bulk{margin-left:auto;display:flex;gap:6px}
+.bulk button{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;
+ font-weight:700;padding:3px 11px;border-radius:14px;cursor:pointer;
+ border:1px solid var(--line);color:var(--muted);background:transparent}
+.bulk button:hover{border-color:var(--velocity);color:var(--velocity)}
+.flagform:not(:has(input[name="pick"]:checked)) .bulk{opacity:.35;
+ pointer-events:none}
+.fobar{flex-wrap:wrap}
 .onoff{font-family:'GT Walsheim Pro',sans-serif;font-size:11.5px;font-weight:700;
  padding:2px 10px;border-radius:12px;border:1px solid var(--line);cursor:pointer;
  background:transparent;color:var(--muted)}
@@ -1566,10 +1580,24 @@ body.fit .pdfwrap object{height:100%}
   }
 
   function loadSheet(url, body) {
+    // WHERE YOU WERE, NOT WHERE THE PAGE OPENS. The sheet re-fetches itself
+    // after every button in it, and the fragment has no script of its own to
+    // remember anything with - so switching a check off dropped you back on
+    // the first tab, at the top. The tabs are radios with ids, which is enough
+    // to put back.
+    var wasOn = [], wasTop = body.scrollTop;
+    body.querySelectorAll('input[type="radio"]:checked').forEach(function (r) {
+      if (r.id) wasOn.push(r.id);
+    });
     fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.text(); })
       .then(function (html) {
         body.innerHTML = html;
+        wasOn.forEach(function (id) {
+          var el = body.querySelector('#' + id);
+          if (el) el.checked = true;
+        });
+        if (wasTop) body.scrollTop = wasTop;
         // The sync takes minutes, so while one is running the sheet keeps
         // itself current rather than showing the state it opened with.
         if (body.querySelector('[data-orders-running]')) {

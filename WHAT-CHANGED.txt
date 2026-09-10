@@ -1,31 +1,27 @@
-build 2026.09.10-227
+build 2026.09.10-228
 Changed files only. Everything since 130 - install this one.
 36 checks.
 
-CHECKS CAN BE SWITCHED OFF. Reporting flags on the Rules page now has an
-On/Off switch against every check. Off means it stops running and everything it
-has already flagged stops counting - on the board, in the status, in the
-filters - the moment you flip it. Nothing is re-read.
+Switch several checks at once. A tick box on every row and two buttons at the
+top of the flags tab - switch off ticked, switch on ticked. The row's own On/Off
+still works on its own.
 
-Editing a check that is off costs nothing. The re-check queue is driven by a
-hash of the checking code, which is why every change to any rule put the whole
-board in it; a switched-off check is not part of that hash any more.
+And it stays where you were. Switching one used to reload the page onto the
+other tab, at the top, so switching four meant finding the tab again three
+times. The tab is in the URL now, and in the sheet the scroll position and the
+All / Flagging now choice come back too.
 
-Switching one back ON does queue a re-check, and should: that rule never ran on
-anything judged while it was off.
+THE SWEEP COVERS THE CYCLE BEING WORKED, not three cycles. That is where
+"2,594 reports still to go" came from on a board of 1,275 - two thirds of the
+queue was months that had already shipped. Older cycles are re-checked from
+their own board, by pressing the button.
 
-HOLD RE-CHECKS. Same page, top of the flags tab. Held, the sweep does not start
-on its own - the count of what is behind stays on screen with a button to let
-it go when you want it. Use it on an afternoon when a rule is being worked on.
+To be clear about what switching a check off does: it is off everywhere. Not
+run on a new upload, not run on anything the Dropbox feed brings in, not run on
+a re-check, and anything it already flagged stops counting on reports already
+on the board. Nothing is re-read for that.
 
-Findings of the same kind are one line in the filter. A row's CTR, a tile's CTR
-and the top-line CTR were three entries named after whichever report got there
-first - "Meta is 57% short", "3 creative previews did not render". The names
-are written now, one per kind, with no report's figures in them.
+Switching one back ON does queue a re-check - that rule never ran on anything
+judged while it was off.
 
-Social Mirror ad sizes: only 300x250, 300x600, 320x480 and 336x280 count.
-
-"Ordered but not on the report" no longer fires on an SEO report, and the
-re-check leaves SEO reports alone the way the upload always has.
-
-951 tests pass.
+952 tests pass.

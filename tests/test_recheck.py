@@ -210,9 +210,12 @@ def test_the_automatic_sweep_reads_signed_off_reports_too(live):
     """
     from app.recheck import stale_count, sweep_once
     s, rep, _ = live                       # the fixture report is reviewed
-    assert stale_count(s) == 1
-    assert sweep_once(s, limit=8) == 1, "finished work is read too"
-    assert stale_count(s) == 0
+    # Named rather than left to the automatic window: the sweep covers the
+    # cycle being worked, and the fixture is a month that has shipped.
+    assert stale_count(s, period=rep.period) == 1
+    assert sweep_once(s, limit=8, scoped=False, period=rep.period) == 1, \
+        "finished work is read too"
+    assert stale_count(s, period=rep.period) == 0
 
 
 def test_sweep_once_works_through_the_ones_still_open(live):
@@ -220,8 +223,8 @@ def test_sweep_once_works_through_the_ones_still_open(live):
     s, rep, _ = live
     rep.review_state = "new"
     s.commit()
-    assert sweep_once(s, limit=8) == 1
-    assert stale_count(s) == 0
+    assert sweep_once(s, limit=8, scoped=False, period=rep.period) == 1
+    assert stale_count(s, period=rep.period) == 0
 
 
 # --------------------------------------------------------- scope and pacing
@@ -262,14 +265,17 @@ def test_only_one_sweeper_runs_across_both_workers():
     assert _claim(s, SWEEP_KEY) is True
 
 
-def test_the_automatic_sweep_only_covers_recent_cycles():
-    """A finding on a cycle that shipped in March is not in anybody's way, and
-    re-reading four years of PDFs on every deploy is work nobody asked for."""
+def test_the_automatic_sweep_only_covers_the_cycle_being_worked():
+    """It covered three cycles, which on a board of twelve hundred reports is a
+    queue of two and a half thousand - twice the work in front of anybody, and
+    most of it months that already shipped. A finding on a cycle that shipped in
+    March is not in anybody's way; that board still has its own button."""
     from app.config import Settings
     from app.recheck import recent_periods
     n = Settings.model_fields["recheck_periods"].default
-    assert n >= 2
-    assert len(recent_periods(n)) >= n
+    assert n == 1
+    # The current cycle, plus the pinned one while the new month is empty.
+    assert len(recent_periods(n)) <= 2
 
 
 def test_the_pinned_period_is_always_swept_even_if_it_has_aged_out():
@@ -931,3 +937,60 @@ def test_the_sweep_can_be_held(tmp_path, monkeypatch):
     src = inspect.getsource(recheck.start_sweeper)
     assert "held()" in src
     assert src.index("held()") < src.index("_claim(")
+
+
+def test_several_checks_can_be_switched_at_once(tmp_path, monkeypatch):
+    """Switching four off meant four page loads, and every one of them landed
+    back on the other tab - the rules sheet has no script of its own, so the
+    tabs are radios and a reload resets them.
+
+    One form round the whole list: a checkbox per row and two submit buttons.
+    The per-row switch is a button carrying its own value, which a browser
+    sends only when it is the button pressed, so the two do not collide.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'b.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    import app.config
+    import app.db
+    import app.main
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)
+    app.db.init_db()
+    from fastapi.testclient import TestClient
+
+    from app import checkctl
+    checkctl.refresh()
+    client = TestClient(app.main.app, follow_redirects=False)
+
+    picked = ["check_date_range", "check_row_math", "check_market_logo"]
+    r = client.post("/checks/set", data={"pick": picked, "on": "",
+                                         "back": "/rules?tab=flags"})
+    assert r.status_code == 303
+    # BACK WHERE THE SWITCH WAS. It went to /rules, which opens on What is
+    # owed, so switching two off meant finding the tab again in between.
+    assert r.headers["location"] == "/rules?tab=flags"
+    checkctl.refresh()
+    assert checkctl.switched_off() == set(picked)
+
+    # One row's own button switches that one and leaves the ticks alone.
+    r = client.post("/checks/set", data={"pick": picked,
+                                         "one": "check_row_math|1"})
+    assert r.status_code == 303
+    checkctl.refresh()
+    assert checkctl.switched_off() == {"check_date_range", "check_market_logo"}
+
+    # And back on, all of them.
+    client.post("/checks/set", data={"pick": picked, "on": "1"})
+    checkctl.refresh()
+    assert checkctl.switched_off() == set()
+
+    # A name nobody has heard of does nothing at all.
+    client.post("/checks/set", data={"pick": ["check_not_a_thing"], "on": ""})
+    checkctl.refresh()
+    assert checkctl.switched_off() == set()
+
+    # The page opens on the tab the URL names.
+    body = client.get("/rules?tab=flags&frag=1").text
+    assert 'id="rtab-flags" checked' in body
+    assert 'name="pick"' in body
