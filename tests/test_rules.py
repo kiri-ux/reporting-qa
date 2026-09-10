@@ -3734,3 +3734,53 @@ def test_a_row_that_lost_a_cell_is_not_judged():
                          "X the National Avg (.07%)": 1.0})]
     out = check_row_math({"text": "", "tables": [U()], "page_of": None})
     assert len(out) == 1 and "Bad" in out[0]["detail"]
+
+
+def test_the_ctv_tile_has_to_be_ctvs_own():
+    """The headline CTV Completion Rate is an average of the CTV line items and
+    nothing else. American Theater's read 74.00% on a report where every CTV
+    figure in the document - two creatives at 99.63% and 99.61%, two strategies
+    at 99.69% and 99.66% - is a hair under a hundred. An average cannot land
+    thirty points below everything it averages, so the tile was built over rows
+    that are not CTV, and the client was sent a number matching nothing else on
+    their report."""
+    from app.checks.rules import check_ctv_tile
+
+    body = "\n".join([
+        "CTV Completion Rate",
+        "                        {tile}",
+        "Percentage of users who watched the video from start to finish",
+        "",
+        "Connected TV (CTV) Creative Performance",
+        " Preview Image     Creative Name                    Impressions      Video Completion Rate",
+        "                   American Theater_TAT_Welcome 15.mp4    18,476            99.63%",
+        "                   American Theater_TAT_Welcome 30.mp4    14,136            99.61%",
+        "",
+        "Connected TV (CTV) Completion Performance by Strategy",
+        " Strategy                                   25% Completion Rate   50% Completion Rate   75% Completion Rate   100% Completion Rate",
+        " American Theater - Concert Goers CTV                    100.00%               99.91%                99.84%                 99.69%",
+        " American Theater - Concert Goers CTV reach              100.00%               99.82%                99.79%                 99.66%",
+        "",
+    ])
+
+    def run(tile):
+        return check_ctv_tile({"text": body.replace("{tile}", tile),
+                               "page_of": lambda _o: 1})
+
+    (bad,) = run("74.00%")
+    assert bad["severity"] == "fail"
+    assert "99.61% to 99.69%" in bad["detail"]
+    # A tile inside its own figures is the normal case and says nothing.
+    assert run("99.64%") == []
+    # Both ends, and the slack for rounding.
+    assert run("99.60%") == []
+    assert run("101.00%") == []
+    assert run("104.00%")
+
+
+def test_the_ctv_tile_check_needs_a_tile():
+    """A report with no CTV completion tile has nothing to check."""
+    from app.checks.rules import _rule_applies, check_ctv_tile
+
+    assert not _rule_applies(check_ctv_tile, {"text": "Meta Performance\n"})
+    assert _rule_applies(check_ctv_tile, {"text": "CTV Completion Rate\n"})

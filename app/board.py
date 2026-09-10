@@ -323,9 +323,12 @@ def days_in_cycle(cyc, starts_on, ends_on) -> int:
     return max(0, (last - first).days + 1)
 
 
-STATES = ["missing", "in", "warnings", "errors", "needs_fix", "ready"]
+STATES = ["missing", "in", "warnings", "errors", "review", "needs_fix", "ready"]
 STATE_LABEL = {"missing": "Not received", "in": "In, unreviewed",
                "warnings": "Warnings", "errors": "Errors",
+               # NOT "Errors". The partner already has this file: a failure
+               # that appeared after it went out is a resend, not a read.
+               "review": "Report review",
                "needs_fix": "Needs fix", "ready": "Good to go"}
 
 

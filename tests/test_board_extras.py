@@ -4216,3 +4216,35 @@ def test_the_same_client_spelled_two_ways_is_one_report():
     from app import main
     src = inspect.getsource(main.upload_for_expected)
     assert "here[0] if here else (by_ids[0] if len(by_ids) == 1 else None)" in src
+
+
+def test_a_failure_after_delivery_is_a_resend_not_a_read():
+    """A sign-off going back to unreviewed is a job for whoever reads reports.
+    A new failure on a report the partner already HAS is a different job and a
+    worse one - the fix is to send it again - and they were the same status, so
+    the resends were invisible among everything else waiting to be read."""
+    import inspect
+    from app import delivery, main, recheck
+    from app.board import STATES, STATE_LABEL
+    from app.db import Report
+
+    assert "review" in STATES
+    assert STATE_LABEL["review"] == "Report review"
+
+    r = Report(filename="x.pdf", client="C", severity="pass", findings=[])
+    assert r.needs_resend is False
+    r.resend_at = dt.datetime.utcnow()
+    assert r.needs_resend is True
+    assert r.board_state == "review"
+    # A person's own verdict outranks it.
+    r.review_state = "needs_fix"
+    assert r.board_state == "needs_fix"
+
+    # Set on a re-check, but only for a report that has actually gone out.
+    src = inspect.getsource(recheck.recheck)
+    assert 'if fresh and (getattr(rep, "delivered_as", "")' in src
+    assert "rep.resend_at = dt.datetime.utcnow()" in src
+    # Cleared by a verdict, and by sending it again.
+    assert "rep.resend_at = None" in inspect.getsource(main.review_report)
+    assert "r.resend_at = None" in inspect.getsource(delivery.upload_drive_folder)
+    assert "r.resend_at = None" in inspect.getsource(delivery.upload_dropbox_folder)

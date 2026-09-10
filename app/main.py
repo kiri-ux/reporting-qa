@@ -1850,6 +1850,10 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     rep.reviewed_by = "" if state == "new" else name
     rep.reviewed_at = dt.datetime.utcnow() if state != "new" else None
     rep.signoff_cleared_at = None        # a fresh decision, whatever went before
+    # AND THE RESEND MARK. It is there to get somebody's attention; a verdict
+    # is somebody's attention. What happens to the file next is the verdict's
+    # business, not the mark's.
+    rep.resend_at = None
     db.commit()
     # BACK TO THE BOARD, NOT BACK TO THIS REPORT.
     #

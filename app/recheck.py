@@ -377,6 +377,13 @@ def recheck(db: Session, rep: Report, *, manual: bool = False,
 
     fresh = _new_failures(old_findings, old_acked, rep.findings)
     reset = False
+    # THE PARTNER ALREADY HAS THIS FILE. A new failure on a report that has
+    # been filed is not the same job as a new failure on one still being read:
+    # the fix is to send it again. Marked so it can be found, because among
+    # everything else waiting to be looked at it could not be.
+    if fresh and (getattr(rep, "delivered_as", "")
+                  or getattr(rep, "dbx_as", "")):
+        rep.resend_at = dt.datetime.utcnow()
     if fresh and rep.review_state in ("reviewed", "waived"):
         # They signed off on a different answer. Saying so is the whole point;
         # leaving the sign-off would ship a report nobody has actually read.

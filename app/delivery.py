@@ -407,6 +407,8 @@ def upload_drive_folder(group, period: str, cycle_label: str,
             # folder somebody asked for; recording it here would make the next
             # real delivery hunt for a stale name in the wrong place.
             r.delivered_as = name[:255]
+            # It has been sent again, so it is no longer waiting to be.
+            r.resend_at = None
             # AND WHICH FILE IT WAS. This line was missing, and it is the whole
             # of the corrected-report problem: a report keeps its name when it
             # is corrected, only the file underneath changes, and the file is
@@ -540,6 +542,7 @@ def upload_dropbox_folder(group, period: str, cycle_label: str,
         if not tag:
             r.dbx_as = name[:255]
             r.dbx_stamp = file_stamp(r.stored_path)
+            r.resend_at = None
         n += 1
         if progress:
             progress(n, f"sending {e.client} to Dropbox")

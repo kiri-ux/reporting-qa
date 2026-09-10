@@ -1,23 +1,20 @@
-build 2026.09.08-221
+build 2026.09.10-222
 Changed files only. Everything since 130 - install this one.
-35 checks.
+36 checks.
 
-A spend product is read off its own tiles, and the tile line is not held to the
-eighty-character cap on widget titles. Two tiles side by side are one line of
-text with the width of the page between them: "PPC Ad Cost ... PPC
-Cost-Per-Click" is 95 characters and Peters - Troy's is 107, so 220 read
-neither. The test fixture was padded to fit under the cap, which is why it
-passed while the report failed.
+New check: the headline CTV completion rate has to be CTV's own. An average
+sits between the figures it averages, so a tile reading 74.00% against CTV rows
+running 99.61% to 99.69% is built over rows that are not CTV. Compared against
+the 100% and Video completion columns of the Connected TV (CTV) grids, with two
+points of slack for rounding.
 
-The same client spelled two ways is one report, not two.
+New status: Report review. A new failure on a report the partner ALREADY HAS is
+a different job from a new failure on one still being read - the fix is to send
+it again, not to look again - and they were the same status, so the resends
+were invisible. Filterable in the Status column. It clears when a verdict is
+given or when the report is sent again.
 
-A row shows the copy that was signed off, then the newest, and says "+1 file"
-when another report this cycle names the same client.
+Every report re-checks itself on this deploy, so the CTV tile is judged across
+the cycle and anything already delivered that fails it lands in Report review.
 
-A completion grid is not more rows of the grid above it.
-
-A row is read one number per column, wherever the table narrows.
-
-A replacement takes the new file's logo.
-
-935 tests pass.
+938 tests pass.

@@ -1593,6 +1593,101 @@ def _num(v: str):
         return None
 
 
+# ------------------------------------------- the CTV tile against CTV's own
+# The headline CTV Completion Rate is an average of the CTV line items and
+# nothing else. American Theater's said 74.00% on a report where every CTV
+# figure in the document - two creatives at 99.63% and 99.61%, two strategies
+# at 99.69% and 99.66% - is a hair under a hundred. An average cannot land
+# thirty points below everything it averages, so the tile was built over rows
+# that are not CTV, and the client was sent a number that matches nothing else
+# on their report.
+CTV_TILE = re.compile(r"^[ \t]*CTV Completion Rate[ \t]*$", re.M)
+# The widgets that hold CTV's own completion figures. Both are titled for the
+# product, so a completion column under either of them is CTV's.
+CTV_GRIDS = re.compile(
+    r"^[ \t]*Connected TV \(CTV\).*(?:Completion|Creative) Performance.*$", re.M)
+# 25% and 50% are all but always 100 and say nothing about whether the tile is
+# built right. The tile is the FULL completion rate, so it is compared against
+# the columns that mean the same thing.
+CTV_FULL_COL = re.compile(r"(?:100% Completion|Video Completion) Rate", re.I)
+# A weighted mean sits between the smallest and largest of its parts. The slack
+# is for rounding and for a strategy the grid did not print.
+CTV_TILE_SLACK = 2.0
+
+
+def _ctv_tile_pct(text: str):
+    """The percentage inside the page-one CTV Completion Rate tile."""
+    m = CTV_TILE.search(text)
+    if not m:
+        return None, None
+    for v in PCT.findall(_widget_block(text, m.end(), limit=400)):
+        n = _num(v)
+        if n is not None:
+            return n, m.start()
+    return None, m.start()
+
+
+def _ctv_full_rates(text: str) -> list[tuple[str, float]]:
+    """(row name, full completion rate) from CTV's own grids."""
+    out: list[tuple[str, float]] = []
+    for g in CTV_GRIDS.finditer(text):
+        block = _widget_block(text, g.end())
+        lines = block.split("\n")
+        # Which column is the full rate, by where its heading sits.
+        col = None
+        for line in lines:
+            m = CTV_FULL_COL.search(line)
+            if m:
+                col = m.end()
+                break
+        if col is None:
+            continue
+        for line in lines:
+            if CTV_FULL_COL.search(line):
+                continue
+            best = None
+            for m in re.finditer(PCT, line):
+                n = _num(m.group(1))
+                if n is None or n > 100.0:
+                    continue
+                d = abs(m.end() - col)
+                if best is None or d < best[0]:
+                    best = (d, n)
+            if best is None or best[0] > 25:
+                continue
+            name = re.split(r"\s{2,}", line.strip())[0][:60]
+            if name:
+                out.append((name, best[1]))
+    return out
+
+
+def check_ctv_tile(ctx) -> list[dict]:
+    """The headline CTV completion rate has to be CTV's."""
+    text = ctx.get("text") or ""
+    tile, at = _ctv_tile_pct(text)
+    if tile is None:
+        return []
+    rows = _ctv_full_rates(text)
+    if len(rows) < 1:
+        return []
+    lo = min(v for _n, v in rows)
+    hi = max(v for _n, v in rows)
+    if lo - CTV_TILE_SLACK <= tile <= hi + CTV_TILE_SLACK:
+        return []
+    page_of = ctx.get("page_of")
+    trace = [("Tile on page one", f"{tile:.2f}%"),
+             ("CTV rows on the report",
+              ", ".join(f"{_short_name(n)}: {v:.2f}%" for n, v in rows[:6]))]
+    return [_f("ctv_tile_off", "fail",
+               "CTV completion rate is not CTV's",
+               f"The tile reads {tile:.2f}% against CTV rows running "
+               f"{lo:.2f}% to {hi:.2f}%. An average sits between its own "
+               f"figures, so the tile is built over rows that are not CTV.",
+               trace,
+               where=(f"p{page_of(at)} · " if page_of else "")
+                     + "CTV Completion Rate")]
+
+
 # ---------------------------------------------------------------- devices
 # The devices TapClicks reports. Anything else in this table is a data fault -
 # a site name, a publisher, a blank - not a device someone watched an ad on.
@@ -2002,6 +2097,7 @@ CHECKS: list[tuple] = [
     (check_variant_preview_links,
      "Every variant carries its preview link"),
     (check_completion_rates, "No completion rate is above 100%"),
+    (check_ctv_tile,       "The headline CTV completion rate is CTV's own"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
     (check_strategy_categorized, "Every strategy line names the product it runs"),
@@ -2038,6 +2134,7 @@ SKIP_WHY = {
     "check_device": "no grids on the report",
     "check_row_math": "no grids on the report",
     "check_completion_rates": "no completion widget on the report",
+    "check_ctv_tile": "no CTV completion tile on page one",
     "check_zero_completion": "no completion rate column on the report",
     "check_some_zero_completion": "no video, CTV or audio completion column on "
                                   "the report",
@@ -2112,6 +2209,8 @@ def _rule_applies(rule, ctx) -> bool:
     if name in ("check_line_items", "check_creative", "check_device",
                 "check_row_math"):
         return bool(ctx.get("tables"))
+    if name == "check_ctv_tile":
+        return bool(CTV_TILE.search(ctx.get("text") or ""))
     if name == "check_completion_rates":
         # A COMPLETION RATE COLUMN, wherever it is. Watsontown's Top CTV
         # Publishers grid has one and is not called Completion Performance.

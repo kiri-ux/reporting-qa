@@ -241,6 +241,13 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "Verify, then flag the buyer to fix the Social Mirror naming."),
     ]),
     ("Completion rates", [
+        ("check_ctv_tile",
+         "The CTV completion rate on page one does not sit inside the CTV "
+         "figures on the rest of the report, so it is built over rows that "
+         "are not CTV.",
+         ADMIN, True,
+         "Verify, then alert Alyssa. The client has been sent a number that "
+         "matches nothing else on their report - it needs resending."),
         ("check_completion_rates",
          "A completion rate above 100%, in any widget that has the column.",
          ADMIN, True,

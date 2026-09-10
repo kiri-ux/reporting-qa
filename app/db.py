@@ -114,6 +114,14 @@ class Report(Base):
     # to unreviewed, and showing the name as though it were still signed is how
     # a report reads as reviewed when nobody has read this answer.
     signoff_cleared_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # WHEN A RE-CHECK FOUND A NEW FAILURE ON A REPORT THE PARTNER ALREADY HAS.
+    #
+    # A sign-off going back to unreviewed is a job for whoever reads reports.
+    # This is a different job and a worse one: the file is in the partner's
+    # folder and the client may have read it, so the fix is not "look again",
+    # it is "send it again". They were the same status and the resends were
+    # invisible among everything else waiting to be read.
+    resend_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # Indexes of findings a person has looked at and accepted. The finding
     # stays on the report - it is a note about a known quirk, not a mistake -
     # but it stops counting against the severity.
@@ -258,10 +266,20 @@ class Report(Base):
         return self.review_state == "reviewed" and self.effective_severity != "fail"
 
     @property
+    def needs_resend(self) -> bool:
+        """A failure appeared after this went to the partner."""
+        return bool(self.resend_at)
+
+    @property
     def board_state(self) -> str:
         """One word for the cycle board."""
         if self.review_state == "needs_fix":
             return "needs_fix"
+        # AFTER A PERSON'S OWN VERDICT, BEFORE ANYTHING THE RULES SAY. Somebody
+        # marking it needs fix has already said this; anything else the report
+        # says is less urgent than the partner holding a file that is wrong.
+        if self.needs_resend:
+            return "review"
         if self.ready:
             return "ready"
         sev = self.effective_severity
@@ -920,6 +938,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     # whose folder is not there is the right answer anyway.
     ("reports", "dbx_as", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("reports", "dbx_stamp", "VARCHAR(64) DEFAULT '' NOT NULL"),
+    ("reports", "resend_at", "TIMESTAMP"),
     ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("order_lines", "detail", "JSON"),
