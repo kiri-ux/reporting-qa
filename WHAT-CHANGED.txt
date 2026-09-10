@@ -1,24 +1,18 @@
-build 2026.09.10-224
+build 2026.09.10-225
 Changed files only. Everything since 130 - install this one.
 36 checks.
 
-The sweep reads signed-off reports. It used to, then stopped - re-reading
-finished work while a rule changes several times a day meant the queue never
-emptied and the board kept un-reviewing itself. That was the wrong half to
-leave out: signed off is what has GONE TO THE PARTNER, so a check added
-afterward reached no report a client was holding. On a cycle of 1,222 with
-1,206 signed off, the sweep covered 16.
+The filter row was gone. A block I added in 224 went into the card filters as
+well as the report ones, where the variable it reads does not exist, so the
+script threw before either row was built. Both are back.
 
-A new failure on a delivered report now has somewhere to go - Report review -
-instead of dropping back into the pile waiting to be read, which is what made
-this bearable to turn back on. The banner number, the partner Re-check button
-and Skip this re-check all cover the same population again.
+Filter the reports by which finding. "Errors" is three hundred reports and four
+different problems, and answering which of them meant opening rows until you
+found the right kind. The menu is built over the whole cycle and prints what
+the Findings column already says.
 
-Every status can be picked in the Status filter, whether or not one is on the
-page. These filter on the server, so "no row here has it" is exactly when you
-want to pick it - Report review could not be selected until a report already in
-Report review happened to be on screen.
+Every status can be picked whether or not one is on the page, and a server-side
+filter with one option is offered - it narrows the whole cycle, not the fifty
+rows on screen.
 
-"Geo-Framing Display Ads" is not "Display Ads".
-
-941 tests pass.
+942 tests pass.

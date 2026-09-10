@@ -1310,6 +1310,38 @@ def _delivered(db: Session, period: str, groups) -> dict:
             "ready": ready, "failed": failed}
 
 
+def _finding_codes(e) -> set:
+    """The codes of the findings still open on this row's report."""
+    r = getattr(e, "report", None)
+    if r is None:
+        return set()
+    return {f.get("code") or "" for f in (r.open_findings or [])} - {""}
+
+
+def _finding_menu(rows) -> tuple[list, dict]:
+    """(codes in play, code -> what to call it) for the Findings dropdown.
+
+    THE NAME COMES OFF THE FINDINGS THEMSELVES. There is no table of code to
+    label anywhere - the checks carry a label, the findings carry a code, and
+    nothing joins them - and the finding's own title is the text already being
+    read in that column. Everything after a colon is the specific row or
+    product this one is about ("Ordered but not on the report: CTV, Native
+    Display"), so it is cut: what is wanted is the kind, not the instance.
+    """
+    counts, label = {}, {}
+    for e in rows:
+        r = getattr(e, "report", None)
+        for f in ((r.open_findings if r else []) or []):
+            code = f.get("code") or ""
+            if not code:
+                continue
+            counts[code] = counts.get(code, 0) + 1
+            if code not in label:
+                t = (f.get("title") or code).split(":")[0].strip()
+                label[code] = t[:60] or code
+    return sorted(counts), label
+
+
 def _stale_here(db: Session, period: str, groups) -> dict:
     """How many reports this board has, and how many carry an older answer.
 
@@ -1419,6 +1451,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                # for a while and these never caught up.
                col_partner: str = Query(""), col_kind: str = Query(""),
                col_status: str = Query(""), col_reporter: str = Query(""),
+               col_finding: str = Query(""),
                db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
@@ -1511,6 +1544,15 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # choice.
     cols = {"partner": _picked(col_partner), "kind": _picked(col_kind),
             "status": _picked(col_status), "reporter": _picked(col_reporter)}
+    # WHICH FINDING, not just how bad. "Errors" is three hundred reports and
+    # four different problems; the question is always which of them, and
+    # answering it meant opening rows until you found the right kind.
+    #
+    # The menu is built BEFORE the filters, over the whole cycle - a dropdown
+    # built from what survived its own filter can only ever offer the one
+    # choice already made.
+    finding_codes, finding_labels = _finding_menu(rows)
+    want_finding = _picked(col_finding)
     _col_of = {"partner": lambda e: e.market or "",
                "kind": lambda e: e.kind or "",
                "status": lambda e: e.state or "",
@@ -1518,6 +1560,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     for name, want in cols.items():
         if want:
             rows = [e for e in rows if _col_of[name](e) in want]
+    # A row carries several findings and any one of them counts, so this one
+    # cannot go through _col_of, which compares a single value.
+    if want_finding:
+        rows = [e for e in rows if _finding_codes(e) & set(want_finding)]
     # ONE GRID, WITH THE FINISHED WORK FILTERED OUT RATHER THAN MOVED AWAY.
     #
     # Signed-off reports used to live in their own collapsed section at the
@@ -1625,6 +1671,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # How many reports on this board still carry an older answer, and per
         # partner so a card can offer to fix just that one.
         "stale": _stale_here(db, period, groups),
+        "finding_codes": finding_codes, "finding_labels": finding_labels,
         "jobs": _recheck_jobs(db),
         "notify": settings.notify_status,
         "configured": settings.delivery_configured,

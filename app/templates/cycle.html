@@ -695,7 +695,9 @@
                 data-tip="SEO is a separate report, pulled outside TapClicks and uploaded here. It goes into the partner's folder with the rest, and the checks are not run on it.">SEO</span>
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
         <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
-        <td style="font-size:13px;color:var(--ink-2);max-width:40ch">
+        <td style="font-size:13px;color:var(--ink-2);max-width:40ch"
+            data-v="{{ (e.report.open_findings if e.report else [])
+                       |map(attribute='code')|select|join(',') }}">
           {% if e.report and e.report.renamed_from %}
             <span class="wpill" title="Arrived as {{ e.report.renamed_from }} - the order id was missing or wrong, so it was renamed.">renamed</span>
           {% endif %}
@@ -1008,7 +1010,13 @@
            the server, so "no row here has it" is exactly when you want to
            pick it - Report review could not be selected until a report
            already in Report review happened to be on screen. #}
-        data-always="{{ state_label.keys()|join('|') }}">Status</th><th>Findings</th>
+        data-always="{{ state_label.keys()|join('|') }}">Status</th>
+    {# WHICH FINDING, not just how bad. "Errors" is three hundred reports and
+       four different problems. The values are the findings' own codes and the
+       menu prints what the column already says. #}
+    <th data-col="Findings" data-key="finding"
+        data-always="{{ finding_codes|join('|') }}"
+        data-labels="{{ finding_labels|tojson|forceescape }}">Findings</th>
     <th data-col="Reporter" data-key="reporter">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>
   {{ pager() }}

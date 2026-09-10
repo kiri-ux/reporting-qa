@@ -4265,3 +4265,58 @@ def test_every_status_can_be_picked_even_when_none_is_on_the_page():
     # And the banner says signed-off reports are in the queue, not outside it.
     assert "{{ stale.signed_stale }} of them" in cycle
     assert "shows as Report review" in cycle
+
+
+def test_the_reports_can_be_filtered_by_which_finding():
+    """"Errors" is three hundred reports and four different problems. The
+    question is always which of them, and answering it meant opening rows until
+    you found the right kind."""
+    import inspect
+    from app import main
+
+    class R:
+        def __init__(self, findings):
+            self._f = findings
+
+        @property
+        def open_findings(self):
+            return self._f
+
+    class E:
+        def __init__(self, report=None):
+            self.report = report
+
+    a = E(R([{"code": "ctv_tile_off", "title": "CTV completion rate is not CTV's"},
+             {"code": "row_ctr", "title": "Row CTR does not match its own numbers"}]))
+    b = E(R([{"code": "missing_product",
+              "title": "Ordered but not on the report: CTV, Native Display"}]))
+    c = E(R([]))
+    d = E()
+
+    assert main._finding_codes(a) == {"ctv_tile_off", "row_ctr"}
+    assert main._finding_codes(c) == set() and main._finding_codes(d) == set()
+
+    codes, labels = main._finding_menu([a, b, c, d])
+    assert codes == ["ctv_tile_off", "missing_product", "row_ctr"]
+    # THE NAME COMES OFF THE FINDINGS THEMSELVES - nothing joins a check's
+    # label to a finding's code. Everything after the colon is the specific row
+    # or product this one is about, so it is cut: the kind, not the instance.
+    assert labels["missing_product"] == "Ordered but not on the report"
+    assert labels["ctv_tile_off"] == "CTV completion rate is not CTV's"
+
+    src = inspect.getsource(main.cycle_view)
+    # Built over the whole cycle, before the filters - a menu built from what
+    # survived its own filter can only offer the choice already made.
+    assert src.index("_finding_menu(rows)") < src.index("if want_finding:")
+    assert "_finding_codes(e) & set(want_finding)" in src
+
+    cycle = (TPL / "cycle.html").read_text()
+    assert 'data-col="Findings" data-key="finding"' in cycle
+    assert "data-labels=" in cycle
+    base = (TPL / "base.html").read_text()
+    # The value is what the server filters on; the text is what a person reads.
+    assert "txt.textContent = (labels && labels[n]) || n;" in base
+    assert "say(chosen[0])" in base
+    # A server-side filter with one option is still a real choice: it narrows
+    # the whole cycle, not the fifty rows on screen.
+    assert "if (!key && names.length < 2) return;" in base

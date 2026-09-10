@@ -1087,7 +1087,7 @@ body.fit .pdfwrap object{height:100%}
   // scrolling box that pushes the content off screen and needs ctrl-click to
   // add a second value, which nobody discovers. This is a button that opens a
   // list of checkboxes and closes again, and reports its picks as .chosen.
-  function buildMulti(names, counts, id, label, onChange) {
+  function buildMulti(names, counts, id, label, onChange, labels) {
     var wrap = document.createElement('div');
     wrap.className = 'multi';
     wrap.id = id;
@@ -1099,10 +1099,13 @@ body.fit .pdfwrap object{height:100%}
     menu.className = 'multimenu'; menu.hidden = true;
 
     var chosen = [];
+    var say = function (v) { return (labels && labels[v]) || v; };
     var paint = function () {
       btn.textContent = chosen.length === 0
         ? 'All (' + names.length + ')'
-        : (chosen.length === 1 ? chosen[0] : chosen.length + ' selected');
+        // The value, again, is not what a person reads: the button said
+        // "ctv_tile_off" for a filter whose menu row says what it means.
+        : (chosen.length === 1 ? say(chosen[0]) : chosen.length + ' selected');
       btn.classList.toggle('set', chosen.length > 0);
     };
 
@@ -1138,7 +1141,10 @@ body.fit .pdfwrap object{height:100%}
       var cb = document.createElement('input');
       cb.type = 'checkbox'; cb.value = n;
       var txt = document.createElement('span');
-      txt.textContent = n;
+      // The VALUE is what the server filters on; the text is what a person
+      // reads. A findings filter whose options are "ctv_tile_off" is a filter
+      // nobody can use.
+      txt.textContent = (labels && labels[n]) || n;
       row.appendChild(cb); row.appendChild(txt);
       if (counts[n] > 1) {
         var ct = document.createElement('i');
@@ -1337,18 +1343,6 @@ body.fit .pdfwrap object{height:100%}
           v = v.trim();
           if (v && !(v in vals)) vals[v] = 0;
         });
-        // A CHOICE THAT IS NOT ON THIS PAGE IS STILL A CHOICE.
-        //
-        // The list is built from the rows the browser has, which is right for
-        // a partner or a reporter - offering one that matches nothing is a
-        // control that cannot do anything. A status is different: these filter
-        // on the SERVER, so "no row here has it" is exactly when you want to
-        // pick it. Report review could not be selected until a report already
-        // in Report review happened to be on the page you were looking at.
-        (th.dataset.always || '').split('|').forEach(function (v) {
-          v = v.trim();
-          if (v && !(v in vals)) vals[v] = 0;
-        });
         var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
         if (names.length < 2) return;     // a filter with one option filters nothing
         var f = document.createElement('div'); f.className = 'colf';
@@ -1476,9 +1470,16 @@ body.fit .pdfwrap object{height:100%}
         // A dropdown with one option filters nothing. Narrow the board to one
         // partner and this row still offered "Partner: All (1)", which is a
         // control that cannot change what is on screen.
-        if (names.length < 2) return;
+        //
+        // NOT TRUE OF A SERVER-SIDE ONE. Those narrow the whole cycle, not the
+        // fifty rows on screen, so one option is a real choice: a cycle with a
+        // single kind of finding in it still has three hundred rows that do
+        // not have that finding.
+        if (!key && names.length < 2) return;
         var f = document.createElement('div'); f.className = 'colf';
         var lb = document.createElement('label'); lb.textContent = th.dataset.col;
+        var shown = {};
+        try { shown = JSON.parse(th.dataset.labels || '{}'); } catch (e) { shown = {}; }
         var sel = buildMulti(names, vals,
           'colf-' + box.dataset.filter + '-' + i, lb,
           key ? function () {
@@ -1488,7 +1489,7 @@ body.fit .pdfwrap object{height:100%}
             u.searchParams.delete('page');       // a narrower board starts at one
             u.hash = 'reports';
             window.location.assign(u.toString());
-          } : run);
+          } : run, shown);
         // What the address already asked for, ticked - or the control denies
         // the filter it is currently applying.
         if (key) {
