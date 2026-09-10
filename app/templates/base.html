@@ -1337,6 +1337,18 @@ body.fit .pdfwrap object{height:100%}
           v = v.trim();
           if (v && !(v in vals)) vals[v] = 0;
         });
+        // A CHOICE THAT IS NOT ON THIS PAGE IS STILL A CHOICE.
+        //
+        // The list is built from the rows the browser has, which is right for
+        // a partner or a reporter - offering one that matches nothing is a
+        // control that cannot do anything. A status is different: these filter
+        // on the SERVER, so "no row here has it" is exactly when you want to
+        // pick it. Report review could not be selected until a report already
+        // in Report review happened to be on the page you were looking at.
+        (th.dataset.always || '').split('|').forEach(function (v) {
+          v = v.trim();
+          if (v && !(v in vals)) vals[v] = 0;
+        });
         var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
         if (names.length < 2) return;     // a filter with one option filters nothing
         var f = document.createElement('div'); f.className = 'colf';
@@ -1447,6 +1459,18 @@ body.fit .pdfwrap object{height:100%}
             v = v.trim();
             if (v && v !== '\u2014' && v !== '-') vals[v] = (vals[v] || 0) + 1;
           });
+        });
+        // A CHOICE THAT IS NOT ON THIS PAGE IS STILL A CHOICE.
+        //
+        // The list is built from the rows the browser has, which is right for
+        // a partner or a reporter - offering one that matches nothing is a
+        // control that cannot do anything. A status is different: these filter
+        // on the SERVER, so "no row here has it" is exactly when you want to
+        // pick it. Report review could not be selected until a report already
+        // in Report review happened to be on the page you were looking at.
+        (th.dataset.always || '').split('|').forEach(function (v) {
+          v = v.trim();
+          if (v && !(v in vals)) vals[v] = 0;
         });
         var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
         // A dropdown with one option filters nothing. Narrow the board to one

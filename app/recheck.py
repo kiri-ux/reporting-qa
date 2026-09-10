@@ -492,22 +492,29 @@ def sweep_once(db: Session, limit: int = BATCH, *, scoped: bool = True,
                group: str | None = None, period: str | None = None) -> int:
     """One batch of the automatic sweep.
 
-    IT LEAVES SIGNED-OFF REPORTS ALONE. That is a change of mind and worth
-    saying why. The sweep exists so a fixed rule reaches the reports it already
-    got wrong, and a signed-off report is as capable of carrying a wrong answer
-    as any other. But with a rule changing several times a day, sweeping them
-    re-reads work that is already done, over and over, and every pass that
-    finds a new failure pulls somebody's sign-off - so the queue never empties
-    and the board keeps un-reviewing itself.
+    IT COVERS SIGNED-OFF REPORTS TOO, and that is a change of mind twice over.
 
-    So the sweep now covers what is still in the way, and the signed-off ones
-    are counted on the board with a button to do them deliberately. Before
-    delivery is the moment that matters, and that is a decision rather than
-    something that should happen while somebody is mid-cycle.
+    It used to. Then it stopped, because with a rule changing several times a
+    day, re-reading finished work meant the queue never emptied and every pass
+    that found a new failure pulled somebody's sign-off - the board kept
+    un-reviewing itself. The signed-off ones were counted on the board instead,
+    with a button to do them deliberately.
+
+    That was the wrong half to leave out. Signed off is what has GONE TO THE
+    PARTNER: a check added afterward - the CTV completion tile is the one that
+    made this obvious - would never reach a single report a client is actually
+    holding, which is the population where a wrong answer costs something. On a
+    cycle of 1,222 reports with 1,206 signed off, the sweep was covering 16.
+
+    What makes it bearable now is that a new failure on a delivered report has
+    somewhere to go: it is marked for resending and shows as Report review,
+    its own status, rather than dropping back into the pile of things waiting
+    to be read. The queue is still bounded by the fingerprint - it only moves
+    when the checking code does - and Skip this re-check is still there for a
+    deploy that changed nothing.
     """
     done = 0
-    for rep in _stale_batch(db, limit, scoped=scoped, group=group, period=period,
-                            skip_signed=True):
+    for rep in _stale_batch(db, limit, scoped=scoped, group=group, period=period):
         try:
             out = recheck(db, rep)
             done += 1
@@ -691,8 +698,8 @@ def start_sweeper() -> None:
                     started = time.monotonic()
                     try:
                         _wait_for_the_sync(db)
-                        if not stale_count(db, scoped=True, skip_signed=True):
-                            log.info("recheck sweep: nothing stale that is still open")
+                        if not stale_count(db, scoped=True):
+                            log.info("recheck sweep: nothing stale")
                             break
                         n = sweep_once(db)
                         _touch(db, SWEEP_KEY, state="running")   # still alive
@@ -708,8 +715,7 @@ def start_sweeper() -> None:
                     # while that works itself through matters more than it
                     # finishing quickly.
                     took = time.monotonic() - started
-                    left = stale_count(db_count := SessionLocal(),
-                                       scoped=True, skip_signed=True)
+                    left = stale_count(db_count := SessionLocal(), scoped=True)
                     db_count.close()
                     if left > LONG_QUEUE:
                         time.sleep(min(took * REST_MULTIPLIER, MAX_REST_LONG))
@@ -896,7 +902,7 @@ def skip_the_sweep(db: Session, *, period: str | None = None,
     corrections that were owed, and the next deploy that touches the rules
     queues them again anyway.
     """
-    q = _stale_query(db, None, None, period, stale_only=True, skip_signed=True)
+    q = _stale_query(db, None, None, period, stale_only=True)
     n = 0
     for rep in db.scalars(q).all():
         rep.rules_version = rules_version()

@@ -83,8 +83,16 @@
     <div class="msg">
       <b>{{ stale.total }} reports are being re-checked in the background.</b>
       It works through on its own and the number comes down - nothing is wrong
-      and nothing needs pressing. Signed-off reports are left alone. Pages are
-      slower while it runs.
+      and nothing needs pressing. Pages are slower while it runs.
+      {# SIGNED-OFF REPORTS ARE IN THAT NUMBER NOW. They are what has gone to
+         the partner, so a check added afterward has to reach them; a new
+         failure on one shows as Report review rather than dropping back into
+         the pile waiting to be read. #}
+      {% if stale.signed_stale %}
+        <div style="margin-top:6px">{{ stale.signed_stale }} of them
+          {{ 'has' if stale.signed_stale == 1 else 'have' }} been signed off.
+          A new failure on one that has gone out shows as Report review.</div>
+      {% endif %}
       <div class="acct" style="margin-top:5px">Queued by
         <b>{{ build_label }}</b></div>
     </div>
@@ -995,7 +1003,12 @@
        rather than on whatever the cell prints. #}
     <th data-col="Partner" data-key="partner">Partner</th><th>Client</th><th>Products</th>
     <th data-col="Kind" data-key="kind">Kind</th>
-    <th data-col="Status" data-key="status">Status</th><th>Findings</th>
+    <th data-col="Status" data-key="status"
+        {# Every status, whether or not one is on this page. These filter on
+           the server, so "no row here has it" is exactly when you want to
+           pick it - Report review could not be selected until a report
+           already in Report review happened to be on screen. #}
+        data-always="{{ state_label.keys()|join('|') }}">Status</th><th>Findings</th>
     <th data-col="Reporter" data-key="reporter">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>
   {{ pager() }}

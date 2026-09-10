@@ -1322,13 +1322,13 @@ def test_a_worker_starting_is_not_the_service_restarting():
 
 def test_the_two_pages_count_the_same_queue():
     """The board said 799 and this page said 2,029 about the same thing, which
-    makes both of them untrustworthy. It was asking unscoped - every period,
-    signed-off reports included - and the sweep leaves those alone."""
+    makes both of them untrustworthy. It was asking unscoped - every period -
+    while the board asked only about the cycles the sweep covers."""
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
     i = src.index("def why_slow(")
     body = src[i:i + 3000]
-    assert "stale_count(db, scoped=True, skip_signed=True)" in body
+    assert "stale_count(db, scoped=True)" in body
     # The bigger number is still shown, said out loud rather than unlabeled.
     assert "queue_all = stale_count(db)" in body
 
@@ -1368,7 +1368,7 @@ def test_the_recheck_banner_names_the_build_and_stops():
     page = (Path(__file__).resolve().parents[1] / "app" / "templates"
             / "cycle.html").read_text()
     i = page.index("reports are being re-checked in the background")
-    banner = page[i:i + 700]
+    banner = page[i:i + 1600]
     assert "{{ build_label }}" in banner
     assert "{{ build_notes }}" not in banner
 

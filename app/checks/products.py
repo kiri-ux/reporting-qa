@@ -25,6 +25,7 @@ COST_TILE = re.compile(
 SECTION_PATTERNS: list[tuple[str, str]] = [
     ("Social Mirror CTV", r"Social Mirror CTV"),
     ("Native Display", r"Native Display (?:Creative|Click|Conversion)"),
+    ("Geo-Framing Display", r"Geo[- ]?Fram\w*"),
     ("Performance Max", r"Performance Max"),
     ("Mobile Conquesting", r"Mobile Conquesting"),
     ("Social Mirror", r"Social Mirror"),
@@ -55,6 +56,7 @@ TAIL_PATTERNS: list[tuple[str, str]] = [
     # a completion rate for something nobody watches to the end.
     ("DOOH", r"\bDOOH(?: Video| Display)?$"),
     ("Social Mirror CTV", r"Social Mirror CTV$"),
+    ("Geo-Framing Display", r"Geo[- ]?Fram\w* Display$"),
     ("Native Display", r"Native Display$"),
     ("Native Display", r"\bNative$"),
     ("Performance Max", r"Performance Max$"),
@@ -75,6 +77,12 @@ ORDER_PRODUCT_MAP = {
     "mobile conquesting display & video ads": "Mobile Conquesting",
     "meta display & video ads": "Meta",
     "native display ads": "Native Display",
+    # GEO-FRAMING DISPLAY ADS IS NOT DISPLAY ADS. It is a separate line item
+    # with its own targeting, and an order can carry both - which came out as
+    # one product, so the second one could not be checked for at all.
+    "geo-framing display ads": "Geo-Framing Display",
+    "geo-framing display & video ads": "Geo-Framing Display",
+    "geo framing display ads": "Geo-Framing Display",
     "display ads": "Display",
     "social mirror ads": "Social Mirror",
     # Sold as its own line item, and the report gives it its own widgets, so it
@@ -138,6 +146,7 @@ DELIVERS = {
     "DOOH": {"Display", "Video"},
     "Performance Max": {"Display", "Video"},
     "Native Display": {"Display"},
+    "Geo-Framing Display": {"Display", "Video"},
 }
 
 
@@ -154,6 +163,14 @@ DELIVERS = {
 # on the report, and if NEITHER turns up that is still a finding.
 ANY_OF: list[tuple[str, frozenset]] = [
     ("amazon premium", frozenset({"CTV", "Video"})),
+    # WHAT A GEO-FRAMING BUY IS ALLOWED TO PRINT. Splitting it off the plain
+    # Display product is right about the ORDER and says nothing about what the
+    # report calls the widget - and a product the report has no name for is a
+    # product every client running it gets failed for. Either answer settles
+    # it; when the report names Geo-Framing outright, the section pattern below
+    # picks that up and this still holds.
+    ("geo fram", frozenset({"Geo-Framing Display", "Display"})),
+    ("geofram", frozenset({"Geo-Framing Display", "Display"})),
 ]
 
 
@@ -187,6 +204,7 @@ PRODUCT_LEADS: list[tuple[str, str]] = [
     ("DOOH", r"(?:digital out of home|dooh)\b"),
     ("Mobile Conquesting", r"mobile conquesting\b"),
     ("Native Display", r"native display\b"),
+    ("Geo-Framing Display", r"geo[- ]?fram\w*\b"),
     ("Performance Max", r"performance max\b"),
     ("Social Mirror CTV", r"social mirror ctv\b"),
     ("Social Mirror", r"social mirror\b"),

@@ -4248,3 +4248,20 @@ def test_a_failure_after_delivery_is_a_resend_not_a_read():
     assert "rep.resend_at = None" in inspect.getsource(main.review_report)
     assert "r.resend_at = None" in inspect.getsource(delivery.upload_drive_folder)
     assert "r.resend_at = None" in inspect.getsource(delivery.upload_dropbox_folder)
+
+
+def test_every_status_can_be_picked_even_when_none_is_on_the_page():
+    """The Status dropdown is built from the rows the browser has, which is
+    right for a partner or a reporter - offering one that matches nothing is a
+    control that cannot do anything. A status is different: these filter on the
+    SERVER, so "no row here has it" is exactly when you want to pick it. Report
+    review could not be selected until a report already in Report review
+    happened to be on the page you were looking at."""
+    cycle = (TPL / "cycle.html").read_text()
+    assert "data-always=\"{{ state_label.keys()|join('|') }}\"" in cycle
+    base = (TPL / "base.html").read_text()
+    assert "(th.dataset.always || '').split('|')" in base
+
+    # And the banner says signed-off reports are in the queue, not outside it.
+    assert "{{ stale.signed_stale }} of them" in cycle
+    assert "shows as Report review" in cycle

@@ -196,21 +196,23 @@ def test_a_missing_pdf_is_stamped_so_the_sweep_does_not_loop(live):
     assert stale_count(s) == 0
 
 
-def test_the_automatic_sweep_leaves_signed_off_reports_alone(live):
-    """A change of mind, and worth saying why.
+def test_the_automatic_sweep_reads_signed_off_reports_too(live):
+    """A change of mind twice over, and worth saying why.
 
-    The sweep exists so a fixed rule reaches the reports it already got wrong,
-    and a signed-off report is as capable of carrying a wrong answer as any
-    other. But with a rule changing several times a day, sweeping them re-reads
-    finished work over and over, and every pass that finds a new failure pulls
-    somebody's sign-off - so the queue never empties and the board keeps
-    un-reviewing itself.
+    It used to sweep them, then stopped: with a rule changing several times a
+    day it re-read finished work over and over, and every pass that found a new
+    failure pulled somebody's sign-off.
+
+    That was the wrong half to leave out. Signed off is what has GONE TO THE
+    PARTNER, so a check added afterward reached no report a client was holding.
+    A new failure on a delivered one now has somewhere to go - Report review -
+    instead of dropping back into the pile waiting to be read.
     """
     from app.recheck import stale_count, sweep_once
     s, rep, _ = live                       # the fixture report is reviewed
-    assert sweep_once(s, limit=8) == 0
-    assert stale_count(s) == 1, "still stale - just not swept behind your back"
-    assert stale_count(s, skip_signed=True) == 0
+    assert stale_count(s) == 1
+    assert sweep_once(s, limit=8) == 1, "finished work is read too"
+    assert stale_count(s) == 0
 
 
 def test_sweep_once_works_through_the_ones_still_open(live):
@@ -572,12 +574,11 @@ def test_the_partner_recheck_query_leaves_signed_off_reports_alone():
 
 
 def test_the_sweep_and_the_button_now_agree():
-    """Both leave signed-off reports alone. The board counts them instead, for
-    a deliberate pass before delivery - which is the moment that matters, and a
-    decision rather than something that happens mid-cycle."""
+    """Both cover everything judged by older code, signed off or not. What the
+    banner counts is what the sweep will read."""
     import inspect
     from app import recheck as rmod
-    assert "skip_signed=True" in inspect.getsource(rmod.sweep_once)
+    assert "skip_signed" not in inspect.getsource(rmod.sweep_once)
 
 
 def test_the_order_import_fingerprint_covers_the_import_rules_too():
@@ -608,19 +609,20 @@ def rmod_path():
 
 # ------------------------------------------- the amber dot that never cleared
 def test_the_stale_count_and_the_button_cover_the_same_reports():
-    """It kept turning amber after a re-check. The button skips reports already
-    signed off; the count did not, so pressing it did the work it could and the
-    number it is judged by never moved."""
+    """It kept turning amber after a re-check, because the button and the count
+    covered different populations. They cover the same one: everything judged
+    by older code, signed off or not."""
     import inspect
     from app import main as mmod
     src = inspect.getsource(mmod._stale_here)
-    # The stale sum is guarded by the same signed-off test as the have count.
-    assert "case((signed, 0), (stale, 1), else_=0)" in src
+    assert "case((stale, 1), else_=0)" in src
+    assert "case((signed, 0), (stale, 1), else_=0)" not in src
 
 
 def test_the_deliberate_pass_covers_only_the_signed_off_ones(live):
-    """Before delivery is the moment that matters, and it is a decision rather
-    than something that happens while somebody is mid-cycle."""
+    """The sweep reads everything now, but the narrowed passes still exist -
+    signed_only for a deliberate look at finished work, skip_signed for a
+    button that means "what is still in the way"."""
     from app.recheck import stale_count
     s, rep, dbm = live                     # reviewed, stamped with older code
     s.add(dbm.Report(batch_id=1, period="2026-07", client="Still Open",
@@ -629,19 +631,41 @@ def test_the_deliberate_pass_covers_only_the_signed_off_ones(live):
                      acked=[], review_state="new", rules_version="older"))
     s.commit()
 
-    assert stale_count(s) == 2                             # both are stale
-    assert stale_count(s, skip_signed=True) == 1           # what the sweep does
-    assert stale_count(s, signed_only=True) == 1           # the deliberate pass
+    assert stale_count(s) == 2                             # what the sweep does
+    assert stale_count(s, skip_signed=True) == 1           # still open only
+    assert stale_count(s, signed_only=True) == 1           # finished work only
 
 
-def test_there_is_no_button_that_re_reads_signed_off_work():
-    """It was there so a rule change could be pushed through finished reports
-    before delivery. In practice it re-read work that was already done - the
-    one thing the sweep had just been changed to stop doing - and sat on the
-    toolbar looking like a count, which is easy to press by accident."""
-    from pathlib import Path as _P
-    tpl = _P("app/templates/cycle.html").read_text()
-    assert 'value="signed"' not in tpl
+def test_the_sweep_covers_signed_off_reports():
+    """It used to. Then it stopped, because with a rule changing several times
+    a day, re-reading finished work meant the queue never emptied and every
+    pass that found a new failure pulled somebody's sign-off - the board kept
+    un-reviewing itself.
+
+    That was the wrong half to leave out. Signed off is what has GONE TO THE
+    PARTNER, so a check added afterwards - the CTV completion tile is the one
+    that made this obvious - reached no report a client was actually holding.
+    On a cycle of 1,222 reports with 1,206 signed off, the sweep covered 16.
+
+    What makes it bearable is that a new failure on a delivered report now has
+    somewhere to go: it is marked for resending and shows as Report review,
+    rather than dropping back into the pile waiting to be read."""
+    import inspect
+    from pathlib import Path
+
+    from app import main, recheck
+
+    sweep = inspect.getsource(recheck.sweep_once)
+    assert "skip_signed" not in sweep, "the sweep reads finished work too"
+    # The number on the banner has to be what the sweep will actually do, and
+    # Skip this re-check has to stamp everything the sweep would have read - or
+    # it stops the sweep and leaves it a queue.
+    assert "skip_signed=True" not in Path("app/recheck.py").read_text()
+    assert "skip_signed=True" not in Path("app/main.py").read_text()
+    assert "skip_signed=True" not in inspect.getsource(recheck.skip_the_sweep)
+    # The partner button too: "bring this partner up to date" has to mean the
+    # copies the partner is holding.
+    assert "skip_signed=False" in inspect.getsource(main.cycle_recheck)
 
 
 def test_a_job_whose_process_died_stops_claiming_to_be_running():

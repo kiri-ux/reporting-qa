@@ -294,3 +294,43 @@ def test_the_trace_names_only_the_product_in_question():
     assert "Meta · order 14885" in labels
     assert not [l for l in labels if l.startswith(("Display ·", "TikTok ·"))]
     assert "Both agree on" not in labels
+
+
+def test_geo_framing_display_is_not_display():
+    """"Geo-Framing Display Ads" is a separate line item with its own
+    targeting, and an order can carry both it and plain "Display Ads". Read as
+    one product the second one could not be checked for at all."""
+    from app.checks.products import (DELIVERS, any_of_groups, detect,
+                                     every_product, map_order_product)
+
+    assert map_order_product("Geo-Framing Display Ads") == "Geo-Framing Display"
+    assert map_order_product("Geo Framing Display Ads") == "Geo-Framing Display"
+    assert map_order_product("Geo-Framing Display & Video Ads") == "Geo-Framing Display"
+    # And the products it used to be confused with are untouched.
+    assert map_order_product("Display Ads") == "Display"
+    assert map_order_product("Native Display Ads") == "Native Display"
+    assert map_order_product("Video Ads") == "Video"
+    assert map_order_product("Mobile Conquesting Display & Video Ads") == \
+        "Mobile Conquesting"
+    assert "Geo-Framing Display" in every_product()
+
+    # WHAT THE REPORT IS ALLOWED TO CALL IT. Splitting it off the plain Display
+    # product is a statement about the ORDER and says nothing about the widget,
+    # and a product the report has no name for is a product every client
+    # running it gets failed for. Either answer settles the expectation.
+    grp = any_of_groups(["Geo-Framing Display Ads"])
+    assert grp == [frozenset({"Geo-Framing Display", "Display"})]
+    assert any_of_groups(["Display Ads"]) == []
+    # A Display widget on the report is not an orphan on a Geo-Framing order.
+    assert DELIVERS["Geo-Framing Display"] == {"Display", "Video"}
+    # And when the report does name it, it is read.
+    assert detect("Geo-Framing Display Creative Performance\n", []) == \
+        {"Geo-Framing Display"}
+
+
+def test_the_geo_framing_chip_resolves():
+    from app.product_codes import pill
+
+    assert pill("Geo-Framing Display")["code"] == "GF"
+    assert pill("Geo-Framing Display")["known"]
+    assert pill("Display")["code"] == "D"

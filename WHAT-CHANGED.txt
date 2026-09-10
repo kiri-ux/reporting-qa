@@ -1,20 +1,24 @@
-build 2026.09.10-222
+build 2026.09.10-224
 Changed files only. Everything since 130 - install this one.
 36 checks.
 
-New check: the headline CTV completion rate has to be CTV's own. An average
-sits between the figures it averages, so a tile reading 74.00% against CTV rows
-running 99.61% to 99.69% is built over rows that are not CTV. Compared against
-the 100% and Video completion columns of the Connected TV (CTV) grids, with two
-points of slack for rounding.
+The sweep reads signed-off reports. It used to, then stopped - re-reading
+finished work while a rule changes several times a day meant the queue never
+emptied and the board kept un-reviewing itself. That was the wrong half to
+leave out: signed off is what has GONE TO THE PARTNER, so a check added
+afterward reached no report a client was holding. On a cycle of 1,222 with
+1,206 signed off, the sweep covered 16.
 
-New status: Report review. A new failure on a report the partner ALREADY HAS is
-a different job from a new failure on one still being read - the fix is to send
-it again, not to look again - and they were the same status, so the resends
-were invisible. Filterable in the Status column. It clears when a verdict is
-given or when the report is sent again.
+A new failure on a delivered report now has somewhere to go - Report review -
+instead of dropping back into the pile waiting to be read, which is what made
+this bearable to turn back on. The banner number, the partner Re-check button
+and Skip this re-check all cover the same population again.
 
-Every report re-checks itself on this deploy, so the CTV tile is judged across
-the cycle and anything already delivered that fails it lands in Report review.
+Every status can be picked in the Status filter, whether or not one is on the
+page. These filter on the server, so "no row here has it" is exactly when you
+want to pick it - Report review could not be selected until a report already in
+Report review happened to be on screen.
 
-938 tests pass.
+"Geo-Framing Display Ads" is not "Display Ads".
+
+941 tests pass.

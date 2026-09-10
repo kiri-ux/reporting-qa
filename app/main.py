@@ -647,7 +647,7 @@ def why_slow(request: Request, db: Session = Depends(get_db)):
         # THE SAME NUMBER THE BOARD SHOWS. This asked unscoped - every period,
         # signed-off ones included - so the board said 799 and this page said
         # 2,029 about the same queue, which makes both of them untrustworthy.
-        queue = stale_count(db, scoped=True, skip_signed=True)
+        queue = stale_count(db, scoped=True)
         queue_all = stale_count(db)
         jobs = running_jobs(db)
     except Exception:                                        # noqa: BLE001
@@ -1337,7 +1337,13 @@ def _stale_here(db: Session, period: str, groups) -> dict:
     rows = db.execute(
         select(Report.market,
                func.sum(case((signed, 0), else_=1)),
-               func.sum(case((signed, 0), (stale, 1), else_=0)))
+               # EVERYTHING STALE, SIGNED OFF OR NOT. The sweep skipped
+               # signed-off work and so did this count, which was consistent
+               # and wrong: signed off is what has gone to the partner, so a
+               # check added afterward reached nothing a client was holding.
+               # On a cycle of 1,222 reports with 1,206 signed off, the number
+               # on the banner was 16 reports' worth of the work.
+               func.sum(case((stale, 1), else_=0)))
         .where(Report.period == period)
         .group_by(Report.market)).all()
     have_by_market = {m or "": int(n or 0) for m, n, _s in rows}
@@ -2561,10 +2567,12 @@ def cycle_recheck(period: str = Form(""), group: str = Form(""),
     start_job(db, key, group=group or None, period=period or None,
               stale_only=(scope != "all"),
               signed_only=(scope == "signed"),
-              # A partner button means "bring this partner up to date", and a
-              # report somebody signed off is up to date. It said "6 of 8" on a
-              # partner with one report still pending.
-              skip_signed=bool(group))
+              # SIGNED-OFF REPORTS INCLUDED. "Bring this partner up to date"
+              # has to mean the ones that have gone out too - those are the
+              # copies a client is holding, and a check added afterward would
+              # never reach them. The count beside the button uses the same
+              # rule, so it still says what it will do.
+              skip_signed=False)
     back = f"/cycle?period={period}" + (f"&group={quote(group)}" if group else "")
     return RedirectResponse(back, status_code=303)
 
