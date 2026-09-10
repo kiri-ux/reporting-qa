@@ -611,3 +611,41 @@ def test_the_missing_geo_framing_order_is_a_finding():
     ctx["expected_products"] = {"Geo-Framing Display", "Mobile Conquesting"}
     ctx["expected_any"] = [frozenset({"Geo-Framing Display", "Display"})]
     assert check_products(ctx) == []
+
+
+def test_a_skipped_product_check_says_which_reason():
+    """The product check stands down for three different reasons and said all
+    three at once, which does not answer the question it is asked: which of
+    those is it, on this report, right now.
+
+    The expensive one is the middle. Changing how a product name is read
+    re-stamps the import code, so every product finding on the board goes quiet
+    until the order export has been read again - a fix ships, the re-check runs,
+    and the finding it was written for does not appear.
+    """
+    from app.checks.rules import check_date_range, check_products, skip_reason
+
+    assert skip_reason(check_products, {"expected_products": None}) == \
+        "this client is not on the order list"
+    behind = skip_reason(check_products, {"expected_products": {"Display"},
+                                          "orders_current": False})
+    assert "read again" in behind
+    assert skip_reason(check_products, {"expected_products": {"Display"},
+                                        "is_seo": True}).startswith("an SEO")
+    # A check with one reason still gives the one sentence written for it.
+    assert skip_reason(check_date_range, {}) == "the report prints no date range"
+
+
+def test_the_reason_is_stored_on_the_report():
+    """On the report, not in my head. Working out why a check said nothing cost
+    a screenshot and a guess every time."""
+    import inspect
+    from pathlib import Path
+
+    from app.checks import rules
+
+    src = inspect.getsource(rules.run_all)
+    assert 'checks[-1]["why"] = skip_reason(rule, ctx)' in src
+    viewer = (Path(__file__).resolve().parent.parent / "app" / "templates"
+              / "viewer.html").read_text()
+    assert "c.why or skip_why.get" in viewer

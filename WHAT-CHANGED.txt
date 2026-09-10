@@ -1,30 +1,40 @@
-build 2026.09.10-229
+build 2026.09.10-230
 Changed files only. Everything since 130 - install this one.
 36 checks.
 
-A GEO-FRAMING ORDER THAT DELIVERED NOTHING WAS NOT BEING FLAGGED. Geo-Framing
-is allowed to print as an ordinary Display widget, because the report has no
-reliable name of its own for it - and on a client who bought both, that one
-widget was answering for both orders. Susquehanna River Valley's Display buy
-delivered 202,301 against 175,000 and its Geo-Framing buy served nothing, and
-nothing was said.
+RE-CHECKS WERE NOT RUNNING. Two faults, both introduced in 227 with the
+switches.
 
-A plain Display order on the books now means the Geo-Framing expectation is
-Geo-Framing and nothing else. Where Geo-Framing is the only Display-ish thing
-the client bought, a Display widget still settles it.
+The two workers disagreed about what the current rules are. The rules hash was
+cached once per process, which was safe while it was a pure function of the
+source and stopped being safe the moment a check could be switched off: only
+the worker that took the click recomputed. The other one kept the old hash,
+stamped every report it re-checked with it, and the first worker went on
+counting those same reports as behind. That is a count that sits still while
+the sweep works. The hash is cached against the set of switched-off checks now,
+and the switches are re-read every fifteen seconds, so both workers agree
+within fifteen seconds of a change.
 
---- also in this install, from 228 ---
+And a sweeper that threw wedged its worker for good. One flag says a sweeper is
+already going, and it only came off on the paths that were written. The order
+re-read runs before the sweep and is the heaviest thing in the file; one throw
+there left the flag set with nothing behind it, and that worker never started
+another sweeper. It comes off in a finally now.
 
-Switch several checks at once: a tick box on every row and two buttons at the
-top of the flags tab. The row's own On/Off still works on its own, and
-switching one no longer throws you back to the other tab.
+A skipped check says WHICH of its reasons. The product check stands down for
+three and printed all three at once, which does not answer the question. The
+one that matters: changing how a product name is read means every product
+finding goes quiet until the order export has been read again, so a fix ships,
+the re-check runs, and the finding it was written for does not appear. The
+report now says that in as many words.
 
-The sweep covers the cycle being worked, not three cycles - that is where
-"2,594 reports still to go" came from on a board of 1,275. Older cycles are
-re-checked from their own board.
+--- also in this install ---
 
-A check switched off is off everywhere: not run on an upload, not run on the
-Dropbox feed, not run on a re-check, and anything it already flagged stops
-counting. Switching one back on queues a re-check.
+A Display order spends the geo-framing allowance. Geo-Framing may print as an
+ordinary Display widget, but not while the client also has a plain Display
+order - one widget was answering for both.
 
-954 tests pass.
+Switch several checks at once, and stay on the tab. The sweep covers the cycle
+being worked rather than three cycles.
+
+958 tests pass.

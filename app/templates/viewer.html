@@ -150,7 +150,7 @@
                 {% endif %}
               </span>
               <span>{{ c.label }}{% if state == 'skipped' %}
-                <i class="ckwhy">{{ skip_why.get(c.key, 'nothing to check against') }}</i>
+                <i class="ckwhy">{{ c.why or skip_why.get(c.key, 'nothing to check against') }}</i>
                 {% elif state == 'off' %}
                 <i class="ckwhy">switched off</i>
                 {% endif %}</span>

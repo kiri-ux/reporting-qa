@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.10-229"
+BUILD = "2026.09.10-230"
 BUILD_NOTES = ("")
 
 # ---------------------------------------------------------------------------
@@ -200,29 +200,41 @@ def product_map_version() -> str:
 
 
 _FINGERPRINT: str | None = None
+_FINGERPRINT_FOR: frozenset | None = None
 
 
 def rules_version() -> str:
-    """Cached: the source does not change while the process is running.
+    """The hash of the rules as they are being applied right now.
 
-    The set of switched-off checks does, and it is part of the hash, so
-    `forget_fingerprint` is called whenever one is flipped. Nothing else clears
-    it - re-reading the whole checks folder per report would be a fine way to
-    make the sweep slower than the PDFs it is reading.
+    CACHED AGAINST THE SET OF SWITCHED-OFF CHECKS, not just cached. The source
+    cannot change while the process is running, but which checks are running
+    can - and it is changed by a person pressing a button in ONE of the two
+    gunicorn workers.
+
+    Caching it flat broke the board in the least visible way available. The
+    worker that took the click recomputed; the other one went on holding the
+    hash from before the switch, stamped every report it re-checked with it,
+    and the first worker went on counting those same reports as behind. The
+    number on the banner sat at 1,415 and did not move, with the sweep working
+    the whole time.
+
+    checkctl re-reads the switches every fifteen seconds, so both workers agree
+    within fifteen seconds of a change, without anything having to be told.
     """
-    global _FINGERPRINT
-    if _FINGERPRINT is None:
-        off: frozenset[str] = frozenset()
-        try:
-            from .checkctl import switched_off
-            off = switched_off()
-        except Exception:                                        # noqa: BLE001
-            off = frozenset()
+    global _FINGERPRINT, _FINGERPRINT_FOR
+    try:
+        from .checkctl import switched_off
+        off = frozenset(switched_off())
+    except Exception:                                            # noqa: BLE001
+        off = frozenset()
+    if _FINGERPRINT is None or _FINGERPRINT_FOR != off:
         _FINGERPRINT = rules_fingerprint(off)
+        _FINGERPRINT_FOR = off
     return _FINGERPRINT
 
 
 def forget_fingerprint() -> None:
     """A check was switched on or off, so the hash of the rules has moved."""
-    global _FINGERPRINT
+    global _FINGERPRINT, _FINGERPRINT_FOR
     _FINGERPRINT = None
+    _FINGERPRINT_FOR = None

@@ -994,3 +994,62 @@ def test_several_checks_can_be_switched_at_once(tmp_path, monkeypatch):
     body = client.get("/rules?tab=flags&frag=1").text
     assert 'id="rtab-flags" checked' in body
     assert 'name="pick"' in body
+
+
+def test_both_workers_agree_on_the_rules_hash_after_a_switch(tmp_path,
+                                                             monkeypatch):
+    """The number on the banner sat at 1,415 and did not move, with the sweep
+    working the whole time.
+
+    The hash was cached flat, and it stopped being a pure function of the source
+    the moment a check could be switched off. One gunicorn worker took the
+    click and recomputed; the other went on holding the hash from before the
+    switch, stamped every report it re-checked with it, and the first worker
+    went on counting those same reports as behind. Neither was wrong about
+    anything it could see.
+
+    Cached against the set of switched-off checks instead. checkctl re-reads
+    the switches every fifteen seconds, so both workers land on the same answer
+    without either of them having to be told.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'w.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from app import checkctl
+    from app import version as ver
+    checkctl.refresh()
+    ver.forget_fingerprint()
+
+    db = db_mod.SessionLocal()
+    was = ver.rules_version()
+    checkctl.set_check(db, "check_date_range", False, who="kiri")
+    now = ver.rules_version()
+    assert now != was
+
+    # THE OTHER WORKER. It never saw the click, and its cache still holds the
+    # hash from before it - so it recomputes off the switches it can read.
+    ver._FINGERPRINT = was
+    ver._FINGERPRINT_FOR = frozenset()
+    assert ver.rules_version() == now
+    db.close()
+
+
+def test_a_sweeper_that_throws_does_not_wedge_the_worker():
+    """One flag says a sweeper is already going. A throw in the preamble - the
+    order re-read is the heaviest thing in the file - left it set with no
+    sweeper behind it, and that worker never started another one."""
+    import inspect
+
+    from app import recheck
+
+    src = inspect.getsource(recheck.start_sweeper)
+    # The flag comes off in a finally, not at each early return.
+    assert "finally:\n            _running.clear()" in src
+    assert src.count("_running.clear()") == 1
+    body = src[src.index("def _sweep_forever"):]
+    assert "_remap_orders_if_stale()" in body

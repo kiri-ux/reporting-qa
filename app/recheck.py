@@ -698,6 +698,24 @@ def start_sweeper() -> None:
         # with nothing to show for it but the same product finding coming back.
         # Re-reading the orders is not the same job as re-reading the PDFs.
         #
+        # WHATEVER HAPPENS, THE FLAG COMES OFF. It is one flag saying "a
+        # sweeper is already going", and a throw anywhere below - the order
+        # re-read is an 850 MB download and the heaviest thing in this file -
+        # used to leave it set with no sweeper behind it. That worker then
+        # declined to start one ever again, quietly, for the life of the
+        # process: the count on the board sits where it is, and everything else
+        # looks fine.
+        try:
+            _sweep_forever()
+        except Exception as exc:                                 # noqa: BLE001
+            log.warning("recheck sweep stopped: %s", exc)
+        finally:
+            _running.clear()
+
+    def _sweep_forever():
+        import time
+        from .proc import background
+
         # INSIDE background(), WHICH IT NEVER WAS. Every other heavy thing this
         # service does marks itself so a page load outranks it, and the single
         # heaviest one - an 850 MB download and a two-million-row parse - was
@@ -708,7 +726,6 @@ def start_sweeper() -> None:
         with background():
             _remap_orders_if_stale()
         if not settings.auto_recheck:
-            _running.clear()
             return
         # HELD BY A PERSON. Not the same thing as auto_recheck, which is a
         # deployment setting nobody here can reach: this is a switch on the
@@ -719,13 +736,11 @@ def start_sweeper() -> None:
         from .checkctl import held
         if held():
             log.info("recheck sweep: held")
-            _running.clear()
             return
         own = SessionLocal()
         try:
             if not _claim(own, SWEEP_KEY):
                 log.info("recheck sweep: another worker has it")
-                _running.clear()
                 return
         finally:
             own.close()
@@ -784,7 +799,6 @@ def start_sweeper() -> None:
                 _release(db2, SWEEP_KEY)
             finally:
                 db2.close()
-            _running.clear()
 
     threading.Thread(target=run, name="recheck-sweeper", daemon=True).start()
 

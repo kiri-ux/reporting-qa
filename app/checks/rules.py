@@ -2178,6 +2178,32 @@ def _stamp(out: list[dict], who: str) -> list[dict]:
 SEV_ORDER = {"fail": 2, "warn": 1, "info": 0}
 
 
+def skip_reason(rule, ctx) -> str:
+    """WHICH of a check's reasons it abstained for, when it has more than one.
+
+    SKIP_WHY is one sentence per check, so the product check - which stands
+    down for three different reasons - read as all three at once. That is the
+    check people ask about most, and "no order list loaded for this client, or
+    the loaded one was read by older import code" does not answer the question
+    it is asked: which of those is it, right now, on this report.
+
+    The one that costs an afternoon is the second. Changing how a product name
+    is read re-stamps the import code, and every product finding on the board
+    goes quiet until the order export has been read again - so a fix ships, the
+    re-check runs, and the finding it was written for does not appear.
+    """
+    name = rule.__name__
+    if name == "check_products":
+        if ctx.get("expected_products") is None:
+            return "this client is not on the order list"
+        if not ctx.get("orders_current", True):
+            return ("the order list was read by older import code - it has to "
+                    "be read again before this check can say anything")
+        if ctx.get("is_seo"):
+            return "an SEO report carries SEO and nothing else"
+    return SKIP_WHY.get(name, "")
+
+
 def _rule_applies(rule, ctx) -> bool:
     """Did this check have anything to work with?
 
@@ -2490,6 +2516,8 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
                       else "passed"),
             "count": len(raised),
         })
+        if checks[-1]["state"] == "skipped":
+            checks[-1]["why"] = skip_reason(rule, ctx)
 
     meta = meta_from_text(text)
     from_name = meta_from_filename(filename or path.name)
