@@ -565,3 +565,49 @@ def test_a_year_in_a_campaign_name_is_not_an_order_id():
     assert _keyify("Acme - 51742", "") == {"51742"}
     # And the account column is taken as it stands, whatever it looks like.
     assert _keyify("Acme 2026", "1999") == {"1999"}
+
+
+def test_a_display_order_spends_the_geo_framing_allowance():
+    """Geo-Framing may print as an ordinary Display widget, because the report
+    has no reliable name of its own for it - but only while geo-framing is the
+    only Display-ish thing the client bought.
+
+    Susquehanna River Valley bought both: three Display line items delivering
+    202,301 against 175,000, and a Geo-Framing order that served nothing at all.
+    One Display widget was answering for both orders, so the order that
+    delivered nothing never showed up as missing.
+    """
+    from app.checks.products import any_of_groups
+
+    # Geo-framing on its own: a plain Display widget still settles it.
+    alone = any_of_groups(["Geo-Framing Display Ads"], {"Geo-Framing Display"})
+    assert alone == [frozenset({"Geo-Framing Display", "Display"})]
+
+    # Both bought: the geo-framing expectation is geo-framing.
+    both = any_of_groups(["Geo-Framing Display Ads", "Display Ads"],
+                         {"Geo-Framing Display", "Display"})
+    assert both == [frozenset({"Geo-Framing Display"})]
+
+    # Nothing else changes - Amazon's two halves are untouched.
+    assert any_of_groups(["Amazon Premium CTV + Video Ads"], {"Display"}) == [
+        frozenset({"CTV", "Video"})]
+
+
+def test_the_missing_geo_framing_order_is_a_finding():
+    """The whole point of the one above, read the way the check reads it."""
+    from app.checks.rules import check_products
+
+    ctx = {"expected_products": {"Display", "Geo-Framing Display",
+                                 "Mobile Conquesting"},
+           "products": {"Display", "Mobile Conquesting"},
+           "expected_any": [frozenset({"Geo-Framing Display"})],
+           "is_lifetime": False, "text": "", "page_of": lambda _o: 1}
+    got = check_products(ctx)
+    assert [f["code"] for f in got] == ["product_missing"]
+    assert "Geo-Framing Display" in got[0]["title"]
+
+    # And with only the geo-framing order on the books, the Display widget
+    # still settles it and nothing is said.
+    ctx["expected_products"] = {"Geo-Framing Display", "Mobile Conquesting"}
+    ctx["expected_any"] = [frozenset({"Geo-Framing Display", "Display"})]
+    assert check_products(ctx) == []

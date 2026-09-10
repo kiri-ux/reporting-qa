@@ -796,7 +796,11 @@ def expected_any(db: Session, client: str, account_ids: str,
     hit = client_lines(db, client, account_ids) or []
     if period:
         hit = [l for l in hit if _ran_during(l, period)]
-    return any_of_groups([l.campaign for l in hit])
+    # AND WHAT ELSE THEY BOUGHT. A geo-framing buy may answer with a plain
+    # Display widget only while geo-framing is the only Display-ish order on
+    # the books - otherwise one widget was settling two orders.
+    return any_of_groups([l.campaign for l in hit],
+                         {l.product for l in hit if l.product})
 
 
 def client_lines(db: Session, client: str, account_ids: str):

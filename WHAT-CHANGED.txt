@@ -1,27 +1,30 @@
-build 2026.09.10-228
+build 2026.09.10-229
 Changed files only. Everything since 130 - install this one.
 36 checks.
 
-Switch several checks at once. A tick box on every row and two buttons at the
-top of the flags tab - switch off ticked, switch on ticked. The row's own On/Off
-still works on its own.
+A GEO-FRAMING ORDER THAT DELIVERED NOTHING WAS NOT BEING FLAGGED. Geo-Framing
+is allowed to print as an ordinary Display widget, because the report has no
+reliable name of its own for it - and on a client who bought both, that one
+widget was answering for both orders. Susquehanna River Valley's Display buy
+delivered 202,301 against 175,000 and its Geo-Framing buy served nothing, and
+nothing was said.
 
-And it stays where you were. Switching one used to reload the page onto the
-other tab, at the top, so switching four meant finding the tab again three
-times. The tab is in the URL now, and in the sheet the scroll position and the
-All / Flagging now choice come back too.
+A plain Display order on the books now means the Geo-Framing expectation is
+Geo-Framing and nothing else. Where Geo-Framing is the only Display-ish thing
+the client bought, a Display widget still settles it.
 
-THE SWEEP COVERS THE CYCLE BEING WORKED, not three cycles. That is where
-"2,594 reports still to go" came from on a board of 1,275 - two thirds of the
-queue was months that had already shipped. Older cycles are re-checked from
-their own board, by pressing the button.
+--- also in this install, from 228 ---
 
-To be clear about what switching a check off does: it is off everywhere. Not
-run on a new upload, not run on anything the Dropbox feed brings in, not run on
-a re-check, and anything it already flagged stops counting on reports already
-on the board. Nothing is re-read for that.
+Switch several checks at once: a tick box on every row and two buttons at the
+top of the flags tab. The row's own On/Off still works on its own, and
+switching one no longer throws you back to the other tab.
 
-Switching one back ON does queue a re-check - that rule never ran on anything
-judged while it was off.
+The sweep covers the cycle being worked, not three cycles - that is where
+"2,594 reports still to go" came from on a board of 1,275. Older cycles are
+re-checked from their own board.
 
-952 tests pass.
+A check switched off is off everywhere: not run on an upload, not run on the
+Dropbox feed, not run on a re-check, and anything it already flagged stops
+counting. Switching one back on queues a re-check.
+
+954 tests pass.

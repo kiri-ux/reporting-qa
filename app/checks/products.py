@@ -174,13 +174,30 @@ ANY_OF: list[tuple[str, frozenset]] = [
 ]
 
 
-def any_of_groups(raw_names) -> list[frozenset]:
-    """The either-or expectations these order line names carry."""
+def any_of_groups(raw_names, ordered=None) -> list[frozenset]:
+    """The either-or expectations these order line names carry.
+
+    A PLAIN DISPLAY ORDER SPENDS THE GEO-FRAMING ALLOWANCE. Geo-Framing is
+    allowed to print as an ordinary Display widget, because the report has no
+    reliable name of its own for it - but that only holds when Geo-Framing is
+    the only Display-ish thing the client bought. Susquehanna River Valley
+    bought both: three Display line items delivering 202,301 against 175,000,
+    and a Geo-Framing order that served nothing at all. The Display widget was
+    answering for both orders and the missing one never showed.
+
+    So when a plain Display order is on the books as well, the geo-framing
+    expectation is geo-framing and nothing else.
+    """
+    have = set(ordered or ())
     out: list[frozenset] = []
     for name in raw_names or ():
         flat = _flat(name)
         for needle, grp in ANY_OF:
-            if needle in flat and grp not in out:
+            if needle not in flat:
+                continue
+            if "Geo-Framing Display" in grp and "Display" in have:
+                grp = frozenset({"Geo-Framing Display"})
+            if grp not in out:
                 out.append(grp)
     return out
 
