@@ -38,12 +38,18 @@
       {% if f.severity in ('fail', 'warn') %}
         {% set _ = problems.append((loop.index0, f)) %}{% endif %}
     {% endfor %}
+    {# A FINDING FROM A CHECK THAT IS SWITCHED OFF stays on the report, greyed
+       and saying so, and stops counting. Deleting it would be rewriting what
+       the tool said at the time, and the check can be switched back on. #}
+    {% set offs = rep.findings_off %}
+    {% set live = problems|rejectattr('0','in',offs)|list %}
 
     {% if problems %}
       <ul class="flist">
         {% for i, f in problems %}
           {% set acked = rep.is_acked(i) %}
-          <li class="{{ 'acked' if acked }}">
+          {% set isoff = i in offs %}
+          <li class="{{ 'acked' if acked or isoff }}">
             <form method="post" action="/report/{{ rep.id }}/ack" class="ackform">
               <input type="hidden" name="index" value="{{ i }}">
               <input type="hidden" name="on" value="{{ '' if acked else '1' }}">
@@ -68,6 +74,7 @@
                     title="{{ 'Page' if bit[0] == 'p' and bit[1:].isdigit() else 'Widget' }}">{{ bit }}</span>{% endif %}
                 {% endfor %}
                 <b>{{ f.title or f.code }}</b>
+                {% if isoff %}<span class="wpill">check switched off</span>{% endif %}
                 {% if f.detail and f.detail != f.title %}
                   <span class="fdetail">{{ f.detail }}</span>{% endif %}
               </span>
@@ -93,6 +100,9 @@
           {{ rep.acked|length }} accepted. The note stays on the report; it just
           stops counting against the status.</p>
       {% endif %}
+      {% if not live %}
+        <p class="allclear">Nothing to fix.</p>
+      {% endif %}
     {% elif rep.checks_skipped %}
       {# NOT "Nothing to fix". Nothing was looked at. #}
       <p class="allclear" style="background:var(--warn-bg);color:var(--ink)">
@@ -105,33 +115,44 @@
     {% endif %}
 
     {% if rep.checks and not rep.checks_skipped %}
-      {% set passed = rep.checks|selectattr('state','equalto','passed')|list %}
-      {% set skipped = rep.checks|selectattr('state','equalto','skipped')|list %}
+      {# THE SWITCH AS IT IS NOW, not as it was when this was judged. A check
+         somebody turned off this morning stopped counting this morning; the
+         stored answer beside it is what it said before that, and printing it
+         would be the report contradicting the board. #}
+      {% set live = rep.checks|rejectattr('key','in',checks_off)|list %}
+      {% set passed = live|selectattr('state','equalto','passed')|list %}
+      {% set skipped = live|selectattr('state','equalto','skipped')|list %}
+      {% set offnow = rep.checks|selectattr('key','in',checks_off)|list %}
       {# Always collapsed. The count on the bar is the whole answer most of the
          time; opening it is for when you want to know exactly which one. #}
       <details style="margin-top:20px">
-        <summary class="cksum">{{ passed|length }} of {{ rep.checks|length }} checks passed
-          {%- set bad = rep.checks|rejectattr('state','equalto','passed')
-                                  |rejectattr('state','equalto','skipped')|list %}
+        <summary class="cksum">{{ passed|length }} of {{ live|length }} checks passed
+          {%- set bad = live|rejectattr('state','equalto','passed')
+                            |rejectattr('state','equalto','skipped')|list %}
           {%- if bad %}<span class="ckbad">{{ bad|length }} not</span>{% endif %}
           {%- if skipped %}<span class="ckskip">{{ skipped|length }} skipped</span>{% endif %}
+          {%- if offnow %}<span class="ckskip">{{ offnow|length }} off</span>{% endif %}
         </summary>
         <ul class="cklist">
           {% for c in rep.checks %}
-            <li class="ck-{{ c.state }}">
+            {% set state = 'off' if c.key in checks_off else c.state %}
+            <li class="ck-{{ state }}">
               <span class="ckmark" aria-hidden="true">
-                {% if c.state == 'passed' %}
+                {% if state == 'off' %}&ndash;
+                {% elif state == 'passed' %}
                   <svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-6" fill="none"
                     stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
                     stroke-linejoin="round"/></svg>
-                {% elif c.state == 'skipped' %}&ndash;
+                {% elif state == 'skipped' %}&ndash;
                 {% else %}
                   <svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none"
                     stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
                 {% endif %}
               </span>
-              <span>{{ c.label }}{% if c.state == 'skipped' %}
+              <span>{{ c.label }}{% if state == 'skipped' %}
                 <i class="ckwhy">{{ skip_why.get(c.key, 'nothing to check against') }}</i>
+                {% elif state == 'off' %}
+                <i class="ckwhy">switched off</i>
                 {% endif %}</span>
             </li>
           {% endfor %}
@@ -513,8 +534,8 @@ details[open] > .cksum::before{content:'▾ '}
 .ckmark svg{width:14px;height:14px}
 .ck-failed .ckmark,.ck-error .ckmark{color:var(--crit)}
 .ck-flagged .ckmark{color:var(--warn)}
-.ck-skipped{opacity:.55}
-.ck-skipped .ckmark{color:var(--muted)}
+.ck-skipped,.ck-off{opacity:.55}
+.ck-skipped .ckmark,.ck-off .ckmark{color:var(--muted)}
 .ck-failed span:last-child,.ck-flagged span:last-child{color:var(--ink);font-weight:700}
 .ckwhy{font-style:normal;font-size:12px;color:var(--muted)}
 

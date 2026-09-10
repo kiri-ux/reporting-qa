@@ -300,20 +300,40 @@ def recheck(db: Session, rep: Report, *, manual: bool = False,
     logo = rep.logo_hash or header_logo_hash(path)
     logo_bad = is_generic(db, logo)
     logo_seen = bool(db.scalar(select(func.count()).select_from(KnownLogo)))
-    result = run_all(path, filename=rep.filename,
-                     for_client=rep.client, expected_products=exp,
-                     flight=flight,
-                     flight_lines=flight_lines(db, rep.client, rep.account_ids),
-                     # What the report row says it is - a person may have said
-                     # so on the upload form, and that outranks the filename.
-                     is_lifetime=bool(rep.is_lifetime),
-                     period=rep.period, market=rep.market or "",
-                     expected_why=why, expected_any=any_of,
-                     quiet_products=quiet,
-                     logo_hash=logo, logo_generic=logo_bad,
-                     logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok,
-                     sibling=sibling_of(db, rep))
+    # A REPORT NOBODY IS JUDGING IS NOT JUDGED HERE EITHER.
+    #
+    # The upload path has always known about this: SEO is pulled outside
+    # TapClicks and looks nothing like a Digital Marketing Report, so it is
+    # stored with the checks not run rather than run and disbelieved. The
+    # re-check did not know, and ran all thirty-six against it every time.
+    #
+    # It went unnoticed while the findings were hidden - the board prints
+    # "Checks not run" on those rows whatever is stored behind it - and then
+    # the sweep started reading signed-off work, every one of those findings
+    # counted as new, and eighty SEO reports landed in Report review for a date
+    # range an SEO report does not print.
+    if rep.checks_skipped:
+        from .checks.parser import quick_meta
+        result = quick_meta(path, rep.filename)
+        if str(path).lower().endswith(".pptx"):
+            from .filekind import slide_count
+            result["pages"] = slide_count(path)
+    else:
+      result = run_all(path, filename=rep.filename,
+                       for_client=rep.client, expected_products=exp,
+                       flight=flight,
+                       flight_lines=flight_lines(db, rep.client, rep.account_ids),
+                       # What the report row says it is - a person may have said
+                       # so on the upload form, and that outranks the filename.
+                       is_lifetime=bool(rep.is_lifetime),
+                       period=rep.period, market=rep.market or "",
+                       expected_why=why, expected_any=any_of,
+                       quiet_products=quiet,
+                       logo_hash=logo, logo_generic=logo_bad,
+                       logo_known=logo_seen, budgets=budgets, ordered=ordered,
+                       orders_current=orders_ok,
+                       is_seo=bool(getattr(rep, "is_seo", False)),
+                       sibling=sibling_of(db, rep))
 
     was_sev = rep.severity
     old_findings, old_acked = list(rep.findings or []), list(rep.acked or [])
@@ -384,6 +404,13 @@ def recheck(db: Session, rep: Report, *, manual: bool = False,
     if fresh and (getattr(rep, "delivered_as", "")
                   or getattr(rep, "dbx_as", "")):
         rep.resend_at = dt.datetime.utcnow()
+    elif rep.resend_at and rep.effective_severity != "fail":
+        # AND IT COMES OFF WHEN THE REASON DOES. The mark is set by a failure
+        # that appeared after the report went out; a later re-check that no
+        # longer finds one has answered the question. Eighty SEO reports were
+        # marked for resending by a rule that should never have run on them,
+        # and without this they would have sat there after the rule was fixed.
+        rep.resend_at = None
     if fresh and rep.review_state in ("reviewed", "waived"):
         # They signed off on a different answer. Saying so is the whole point;
         # leaving the sign-off would ship a report nobody has actually read.
@@ -681,6 +708,17 @@ def start_sweeper() -> None:
         with background():
             _remap_orders_if_stale()
         if not settings.auto_recheck:
+            _running.clear()
+            return
+        # HELD BY A PERSON. Not the same thing as auto_recheck, which is a
+        # deployment setting nobody here can reach: this is a switch on the
+        # Checks page, for the afternoon when a rule is being worked on and
+        # having the board re-read itself after every deploy is the problem
+        # rather than the fix. The count of what is behind stays on the board,
+        # with a button to run it deliberately.
+        from .checkctl import held
+        if held():
+            log.info("recheck sweep: held")
             _running.clear()
             return
         own = SessionLocal()

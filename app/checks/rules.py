@@ -2119,8 +2119,9 @@ CHECKS: list[tuple] = [
 # Why a rule had nothing to do. "Nothing to check against" is true of every
 # skipped rule and tells you nothing about which one you are looking at.
 SKIP_WHY = {
-    "check_products": "no order list loaded for this client, or the loaded one "
-                      "was read by older import code",
+    "check_products": "this is an SEO report, or no order list is loaded for "
+                      "this client, or the loaded one was read by older import "
+                      "code",
     "check_date_range": "the report prints no date range",
     "check_client_wrong": "nothing on the report or its filename names a client",
     "check_pacing_off": "no order figures loaded for this client",
@@ -2160,6 +2161,20 @@ SKIP_WHY = {
 
 RULES = [fn for fn, _ in CHECKS]
 
+
+def _stamp(out: list[dict], who: str) -> list[dict]:
+    """Write the check's own name onto every finding it raised.
+
+    A finding carried a code and several checks write the same one, so "which
+    rule said this" could only be answered by reading the source. It is the
+    question a switch asks - turn a check off and every finding it wrote has to
+    stop counting - and answering it by code alone means guessing on the shared
+    ones.
+    """
+    for f in out:
+        f.setdefault("check", who)
+    return out
+
 SEV_ORDER = {"fail": 2, "warn": 1, "info": 0}
 
 
@@ -2180,7 +2195,8 @@ def _rule_applies(rule, ctx) -> bool:
         # findings from it - the same one, three times, on a report that was
         # right - and no amount of explaining beats not saying it.
         return (ctx.get("expected_products") is not None
-                and ctx.get("orders_current", True))
+                and ctx.get("orders_current", True)
+                and not ctx.get("is_seo"))
     if name == "check_date_range":
         return bool(ctx.get("date_range"))
     if name == "check_client_wrong":
@@ -2347,7 +2363,7 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
             is_lifetime: bool | None = None, ordered: dict | None = None,
             logo_generic: bool = False, logo_known: bool = False,
             logo_hash: str = "", budgets: dict | None = None,
-            orders_current: bool = True,
+            orders_current: bool = True, is_seo: bool = False,
             sibling: dict | None = None) -> dict:
     from .parser import pdf_pages
     # One call, and it gives the page boundaries for free - which is what lets
@@ -2411,6 +2427,10 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
         "imps": imps, "clicks": clicks, "ctr": ctr,
         "date_range": date_range(text),
         "is_lifetime": bool(is_lifetime),
+        # AN SEO REPORT CARRIES SEO AND NOTHING ELSE. The client's other
+        # products are on the client's other report, so comparing this one
+        # against the whole order list makes every one of them a finding.
+        "is_seo": bool(is_seo),
         "period": period,
         "flight": flight,
         # The line items that flight was built from, so a date that looks wrong
@@ -2440,16 +2460,25 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
     }
     findings: list[dict] = []
     checks: list[dict] = []
+    # WHAT SOMEBODY HAS SWITCHED OFF. A check that is off does not run, and its
+    # row still appears on the report's checklist saying so - "not run" with no
+    # explanation is how a check quietly stops happening and nobody notices for
+    # a month.
+    from ..checkctl import switched_off
+    off = switched_off()
     for rule, label in CHECKS:
+        if rule.__name__ in off:
+            checks.append({"key": rule.__name__, "label": label, "state": "off"})
+            continue
         try:
             out = rule(ctx) or []
         except Exception as exc:                              # never let one rule sink a report
             out = [_f("rule_error", "warn", f"Check {rule.__name__} could not run", str(exc))]
             checks.append({"key": rule.__name__, "label": label, "state": "error"})
-            findings.extend(out)
+            findings.extend(_stamp(out, rule.__name__))
             continue
         raised = [f for f in out if f["severity"] in ("fail", "warn")]
-        findings.extend(out)
+        findings.extend(_stamp(out, rule.__name__))
         # A rule that returns nothing has verified its label. A rule that
         # cannot run at all - no order list loaded, no such table on the page -
         # returns nothing too, so it says so rather than claiming a pass.

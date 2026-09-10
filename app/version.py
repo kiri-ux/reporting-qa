@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.10-225"
+BUILD = "2026.09.10-227"
 BUILD_NOTES = ("")
 
 # ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def info() -> dict:
 # The fingerprint is a hash of the source rather than a number somebody has to
 # remember to bump, because the one time it is forgotten is the deploy that
 # most needed it.
-def rules_fingerprint() -> str:
+def rules_fingerprint(off: frozenset[str] | set[str] | None = None) -> str:
     import hashlib
     from pathlib import Path
 
@@ -59,7 +59,7 @@ def rules_fingerprint() -> str:
     h = hashlib.sha256()
     for name in sorted(p.name for p in here.glob("*.py")):
         h.update(name.encode())
-        h.update((here / name).read_bytes())
+        h.update(_check_source(here / name, off or frozenset()))
     # AND THE CODE THAT DECIDES WHAT A RE-CHECK KEEPS - BUT ONLY THAT.
     #
     # The rules alone were too narrow by exactly the bug it was written for.
@@ -91,6 +91,42 @@ def rules_fingerprint() -> str:
     # narrow by exactly the bug it was written for, twice.
     h.update(_roster_source())
     return h.hexdigest()[:16]
+
+
+def _check_source(path, off) -> bytes:
+    """One rules file's source, with the switched-off checks cut out of it.
+
+    THIS IS WHAT MAKES A SWITCHED-OFF CHECK FREE TO WORK ON. The fingerprint is
+    a hash of the checking code, so every edit to any rule put the whole board
+    in the queue to be re-read - including edits to a rule nobody wanted
+    running. Cut its source out and its edits stop costing anything.
+
+    Cut whole, by name, from the parsed tree rather than by line-matching: a
+    function's source is what a hash is being taken of, and half of one is
+    worse than none.
+    """
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return b""
+    if not off:
+        return raw
+    import ast
+
+    try:
+        src = raw.decode("utf-8")
+        tree = ast.parse(src)
+    except (UnicodeDecodeError, SyntaxError):
+        return raw
+    cuts = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in off:
+            seg = ast.get_source_segment(src, node)
+            if seg:
+                cuts.append(seg)
+    for seg in cuts:
+        src = src.replace(seg, "")
+    return src.encode("utf-8")
 
 
 def _roster_source() -> bytes:
@@ -167,8 +203,26 @@ _FINGERPRINT: str | None = None
 
 
 def rules_version() -> str:
-    """Cached: the source does not change while the process is running."""
+    """Cached: the source does not change while the process is running.
+
+    The set of switched-off checks does, and it is part of the hash, so
+    `forget_fingerprint` is called whenever one is flipped. Nothing else clears
+    it - re-reading the whole checks folder per report would be a fine way to
+    make the sweep slower than the PDFs it is reading.
+    """
     global _FINGERPRINT
     if _FINGERPRINT is None:
-        _FINGERPRINT = rules_fingerprint()
+        off: frozenset[str] = frozenset()
+        try:
+            from .checkctl import switched_off
+            off = switched_off()
+        except Exception:                                        # noqa: BLE001
+            off = frozenset()
+        _FINGERPRINT = rules_fingerprint(off)
     return _FINGERPRINT
+
+
+def forget_fingerprint() -> None:
+    """A check was switched on or off, so the hash of the rules has moved."""
+    global _FINGERPRINT
+    _FINGERPRINT = None

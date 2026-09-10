@@ -95,7 +95,36 @@
       Every report is put through all of these when it arrives, and again
       whenever the rules change. A check with nothing to work with - no
       completion column, no order loaded - is reported as skipped rather than
-      passed, with the reason, on the report itself.</p>
+      passed, with the reason, on the report itself.
+      Switch one off and it stops running and stops counting on reports it has
+      already flagged. Switching one back on re-checks the reports it did not
+      see.</p>
+
+    {# THE SWEEP, AND THE SWITCH THAT HOLDS IT. Changing a rule puts every
+       report in the queue to be judged again, which is right when the rule is
+       finished and wrong while it is being worked on. #}
+    <div class="holdbar{% if recheck_held %} onhold{% endif %}">
+      <form method="post" action="/checks/hold">
+        <input type="hidden" name="on" value="{{ '' if recheck_held else '1' }}">
+        <button type="submit">{{ 'Start re-checking again' if recheck_held
+                                 else 'Hold re-checks' }}</button>
+      </form>
+      <span class="sub">
+        {% if recheck_held %}
+          Automatic re-checking is on hold.
+          {% if behind %}{{ behind }} report{{ '' if behind == 1 else 's' }}
+            behind the current rules.{% else %}Nothing is behind.{% endif %}
+        {% else %}
+          Re-checking runs on its own when the rules change.
+          {% if behind %}{{ behind }} report{{ '' if behind == 1 else 's' }}
+            still to go.{% endif %}
+        {% endif %}
+        {% if checks_off %}
+          {{ checks_off|length }} check{{ '' if checks_off|length == 1 else 's' }}
+          switched off.
+        {% endif %}
+      </span>
+    </div>
 
     {# WHOSE DESK IT GOES TO. A finding says a report is wrong and never said
        who fixes it, so telling a template problem from an order problem from a
@@ -128,7 +157,7 @@
         <table class="flagt">
           <tbody>
             {% for c in g.checks %}
-              <tr{% if not c.n %} class="quiet"{% endif %}>
+              <tr class="{% if not c.on %}isoff{% elif not c.n %}quiet{% endif %}">
                 <td class="fl-n">
                   {% if c.n %}<span class="ncount"
                        data-tip="Flagging {{ c.n }} report{{ '' if c.n == 1 else 's' }} in {{ flag_period }}">{{ c.n }}</span>
@@ -146,6 +175,14 @@
                 <td class="fl-how">
                   {% if c.how %}{{ c.how }}
                   {% else %}<span class="tbd">not written yet</span>{% endif %}</td>
+                <td class="fl-on">
+                  <form method="post" action="/checks/toggle">
+                    <input type="hidden" name="name" value="{{ c.key }}">
+                    <input type="hidden" name="on" value="{{ '' if c.on else '1' }}">
+                    <button type="submit" class="onoff{% if c.on %} is-on{% endif %}"
+                      data-tip="{{ 'Stop running this check. Anything it has already flagged stops counting.' if c.on else 'Run this check again. The reports judged while it was off will be re-checked.' }}"
+                      >{{ 'On' if c.on else 'Off' }}</button>
+                  </form></td>
               </tr>
             {% endfor %}
           </tbody>

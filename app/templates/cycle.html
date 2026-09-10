@@ -697,7 +697,8 @@
         <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch"
             data-v="{{ (e.report.open_findings if e.report else [])
-                       |map(attribute='code')|select|join(',') }}">
+                       |map(attribute='code')|select|map('finding_kind')
+                       |unique|join(',') }}">
           {% if e.report and e.report.renamed_from %}
             <span class="wpill" title="Arrived as {{ e.report.renamed_from }} - the order id was missing or wrong, so it was renamed.">renamed</span>
           {% endif %}
@@ -1003,21 +1004,26 @@
         aria-label="Select every report shown"></th>
     {# data-key says the SERVER filters this column, on the row's own value
        rather than on whatever the cell prints. #}
-    <th data-col="Partner" data-key="partner">Partner</th><th>Client</th><th>Products</th>
-    <th data-col="Kind" data-key="kind">Kind</th>
+    <th data-col="Partner" data-key="partner"
+        data-counts="{{ col_counts.get('partner', {})|tojson|forceescape }}">Partner</th><th>Client</th><th>Products</th>
+    <th data-col="Kind" data-key="kind"
+        data-counts="{{ col_counts.get('kind', {})|tojson|forceescape }}">Kind</th>
     <th data-col="Status" data-key="status"
         {# Every status, whether or not one is on this page. These filter on
            the server, so "no row here has it" is exactly when you want to
            pick it - Report review could not be selected until a report
            already in Report review happened to be on screen. #}
-        data-always="{{ state_label.keys()|join('|') }}">Status</th>
+        data-always="{{ state_label.keys()|join('|') }}"
+        data-counts="{{ col_counts.get('status', {})|tojson|forceescape }}">Status</th>
     {# WHICH FINDING, not just how bad. "Errors" is three hundred reports and
        four different problems. The values are the findings' own codes and the
        menu prints what the column already says. #}
     <th data-col="Findings" data-key="finding"
         data-always="{{ finding_codes|join('|') }}"
-        data-labels="{{ finding_labels|tojson|forceescape }}">Findings</th>
-    <th data-col="Reporter" data-key="reporter">Reporter</th><th>Sign-off</th></tr></thead>
+        data-labels="{{ finding_labels|tojson|forceescape }}"
+        data-counts="{{ col_counts.get('finding', {})|tojson|forceescape }}">Findings</th>
+    <th data-col="Reporter" data-key="reporter"
+        data-counts="{{ col_counts.get('reporter', {})|tojson|forceescape }}">Reporter</th><th>Sign-off</th></tr></thead>
     <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>
   {{ pager() }}
   {# WHAT THIS CYCLE DOES NOT OWE, AND WHY.

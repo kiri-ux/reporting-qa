@@ -750,3 +750,184 @@ def test_a_recheck_works_out_the_orders_again(tmp_path, monkeypatch):
     src = inspect.getsource(rmod.recheck)
     assert "rebuild_ids(db, rep)" in src
     assert src.index("rebuild_ids(db, rep)") < src.index("client_flight(db")
+
+
+def test_a_check_can_be_switched_off_without_re_reading_the_board(tmp_path,
+                                                                  monkeypatch):
+    """The two halves of the ask, in one test.
+
+    Every edit to any rule put all seven hundred reports in the queue to be
+    judged again, and there was no way for the person reading the findings to
+    stop a check she did not want. Both of those are the same fact: the
+    fingerprint is a hash of the checking code, so turning a check off was the
+    single most expensive thing anybody could do.
+
+    Off has to be free. Nothing needs re-reading - a finding from a check that
+    is off stops counting where it stands - so the reports are re-stamped with
+    the new hash and the sweep has nothing to do. On is not free, and should
+    not be: that rule never ran on any of them.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'off.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from app import checkctl
+    from app.version import forget_fingerprint, rules_version
+    checkctl.refresh()
+    forget_fingerprint()
+
+    db = db_mod.SessionLocal()
+    was = rules_version()
+    rep = db_mod.Report(
+        batch_id=1, period="2026-08", client="Acme", filename="a.pdf",
+        stored_path=str(tmp_path / "a.pdf"), severity="fail",
+        rules_version=was,
+        findings=[{"code": "social_mirror_ad_size", "severity": "fail",
+                   "title": "2 Social Mirror creatives named with an ad size",
+                   "detail": "", "check": "check_social_mirror_sizes"}],
+        checks=[{"key": "check_social_mirror_sizes", "label": "x",
+                 "state": "failed", "count": 1}], acked=[])
+    db.add(rep)
+    db.commit()
+    assert rep.open_findings
+    assert rep.effective_severity == "fail"
+
+    # OFF. The finding stops counting immediately, and nothing is left behind.
+    checkctl.set_check(db, "check_social_mirror_sizes", False, who="kiri")
+    db.expire_all()
+    rep = db.get(db_mod.Report, rep.id)
+    assert not rep.open_findings
+    assert rep.effective_severity == "pass"
+    now = rules_version()
+    assert now != was, "the rules did change - one of them is not running"
+    assert rep.rules_version == now, "nothing to re-read, so nothing is behind"
+
+    # AND EDITING IT COSTS NOTHING. The source of a check that is off is not
+    # part of the hash, so a change to it queues no reports at all.
+    from pathlib import Path
+
+    from app import version as ver
+    src = Path(ver.__file__).resolve().parent / "checks" / "quality.py"
+    text = src.read_text(encoding="utf-8")
+    edited = text.replace('"""Social Mirror creative names should not carry an '
+                          'ad size."""',
+                          '"""Social Mirror creative names should not carry an '
+                          'ad size. Edited."""')
+    assert edited != text
+    src.write_text(edited, encoding="utf-8")
+    try:
+        forget_fingerprint()
+        assert rules_version() == now
+    finally:
+        src.write_text(text, encoding="utf-8")
+        forget_fingerprint()
+
+    # BACK ON COSTS A RE-CHECK, and it should: that rule did not run on
+    # anything judged while it was off.
+    checkctl.set_check(db, "check_social_mirror_sizes", True, who="kiri")
+    db.expire_all()
+    rep = db.get(db_mod.Report, rep.id)
+    assert rep.open_findings
+    assert rep.rules_version != rules_version()
+    db.close()
+
+
+def test_an_old_finding_is_matched_back_to_its_check_by_code(tmp_path,
+                                                             monkeypatch):
+    """Findings stored before this stamp nothing about who wrote them, and
+    there are hundreds of thousands of them. The code is matched back to the
+    checks that can emit it - and only hidden when every one of them is off,
+    because hiding a finding a live check would still raise is the mistake here
+    that costs something."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'old.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from app import checkctl
+    checkctl.refresh()
+
+    owners = checkctl.code_owners()
+    assert owners["social_mirror_ad_size"] == {"check_social_mirror_sizes"}
+    # Nothing raised outside a check function is ever hidden.
+    assert "rule_error" not in owners
+
+    db = db_mod.SessionLocal()
+    checkctl.set_check(db, "check_social_mirror_sizes", False)
+    old = {"code": "social_mirror_ad_size", "severity": "fail", "title": "x"}
+    assert checkctl.finding_is_off(old)
+    assert not checkctl.finding_is_off({"code": "rule_error", "severity": "warn"})
+    checkctl.set_check(db, "check_social_mirror_sizes", True)
+    assert not checkctl.finding_is_off(old)
+    db.close()
+
+
+def test_a_switched_off_check_does_not_run_and_says_so(monkeypatch):
+    """Off means the rule does not run - and its row stays on the report's own
+    checklist saying it did not, because a check that quietly stops happening is
+    how nobody notices for a month."""
+    from pathlib import Path
+
+    import app.checkctl as ctl
+    from app.checks import rules as rules_mod
+
+    calls = []
+
+    def check_never_runs(_ctx):
+        calls.append("ran")
+        return []
+
+    def check_still_runs(_ctx):
+        calls.append("other")
+        return []
+
+    monkeypatch.setattr(ctl, "switched_off",
+                        lambda: frozenset({"check_never_runs"}))
+    monkeypatch.setattr(rules_mod, "CHECKS",
+                        [(check_never_runs, "never"),
+                         (check_still_runs, "still")])
+
+    pdf = sorted((Path(__file__).resolve().parent / "fixtures").glob("*.pdf"))[0]
+    out = rules_mod.run_all(pdf)
+    states = {c["key"]: c["state"] for c in out["checks"]}
+    assert states == {"check_never_runs": "off", "check_still_runs": "passed"}
+    assert calls == ["other"]
+
+
+def test_the_sweep_can_be_held(tmp_path, monkeypatch):
+    """A rule being worked on means a deploy an hour, and every one of them put
+    the whole board in the queue. Held, the sweep does not start on its own; the
+    count of what is behind stays on the Checks page with a button to run it."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'h.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from app import checkctl
+    checkctl.refresh()
+
+    db = db_mod.SessionLocal()
+    assert not checkctl.held()
+    checkctl.set_hold(db, True, who="kiri")
+    assert checkctl.held()
+    checkctl.set_hold(db, False, who="kiri")
+    assert not checkctl.held()
+    db.close()
+
+    # And the sweeper reads it. Held is checked before it claims the sweep, so
+    # the other worker is not locked out of a run it is allowed to make.
+    import inspect
+    from app import recheck
+    src = inspect.getsource(recheck.start_sweeper)
+    assert "held()" in src
+    assert src.index("held()") < src.index("_claim(")

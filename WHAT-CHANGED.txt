@@ -1,18 +1,31 @@
-build 2026.09.10-225
+build 2026.09.10-227
 Changed files only. Everything since 130 - install this one.
 36 checks.
 
-The filter row was gone. A block I added in 224 went into the card filters as
-well as the report ones, where the variable it reads does not exist, so the
-script threw before either row was built. Both are back.
+CHECKS CAN BE SWITCHED OFF. Reporting flags on the Rules page now has an
+On/Off switch against every check. Off means it stops running and everything it
+has already flagged stops counting - on the board, in the status, in the
+filters - the moment you flip it. Nothing is re-read.
 
-Filter the reports by which finding. "Errors" is three hundred reports and four
-different problems, and answering which of them meant opening rows until you
-found the right kind. The menu is built over the whole cycle and prints what
-the Findings column already says.
+Editing a check that is off costs nothing. The re-check queue is driven by a
+hash of the checking code, which is why every change to any rule put the whole
+board in it; a switched-off check is not part of that hash any more.
 
-Every status can be picked whether or not one is on the page, and a server-side
-filter with one option is offered - it narrows the whole cycle, not the fifty
-rows on screen.
+Switching one back ON does queue a re-check, and should: that rule never ran on
+anything judged while it was off.
 
-942 tests pass.
+HOLD RE-CHECKS. Same page, top of the flags tab. Held, the sweep does not start
+on its own - the count of what is behind stays on screen with a button to let
+it go when you want it. Use it on an afternoon when a rule is being worked on.
+
+Findings of the same kind are one line in the filter. A row's CTR, a tile's CTR
+and the top-line CTR were three entries named after whichever report got there
+first - "Meta is 57% short", "3 creative previews did not render". The names
+are written now, one per kind, with no report's figures in them.
+
+Social Mirror ad sizes: only 300x250, 300x600, 320x480 and 336x280 count.
+
+"Ordered but not on the report" no longer fires on an SEO report, and the
+re-check leaves SEO reports alone the way the upload always has.
+
+951 tests pass.

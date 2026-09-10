@@ -1145,12 +1145,16 @@ def check_creative_names(ctx) -> list[dict]:
 # A Social Mirror ad is one creative rendered into a social feed, so the display
 # ad size in the file name is left over from a display build and means nothing
 # to the client reading it. Display and Mobile Conquesting names keep theirs.
+# NAMED SIZES ONLY. Any pair of numbers was being read as an ad size, so the
+# shapes a social ad is actually built at - 1080x1920 for a story, 1200x628 for
+# a feed - were failing reports for carrying their own size. These four are the
+# display sizes, and a display size is the only thing this check is about.
 # Not \b: an underscore is a word character, so "\b" refused to start on the
 # "_300x250" the sizes are actually written as.
-AD_SIZE = re.compile(r"(?<!\d)\d{2,4}\s*[xX]\s*\d{2,4}(?!\d)")
-# 1080x1080 is the square a social ad is built at. It is not a display size
-# left over from a display build.
-SIZE_OK = re.compile(r"(?<!\d)1080\s*[xX]\s*1080(?!\d)")
+DISPLAY_SIZES = ("300x250", "300x600", "320x480", "336x280")
+AD_SIZE = re.compile(
+    r"(?<!\d)(?:" + "|".join(s.replace("x", r"\s*[xX]\s*") for s in DISPLAY_SIZES)
+    + r")(?!\d)")
 SOCIAL_MIRROR_GRID = re.compile(r"Social Mirror.*Creative Performance", re.I)
 
 # Curtis asked for the sizes and gets to keep them.
@@ -1166,8 +1170,6 @@ def check_social_mirror_sizes(ctx) -> list[dict]:
     bad, at_of = [], {}
     for title, name, at in creative_rows(text):
         if not SOCIAL_MIRROR_GRID.search(title):
-            continue
-        if SIZE_OK.search(name):
             continue
         if AD_SIZE.search(name) and name not in bad:
             bad.append(name)

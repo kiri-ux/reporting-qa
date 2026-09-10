@@ -63,10 +63,13 @@ def test_a_filter_never_prints_a_count_of_one():
     Judged per menu first ("show them only if any of them varies") - and one
     partner with two cards was enough to bring the whole column back. Judged
     per row it cannot.
+
+    UNLESS THE SERVER COUNTED IT. A count over the whole cycle rather than the
+    fifty rows on screen means something at 1, and at 0.
     """
     base = (TPL / "base.html").read_text()
     assert "var informative" not in base
-    assert "if (counts[n] > 1) {" in base
+    assert "if (always || counts[n] > 1) {" in base
 
 
 def test_site_ctr_findings_are_absent_from_every_real_fixture():
@@ -4072,8 +4075,9 @@ def test_a_report_never_lands_on_another_clients_row():
 
 
 def test_a_social_square_is_not_an_ad_size():
-    """1080x1080 is the square a social ad is built at. A display size in the
-    file name is left over from a display build; this is not."""
+    """The shapes a social ad is built at - the 1080x1080 square, the 1080x1920
+    story, the 1200x628 feed - are not display sizes. Only the four display
+    sizes are left over from a display build, and only they are the finding."""
     from app.checks.quality import check_social_mirror_sizes
 
     def run(name):
@@ -4086,7 +4090,12 @@ def test_a_social_square_is_not_an_ad_size():
 
     assert not run("LMSD Z90 Secret Contest_Social Mirror_X_8.24_z90-secret-"
                    "travel- 1080x1080.jpg")
-    assert run("Acme_Social Mirror_300x250.jpg")
+    assert not run("SD Gulls Elite Season Tickets_Social Mirror_Story_8.12_SDG_"
+                   "GullsEliteOnSale_1080x1920 (v2).jpg")
+    assert not run("SD Gulls Elite Season Tickets_Social Mirror_Story_8.12_SDG_"
+                   "GullsEliteOnSale_1200x628 (v2).jpg")
+    for size in ("300x250", "300x600", "320x480", "336x280"):
+        assert run(f"Acme_Social Mirror_{size}.jpg"), size
 
 
 def test_a_replacement_takes_the_new_files_logo():
@@ -4288,27 +4297,27 @@ def test_the_reports_can_be_filtered_by_which_finding():
 
     a = E(R([{"code": "ctv_tile_off", "title": "CTV completion rate is not CTV's"},
              {"code": "row_ctr", "title": "Row CTR does not match its own numbers"}]))
-    b = E(R([{"code": "missing_product",
+    b = E(R([{"code": "product_missing",
               "title": "Ordered but not on the report: CTV, Native Display"}]))
     c = E(R([]))
     d = E()
 
-    assert main._finding_codes(a) == {"ctv_tile_off", "row_ctr"}
+    # THE KIND, NOT THE CODE. A row's CTR and the top-line CTR are one
+    # question, and three menu entries made somebody pick three to see one list.
+    assert main._finding_codes(a) == {"ctv_not_ctv", "ctr_mismatch"}
     assert main._finding_codes(c) == set() and main._finding_codes(d) == set()
 
     codes, labels = main._finding_menu([a, b, c, d])
-    assert codes == ["ctv_tile_off", "missing_product", "row_ctr"]
-    # THE NAME COMES OFF THE FINDINGS THEMSELVES - nothing joins a check's
-    # label to a finding's code. Everything after the colon is the specific row
-    # or product this one is about, so it is cut: the kind, not the instance.
-    assert labels["missing_product"] == "Ordered but not on the report"
-    assert labels["ctv_tile_off"] == "CTV completion rate is not CTV's"
+    assert codes == ["ctr_mismatch", "ctv_not_ctv", "product_missing"]
+    assert labels["product_missing"] == "Ordered but not on the report"
+    assert labels["ctv_not_ctv"] == "The CTV tile does not belong to CTV"
 
     src = inspect.getsource(main.cycle_view)
-    # Built over the whole cycle, before the filters - a menu built from what
-    # survived its own filter can only offer the choice already made.
-    assert src.index("_finding_menu(rows)") < src.index("if want_finding:")
-    assert "_finding_codes(e) & set(want_finding)" in src
+    # Counted over the rows the OTHER filters leave, and applied after - a menu
+    # built from what survived its own filter can only offer the choice already
+    # made.
+    assert '"finding": _finding_codes' in src
+    assert src.index("_narrow(rows, skip=name)") < src.index("rows = _narrow(rows)")
 
     cycle = (TPL / "cycle.html").read_text()
     assert 'data-col="Findings" data-key="finding"' in cycle
@@ -4320,3 +4329,161 @@ def test_the_reports_can_be_filtered_by_which_finding():
     # A server-side filter with one option is still a real choice: it narrows
     # the whole cycle, not the fifty rows on screen.
     assert "if (!key && names.length < 2) return;" in base
+
+
+def test_a_report_nobody_judges_is_not_judged_by_the_re_check_either():
+    """The upload path has always known about this: SEO is pulled outside
+    TapClicks and looks nothing like a Digital Marketing Report, so it is
+    stored with the checks not run rather than run and disbelieved. The
+    re-check did not know, and ran all thirty-six against it every time.
+
+    It went unnoticed while the findings were hidden - the board prints "Checks
+    not run" on those rows whatever is stored behind them - and then the sweep
+    started reading signed-off work, every one of those findings counted as
+    new, and eighty SEO reports landed in Report review for a date range an SEO
+    report does not print."""
+    import inspect
+    from app import recheck
+
+    src = inspect.getsource(recheck.recheck)
+    assert "if rep.checks_skipped:" in src
+    assert src.index("if rep.checks_skipped:") < src.index("run_all(path")
+    assert "quick_meta(path, rep.filename)" in src
+    # And the mark comes off when the reason does, or those reports would sit
+    # in Report review after the rule that put them there was fixed.
+    assert "elif rep.resend_at and rep.effective_severity != \"fail\":" in src
+
+
+def test_a_filter_counts_every_row_it_would_act_on():
+    """The menus were built from the page the browser happened to have, so a
+    count beside an option was a count of that page - 13 against a finding on
+    eleven hundred reports - and an option only appeared at all if one of those
+    fifty rows carried it."""
+    import inspect
+    from app import main
+
+    src = inspect.getsource(main.cycle_view)
+    # Each menu is counted over the rows the OTHER filters leave, which is what
+    # picking it would actually give you.
+    assert "def _narrow(rows_, skip=\"\"):" in src
+    assert "_narrow(rows, skip=name)" in src
+    assert "rows = _narrow(rows)" in src
+
+    base = (TPL / "base.html").read_text()
+    assert "JSON.parse(th.dataset.counts || '{}')" in base
+    # A 1 is worth printing when it is a real one.
+    assert "if (always || counts[n] > 1)" in base
+    cycle = (TPL / "cycle.html").read_text()
+    assert cycle.count("data-counts=") == 5, "every filterable column"
+
+
+def test_a_finding_name_is_a_kind_not_one_reports_answer():
+    """Titles carry the numbers - "3 creative previews did not render",
+    "Campaign finished 43% under its goal" - and whichever turned up first was
+    becoming the name of the whole category.
+
+    IT WAS DONE BY STRIPPING THE FIGURES OUT and it read like it: "1 of 8
+    variants have no preview link" came out as "of variants have no preview
+    link". The names are written now, in flag_catalog, and a finding with no
+    name written for it is a failing test rather than a bad sentence on screen.
+    """
+    from app.main import _finding_menu
+
+    class R:
+        def __init__(self, f):
+            self.open_findings = f
+
+    class E:
+        def __init__(self, f):
+            self.report = R(f)
+
+    rows = [E([{"code": "missing_thumbnail",
+                "title": "3 creative previews did not render"}]),
+            E([{"code": "blank_screenshot",
+                "title": "1 ad screenshot did not render"}]),
+            E([{"code": "lifetime_short_of_goal",
+                "title": "Campaign finished 43% under its goal"}]),
+            E([{"code": "preview_link_blank",
+                "title": "1 of 8 variants have no preview link"}]),
+            E([{"code": "product_missing",
+                "title": "Ordered but not on the report: CTV, Video"}])]
+    keys, labels = _finding_menu(rows)
+    # The two ways a preview fails to render are one line.
+    assert "blank_screenshot" not in keys and "missing_thumbnail" not in keys
+    assert labels["previews_blank"] == "Creative previews did not render"
+    assert labels["goal_short"] == "Campaign finished under its goal"
+    assert labels["product_missing"] == "Ordered but not on the report"
+    assert labels["preview_link_blank"] == "Variants with no preview link"
+
+
+def test_every_finding_has_a_written_name():
+    """A new code with no name would appear in the filter as a bare code -
+    findable, and obviously unfinished. This is what makes it obvious: the menu
+    is a written list, and adding a finding means writing what to call it."""
+    import ast
+    from pathlib import Path
+
+    from app.flag_catalog import KIND_NAME, KIND_OF
+
+    here = Path(__file__).resolve().parent.parent / "app" / "checks"
+    codes = set()
+    for path in sorted(here.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "_f" and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                codes.add(node.args[0].value)
+    assert codes, "no finding codes found - the shape of _f has changed"
+    missing = sorted(codes - set(KIND_OF))
+    assert not missing, f"no name written for {missing}"
+    # AND NO NAME CARRIES ONE REPORT'S FIGURES. A fixed threshold is part of
+    # the sentence - "above 100%" is the rule - but a number that came off a
+    # report is what made three menu entries out of one problem.
+    fixed = {"Completion rates at 0%", "Completion rate above 100%"}
+    for name in KIND_NAME.values():
+        if name in fixed:
+            continue
+        assert not any(ch.isdigit() for ch in name), name
+
+
+def test_the_same_problem_is_one_line_in_the_filter():
+    """A row's CTR, a tile's CTR and the top-line CTR are one question, and
+    they were three menu entries named after whichever report got there
+    first."""
+    from app.flag_catalog import kind_name, kind_of
+    from app.main import _finding_codes, _finding_menu
+
+    class R:
+        checks_skipped = False
+        acked = []
+
+        def __init__(self, codes):
+            self.findings = [{"code": c, "severity": "fail", "title": t}
+                             for c, t in codes]
+
+        def is_acked(self, _i):
+            return False
+
+        @property
+        def open_findings(self):
+            return self.findings
+
+    class E:
+        def __init__(self, r):
+            self.report = r
+
+    rows = [E(R([("row_ctr", "Row CTR does not match its own numbers")])),
+            E(R([("headline_ctr", "Top-line CTR does not match its own numbers")])),
+            E(R([("tile_ctr", "Meta CTR does not match its own numbers")])),
+            E(R([("pacing", "Meta is 57% short")])),
+            E(R([("pacing_off", "Performance Max spend is 67% under budget")]))]
+    keys, labels = _finding_menu(rows)
+    assert keys == ["ctr_mismatch", "pacing"], keys
+    assert labels["ctr_mismatch"] == kind_name("ctr_mismatch")
+    # No report's own figures in a category name.
+    assert "57" not in labels["pacing"] and "67" not in labels["pacing"]
+    # And a row is found by the kind, not by the code.
+    assert _finding_codes(rows[0]) == {"ctr_mismatch"}
+    assert kind_of("nothing_written_yet") == "nothing_written_yet"

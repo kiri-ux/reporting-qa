@@ -231,9 +231,32 @@ class Report(Base):
 
     @property
     def open_findings(self) -> list:
-        """Findings nobody has accepted yet."""
+        """Findings nobody has accepted yet, from checks that are switched on.
+
+        A check turned off has to stop counting IMMEDIATELY - on the board, in
+        the status, in the filters - and a stored finding is what the board
+        reads. Waiting for a re-check to reach seven hundred reports would mean
+        the switch did nothing for an afternoon, which is not a switch.
+        """
+        from .checkctl import finding_is_off
+
         return [f for i, f in enumerate(self.findings or [])
-                if not self.is_acked(i) and (f.get("severity") in ("fail", "warn"))]
+                if not self.is_acked(i)
+                and (f.get("severity") in ("fail", "warn"))
+                and not finding_is_off(f)]
+
+    @property
+    def findings_off(self) -> set:
+        """Which stored findings came from a check that is switched off.
+
+        They stay on the report, greyed, saying so. Deleting them would be
+        rewriting what the tool said at the time, and a check can be switched
+        back on.
+        """
+        from .checkctl import finding_is_off
+
+        return {i for i, f in enumerate(self.findings or [])
+                if finding_is_off(f)}
 
     @property
     def effective_severity(self) -> str:
@@ -736,6 +759,52 @@ class SavedView(Base):
     query: Mapped[str] = mapped_column(String(2048), default="")
     created_by: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class CheckSetting(Base):
+    """A check somebody has switched off, and anything else set by hand.
+
+    TWO THINGS THIS ANSWERS, and they are the same thing from either end.
+
+    A check that is wrong more often than it is right costs more than it saves,
+    and until now the only way to stop one was to change the code and deploy -
+    which then re-judged every report on the board because the code had
+    changed. So the person who has to read the findings could not turn one off,
+    and turning one off was the most expensive thing anybody could do.
+
+    Off means off in both directions: the rule does not run, and the findings it
+    already wrote stop being counted. No re-check is needed for that, which is
+    the point - flip the switch and the board is right on the next page load.
+
+    Rows only exist for what has been changed. No row means the default, and
+    the default is on.
+    """
+    __tablename__ = "check_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    changed_by: Mapped[str] = mapped_column(String(128), default="")
+    changed_at: Mapped[dt.datetime] = mapped_column(DateTime,
+                                                    default=dt.datetime.utcnow)
+    note: Mapped[str] = mapped_column(String(255), default="")
+
+
+class AppSetting(Base):
+    """One named switch, set by a person, read by every worker.
+
+    The re-check hold lives here. It is not configuration in a file because the
+    person who needs to press it is not the person who can deploy, and it has to
+    be true for both gunicorn workers at once.
+    """
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    value: Mapped[str] = mapped_column(String(255), default="")
+    changed_by: Mapped[str] = mapped_column(String(128), default="")
+    changed_at: Mapped[dt.datetime] = mapped_column(DateTime,
+                                                    default=dt.datetime.utcnow)
 
 
 class RecheckJob(Base):

@@ -366,3 +366,114 @@ NOTES: dict[str, str] = {
         "own slice. If you have one that is flagged and does NOT show on the "
         "donut, send it and I will narrow it.",
 }
+
+
+# ------------------------------------------------- what to call a finding
+# THE FILTER WAS NAMED AFTER WHICHEVER REPORT GOT THERE FIRST.
+#
+# There has never been a table of code to name. The checks carry a label, the
+# findings carry a code, and nothing joined them - so the Findings filter was
+# built out of the findings' own titles, which carry that report's numbers:
+# "Campaign finished 43% under its goal", "3 creative previews did not render",
+# "Meta is 57% short". Three reports, three menu entries, one problem.
+#
+# Cutting the numbers out with a regular expression got most of the way and
+# read like it: "1 of 8 variants have no preview link" came out as "of variants
+# have no preview link". A name is a written sentence, so they are written.
+#
+# AND THE SAME PROBLEM IS ONE ENTRY. A row's CTR, a tile's CTR and the
+# top-line CTR are one question - does the arithmetic on this page work - and
+# splitting them across three menu entries makes somebody pick three to see
+# what is really one list. Codes stay separate on the report, where the
+# difference is the point; they merge here, where the question is what to go
+# and look at.
+#
+# THIS FILE IS OUTSIDE app/checks/ ON PURPOSE - see the top of it. Renaming a
+# finding is prose, and it should not cost seven hundred reports a re-read.
+FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
+    # (key used in the URL, what the menu calls it, the codes it covers)
+    ("ctr_mismatch", "CTR does not match its own numbers",
+     ("headline_ctr", "tile_ctr", "row_ctr")),
+    ("not_verifiable", "Could not be checked against its own numbers",
+     ("ctr_unverifiable", "clicks_unverifiable")),
+    ("line_item_totals", "Line items do not sum to the top line",
+     ("line_items_impressions", "line_items_clicks")),
+    ("creative_over", "Creative table claims more than was delivered",
+     ("creative_over_top",)),
+    ("device_mismatch", "Device breakout does not match what was served",
+     ("device_over", "device_under")),
+    ("placement_over", "Placement rows exceed the platform total",
+     ("placement_over_total",)),
+    ("store_mismatch", "Store visits do not match the table",
+     ("store_locations_mismatch", "store_visits_mismatch")),
+    ("month_over_lifetime", "The month reports more than the whole campaign",
+     ("month_over_lifetime",)),
+    ("totals_leave_out", "Top-line numbers leave some products out",
+     ("clicks_exclude_products", "ctr_excludes_products",
+      "clicks_part_explained")),
+    ("product_missing", "Ordered but not on the report", ("product_missing",)),
+    ("product_rogue", "On the report with no live order", ("product_rogue",)),
+    ("pacing", "Delivery is off what was ordered", ("pacing", "pacing_off")),
+    ("goal_short", "Campaign finished under its goal",
+     ("lifetime_short_of_goal",)),
+    ("strategy_uncategorized", "Strategy lines not categorized to a product",
+     ("strategy_uncategorized",)),
+    ("client_name_typo", "The order spells the client's name differently",
+     ("client_name_typo",)),
+    ("date_range_missing", "No date range printed on the report",
+     ("date_range_missing",)),
+    ("date_range_wrong", "Date range is not the report month",
+     ("date_range_wrong",)),
+    ("lifetime_range", "Lifetime range does not match the campaign",
+     ("lifetime_short", "lifetime_cut", "lifetime_overrun")),
+    ("wrong_client", "This is a different client's report",
+     ("wrong_client", "wrong_client_file")),
+    ("generic_logo", "Page one carries the default logo", ("generic_logo",)),
+    ("widget_missing", "A widget these products owe is missing",
+     ("widget_missing", "geofence_widget_missing")),
+    ("widget_error", "A widget printed an error or no data",
+     ("widget_error", "blank_widget_page")),
+    ("page_banner", "Page banners still printing", ("page_banner",)),
+    ("ctv_not_ctv", "The CTV tile does not belong to CTV",
+     ("ctv_widget_no_ctv", "ctv_tile_off")),
+    ("completion_missing", "No completion rate on a product that owes one",
+     ("completion_missing",)),
+    ("completion_zero", "Completion rates at 0%",
+     ("completion_all_zero", "completion_zero_row")),
+    ("completion_over_100", "Completion rate above 100%",
+     ("completion_over_100",)),
+    ("site_ctr_high", "Sites clicking above the ceiling", ("site_ctr_high",)),
+    ("previews_blank", "Creative previews did not render",
+     ("missing_thumbnail", "blank_screenshot")),
+    ("preview_link_blank", "Variants with no preview link",
+     ("preview_link_blank",)),
+    ("creative_name_blank", "Creatives with no name", ("creative_name_blank",)),
+    ("social_mirror_ad_size", "Social Mirror creatives named with an ad size",
+     ("social_mirror_ad_size",)),
+    ("text_truncated", "Labels cut off", ("text_truncated",)),
+    ("conversion_names", "Conversions badly named",
+     ("conversion_name_blank", "conversion_name_retargeting")),
+    ("geofence_no_business_name", "Geo-fence rows have no business name",
+     ("geofence_no_business_name",)),
+    ("unknown_device", "Unrecognized devices in the breakout",
+     ("unknown_device",)),
+    ("rule_error", "A check could not run", ("rule_error",)),
+]
+
+KIND_NAME: dict[str, str] = {key: name for key, name, _c in FINDING_KINDS}
+KIND_OF: dict[str, str] = {code: key for key, _n, codes in FINDING_KINDS
+                           for code in codes}
+
+
+def kind_of(code: str) -> str:
+    """Which menu entry this finding belongs under.
+
+    An unknown code is its own kind rather than nothing: a check added and not
+    written up here should still be filterable, under its bare code, which also
+    makes it obvious that it needs a name.
+    """
+    return KIND_OF.get(code or "", code or "")
+
+
+def kind_name(key: str) -> str:
+    return KIND_NAME.get(key, key)

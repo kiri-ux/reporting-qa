@@ -403,6 +403,11 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         exp = expected_products(db, meta_guess["client"], meta_guess["account_ids"],
                                 period=batch.period, lifetime=life_guess,
                                 window=flight)
+        # AN SEO CLIENT'S REPORT IS SEO AND NOTHING ELSE, so the rest of what
+        # the client has ordered is not missing from it.
+        from .main import _is_seo_row
+        seo_guess = _is_seo_row(db, meta_guess["client"],
+                                meta_guess["account_ids"], batch.period)
         try:
             result = run_all(path, filename=name,
                              for_client=meta_guess["client"]
@@ -415,7 +420,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok,
+                     orders_current=orders_ok, is_seo=seo_guess,
                      # The other half of the pair, if this client is getting
                      # both. Looked up from what is known - the row this is
                      # about does not exist yet.

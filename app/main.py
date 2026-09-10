@@ -419,6 +419,14 @@ def _first_ids(raw, keep: int = 5) -> dict:
 
 
 templates.env.filters["first_ids"] = _first_ids
+
+
+def _finding_kind(code: str) -> str:
+    from .flag_catalog import kind_of
+    return kind_of(code or "")
+
+
+templates.env.filters["finding_kind"] = _finding_kind
 # Chrome that every page needs and no view should have to remember to pass.
 # ---------------------------------------------------------------- who is here
 #
@@ -1311,23 +1319,34 @@ def _delivered(db: Session, period: str, groups) -> dict:
 
 
 def _finding_codes(e) -> set:
-    """The codes of the findings still open on this row's report."""
+    """Which kinds of finding are still open on this row's report.
+
+    The KIND, not the code. A row's CTR, a tile's CTR and the top-line CTR are
+    three codes and one question, and splitting them across three filter
+    entries made somebody pick three to see one list.
+    """
+    from .flag_catalog import kind_of
+
     r = getattr(e, "report", None)
     if r is None:
         return set()
-    return {f.get("code") or "" for f in (r.open_findings or [])} - {""}
+    return {kind_of(f.get("code") or "") for f in (r.open_findings or [])} - {""}
 
 
 def _finding_menu(rows) -> tuple[list, dict]:
-    """(codes in play, code -> what to call it) for the Findings dropdown.
+    """(kinds in play, kind -> what to call it) for the Findings dropdown.
 
-    THE NAME COMES OFF THE FINDINGS THEMSELVES. There is no table of code to
-    label anywhere - the checks carry a label, the findings carry a code, and
-    nothing joins them - and the finding's own title is the text already being
-    read in that column. Everything after a colon is the specific row or
-    product this one is about ("Ordered but not on the report: CTV, Native
-    Display"), so it is cut: what is wanted is the kind, not the instance.
+    THE NAMES ARE WRITTEN, in flag_catalog. They used to be derived from the
+    findings' own titles, which carry that report's numbers - "Campaign
+    finished 43% under its goal", "3 creative previews did not render" - so
+    whichever report got there first named the whole category, and the same
+    problem appeared three times under three numbers. Stripping the figures out
+    with a regular expression read exactly like a regular expression had
+    written it: "1 of 8 variants have no preview link" came out as "of variants
+    have no preview link".
     """
+    from .flag_catalog import kind_name, kind_of
+
     counts, label = {}, {}
     for e in rows:
         r = getattr(e, "report", None)
@@ -1335,10 +1354,9 @@ def _finding_menu(rows) -> tuple[list, dict]:
             code = f.get("code") or ""
             if not code:
                 continue
-            counts[code] = counts.get(code, 0) + 1
-            if code not in label:
-                t = (f.get("title") or code).split(":")[0].strip()
-                label[code] = t[:60] or code
+            key = kind_of(code)
+            counts[key] = counts.get(key, 0) + 1
+            label[key] = kind_name(key)
     return sorted(counts), label
 
 
@@ -1542,28 +1560,47 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # cell prints - a Kind cell also carries the flight dates, and a filter
     # built out of the printed text offers "lifetime 2026-01-01 to ..." as a
     # choice.
-    cols = {"partner": _picked(col_partner), "kind": _picked(col_kind),
-            "status": _picked(col_status), "reporter": _picked(col_reporter)}
     # WHICH FINDING, not just how bad. "Errors" is three hundred reports and
     # four different problems; the question is always which of them, and
     # answering it meant opening rows until you found the right kind.
+    cols = {"partner": _picked(col_partner), "kind": _picked(col_kind),
+            "status": _picked(col_status), "reporter": _picked(col_reporter),
+            "finding": _picked(col_finding)}
+    # A row carries several findings and any one of them counts, so that one
+    # answers with a set where the rest answer with a value.
+    _col_of = {"partner": lambda e: {e.market or ""},
+               "kind": lambda e: {e.kind or ""},
+               "status": lambda e: {e.state or ""},
+               "reporter": lambda e: {e.reporter or ""},
+               "finding": _finding_codes}
+
+    def _narrow(rows_, skip=""):
+        for name, want in cols.items():
+            if want and name != skip:
+                rows_ = [e for e in rows_ if _col_of[name](e) & set(want)]
+        return rows_
+
+    # EVERY ROW THE FILTER WOULD ACT ON, NOT THE FIFTY ON SCREEN. The menus
+    # were built from the page the browser happened to have, so a count beside
+    # an option was a count of that page - "13" against a finding on eleven
+    # hundred reports - and an option only appeared at all if one of those
+    # fifty rows carried it.
     #
-    # The menu is built BEFORE the filters, over the whole cycle - a dropdown
-    # built from what survived its own filter can only ever offer the one
-    # choice already made.
-    finding_codes, finding_labels = _finding_menu(rows)
-    want_finding = _picked(col_finding)
-    _col_of = {"partner": lambda e: e.market or "",
-               "kind": lambda e: e.kind or "",
-               "status": lambda e: e.state or "",
-               "reporter": lambda e: e.reporter or ""}
-    for name, want in cols.items():
-        if want:
-            rows = [e for e in rows if _col_of[name](e) in want]
-    # A row carries several findings and any one of them counts, so this one
-    # cannot go through _col_of, which compares a single value.
-    if want_finding:
-        rows = [e for e in rows if _finding_codes(e) & set(want_finding)]
+    # Each menu is counted over the rows the OTHER filters leave, which is what
+    # picking it would actually give you. Its own filter is left out, or the
+    # only option with a count is the one already chosen.
+    finding_labels: dict = {}
+    col_counts: dict = {}
+    for name in cols:
+        tally: dict = {}
+        for e in _narrow(rows, skip=name):
+            for v in _col_of[name](e):
+                if v:
+                    tally[v] = tally.get(v, 0) + 1
+        col_counts[name] = tally
+    finding_labels = _finding_menu(rows)[1]
+    finding_codes = sorted(col_counts.get("finding") or {})
+    rows = _narrow(rows)
     # ONE GRID, WITH THE FINISHED WORK FILTERED OUT RATHER THAN MOVED AWAY.
     #
     # Signed-off reports used to live in their own collapsed section at the
@@ -1672,6 +1709,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # partner so a card can offer to fix just that one.
         "stale": _stale_here(db, period, groups),
         "finding_codes": finding_codes, "finding_labels": finding_labels,
+        "col_counts": col_counts,
         "jobs": _recheck_jobs(db),
         "notify": settings.notify_status,
         "configured": settings.delivery_configured,
@@ -1945,6 +1983,59 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
     if who.strip():
         _remember(resp, who)
     return resp
+
+
+def _switched_off() -> list[str]:
+    from .checkctl import switched_off
+    return sorted(switched_off())
+
+
+def _behind_count(db: Session) -> int:
+    """How many reports were judged by rules that have since changed.
+
+    Best effort, like the flag counts beside it: this page is reference and a
+    number is not worth taking it down for.
+    """
+    try:
+        from .recheck import stale_count
+        return stale_count(db, scoped=True)
+    except Exception:                                            # noqa: BLE001
+        return 0
+
+
+@app.post("/checks/toggle")
+def checks_toggle(request: Request, name: str = Form(""), on: str = Form(""),
+                  who: str = Form(""), db: Session = Depends(get_db)):
+    """Switch one check on or off.
+
+    Off is immediate in both directions - the rule stops running and the
+    findings it already wrote stop counting, because those are read at display
+    time. On is not: that rule never ran on anything judged while it was off, so
+    the board goes behind and the sweep picks it up.
+    """
+    from .checkctl import set_check
+    from .checks.rules import CHECKS
+
+    known = {fn.__name__ for fn, _ in CHECKS}
+    if name in known:
+        set_check(db, name, on == "1", who=who.strip() or whoami(request) or "")
+    back = request.headers.get("referer") or "/rules"
+    if not back.startswith("/") or back.startswith("//"):
+        back = "/rules"
+    return RedirectResponse(back, status_code=303)
+
+
+@app.post("/checks/hold")
+def checks_hold(request: Request, on: str = Form(""), who: str = Form(""),
+                db: Session = Depends(get_db)):
+    """Hold the automatic re-check, or let it go again."""
+    from .checkctl import set_hold
+
+    set_hold(db, on == "1", who=who.strip() or whoami(request) or "")
+    back = request.headers.get("referer") or "/rules"
+    if not back.startswith("/") or back.startswith("//"):
+        back = "/rules"
+    return RedirectResponse(back, status_code=303)
 
 
 @app.post("/cycle/recheck/skip")
@@ -2377,13 +2468,22 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
     period = settings.default_period or current_period()
     counts = flag_counts(db, period)
     groups = flags()
+    # AND WHICH ARE SWITCHED OFF. The page that lists every check is the page
+    # to turn one off from - a check that is wrong more often than it is right
+    # costs more than it saves, and until now stopping one meant a deploy.
+    from .checkctl import held, switched_off
+    off = switched_off()
     for g in groups:
         for c in g["checks"]:
             c["n"] = counts.get(c["key"], 0)
-        g["n"] = sum(c["n"] for c in g["checks"])
+            c["on"] = c["key"] not in off
+        g["n"] = sum(c["n"] for c in g["checks"] if c["on"])
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
            "flag_period": month_label(period),
-           "flag_active": sum(1 for g in groups for c in g["checks"] if c["n"]),
+           "checks_off": sorted(off), "recheck_held": held(),
+           "behind": _behind_count(db),
+           "flag_active": sum(1 for g in groups for c in g["checks"]
+                              if c["n"] and c["on"]),
            "short_days": SHORT_CAMPAIGN_DAYS, "flags": groups,
            # AND WHOSE DESK EACH ONE GOES TO. A finding says a report is wrong
            # and never said who fixes it.
@@ -3004,7 +3104,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                      quiet_products=quiet,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
-                     orders_current=orders_ok,
+                     orders_current=orders_ok, is_seo=is_seo_report,
                      # The other half of the pair, if this client is getting
                      # both. Looked up from what is known - the row this is
                      # about does not exist yet.
@@ -3141,6 +3241,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok,
+                     is_seo=bool(getattr(rep, "is_seo", False)),
                      sibling=sibling_of(db, rep))
     _old_findings = list(rep.findings or [])
     _old_acked = list(rep.acked or [])
@@ -3285,6 +3386,7 @@ async def replace_report(report_id: int, request: Request,
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok,
+                     is_seo=bool(getattr(rep, "is_seo", False)),
                      sibling=sibling_of(db, rep))
       except Exception as exc:  # noqa: BLE001
         rep.severity = "fail"
@@ -3437,6 +3539,10 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                       {"nav": "cycle", "rep": rep,
                                        "back": came_from,
                                        "skip_why": SKIP_WHY,
+                                       # Which checks are switched off RIGHT
+                                       # NOW. The stored checklist says what
+                                       # was true when this was judged.
+                                       "checks_off": _switched_off(),
                                        "saved_as": canonical_filename(rep),
                                        # The page-one logo, so it can be
                                        # judged by somebody looking at it.
