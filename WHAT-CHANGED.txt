@@ -1,30 +1,35 @@
-build 2026.09.11-244
+build 2026.09.11-246
 Changed files only. Everything since 130 - install this one.
-37 checks.
+38 checks - one new one, on by default.
 
-THE TWO YOUTUBE WIDGETS ARE AN EITHER/OR, AND THE LINE ITEMS DECIDE WHICH.
-YouTube TV and nothing else owes the channel list and NOT the placement
-breakout. Any YouTube line item that is not TV flips it: that buy owes the
-placement breakout and not the channel list. Asking for both failed every
-YouTube report one way or the other.
+NEW: AN AMAZON PREMIUM DISPLAY WIDGET ON A BUY WITH NO AMAZON DISPLAY IN IT.
+Fisher Tire bought Amazon Premium CTV and Video - its line items end "Amazon
+Video" and "Amazon CTV" and nothing else - and page 6 carried "Amazon Premium
+Display Conversion Performance by Ad Size" with 21 impressions at 1920x1080 in
+it. 1920x1080 is a video frame, not a display banner: TapClicks filed video
+delivery under a product the client never bought, and it went out reading as a
+display campaign nobody ordered.
 
-Read off the line item names, not the section banner. TapClicks prints a
-YouTube TV buy under "YOUTUBE+ ADS" like everything else, so the banner cannot
-tell the two apart. Sections are still the fallback when a report has no line
-item grid to read.
+Read off the line items, which are what the buy is in its own words. A report
+running real Amazon Display has Amazon Display lines - "Retargeting Amazon
+Display", "Behavioral Amazon Premium Display" - and says nothing. Checked
+against the 317-page everything-sample, which runs Amazon Display for real and
+carries three of these widgets: silent. A report whose line item grid did not
+parse says nothing either, rather than reading "no Amazon Display line" off a
+grid it could not read.
 
-AND THE CHANNEL LIST IS ONE WIDGET UNDER TWO NAMES. TapClicks writes it "Top 10
-YouTube TV Channel Performance" on a TV buy and drops the TV elsewhere. Bradens
-Furniture carried it on page 18 and was failed for having no "Top 10 YouTube
-Channel Performance" widget. Either spelling counts now.
+It is "Widgets that should be there, and ones that should not" on the rules
+page, and it names the widget and the Amazon lines that are actually on the
+buy.
 
-Both of those findings on 1486 go away on a re-check.
+--- also in this install ---
 
-A SHORT CAMPAIGN'S MONTHLY IS DROPPED IF NOTHING CAME, FLAGGED IF SOMETHING
-DID. Bradens ran 3 to 16 August and had a monthly next to its lifetime because
-the monthly PDF was pulled and uploaded before the board got a chance to say it
-was not owed. Deleting a row with a file on it hides a report somebody already
-did the work for, so the row stays and carries "lifetime covers this" beside
-the monthly tag, with the dates in the tooltip.
+Cancelled buys are out of the pacing panel, and their money is out of the goal.
 
-990 tests pass.
+The two YouTube widgets are an either/or decided by the line items, and the
+channel list counts under either of its two names.
+
+A short campaign's monthly is dropped if no file came and flagged "lifetime
+covers this" if one did.
+
+996 tests pass.

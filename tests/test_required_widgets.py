@@ -350,3 +350,37 @@ def test_a_ctv_buy_beside_a_mobile_one_is_still_a_ctv_buy():
     # And a buy with nothing that gets a publisher list still owes it.
     assert not _site_app_not_owed({"products": {"Mobile Conquesting"}},
                                   {W_CTV_PUBS: 1})
+
+
+# ---------------------------------------- a widget for a product nobody bought
+def test_an_amazon_display_widget_on_a_buy_with_no_amazon_display():
+    """Fisher Tire bought Amazon Premium CTV and Video - its line items say
+    Amazon Video and Amazon CTV and nothing else - and page 6 carried "Amazon
+    Premium Display Conversion Performance by Ad Size" with 21 impressions at
+    1920x1080 in it. That is a video frame, not a display banner."""
+    from pathlib import Path
+    from app.checks.parser import pdf_text
+    from app.checks.rules import check_rogue_amazon_display
+    fx = Path(__file__).parent / "fixtures" / "fisher_tire_amazon_display.pdf"
+    out = check_rogue_amazon_display({"text": pdf_text(fx)})
+    assert len(out) == 1 and out[0]["severity"] == "fail"
+    assert out[0]["code"] == "widget_rogue"
+    assert "Conversion Performance by Ad Size" in out[0]["detail"]
+    assert "Amazon Video" in out[0]["detail"] and "Amazon CTV" in out[0]["detail"]
+
+
+def test_a_real_amazon_display_buy_says_nothing(sample):
+    """The everything-sample runs Amazon Display for real - "Retargeting Amazon
+    Display", "Behavioral Amazon Premium Display" - and carries three of these
+    widgets. It has to come out clean."""
+    from app.checks.rules import check_rogue_amazon_display
+    assert "Amazon Premium Display" in sample
+    assert check_rogue_amazon_display({"text": sample}) == []
+
+
+def test_a_report_with_no_line_items_makes_no_claim():
+    """"No Amazon Display line" is true of every report whose line item grid
+    did not parse, and that is not an answer about the buy."""
+    from app.checks.rules import check_rogue_amazon_display
+    text = "Amazon Premium Display Conversion Performance by Ad Size\n"
+    assert check_rogue_amazon_display({"text": text}) == []

@@ -168,6 +168,14 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
     """
     from .spend import report_spend
 
+    # A CANCELLED BUY IS NOT PACED, AND THE PANEL HAS TO AGREE WITH THE CHECKS
+    # ABOUT THAT. Both pacing checks drop these rows already - a cancelled buy
+    # is not short of a goal that stopped being asked for the day somebody
+    # called it off - but the panel was building them anyway. Kerr-Bilt's
+    # cancelled PPC sat in the spend list as "-/$2,800 no comparison" with its
+    # money inside "All spend $412/$4,800", so the report read 91% short of a
+    # figure more than half of which had been cancelled.
+    ordered = {k: v for k, v in ordered.items() if not v.get("stopped")}
     served = served_impressions(text)
     spent = report_spend(text or "")
     rows: list[dict] = []

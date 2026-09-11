@@ -164,3 +164,96 @@ def test_a_real_monthly_figure_is_never_overwritten_by_a_derived_one():
     got = ordered_for(db, "Acme", "1", "2026-07")
     assert got["PPC"]["budget"] == 900.0 and not got["PPC"]["basis"]
     db.close(); eng.dispose()
+
+
+def test_a_wholly_cancelled_buy_does_not_fall_back_to_the_campaign_total():
+    """Kerr-Bilt's PPC was cancelled on both its line items and the spend panel
+    still paced it against $2,800 a month - "the campaign total over 3 months".
+
+    The campaign total on the row is every line item added up, cancelled ones
+    included, so falling back to it put the called-off money straight back into
+    the goal the live-line read had just taken out. Its money was then inside
+    "All spend $412/$4,800" and the report read 91% short of a figure more than
+    half of which was cancelled.
+    """
+    import datetime as dt
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.roster import ordered_for
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderLine(market="M", client="Kerr-Bilt Trailers", account_ids="51323",
+                     line_ids="131199,132806", product="PPC",
+                     campaign="Pay-Per-Click Ads",
+                     starts_on=dt.date(2026, 6, 1), ends_on=dt.date(2026, 8, 31),
+                     flights=[["2026-06-01", "2026-08-31"]],
+                     live=True, budget=None, total_budget=8400.0,
+                     detail=[{"line_id": "131199", "canceled": True,
+                              "budget": 1000.0, "starts": "2026-06-01",
+                              "ends": "2026-08-01"},
+                             {"line_id": "132806", "canceled": True,
+                              "budget": 1400.0, "starts": "2026-08-01",
+                              "ends": "2026-08-01"}]))
+    db.commit()
+    row = ordered_for(db, "Kerr-Bilt Trailers", "51323", "2026-08")["PPC"]
+    assert row["budget"] is None and row["basis"] == ""
+    assert row["stopped"] is True
+    db.close(); eng.dispose()
+
+
+def test_a_live_line_beside_a_cancelled_one_still_gets_its_total():
+    """The fallback is only switched off when there is nothing live left. One
+    cancelled line beside a live one is not a campaign that was called off."""
+    import datetime as dt
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.roster import ordered_for
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(OrderLine(market="M", client="Acme", account_ids="1",
+                     line_ids="1,2", product="PPC", campaign="Pay-Per-Click Ads",
+                     starts_on=dt.date(2026, 6, 1), ends_on=dt.date(2026, 8, 31),
+                     flights=[["2026-06-01", "2026-08-31"]],
+                     live=True, budget=None, total_budget=9000.0,
+                     detail=[{"line_id": "1", "canceled": True,
+                              "starts": "2026-06-01", "ends": "2026-08-31"},
+                             {"line_id": "2", "canceled": False,
+                              "starts": "2026-06-01", "ends": "2026-08-31"}]))
+    db.commit()
+    row = ordered_for(db, "Acme", "1", "2026-08")["PPC"]
+    assert row["budget"] == 3000.0            # 9,000 over the 3 months it runs
+    assert row["stopped"] is False
+    db.close(); eng.dispose()
+
+
+def test_a_cancelled_buy_is_not_a_pacing_row():
+    """Both pacing checks drop these already - a cancelled buy is not short of
+    a goal that stopped being asked for the day somebody called it off - but
+    the panel was building them anyway. Kerr-Bilt's cancelled PPC sat in the
+    spend list as "-/$2,800 no comparison" with its money inside "All spend
+    $412/$4,800", so the report read 91% short of a figure more than half of
+    which had been cancelled."""
+    from app.checks.served import pacing_rows
+    text = ("Line Item Performance\n"
+            " Kerr-Bilt - Performance Max   1,000   10   1.00%\n"
+            "Spend\n Performance Max   $412.00\n PPC   $0.00\n")
+    ordered = {
+        "Performance Max": {"budget": 2000.0, "impressions": None, "basis": ""},
+        "PPC": {"budget": 2800.0, "impressions": None, "basis": "",
+                "stopped": True},
+    }
+    rows = pacing_rows(text, ordered)
+    assert "PPC" not in [r["product"] for r in rows]
+    total = [r for r in rows if r["product"] == "All spend"]
+    assert not total or total[0]["ordered"] == 2000.0, \
+        "the cancelled money is still in the total"
+    # And it is only the cancelled one that goes.
+    assert "Performance Max" in [r["product"] for r in rows]
+    ordered["PPC"].pop("stopped")
+    assert "PPC" in [r["product"] for r in pacing_rows(text, ordered)]

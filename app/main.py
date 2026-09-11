@@ -3717,6 +3717,12 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
             ordered = ordered_for(db, rep.client, rep.account_ids, rep.period,
                                   lifetime=bool(rep.is_lifetime),
                                   window=life_flight)
+            # A cancelled buy is not paced. pacing_rows drops them, the same
+            # way both pacing checks do; taken out here as well so an empty
+            # panel says why rather than reading as a panel that failed.
+            stopped_now = sorted(k for k, v in ordered.items()
+                                 if v.get("stopped"))
+            ordered = {k: v for k, v in ordered.items() if not v.get("stopped")}
             if ordered:
                 pacing = pacing_rows(pdf_text(Path(rep.stored_path)), ordered)
                 if not pacing:
@@ -3724,6 +3730,11 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                   "number - " + ", ".join(sorted(ordered)) +
                                   " " + ("is" if len(ordered) == 1 else "are") +
                                   " sold flat, not against impressions or spend")
+            elif stopped_now:
+                pacing_why = ("every buy on this client's orders was cancelled "
+                              "or completed - " + ", ".join(stopped_now) +
+                              ". A cancelled buy is not paced against a goal "
+                              "that stopped being asked for.")
             else:
                 lines = client_lines(db, rep.client, rep.account_ids) or []
                 ran = [l for l in lines

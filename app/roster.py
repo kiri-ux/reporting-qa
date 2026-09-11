@@ -592,6 +592,16 @@ def ordered_for(db: Session, client: str, account_ids: str,
                 # One cancelled line beside a live one is not a campaign that
                 # was called off, and marking it so silenced the finding on
                 # the half that is still delivering.
+                # THE LINE ITEMS OUTRANK THE FLAG ON THE ROLLED-UP ROW.
+                #
+                # "Stopped" was read off the merged row's own canceled flag,
+                # and the merged row is not always marked when every line
+                # item under it is - Kerr-Bilt's PPC had both of its lines
+                # cancelled and the row still read live, so the spend panel
+                # printed it. Counted across every order line behind this row
+                # so one live line anywhere still keeps it running.
+                row["_seen_detail"] = True
+                row["_any_live"] = row.get("_any_live", False) or live["any"]
                 if live["any"]:
                     row["stopped"] = False
                     # AND WHETHER A CANCELLED LINE RAN BESIDE THE LIVE ONE.
@@ -621,10 +631,20 @@ def ordered_for(db: Session, client: str, account_ids: str,
             # multiplied out across the flight - and says so. Same here: the
             # total divided by the months it covers, labeled as derived rather
             # than presented as something the order stated.
+            #
+            # AND NOT WHEN EVERY LINE ITEM BEHIND IT WAS CANCELLED. The
+            # campaign total on the row is every line item added up, cancelled
+            # ones included, so falling back to it put a called-off buy's money
+            # straight back into the goal the live-line read had just taken it
+            # out of. Kerr-Bilt's PPC was cancelled on 131199 and 132806 and
+            # the spend panel paced it against $2,800 a month - "the campaign
+            # total over 3 months" - which is the total of the two cancelled
+            # lines divided by three.
             months = _months_of(l)
+            all_stopped = live is not None and not live["any"]
             for src, key in (("total_budget", "budget"),
                              ("total_impressions", "impressions")):
-                if got[key] is not None:
+                if got[key] is not None or all_stopped:
                     continue
                 whole = getattr(l, src, None)
                 if whole is None or not months:
@@ -666,6 +686,8 @@ def ordered_for(db: Session, client: str, account_ids: str,
             # One cancelled line beside a live one is not a campaign that was
             # called off, and marking it so silences the finding on the half
             # still delivering.
+            row["_seen_detail"] = True
+            row["_any_live"] = row.get("_any_live", False) or whole_live["any"]
             if whole_live["any"]:
                 row["stopped"] = False
             continue
@@ -680,6 +702,13 @@ def ordered_for(db: Session, client: str, account_ids: str,
                 row["basis"] = (f"{months} month{'s' if months != 1 else ''} "
                                 f"at the monthly figure on the order")
             row[key] = float(v) if row[key] is None else row[key] + float(v)
+    # EVERY LINE ITEM BEHIND THIS BUY WAS CANCELLED, whatever the rolled-up row
+    # says about itself. The line items are the record; the flag on the merged
+    # row is a summary of them that is not always written.
+    for row in out.values():
+        if row.pop("_seen_detail", False) and not row.pop("_any_live", False):
+            row["stopped"] = True
+        row.pop("_any_live", None)
     return out
 
 

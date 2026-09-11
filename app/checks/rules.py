@@ -1964,6 +1964,66 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
     return bool(products & NO_SITE_APP_PRODUCTS) and inventory
 
 
+# AN AMAZON PREMIUM DISPLAY WIDGET ON A BUY WITH NO AMAZON DISPLAY IN IT.
+#
+# Fisher Tire bought Amazon Premium CTV and Video - its line items say Amazon
+# Video and Amazon CTV and nothing else - and page 6 carried "Amazon Premium
+# Display Conversion Performance by Ad Size" with 21 impressions at 1920x1080
+# in it. 1920x1080 is a video frame, not a display banner: the widget is
+# TapClicks filing video delivery under a product the client never bought, and
+# it goes to the partner reading as a display campaign nobody ordered.
+#
+# The line items are what the buy is, in its own words. A report carrying real
+# Amazon Display has Amazon Display lines - "Retargeting Amazon Display",
+# "Behavioral Amazon Premium Display" - and says nothing here.
+AMZ_DISPLAY_WIDGET = re.compile(
+    r"^[ \t]*(Amazon Premium Display\b[^\n]*?\bPerformance\b[^\n]*)$", re.M)
+AMZ_DISPLAY_LINE = re.compile(r"Amazon(?:\s+(?:Premium|Prime))?\s+Display\b", re.I)
+
+
+def check_rogue_amazon_display(ctx) -> list[dict]:
+    """An Amazon Premium Display widget on a report that bought no Amazon
+    Display."""
+    from .quality import line_item_names
+
+    text = ctx.get("text") or ""
+    hits = list(AMZ_DISPLAY_WIDGET.finditer(text))
+    if not hits:
+        return []
+    names = [n for n, _at in line_item_names(text)]
+    # NOTHING TO READ IS NOT AN ANSWER. A report with no line item grid cannot
+    # say what was bought, and "no Amazon Display line" would then be true of
+    # every report that failed to parse.
+    if not names:
+        return []
+    if any(AMZ_DISPLAY_LINE.search(n) for n in names):
+        return []
+    titles = []
+    for m in hits:
+        t = m.group(1).strip()
+        if t not in titles:
+            titles.append(t)
+    # THE END OF THE LINE ITEM NAME IS THE PART THAT SAYS WHICH PRODUCT IT IS.
+    # The front is the client and the targeting, identical across the buy, so
+    # a list of shortened fronts reads as four copies of the same row.
+    amazon = []
+    for n in names:
+        m = re.search(r"\bAmazon\b.*$", n, re.I)
+        if m and m.group(0) not in amazon:
+            amazon.append(m.group(0).strip())
+    return [_f("widget_rogue", "fail",
+               "Amazon Premium Display widget on a buy with no Amazon Display"
+               if len(titles) == 1 else
+               f"{len(titles)} Amazon Premium Display widgets on a buy with no "
+               f"Amazon Display",
+               "This report carries " + ", ".join(f'"{t}"' for t in titles) +
+               ". Nothing in the line items is an Amazon Display buy"
+               + (" - the Amazon lines end "
+                  + ", ".join(f'"{n}"' for n in amazon[:4])
+                  + ("..." if len(amazon) > 4 else "") if amazon else "") + ".",
+               where=_where(ctx, hits[0].start(1), titles[0]))]
+
+
 YT_TV_LINE = re.compile(r"\bYou\s*Tube\s*TV\b", re.I)
 YT_LINE = re.compile(r"\bYou\s*Tube\b", re.I)
 
@@ -2219,6 +2279,8 @@ CHECKS: list[tuple] = [
     (check_ctv_tile,       "The headline CTV completion rate is CTV's own"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
+    (check_rogue_amazon_display,
+     "No Amazon Premium Display widget on a buy with no Amazon Display"),
     (check_strategy_categorized, "Every strategy line names the product it runs"),
     (check_truncated_text,  "No text is cut off for want of space"),
     (check_blank_screenshots, "Every ad screenshot rendered"),
@@ -2306,6 +2368,7 @@ SKIP_WHY = {
     "check_variant_preview_links": "no creative grid with a preview link column",
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
+    "check_rogue_amazon_display": "no Amazon Premium Display widget on the report",
     "check_geofence_names": "no geo-fencing table on the report",
     "check_geofence_widget": "no geo-fenced Mobile Conquesting on the report",
     "check_rogue_ctv": "no CTV tile on the report",

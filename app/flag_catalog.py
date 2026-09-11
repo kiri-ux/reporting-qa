@@ -183,6 +183,12 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          ADMIN, True,
          "Verify the widget should be there, flag Alyssa if something is "
          "truly missing."),
+        ("check_rogue_amazon_display",
+         "An Amazon Premium Display widget on a report whose line items carry "
+         "no Amazon Display buy.",
+         ADMIN, True,
+         "Verify against the order, then flag Alyssa - the widget is reporting "
+         "a product the client did not buy."),
         ("check_geofence_widget",
          "Geo-fenced Mobile Conquesting with no geo-fencing breakout behind "
          "it.",
@@ -441,6 +447,8 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
     ("generic_logo", "Page one carries the default logo", ("generic_logo",)),
     ("widget_missing", "A widget these products owe is missing",
      ("widget_missing", "geofence_widget_missing")),
+    ("widget_rogue", "A widget for a product this buy does not include",
+     ("widget_rogue",)),
     ("widget_error", "A widget printed an error or no data",
      ("widget_error", "blank_widget_page")),
     ("page_banner", "Page banners still printing", ("page_banner",)),
