@@ -360,9 +360,9 @@ def test_an_amazon_display_widget_on_a_buy_with_no_amazon_display():
     1920x1080 in it. That is a video frame, not a display banner."""
     from pathlib import Path
     from app.checks.parser import pdf_text
-    from app.checks.rules import check_rogue_amazon_display
+    from app.checks.rules import check_rogue_widgets
     fx = Path(__file__).parent / "fixtures" / "fisher_tire_amazon_display.pdf"
-    out = check_rogue_amazon_display({"text": pdf_text(fx)})
+    out = check_rogue_widgets({"text": pdf_text(fx)})
     assert len(out) == 1 and out[0]["severity"] == "fail"
     assert out[0]["code"] == "widget_rogue"
     assert "Conversion Performance by Ad Size" in out[0]["detail"]
@@ -373,18 +373,21 @@ def test_a_real_amazon_display_buy_says_nothing(sample):
     """The everything-sample runs Amazon Display for real - "Retargeting Amazon
     Display", "Behavioral Amazon Premium Display" - and carries three of these
     widgets. It has to come out clean."""
-    from app.checks.rules import check_rogue_amazon_display
+    from app.checks.rules import check_rogue_widgets
+    from app.checks.products import detect
     assert "Amazon Premium Display" in sample
-    assert check_rogue_amazon_display({"text": sample}) == []
+    got = detect(sample, [])
+    assert check_rogue_widgets({"text": sample, "products": got,
+                                "expected_products": got}) == []
 
 
 def test_a_report_with_no_line_items_makes_no_claim():
     """"No Amazon Display line" is true of every report whose line item grid
     did not parse, and that is not an answer about the buy."""
-    from app.checks.rules import _rule_applies, check_rogue_amazon_display
+    from app.checks.rules import _rule_applies, check_rogue_widgets
     text = "Amazon Premium Display Conversion Performance by Ad Size\n"
-    assert check_rogue_amazon_display({"text": text}) == []
-    assert _rule_applies(check_rogue_amazon_display, {"text": text}) is False
+    assert check_rogue_widgets({"text": text}) == []
+    assert _rule_applies(check_rogue_widgets, {"text": text}) is False
 
 
 def _amz(*lines: str) -> dict:
@@ -398,16 +401,19 @@ def test_only_an_amazon_video_or_ctv_buy_is_asked():
     """Her rule: only Amazon video + CTV products, and no Amazon Display. The
     widget is not wrong in itself - a client running Amazon Premium Display
     owes it - so the question is only ever put to that one buy."""
-    from app.checks.rules import _rule_applies, check_rogue_amazon_display as C
+    from app.checks.rules import _rule_applies, check_rogue_widgets as C
 
     # Not an Amazon buy at all. Never mind that the widget is sitting there.
-    ctx = _amz("Acme - Homeowners Behavioral Display")
-    assert _rule_applies(C, ctx) is False and C(ctx) == []
+    assert C(_amz("Acme - Homeowners Behavioral Display")) == []
 
     # An Amazon buy that includes Display. The widget is owed.
-    ctx = _amz("Acme - Homeowners Behavioral Amazon Display",
-               "Acme - Homeowners Behavioral Amazon Video")
-    assert _rule_applies(C, ctx) is False and C(ctx) == []
+    assert C(_amz("Acme - Homeowners Behavioral Amazon Display",
+                  "Acme - Homeowners Behavioral Amazon Video")) == []
+
+    # A report carrying none of these widgets is not a check standing down, it
+    # is a check that was never about that report.
+    assert _rule_applies(C, {"text": "Line Item Performance\n"
+                                     " Acme - Homeowners Display  9  1  1%\n"}) is False
 
     # Either half of the CTV + Video buy on its own is enough to ask. An Amazon
     # month can deliver all of its impressions through one of the two, and the
@@ -422,10 +428,13 @@ def test_only_an_amazon_video_or_ctv_buy_is_asked():
         assert len(C(ctx)) == 1, line
 
 
-def test_the_check_is_scoped_to_the_amazon_products():
-    """A Run on this check reads the CTV and Video reports, not all 1,417."""
+def test_the_check_is_not_scoped_by_product():
+    """It cannot be. The scope matches what the report was detected as running,
+    and this check is about a product that is NOT part of the buy - scoping it
+    by that product would skip every report it is about. See the guard in
+    test_recheck."""
     from app.checks.rules import CHECK_PRODUCTS
-    assert CHECK_PRODUCTS["check_rogue_amazon_display"] == ("CTV", "Video")
+    assert "check_rogue_widgets" not in CHECK_PRODUCTS
 
 
 # ------------------------------------ the half of an Amazon buy with no widget
@@ -483,8 +492,8 @@ def test_both_display_widgets_are_named_when_they_share_a_line():
     print side by side, so in the text they are one line. A line-anchored
     pattern read the pair as one widget with a forty-word title - the same
     shape as the CTV tile bug."""
-    from app.checks.rules import check_rogue_amazon_display
-    out = check_rogue_amazon_display({"text": _ww()})
+    from app.checks.rules import check_rogue_widgets
+    out = check_rogue_widgets({"text": _ww()})
     assert len(out) == 1
     assert out[0]["title"].startswith("2 Amazon Premium Display widgets")
     assert '"Amazon Premium Display Click Performance by Ad Size"' in out[0]["detail"]
@@ -533,3 +542,39 @@ def test_a_real_ctv_buy_keeps_its_product_from_the_line_items():
     assert "Creative Performance" not in "".join(
         l for l in stripped.split("\n") if "CTV" in l)
     assert "CTV" in detect(stripped, extract_tables(stripped, strict=True))
+
+
+def test_ppc_pages_on_a_buy_with_no_ppc():
+    """Charlottesville's Earthly Cleaning bought Display and Performance Max
+    and carried four pages of PPC: "Cost: Amount Spent on the PPC campaign",
+    the sitelink and callout extension diagram, the click glossary. Performance
+    Max is charged per event - its own tiles on that report say Client CPE - so
+    the cost-per-click glossary is PPC's, and PPC is not on the buy.
+
+    Its line items are no help either way: PPC lines are named for the strategy
+    rather than the product, so the buy is read off the report's products and
+    the order."""
+    from app.checks.parser import pdf_text
+    from app.checks.rules import check_rogue_widgets
+    fx = Path(__file__).parent / "fixtures" / "earthly_cleaning_ppc_pages.pdf"
+    ctx = {"text": pdf_text(fx), "products": {"Display", "Performance Max"},
+           "expected_products": {"Display", "Performance Max"}}
+    out = check_rogue_widgets(ctx)
+    assert [f["title"] for f in out] == ["PPC on a buy with no PPC"]
+    assert "cost-per-click glossary" in out[0]["detail"]
+
+    # A client who actually runs PPC says nothing, whether the product is read
+    # off the report or off the order.
+    for key in ("products", "expected_products"):
+        live = dict(ctx, **{key: set(ctx[key]) | {"PPC"}})
+        assert check_rogue_widgets(live) == [], key
+
+
+def test_the_families_are_one_table():
+    """The next one somebody spots should be a line, not a check."""
+    from app.checks.rules import ROGUE_WIDGETS
+    labels = [row[0] for row in ROGUE_WIDGETS]
+    assert "Amazon Premium Display" in labels and "PPC" in labels
+    for row in ROGUE_WIDGETS:
+        assert len(row) == 5, row[0]
+        assert row[2] in ("line", "product"), row[0]

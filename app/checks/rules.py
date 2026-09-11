@@ -1999,42 +1999,80 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
     return bool(products & NO_SITE_APP_PRODUCTS) and inventory
 
 
-# AN AMAZON PREMIUM DISPLAY WIDGET ON A BUY WITH NO AMAZON DISPLAY IN IT.
+# A WIDGET FOR A PRODUCT THIS BUY DOES NOT INCLUDE.
 #
-# Fisher Tire bought Amazon Premium CTV and Video - its line items say Amazon
-# Video and Amazon CTV and nothing else - and page 6 carried "Amazon Premium
-# Display Conversion Performance by Ad Size" with 21 impressions at 1920x1080
-# in it. 1920x1080 is a video frame, not a display banner: the widget is
-# TapClicks filing video delivery under a product the client never bought, and
-# it goes to the partner reading as a display campaign nobody ordered.
+# TapClicks prints pages for products the client never bought, and they go to
+# the partner reading as campaigns nobody ordered.
 #
-# The line items are what the buy is, in its own words. A report carrying real
-# Amazon Display has Amazon Display lines - "Retargeting Amazon Display",
-# "Behavioral Amazon Premium Display" - and says nothing here.
-# NOT ANCHORED TO THE LINE. "Amazon Premium Display Click Performance by Ad
-# Size" and "... Conversion Performance by Ad Size" print SIDE BY SIDE on one
-# page, so in the text they are one line, and a line-anchored pattern reads the
-# pair as a single widget with a title forty words long. That is the same shape
-# as the CTV tile bug: three tiles on one line, one anchored pattern, nothing
-# matched. Matched as a title wherever it sits on the line.
+#   Fisher Tire bought Amazon Premium CTV and Video - its line items say Amazon
+#   Video and Amazon CTV and nothing else - and page 6 carried "Amazon Premium
+#   Display Conversion Performance by Ad Size" with 21 impressions at 1920x1080
+#   in it. 1920x1080 is a video frame, not a display banner.
+#
+#   Charlottesville's Earthly Cleaning bought Display and Performance Max and
+#   carried four pages of PPC: "Cost: Amount Spent on the PPC campaign", the
+#   sitelink and callout extension diagram, the click glossary. Performance Max
+#   is charged per event - its own tiles on that report say Client CPE - so the
+#   cost-per-click glossary is PPC's and PPC is not on the buy.
+#
+# ONE TABLE, so the next one somebody spots is a line rather than a check. Each
+# family says what to look for on the report and how to tell whether the buy
+# actually includes it.
 AMZ_DISPLAY_WIDGET = re.compile(
+    # NOT ANCHORED TO THE LINE. "Amazon Premium Display Click Performance by Ad
+    # Size" and "... Conversion Performance by Ad Size" print SIDE BY SIDE on
+    # one page, so in the text they are one line, and a line-anchored pattern
+    # reads the pair as a single widget with a title forty words long. That is
+    # the same shape as the CTV tile bug: three tiles on one line, one anchored
+    # pattern, nothing matched.
     r"Amazon Premium Display\s+\w+\s+Performance(?:\s+by\s+[A-Z]\w*(?:\s+[A-Z]\w*)?)?")
 AMZ_DISPLAY_LINE = re.compile(r"Amazon(?:\s+(?:Premium|Prime))?\s+Display\b", re.I)
-# The buy this check is about: Amazon Premium CTV + Video. Either half on its
-# own counts - an Amazon month can deliver all of its impressions through one
-# of the two, and a month that ran video only is exactly where a Display widget
-# with video frames in it turns up.
+# The buy the Amazon Display widget is wrong ON: Amazon Premium CTV + Video.
+# Either half on its own counts - an Amazon month can deliver all of its
+# impressions through one of the two, and a month that ran video only is
+# exactly where a Display widget with video frames in it turns up.
 AMZ_AV_LINE = re.compile(
     r"(?:Amazon(?:\s+(?:Premium|Prime))?\s+(?:CTV|OTT|Video)"
     r"|(?:CTV|OTT|Video)\s+(?:Amazon|Prime))\b", re.I)
+
+# PPC'S OWN GLOSSARY, WHICH NAMES ITSELF. Its line items are no help - they are
+# named for the strategy, "... - Keywords", not the product - so the buy is
+# read off the report's products and the order instead.
+PPC_WIDGET = re.compile(
+    r"Amount Spent on the PPC campaign|PPC Other Google Conversions", re.I)
+
+# (label, what is on the report, how the buy is read, the test, what to call
+#  what was found - "" quotes the widget titles themselves)
+ROGUE_WIDGETS: list[tuple] = [
+    ("Amazon Premium Display", AMZ_DISPLAY_WIDGET, "line", AMZ_DISPLAY_LINE, ""),
+    # Prose pages, not titled widgets, so they are named rather than quoted.
+    ("PPC", PPC_WIDGET, "product", "PPC",
+     "PPC pages - the cost-per-click glossary and the ad extension breakdown"),
+]
+
+
+def _buy_has(kind, test, ctx, names) -> bool:
+    """Does this buy include the product a widget belongs to?
+
+    "line" reads the line item names, which is what the buy is in its own
+    words. "product" reads what the report was detected as running and what the
+    order says was bought - for PPC, whose line items are named for the
+    strategy rather than the product.
+    """
+    if kind == "line":
+        return any(test.search(n) for n in names)
+    have = {str(p) for p in (ctx.get("products") or ())}
+    have |= {str(p) for p in (ctx.get("expected_products") or ())}
+    return any(test.lower() in p.lower() for p in have)
 
 
 def _amazon_av_buy(text: str) -> bool:
     """Is this an Amazon Premium CTV/Video buy with no Amazon Display in it?
 
-    ONLY THAT BUY. The widget is not wrong in itself - a client running Amazon
-    Premium Display owes it - so the question is only ever asked of a report
-    whose Amazon lines are the video and CTV halves and nothing else.
+    ONLY THAT BUY. The Amazon Display widget is not wrong in itself - a client
+    running Amazon Premium Display owes it - so the question is only ever asked
+    of a report whose Amazon lines are the video and CTV halves and nothing
+    else.
     """
     from .quality import line_item_names
 
@@ -2049,48 +2087,77 @@ def _amazon_av_buy(text: str) -> bool:
     return any(AMZ_AV_LINE.search(n) for n in names)
 
 
-def check_rogue_amazon_display(ctx) -> list[dict]:
-    """An Amazon Premium Display widget on an Amazon CTV + Video buy."""
+def _rogue_widgets(ctx) -> list[tuple]:
+    """(label, titles, why) for every family on the report the buy lacks."""
     from .quality import line_item_names
 
     text = ctx.get("text") or ""
-    hits = list(AMZ_DISPLAY_WIDGET.finditer(text))
-    if not hits or not _amazon_av_buy(text):
-        return []
     names = [n for n, _at in line_item_names(text)]
-    titles = []
-    for m in hits:
-        t = m.group(0).strip()
-        if t not in titles:
-            titles.append(t)
-    # THE END OF THE LINE ITEM NAME IS THE PART THAT SAYS WHICH PRODUCT IT IS.
-    # The front is the client and the targeting, identical across the buy, so
-    # a list of shortened fronts reads as four copies of the same row.
-    # FROM THE LAST "Amazon" TO THE END, and the word in front of it when that
-    # leaves "Amazon" standing alone. Both spellings are in the wild - "Amazon
-    # CTV" puts the product after, "Video Amazon" puts it before - and a tail
-    # of just "Amazon" says nothing about which half of the buy the line is.
-    amazon = []
-    for n in names:
-        ms = list(re.finditer(r"\bAmazon\b", n, re.I))
-        if not ms:
+    if not names:
+        return []                       # see _amazon_av_buy: not an answer
+    out = []
+    for label, widget, kind, test, shown in ROGUE_WIDGETS:
+        hits = list(widget.finditer(text))
+        if not hits:
             continue
-        tail = n[ms[-1].start():].strip()
-        if tail.lower() == "amazon":
-            tail = " ".join(n.split()[-2:])
-        if tail not in amazon:
-            amazon.append(tail)
-    return [_f("widget_rogue", "fail",
-               "Amazon Premium Display widget on a buy with no Amazon Display"
-               if len(titles) == 1 else
-               f"{len(titles)} Amazon Premium Display widgets on a buy with no "
-               f"Amazon Display",
-               "This report carries " + ", ".join(f'"{t}"' for t in titles) +
-               ". Nothing in the line items is an Amazon Display buy"
-               + (" - the Amazon lines end "
-                  + ", ".join(f'"{n}"' for n in amazon[:4])
-                  + ("..." if len(amazon) > 4 else "") if amazon else "") + ".",
-               where=_where(ctx, hits[0].start(), titles[0]))]
+        if _buy_has(kind, test, ctx, names):
+            continue
+        # The Amazon Display widget is only wrong on the CTV + Video buy.
+        if label == "Amazon Premium Display" and not _amazon_av_buy(text):
+            continue
+        titles = []
+        for m in hits:
+            t = m.group(0).strip()
+            if t not in titles:
+                titles.append(t)
+        out.append((label, titles, shown, kind, hits[0].start()))
+    return out
+
+
+def check_rogue_widgets(ctx) -> list[dict]:
+    """A widget for a product this buy does not include."""
+    from .quality import line_item_names
+
+    text = ctx.get("text") or ""
+    names = [n for n, _at in line_item_names(text)]
+    out = []
+    for label, titles, shown, kind, at in _rogue_widgets(ctx):
+        # THE LINE ITEMS, SO THE READER CAN SEE WHAT THE BUY ACTUALLY IS. From
+        # the last mention of the product word to the end of the name, and the
+        # word in front of it when that leaves the word standing alone: both
+        # spellings are in the wild - "Amazon CTV" puts the product after,
+        # "Video Amazon" before - and a tail of just "Amazon" says nothing.
+        tails = []
+        word = label.split()[-1] if label != "PPC" else "PPC"
+        for n in names:
+            ms = list(re.finditer(r"\b" + re.escape(label.split()[0]) + r"\b",
+                                  n, re.I))
+            if not ms:
+                continue
+            tail = n[ms[-1].start():].strip()
+            if tail.lower() == label.split()[0].lower():
+                tail = " ".join(n.split()[-2:])
+            if tail not in tails:
+                tails.append(tail)
+        n_widgets = len(titles)
+        out.append(_f(
+            "widget_rogue", "fail",
+            f"{label} on a buy with no {label}" if shown else
+            (f"{label} widget on a buy with no "
+             f"{label.replace('Premium ', '')}" if n_widgets == 1 else
+             f"{n_widgets} {label} widgets on a buy with no "
+             f"{label.replace('Premium ', '')}"),
+            "This report carries "
+            + (shown if shown else ", ".join(f'"{t}"' for t in titles))
+            + (". Nothing in the line items is " if kind == "line"
+               else ". Neither the report's other products nor the order is ")
+            + ("an " if label[0] in "AEIOU" else "a ")
+            + f"{label.replace('Premium ', '')} buy"
+            + (" - the " + label.split()[0] + " lines end "
+               + ", ".join(f'"{t}"' for t in tails[:4])
+               + ("..." if len(tails) > 4 else "") if tails else "") + ".",
+            where=_where(ctx, at, titles[0])))
+    return out
 
 
 YT_TV_LINE = re.compile(r"\bYou\s*Tube\s*TV\b", re.I)
@@ -2376,8 +2443,8 @@ CHECKS: list[tuple] = [
     (check_ctv_tile,       "The headline CTV completion rate is CTV's own"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
-    (check_rogue_amazon_display,
-     "No Amazon Premium Display widget on an Amazon CTV + Video buy"),
+    (check_rogue_widgets,
+     "No widget for a product this buy does not include"),
     (check_strategy_categorized, "Every strategy line names the product it runs"),
     (check_truncated_text,  "No text is cut off for want of space"),
     (check_blank_screenshots, "Every ad screenshot rendered"),
@@ -2438,12 +2505,6 @@ CHECK_PRODUCTS: dict[str, tuple[str, ...]] = {
     "check_creative_shape": ("Social Mirror",),
     # Reads the rows of the geo-fencing table, which comes with the product.
     "check_geofence_names": ("Mobile Conquesting",),
-    # AMAZON PREMIUM CTV + VIDEO ONLY. The import maps that order to CTV and
-    # Video, so a Run on this check reads those reports and leaves the other
-    # fourteen hundred alone. The check itself then asks the narrower question
-    # - are the Amazon lines the video and CTV halves, with no Amazon Display
-    # among them - off the report's own line items.
-    "check_rogue_amazon_display": ("CTV", "Video"),
 }
 
 
@@ -2471,8 +2532,8 @@ SKIP_WHY = {
     "check_variant_preview_links": "no creative grid with a preview link column",
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
-    "check_rogue_amazon_display": "not an Amazon Premium CTV or Video buy, or "
-                                  "it runs Amazon Display for real",
+    "check_rogue_widgets": "no widget on the report for a product outside this "
+                           "buy, or the line item grid could not be read",
     "check_geofence_names": "no geo-fencing table on the report",
     "check_geofence_widget": "no geo-fenced Mobile Conquesting on the report",
     "check_rogue_ctv": "no CTV tile on the report",
@@ -2564,14 +2625,18 @@ def _rule_applies(rule, ctx) -> bool:
         # nothing about who it is for.
         return bool(ctx.get("client")) and (bool(ctx.get("text"))
                                             or bool(ctx.get("filed_as")))
-    if name == "check_rogue_amazon_display":
-        # ONLY THE AMAZON PREMIUM CTV + VIDEO BUY, AND ONLY WHERE THERE IS NO
-        # AMAZON DISPLAY. The widget belongs on an Amazon Display report, so
-        # asking the question of a report that never bought Amazon video or
-        # CTV is not a check standing down - it is a check that was never about
-        # that report. Said here so the report page reads "skipped" with the
-        # reason, rather than "passed" on 1,417 reports it never looked at.
-        return _amazon_av_buy(ctx.get("text") or "")
+    if name == "check_rogue_widgets":
+        # ONLY A REPORT THAT ACTUALLY CARRIES ONE. Asking the question of a
+        # report with none of these widgets on it is not a check standing down,
+        # it is a check that was never about that report - so the report page
+        # says skipped with the reason rather than claiming a pass.
+        # A MARKER ON THE PAGE AND A LINE ITEM GRID TO READ. Without the grid
+        # there is nothing to test the widget against, and "no such line item"
+        # would be true of every report that failed to parse - so it abstains
+        # rather than reporting a pass it did not earn.
+        text = ctx.get("text") or ""
+        return (any(w.search(text) for _l, w, _k, _t, _s in ROGUE_WIDGETS)
+                and bool(line_item_names(text)))
     if name == "check_lifetime_goal":
         return bool(ctx.get("is_lifetime")) and bool(ctx.get("ordered"))
     if name == "check_pacing_off":

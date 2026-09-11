@@ -183,9 +183,10 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          ADMIN, True,
          "Verify the widget should be there, flag Alyssa if something is "
          "truly missing."),
-        ("check_rogue_amazon_display",
-         "An Amazon Premium Display widget on an Amazon CTV + Video buy. Only "
-         "those: a client running Amazon Premium Display owes the widget.",
+        ("check_rogue_widgets",
+         "A widget for a product this buy does not include - an Amazon Premium "
+         "Display breakout on an Amazon CTV + Video buy, PPC pages on a buy "
+         "with no PPC.",
          ADMIN, True,
          "Verify against the order, then flag Alyssa - the widget is reporting "
          "a product the client did not buy."),

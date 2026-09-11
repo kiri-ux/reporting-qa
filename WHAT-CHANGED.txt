@@ -1,41 +1,48 @@
-build 2026.09.11-250
+build 2026.09.11-251
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-THE PRODUCT CHECK HAS BEEN SWITCHED OFF ON EVERY REPORT ON THE BOARD, FOR AS
-LONG AS THE STAMP HAS HAD A PERIOD ON IT. That is why the missing Geo-Framing
-never appeared, on any build, however many times the parser was fixed.
+ONE CHECK FOR A WIDGET BELONGING TO A PRODUCT THIS BUY DOES NOT INCLUDE. The
+Amazon Display one is folded into it and PPC is added, as one table - the next
+one somebody spots is a line rather than a new check.
 
-The order sync writes "<hash>:<period>" - the period is in there so the export
-gets re-read when the cycle rolls. Four readers compared that against the bare
-"<hash>". They never matched, and nothing said so; they just reported the
-orders as stale for ever, and check_products abstains while they are stale.
+  Amazon Premium Display   an Amazon Premium CTV + Video buy with no Amazon
+                           Display line item
+  PPC                      PPC's own pages on a buy with no PPC on the report
+                           and none on the order
 
-The same mismatch was re-downloading and re-parsing the whole order export
-after every single deploy.
+Charlottesville's Earthly Cleaning bought Display and Performance Max and
+carried four pages of PPC: "Cost: Amount Spent on the PPC campaign", the
+sitelink and callout extension diagram, the click glossary. Performance Max is
+charged per event - its own tiles on that report say Client CPE - so the
+cost-per-click glossary is PPC's, and PPC is not on the buy. PPC line items are
+named for the strategy rather than the product, so that one is read off the
+report's products and the order instead of the line items.
 
-One producer now - version.map_stamp() - and a test that fails if a second one
-appears. Two existing tests had been writing the bare hash themselves, which is
-why they passed while production did not.
+The check is not scoped by product and cannot be: the scope matches what the
+report was detected as running, and this is about a product that is not part of
+the buy. Scoping it would skip every report it is about.
 
-Susquehanna River Valley is a paired fixture now. July, which has the line
-item, says nothing. August, which does not, says "Ordered but not on the
-report: Geo-Framing Display". With the orders reading stale, the check does not
-run at all and says why.
+It abstains, and says so, on a report with no line item grid to read - "no such
+line item" is true of every report that failed to parse, which is not an answer
+about the buy.
 
-A CONVERSION BREAKOUT IS NOT EVIDENCE THAT A PRODUCT RAN. Charlottesville's
-Earthly Cleaning bought Display and Performance Max - four line items, not one
-of them CTV - and TapClicks printed "CTV Click Conversion Performance Breakout"
-and "CTV View-through Conversion Performance Breakout" on it anyway. Those two
-titles were the whole of the evidence, so the report was credited with CTV and
-then failed for having no Top CTV Publishers widget: a missing widget for a
-product nobody bought, off the back of two widgets that should not be there.
+Renegade Marine now flags an Amazon Premium Display widget too. Its line items
+are Amazon Prime CTV and Amazon Video with no Amazon Display, so it is the same
+thing Fisher Tire and Window World have.
 
-The widgets that mean a product ran are its creative, completion and publisher
-breakouts. A real CTV buy also has CTV line items, which are still read, so
-nothing that genuinely ran loses its product.
+--- also in this install ---
 
-AFTER INSTALLING: re-read the orders once, then run the checks. Both numbers
-have been wrong since before this session started.
+The product check had been switched off on every report on the board: the order
+sync writes "<hash>:<period>" and four readers compared it to the bare hash.
+One producer now, with a test that fails if a second appears. RE-READ THE
+ORDERS ONCE AFTER INSTALLING, then run the checks.
 
-1012 tests pass.
+A conversion breakout is no longer evidence that a product ran.
+
+Each half of an Amazon Premium buy owes its own creative and completion
+widgets.
+
+Every pacing goal is cut to the days the product actually had.
+
+1014 tests pass.
