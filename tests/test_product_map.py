@@ -334,3 +334,93 @@ def test_the_geo_framing_chip_resolves():
     assert pill("Geo-Framing Display")["code"] == "GF"
     assert pill("Geo-Framing Display")["known"]
     assert pill("Display")["code"] == "D"
+
+
+CTV_LINE_ITEMS = [
+    # (line item name, the product it belongs to)
+    # Amazon Premium CTV + Video
+    ("Acme - Retargeting Amazon CTV", "CTV"),
+    ("Acme - Prime CTV", "CTV"),
+    ("Acme - Prime OTT", "CTV"),
+    ("Acme - Amazon OTT", "CTV"),
+    ("Acme - OTT Amazon", "CTV"),
+    ("Acme - CTV Amazon", "CTV"),
+    # Connected TV, and CTV + Video
+    ("Acme - Behavioral CTV", "CTV"),
+    ("Acme - Behavioral OTT", "CTV"),
+    ("Acme - Connected TV", "CTV"),
+    # Social Mirror CTV
+    ("Acme - Social Mirror CTV", "Social Mirror CTV"),
+    ("Acme - Social Mirror OTT", "Social Mirror CTV"),
+    # YouTube+ - the product is YouTube either way. Only the YouTube TV rows
+    # are CTV inventory, which is a different question.
+    ("Acme - YouTube TV", "YouTube"),
+    ("Acme - YouTube", "YouTube"),
+]
+
+
+def test_every_name_a_ctv_line_item_ends_in():
+    """Written down from the orders rather than from the reports I happened to
+    have. Only "... CTV" was read, so "Prime OTT", "Amazon OTT", "OTT Amazon",
+    "CTV Amazon" and a plain "Connected TV" were no product at all - and a
+    report made of them carried no CTV, which takes the page-one tile check out
+    with it, silently."""
+    import re
+
+    from app.checks import products as P
+
+    def tail_of(name):
+        for product, rx in P.TAIL_PATTERNS:
+            if re.search(rx, name, re.I):
+                return product
+        return None
+
+    for name, want in CTV_LINE_ITEMS:
+        assert tail_of(name) == want, name
+
+
+def test_every_title_a_ctv_widget_carries():
+    """CTV, OTT or Connected TV, whatever leads it. And the page-one cost tile
+    is NOT a CTV widget: on a narrow layout "CTV Cost Per Completed View" is a
+    line of its own that the cost-tile rule picks up as a title, and reading
+    CTV off that would mean a report whose only CTV is a rogue tile detects
+    CTV - the finding switched off by its own evidence."""
+    import re
+
+    from app.checks import products as P
+    from app.checks.rules import CTV_GRIDS
+
+    def sect_of(title):
+        for product, rx in P.SECTION_PATTERNS:
+            if re.search(rx, title, 0 if rx.startswith("^") else re.I):
+                return product
+        return None
+
+    want = {
+        "Connected TV (CTV) Completion Performance": ("CTV", True),
+        "Connected TV Completion Performance": ("CTV", True),
+        "OTT Completion Performance": ("CTV", True),
+        "Amazon CTV Creative Performance": ("CTV", True),
+        "Prime OTT Creative Performance": ("CTV", True),
+        "Social Mirror CTV Creative Performance": ("Social Mirror CTV", True),
+        "Social Mirror OTT Creative Performance": ("Social Mirror CTV", True),
+        # CTV inventory for the tile's purposes; the YouTube product otherwise.
+        "YouTube TV Creative Performance": ("YouTube", True),
+        "YouTube Creative Performance": ("YouTube", False),
+        # Not a widget at all.
+        "CTV Cost Per Completed View": (None, False),
+        "Display Creative Performance": ("Display", False),
+    }
+    for title, (product, is_ctv_grid) in want.items():
+        assert sect_of(title) == product, title
+        assert bool(CTV_GRIDS.search(title)) is is_ctv_grid, title
+
+
+def test_the_ctv_run_reads_the_youtube_reports_too():
+    """A YouTube+ order delivers CTV through the line items named YouTube TV,
+    and those rows belong to the YouTube product - so a report whose only CTV
+    inventory is YouTube TV carries no product with CTV in its name. The run
+    reads a few more reports than it needs to, which is the right way round."""
+    from app.checks.rules import CHECK_PRODUCTS
+
+    assert CHECK_PRODUCTS["check_ctv_tile"] == ("CTV", "YouTube")

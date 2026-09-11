@@ -1,43 +1,54 @@
-build 2026.09.11-233
+build 2026.09.11-234
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
-THE CTV TILE CHECK NEVER RAN ON A SINGLE REPORT. It wanted "CTV Completion
-Rate" alone on a line, and page one puts three tiles side by side, so
-pdftotext prints the three headings as one line. It stood down on every report
-on the board, and a skipped check with a dash beside it reads exactly like a
-check that is working and finding nothing.
+EVERY NAME A CTV PRODUCT PRINTS, written down from the orders rather than from
+the reports that happened to be to hand. The word OTT appeared nowhere in the
+code. These were all read as no product at all:
 
-It reads the tile down its own column now - the tile to its left is the product
-breakout, which is nothing but percentages. Checked against the real files:
-98.60% on Watsontown, 98.90% on Central Penn, both inside their own CTV rows,
-both correctly silent.
+  Prime OTT, Amazon OTT, Behavioral OTT      line items
+  OTT Amazon, CTV Amazon                     line items
+  Connected TV                               line items
+  Social Mirror OTT                          line items
+  YouTube TV                                 line items
+  OTT / Amazon CTV / Prime OTT Performance   widget titles
+
+Which compounds: a report whose CTV prints as OTT carried no CTV product, so
+the page-one tile had no CTV rows to be measured against, so the check said
+nothing at all about it.
+
+YouTube TV rows are CTV inventory for the tile and the product stays YouTube -
+the order is YouTube+, not a CTV buy. The CTV Run reads YouTube reports for
+that reason: a report whose only CTV is YouTube TV carries no product with CTV
+in its name.
+
+NOTHING TO COMPARE IT TO IS NOT THE SAME AS NOTHING WRONG. The tile check
+returned an empty list when it found no CTV rows, which reads on the report as
+a pass. Where the client has a CTV order and the report prints the tile, that
+is now a finding: "CTV completion rate could not be checked". Either the grid
+is missing or it is titled something the tool has not been taught. With no CTV
+order it stays quiet - a tile with no rows is "a CTV tile on a report with no
+CTV", which is a check of its own.
+
+THE CTV TILE CHECK NEVER RAN ON A SINGLE REPORT before this. It wanted "CTV
+Completion Rate" alone on a line, and page one puts three tiles side by side,
+so pdftotext prints the three headings as one line. It reads the tile down its
+own column now: 98.60% on Watsontown, 98.90% on Central Penn, both inside their
+own CTV rows, both correctly silent.
 
 RUN ONE CHECK NOW, over only the reports it is about. A Run button on every row
-of the flags tab. A rule about the CTV tile has nothing to say about a report
-with no CTV on it, so it reads the reports carrying the product - about a
-hundred instead of twelve hundred. It is a full re-check of those reports, not
-a run of that one rule: the cost is reading the PDF either way, and
-half-judging a report is how one ends up carrying two builds' answers.
+of the flags tab. Only checks that read the inside of a product's own widget
+are scoped by product, matched against what was DETECTED on the report:
 
-WHICH REPORTS A RUN READS. Only checks that read the inside of a product's own
-widget are scoped by product, and the scope is matched against what was
-DETECTED on the report:
-
-  CTV tile                       CTV, Social Mirror CTV
+  CTV tile                       CTV, Social Mirror CTV, YouTube
   Social Mirror ad-size naming   Social Mirror
   Social Mirror preview shape    Social Mirror
   Geo-fencing row names          Mobile Conquesting
 
 Everything else reads the whole cycle, which is slower and never wrong. A check
-about a product being ABSENT is never scoped: "a CTV tile on a report with no
-CTV" only fires on a report with no CTV detected, so scoping it to reports
-carrying CTV would skip every report it is about and come back clean in thirty
-seconds. That one and the geo-fencing widget check were scoped for one build
-and are not now.
+about a product being ABSENT is never scoped.
 
 A row with a run going stays on screen. "Flagging now" hides the checks with no
-count, which is every check that has just been fixed - the one you came to
-press Run on.
+count, which is every check that has just been fixed.
 
-968 tests pass.
+972 tests pass.

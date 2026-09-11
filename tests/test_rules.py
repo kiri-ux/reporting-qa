@@ -3842,3 +3842,45 @@ def test_a_ctv_tile_built_over_other_products_is_a_finding():
     assert len(got) == 1
     assert got[0]["code"] == "ctv_tile_off"
     assert "62.10%" in got[0]["detail"]
+
+
+def test_a_ctv_tile_with_nothing_to_compare_it_to_says_so():
+    """NOTHING TO COMPARE IT TO IS NOT THE SAME AS NOTHING WRONG.
+
+    It returned an empty list, which reads on the report as the check having
+    passed. That is the failure that cost two days: the tile was there, the
+    grids were titled OTT and Prime OTT, nothing matched them, and the check
+    said nothing about any of it.
+
+    Where the client bought CTV and the report prints the tile, the absence of
+    rows is itself the finding. Where they did not buy CTV, a tile with no rows
+    belongs to "a CTV tile on a report with no CTV", not to this.
+    """
+    from app.checks.rules import check_ctv_tile
+
+    head = ("   Your Product Breakout by Impressions        CTV Completion "
+            "Rate        CTV Cost Per Completed View")
+    at = head.index("CTV Completion Rate")
+    vals = " " * 10 + "41.20%" + " " * (at - 12) + "62.10%" + "        0.04"
+    text = head + "\n\n" + vals + "\n"
+
+    got = check_ctv_tile({"text": text, "page_of": lambda _o: 1,
+                          "expected_products": {"CTV", "Display"}})
+    assert [f["code"] for f in got] == ["ctv_tile_unchecked"]
+    assert got[0]["severity"] == "warn"
+    assert "62.10%" in got[0]["detail"]
+
+    # Social Mirror CTV is a CTV order too.
+    got = check_ctv_tile({"text": text, "page_of": lambda _o: 1,
+                          "expected_products": {"Social Mirror CTV"}})
+    assert [f["code"] for f in got] == ["ctv_tile_unchecked"]
+
+    # No CTV order, and no order list at all: not this check's finding.
+    assert check_ctv_tile({"text": text, "page_of": lambda _o: 1,
+                           "expected_products": {"Display"}}) == []
+    assert check_ctv_tile({"text": text, "page_of": lambda _o: 1}) == []
+
+    # YouTube+ is not a CTV order. Only its YouTube TV rows are CTV inventory,
+    # which is a fact about the rows rather than about the order.
+    assert check_ctv_tile({"text": text, "page_of": lambda _o: 1,
+                           "expected_products": {"YouTube"}}) == []

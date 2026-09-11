@@ -445,7 +445,7 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
      ("widget_error", "blank_widget_page")),
     ("page_banner", "Page banners still printing", ("page_banner",)),
     ("ctv_not_ctv", "The CTV tile does not belong to CTV",
-     ("ctv_widget_no_ctv", "ctv_tile_off")),
+     ("ctv_widget_no_ctv", "ctv_tile_off", "ctv_tile_unchecked")),
     ("completion_missing", "No completion rate on a product that owes one",
      ("completion_missing",)),
     ("completion_zero", "Completion rates at 0%",

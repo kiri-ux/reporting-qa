@@ -1089,7 +1089,10 @@ def test_one_check_can_be_run_over_only_the_reports_it_is_about(tmp_path,
     from app.checks.rules import CHECK_PRODUCTS
     from app.recheck import stale_count
 
-    assert CHECK_PRODUCTS["check_ctv_tile"] == ("CTV",)
+    # YouTube is in the CTV scope because a YouTube+ order delivers CTV
+    # through its YouTube TV line items, and those rows belong to the YouTube
+    # product - see test_the_ctv_run_reads_the_youtube_reports_too.
+    assert CHECK_PRODUCTS["check_ctv_tile"] == ("CTV", "YouTube")
     # Two of the four carry CTV. The other two are not read at all.
     assert stale_count(db, period="2026-08", stale_only=False) == 4
     assert stale_count(db, period="2026-08", stale_only=False,

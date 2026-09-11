@@ -23,14 +23,26 @@ COST_TILE = re.compile(
 # Section title fragment -> product. Longest first so "Social Mirror CTV" wins
 # over "Social Mirror".
 SECTION_PATTERNS: list[tuple[str, str]] = [
-    ("Social Mirror CTV", r"Social Mirror CTV"),
+    ("Social Mirror CTV", r"Social Mirror (?:CTV|OTT)"),
     ("Native Display", r"Native Display (?:Creative|Click|Conversion)"),
     ("Geo-Framing Display", r"Geo[- ]?Fram\w*"),
     ("Performance Max", r"Performance Max"),
     ("Mobile Conquesting", r"Mobile Conquesting"),
     ("Social Mirror", r"Social Mirror"),
     ("Online Audio", r"Online Audio"),
-    ("CTV", r"Connected TV \(CTV\)"),
+    # EVERY NAME THE CTV PRODUCTS PRINT. The orders that sell CTV are Connected
+    # TV, CTV + Video, Amazon Premium CTV + Video and Social Mirror CTV, and
+    # their widgets are titled with any of CTV, OTT or Connected TV - "OTT
+    # Completion Performance", "Amazon CTV Creative Performance", "Prime OTT
+    # Creative Performance". Only "Connected TV (CTV)" was read, so the rest
+    # were no product at all.
+    #
+    # A PERFORMANCE WIDGET, NOT A TILE. "CTV Cost Per Completed View" is a
+    # page-one tile, and on a narrow layout it is a line of its own that the
+    # cost-tile rule picks up as a title. Reading CTV off that would mean a
+    # report whose only CTV is a rogue tile detects CTV - which is the finding
+    # "a CTV tile on a report with no CTV", switched off by its own evidence.
+    ("CTV", r"(?:Connected TV|\bCTV\b|\bOTT\b).*\bPerformance\b"),
     ("Meta", r"^Meta\b"),
     ("TikTok", r"^TikTok\b"),
     ("DOOH", r"^DOOH\b"),
@@ -55,7 +67,7 @@ TAIL_PATTERNS: list[tuple[str, str]] = [
     # order check it was running a product it was not, and would have demanded
     # a completion rate for something nobody watches to the end.
     ("DOOH", r"\bDOOH(?: Video| Display)?$"),
-    ("Social Mirror CTV", r"Social Mirror CTV$"),
+    ("Social Mirror CTV", r"Social Mirror (?:CTV|OTT)$"),
     ("Geo-Framing Display", r"Geo[- ]?Fram\w* Display$"),
     ("Native Display", r"Native Display$"),
     ("Native Display", r"\bNative$"),
@@ -63,12 +75,23 @@ TAIL_PATTERNS: list[tuple[str, str]] = [
     ("Online Audio", r"\bAudio$"),
     ("Mobile Conquesting", r"\bMobile$"),
     ("Social Mirror", r"Social Mirror$"),
-    ("CTV", r"\bCTV$"),
+    # THE NAMES A CTV LINE ITEM ACTUALLY ENDS IN. Only "... CTV" was read, so
+    # "Prime OTT", "Amazon OTT", "OTT Amazon", "CTV Amazon" and a plain
+    # "Connected TV" were all no product at all - and a report made of them
+    # carried no CTV, which takes the tile check out with it.
+    ("CTV", r"\b(?:CTV|OTT)$"),
+    ("CTV", r"\bConnected TV$"),
+    ("CTV", r"\b(?:CTV|OTT) (?:Amazon|Prime)$"),
     ("Video", r"\bVideo$"),
     ("Display", r"\bDisplay$"),
     ("PPC", r"\bPPC$"),
     ("Meta", r"\bMeta$"),
     ("TikTok", r"\bTikTok$"),
+    # YOUTUBE+ IS NOT CTV, EXCEPT WHERE IT IS. The order is YouTube+; only the
+    # line items named YouTube TV are CTV inventory, and the product they
+    # belong to is still YouTube. Which rows the page-one CTV tile is measured
+    # against is a separate question - see CTV_GRIDS in rules.py.
+    ("YouTube", r"\bYouTube TV$"),
     ("YouTube", r"\bYouTube$"),
 ]
 

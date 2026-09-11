@@ -1617,8 +1617,18 @@ TILE_DRIFT = 14
 TILE_LINES = 14
 # The widgets that hold CTV's own completion figures. Both are titled for the
 # product, so a completion column under either of them is CTV's.
+# EVERY GRID HOLDING CTV INVENTORY, whatever the template calls it. It read
+# only "Connected TV (CTV)", so a report whose CTV prints as OTT, as Amazon CTV
+# or as Prime OTT had no CTV rows to compare the tile against - and a tile with
+# nothing to compare it to says nothing at all.
+#
+# YouTube TV is in here and YouTube is not. The order is YouTube+, and only the
+# line items named YouTube TV are CTV inventory - which is a different question
+# from which product the rows belong to, and this is the question the tile
+# asks.
 CTV_GRIDS = re.compile(
-    r"^[ \t]*Connected TV \(CTV\).*(?:Completion|Creative) Performance.*$", re.M)
+    r"^[ \t]*.*\b(?:Connected TV|CTV|OTT|YouTube TV)\b.*"
+    r"(?:Completion|Creative) Performance.*$", re.M)
 # 25% and 50% are all but always 100 and say nothing about whether the tile is
 # built right. The tile is the FULL completion rate, so it is compared against
 # the columns that mean the same thing.
@@ -1626,6 +1636,10 @@ CTV_FULL_COL = re.compile(r"(?:100% Completion|Video Completion) Rate", re.I)
 # A weighted mean sits between the smallest and largest of its parts. The slack
 # is for rounding and for a strategy the grid did not print.
 CTV_TILE_SLACK = 2.0
+# The orders that sell CTV, by the product name the import gives them. YouTube+
+# is not one: its order is YouTube, and only its YouTube TV line items are CTV
+# inventory - which is a fact about the rows, not about the order.
+CTV_ORDERS = frozenset({"CTV", "Social Mirror CTV"})
 
 
 def _ctv_tile_pct(text: str):
@@ -1693,13 +1707,32 @@ def check_ctv_tile(ctx) -> list[dict]:
     if tile is None:
         return []
     rows = _ctv_full_rates(text)
+    page_of = ctx.get("page_of")
     if len(rows) < 1:
-        return []
+        # NOTHING TO COMPARE IT TO IS NOT THE SAME AS NOTHING WRONG.
+        #
+        # This returned an empty list, which reads on the report as the check
+        # having passed. It is the failure that cost two days: the tile was
+        # there, the grids were titled OTT and Prime OTT, nothing matched them,
+        # and the check said nothing about any of it.
+        #
+        # So where the client BOUGHT CTV and the report prints the tile, the
+        # absence of rows is itself the finding - either the grid is missing or
+        # it is titled something nobody has taught this. Where they did not buy
+        # CTV, a tile with no rows is check_rogue_ctv's, not this one's.
+        if not (set(ctx.get("expected_products") or ()) & CTV_ORDERS):
+            return []
+        return [_f("ctv_tile_unchecked", "warn",
+                   "CTV completion rate could not be checked",
+                   f"The tile reads {tile:.2f}% and the client has a CTV "
+                   f"order, and there is no CTV grid on the report to check it "
+                   f"against.",
+                   where=(f"p{page_of(at)} · " if page_of else "")
+                         + "CTV Completion Rate")]
     lo = min(v for _n, v in rows)
     hi = max(v for _n, v in rows)
     if lo - CTV_TILE_SLACK <= tile <= hi + CTV_TILE_SLACK:
         return []
-    page_of = ctx.get("page_of")
     trace = [("Tile on page one", f"{tile:.2f}%"),
              ("CTV rows on the report",
               ", ".join(f"{_short_name(n)}: {v:.2f}%" for n, v in rows[:6]))]
@@ -2172,7 +2205,14 @@ CHECKS: list[tuple] = [
 CHECK_PRODUCTS: dict[str, tuple[str, ...]] = {
     # The tile is compared against CTV's own grids, so a report with no CTV on
     # it has nothing for this to say.
-    "check_ctv_tile": ("CTV",),
+    #
+    # "CTV" covers CTV and Social Mirror CTV, which is a substring match and
+    # deliberate. YouTube is in here for one reason: a YouTube+ order delivers
+    # CTV through the line items named YouTube TV, and those rows belong to the
+    # YouTube product - so a report whose only CTV inventory is YouTube TV
+    # carries no product with CTV in its name. It reads a few more reports than
+    # it needs to, which is the right way round.
+    "check_ctv_tile": ("CTV", "YouTube"),
     # Both read the rows of the Social Mirror creative grid.
     "check_social_mirror_sizes": ("Social Mirror",),
     "check_creative_shape": ("Social Mirror",),
