@@ -81,9 +81,13 @@
        out what was actually different was to ask me. The build's own note is
        right there. #}
     <div class="msg">
+      {# NOTHING IS RUNNING, AND IT HAS TO SAY SO. "Queued by build ..." was
+         left from when a sweep started itself off the back of this count, and
+         it reads as a re-check somebody did not ask for - which is what it was
+         read as. #}
       <b>{{ stale.total }} reports were judged by rules that have since
-      changed.</b> Nothing re-checks itself - Run all re-checks is on the
-      Reporting flags page, or run one check at a time from there.
+      changed.</b> Nothing is running. Run all re-checks is on the Reporting
+      flags page, or run one check at a time from there.
     </div>
     {# THE BUILD AND THE WAY OUT, ON ONE LINE, at the end of the sentence they
        belong to.
@@ -94,9 +98,9 @@
        arrive at exactly what they already said. #}
     <form method="post" action="/cycle/recheck/skip" class="staleact">
       <input type="hidden" name="period" value="{{ period }}">
-      <span class="acct">Queued by <b>{{ build_label }}</b></span>
+      <span class="acct">Rules last changed in <b>{{ build_label }}</b></span>
       <button class="mini" type="submit"
-              data-tip="Marks all {{ stale.total }} as current without reading them, and stops the sweep. Use it when you know the deploy changed nothing about how a report is judged. If it DID change a rule, this skips corrections that were owed.">Skip this re-check</button>
+              data-tip="Marks all {{ stale.total }} as current without reading them. Use it when you know the deploy changed nothing about how a report is judged. If it DID change a rule, this drops corrections that were owed.">Mark all as current</button>
     </form>
   </div>
 {% endif %}
@@ -628,7 +632,14 @@
                  aria-label="Select {{ e.client }}">
         {% endif %}</td>
         <td class="nw" data-v="{{ e.market }}">{{ e.market }}</td>
-        <td><b>{{ e.client }}</b>{% if e.forced_by %}<span class="byhand"
+        <td><b>{{ e.client }}</b><button type="button" class="copy copyname"
+            data-copy="{{ e.client }}" aria-label="Copy {{ e.client }}"
+            data-tip="Copy the client name"><svg viewBox="0 0 16 16" width="12"
+            height="12" aria-hidden="true"><rect x="5.5" y="5.5" width="8"
+            height="8" rx="1.5" fill="none" stroke="currentColor"
+            stroke-width="1.6"/><path d="M10.5 2.5H3.5a1 1 0 0 0-1 1v7"
+            fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round"/></svg></button>{% if e.forced_by %}<span class="byhand"
             data-tip="Put on this cycle by hand by {{ e.forced_by }}{% if e.forced_note %} - {{ e.forced_note }}{% endif %}. The order export did not ask for it.">by hand</span>{% endif %}
           {# The order id is what gets quoted when raising this with anyone,
              so it sits with the client rather than only inside the PDF. #}

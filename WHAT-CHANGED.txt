@@ -1,36 +1,35 @@
-build 2026.09.11-241
+build 2026.09.11-242
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
-"NO NEW FILE" ON ANY REPORT ASKED FOR AGAIN THAT HAS NOT COME BACK.
+THE CTV TILE WAS BEING MEASURED AGAINST HALF ITS OWN PARTS. Renegade Marine's
+tile reads 71.73% and its Connected TV (CTV) grids run 98.51% to 99.31%, which
+is a failure by any reading - until you scroll two pages on and find "Amazon
+Premium Video Completion Performance by Creative" at 37.80% and 38.34%. Amazon
+Premium is a CTV buy, those rows are in the tile, and the check never looked at
+them.
 
-64 reports were flagged, all 64 were asked for again, 10 came back and 54 did
-not - and nothing anywhere said so. The board showed the same finding on all of
-them, because the finding was still true of the file each one still had.
-Telling the two apart meant opening reports one at a time, and they are
-entirely different jobs: one is chasing a pull, the other is reading a report.
+Two reasons it missed them: the widget is titled "Amazon Premium Video" with no
+CTV or OTT in it, and its column is headed "100% Completed" where the CTV grid
+says "100% Completion Rate" - so even once the title matched it read as a grid
+with no completion column. With those rows in, the range is 37.80% to 99.31%,
+71.73% sits inside it, and nothing is said. That report is a test fixture now.
 
-  - A tag on the row: no new file, with when it was asked for and when the file
-    it still has arrived.
-  - A chip beside the search: No new file, with the count. Click it for that
-    list on its own.
-  - Two columns in the CSV: File arrived, and Waiting on.
+Renamed to "CTV VCR not matching throughout", on the row and in the filter.
 
-Asked for means either way of asking - a person marking it Needs fix, or a
-re-check finding a failure on a copy the partner already has.
+A COPY BUTTON BESIDE THE CLIENT NAME on the board. Appears on hover, turns to
+a tick.
 
-A CHECK'S ROW SAYS HOW MANY IT IS FLAGGING NOW, not how many its last run
-found. A count from an earlier run standing beside a board that has moved
-disagrees with the badge in the same row.
+THE STALE BANNER NO LONGER READS AS A RUNNING RE-CHECK. It said "Queued by
+build ..." and offered "Skip this re-check", both left from when a sweep
+started itself off the back of that count. It says "Nothing is running", "Rules
+last changed in build ...", and the button is "Mark all as current".
 
 --- also in this install ---
 
-The resend mark is cleared by every path that puts a new file on a report, and
-the ones already stuck are put right on the next boot.
+"No new file" on any report asked for again that has not come back - a tag on
+the row, a chip with the count beside the search, and two columns in the CSV.
 
-The Social Mirror preview check no longer calls the Ad Screenshots strip a
-display banner.
+The resend mark is cleared by every path that puts a new file on a report.
 
-A verdict lands back on the row, not the top of the board.
-
-983 tests pass.
+985 tests pass.

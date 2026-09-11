@@ -3884,3 +3884,45 @@ def test_a_ctv_tile_with_nothing_to_compare_it_to_says_so():
     # which is a fact about the rows rather than about the order.
     assert check_ctv_tile({"text": text, "page_of": lambda _o: 1,
                            "expected_products": {"YouTube"}}) == []
+
+
+def test_the_amazon_premium_video_rows_are_part_of_the_ctv_tile():
+    """RENEGADE MARINE, READ AS A REAL FILE.
+
+    The tile reads 71.73% and the Connected TV (CTV) grids run 98.51% to
+    99.31%, which is a failure by any reading - until you scroll two pages on
+    and find "Amazon Premium Video Completion Performance by Creative" at
+    37.80% and 38.34%. Amazon Premium is a CTV buy, those rows are in the tile,
+    and the check was never looking at them.
+
+    Measuring an average against half of its own parts is the same fault the
+    check exists to catch, so it was doing to fifty-odd reports exactly what it
+    was written to stop.
+    """
+    import subprocess
+    from pathlib import Path
+
+    from app.checks.rules import (CTV_GRIDS, _ctv_full_rates, _ctv_tile_pct,
+                                  check_ctv_tile)
+
+    pdf = Path(__file__).resolve().parent / "fixtures" / "renegade_marine.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    text = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
+                          capture_output=True, text=True).stdout
+
+    titles = [m.group(0).strip() for m in CTV_GRIDS.finditer(text)]
+    assert any("Amazon Premium Video Completion" in t for t in titles), titles
+    assert any("Connected TV (CTV)" in t for t in titles), titles
+
+    tile, _at = _ctv_tile_pct(text)
+    assert tile == 71.73
+    rows = dict((n, v) for n, v in _ctv_full_rates(text))
+    # The column is headed "100% Completed" here and "100% Completion Rate" on
+    # the CTV grid - read one way, the Amazon grid was a grid with no
+    # completion column at all.
+    assert 37.8 in rows.values() and 38.34 in rows.values()
+    assert 99.31 in rows.values() and 98.6 in rows.values()
+
+    # 71.73% sits inside 37.80% to 99.31%, so nothing is said about it.
+    assert check_ctv_tile({"text": text, "page_of": lambda _o: 1}) == []

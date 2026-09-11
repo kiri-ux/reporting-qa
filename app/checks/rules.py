@@ -1626,13 +1626,30 @@ TILE_LINES = 14
 # line items named YouTube TV are CTV inventory - which is a different question
 # from which product the rows belong to, and this is the question the tile
 # asks.
+# AMAZON PREMIUM VIDEO IS CTV AND ITS WIDGETS DO NOT SAY SO.
+#
+# Renegade Marine's tile reads 71.73% and its Connected TV (CTV) grids run
+# 98.51% to 99.31%, which is a failure by any reading - until you scroll two
+# pages on and find "Amazon Premium Video Completion Performance by Creative"
+# at 37.80% and 38.34%. Amazon Premium is a CTV buy, those rows are in the
+# tile, and the check never looked at them. Measuring an average against half
+# of its own parts is the same fault the check exists to catch.
+#
+# "Video" is required beside Amazon on purpose: Amazon Premium also sells
+# display, and "Amazon Premium Display ... Performance" is not CTV.
 CTV_GRIDS = re.compile(
-    r"^[ \t]*.*\b(?:Connected TV|CTV|OTT|YouTube TV)\b.*"
+    r"^[ \t]*.*(?:\b(?:Connected TV|CTV|OTT|YouTube TV)\b"
+    r"|Amazon (?:Premium|Prime) Video|\bPrime Video\b).*"
     r"(?:Completion|Creative) Performance.*$", re.M)
 # 25% and 50% are all but always 100 and say nothing about whether the tile is
 # built right. The tile is the FULL completion rate, so it is compared against
 # the columns that mean the same thing.
-CTV_FULL_COL = re.compile(r"(?:100% Completion|Video Completion) Rate", re.I)
+# "100% Completed" AS WELL AS "100% Completion Rate". The CTV grid heads that
+# column one way and the Amazon Premium Video grid heads it the other, and the
+# Amazon one was read as a grid with no completion column at all - so it was
+# skipped even once its title was recognized.
+CTV_FULL_COL = re.compile(
+    r"(?:100%\s*(?:Completion Rate|Completed)|Video Completion Rate)", re.I)
 # A weighted mean sits between the smallest and largest of its parts. The slack
 # is for rounding and for a strategy the grid did not print.
 CTV_TILE_SLACK = 2.0
@@ -1723,7 +1740,7 @@ def check_ctv_tile(ctx) -> list[dict]:
         if not (set(ctx.get("expected_products") or ()) & CTV_ORDERS):
             return []
         return [_f("ctv_tile_unchecked", "warn",
-                   "CTV completion rate could not be checked",
+                   "CTV VCR could not be checked",
                    f"The tile reads {tile:.2f}% and the client has a CTV "
                    f"order, and there is no CTV grid on the report to check it "
                    f"against.",
@@ -1737,7 +1754,7 @@ def check_ctv_tile(ctx) -> list[dict]:
              ("CTV rows on the report",
               ", ".join(f"{_short_name(n)}: {v:.2f}%" for n, v in rows[:6]))]
     return [_f("ctv_tile_off", "fail",
-               "CTV completion rate is not CTV's",
+               "CTV VCR not matching throughout",
                f"The tile reads {tile:.2f}% against CTV rows running "
                f"{lo:.2f}% to {hi:.2f}%. An average sits between its own "
                f"figures, so the tile is built over rows that are not CTV.",

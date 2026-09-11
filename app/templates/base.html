@@ -175,6 +175,16 @@ tr:target > td{background:var(--gold-10,rgba(240,185,66,.16));
 /* ASKED FOR AGAIN, AND NOTHING HAS COME. The row looked identical to one
    whose corrected file had arrived and still failed, which are two entirely
    different jobs. */
+/* THE CLIENT NAME, COPYABLE. It is what gets pasted into the reporting tool,
+   an email and a Slack message, and selecting it by hand out of a row also
+   picks up the tag beside it. Quiet until the row is under the pointer. */
+.copyname{margin-left:6px;padding:1px;border:0;background:none;cursor:pointer;
+ color:var(--muted);opacity:0;vertical-align:baseline;line-height:1}
+tr:hover .copyname,.copyname:focus-visible{opacity:1}
+.copyname:hover{color:var(--velocity)}
+.copyname.done{opacity:1;color:var(--ok,#2f855a)}
+.copyname.done svg{display:none}
+.copyname.done::after{content:"\2713";font-size:12px;font-weight:700}
 .waitfile{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;
  font-family:'GT Walsheim Pro',sans-serif;font-size:11px;font-weight:700;
  background:var(--warn-bg);color:var(--ink-2);white-space:nowrap;cursor:help}
@@ -1102,9 +1112,15 @@ body.fit .pdfwrap object{height:100%}
     var label = b.querySelector('span');
     var was = label ? label.textContent : '';
     var done = function (msg, ok) {
-      if (!label) return;
-      label.textContent = msg;
+      // AN ICON BUTTON HAS NO WORDS TO CHANGE. It said nothing at all when it
+      // worked, which reads as a button that does nothing - so the class goes
+      // on either way and the tick is the answer.
       b.classList.toggle('done', !!ok);
+      if (!label) {
+        setTimeout(function () { b.classList.remove('done'); }, 1600);
+        return;
+      }
+      label.textContent = msg;
       setTimeout(function () {
         label.textContent = was;
         b.classList.remove('done');

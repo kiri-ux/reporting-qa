@@ -1477,7 +1477,7 @@ def test_a_pointless_sweep_can_be_stopped(tmp_path, monkeypatch):
     page = (_P(__file__).resolve().parents[1] / "app" / "templates"
             / "cycle.html").read_text()
     assert 'action="/cycle/recheck/skip"' in page
-    assert "Skip this re-check" in page
+    assert "Mark all as current" in page
 
 
 # ------------------------------------------- the box backs off while you are on it

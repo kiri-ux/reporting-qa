@@ -4304,7 +4304,7 @@ def test_the_reports_can_be_filtered_by_which_finding():
         def __init__(self, report=None):
             self.report = report
 
-    a = E(R([{"code": "ctv_tile_off", "title": "CTV completion rate is not CTV's"},
+    a = E(R([{"code": "ctv_tile_off", "title": "CTV VCR not matching throughout"},
              {"code": "row_ctr", "title": "Row CTR does not match its own numbers"}]))
     b = E(R([{"code": "product_missing",
               "title": "Ordered but not on the report: CTV, Native Display"}]))
@@ -4319,7 +4319,7 @@ def test_the_reports_can_be_filtered_by_which_finding():
     codes, labels = main._finding_menu([a, b, c, d])
     assert codes == ["ctr_mismatch", "ctv_not_ctv", "product_missing"]
     assert labels["product_missing"] == "Ordered but not on the report"
-    assert labels["ctv_not_ctv"] == "The CTV tile does not belong to CTV"
+    assert labels["ctv_not_ctv"] == "CTV VCR not matching throughout"
 
     src = inspect.getsource(main.cycle_view)
     # Counted over the rows the OTHER filters leave, and applied after - a menu
@@ -4652,3 +4652,25 @@ def test_a_report_asked_for_again_says_no_file_has_come(tmp_path, monkeypatch):
                 / "main.py").read_text()
     assert 'waiting: str = Query("")' in main_src
     assert '"Waiting on"' in main_src
+
+
+def test_the_stale_banner_does_not_read_as_a_running_recheck():
+    """"I didn't start a recheck?? not sure what caused that."
+
+    The banner said "Queued by build ..." and offered "Skip this re-check",
+    both left from when a sweep started itself off the back of this count.
+    Nothing starts itself any more, so the banner is about reports that are
+    behind and nothing else - and it says so rather than leaving the words that
+    describe a job that is not happening.
+    """
+    import re as _re
+    cycle = (TPL / "cycle.html").read_text()
+    # The comments explain what the words used to be, so they are not the words.
+    cycle = _re.sub(r"\{#.*?#\}", "", cycle, flags=_re.S)
+    at = cycle.index("were judged by rules that have since")
+    banner = cycle[at - 400:at + 1800]
+    assert "Nothing is running" in banner
+    assert "Rules last changed in" in banner
+    assert "Mark all as current" in banner
+    assert "Queued by" not in banner
+    assert "Skip this re-check" not in banner

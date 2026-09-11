@@ -564,7 +564,7 @@ def sweep_once(db: Session, limit: int = BATCH, *, scoped: bool = True,
     somewhere to go: it is marked for resending and shows as Report review,
     its own status, rather than dropping back into the pile of things waiting
     to be read. The queue is still bounded by the fingerprint - it only moves
-    when the checking code does - and Skip this re-check is still there for a
+    when the checking code does - and Mark all as current is there for a
     deploy that changed nothing.
     """
     done = 0
