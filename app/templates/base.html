@@ -1608,11 +1608,28 @@ body.fit .pdfwrap object{height:100%}
         if (body.querySelector('[data-orders-running]')) {
           sheetTimer = setTimeout(function () { loadSheet(url, body); }, 10000);
         }
+        // e.submitter is not everywhere yet, so the last button pressed is
+        // remembered as well. Capture phase, because the submit fires first.
+        body.addEventListener('click', function (e) {
+          var b = e.target.closest && e.target.closest('button,input[type=submit]');
+          if (b && b.form) b.form._lastHit = b;
+        }, true);
         body.querySelectorAll('form').forEach(function (f) {
+          // WHICH BUTTON WAS PRESSED IS PART OF THE FORM.
+          //
+          // A browser sends a submit button's own name and value only when it
+          // is the one clicked - which is what lets Run, a row's On/Off and
+          // the two bulk buttons share one form. new FormData(form) does NOT
+          // include it, so every one of those posted a form saying nothing and
+          // the server did nothing, in silence. It worked on the full page,
+          // where the browser submits for itself, and not in this sheet.
           f.addEventListener('submit', function (e) {
             e.preventDefault();
+            var data = new FormData(f);
+            var hit = e.submitter || f._lastHit;
+            if (hit && hit.name) data.append(hit.name, hit.value || '');
             fetch(f.getAttribute('action'), {
-              method: 'POST', credentials: 'same-origin', body: new FormData(f)
+              method: 'POST', credentials: 'same-origin', body: data
             }).then(function () { loadSheet(url, body); });
           });
         });

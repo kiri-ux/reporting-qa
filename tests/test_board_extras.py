@@ -2829,30 +2829,27 @@ def test_the_board_does_not_ask_the_same_question_once_per_row():
     assert body.count("_reporter_names(") == 1
 
 
-def test_a_long_recheck_queue_says_why_the_board_is_slow():
-    """A deploy that changes the checking code queues EVERY report, and eight
-    hundred PDFs through pdftotext is a box with nothing left over for drawing
-    pages. That is a known state with an end, and it looked exactly like the
-    tool being broken."""
+def test_a_long_recheck_queue_says_what_it_is_and_where_to_act():
+    """A deploy that changes the checking code leaves every report on the board
+    judged by rules that have moved. That used to start eight hundred PDFs
+    through pdftotext on its own schedule, which looked exactly like the tool
+    being broken and took an afternoon nobody had asked for.
+
+    Nothing runs itself now. The banner says what the number is and where the
+    button is, and the button is on the flags page with the rest of it.
+    """
     cycle = (TPL / "cycle.html").read_text()
     assert "{% if stale.total > 200 %}" in cycle
-    assert "are being re-checked in the background" in cycle
-    assert "Pages are" in cycle and "slower while it runs" in cycle
-    # And a way to stop one that cannot change an answer - see
-    # test_a_pointless_sweep_can_be_stopped.
-    assert 'action="/cycle/recheck/skip"' in cycle
+    assert "were judged by rules that have since" in cycle
+    assert "Run all re-checks" in cycle
     # AND NOTHING ELSE. It also said the number comes down on its own, that
-    # nothing is wrong and nothing needs pressing, and how many of them were
-    # signed off - three sentences of reassurance above the two facts, on a
-    # banner whose job is to say why the board is slow. Say the fact and stop.
+    # nothing is wrong and nothing needs pressing, and how many were signed
+    # off - three sentences of reassurance above the two facts.
     assert "nothing is wrong" not in cycle
     assert "signed_stale" not in cycle
-    # The build and the way out sit on one line at the end of it.
+    # And a way to say "this deploy changed no answer" without reading them.
+    assert 'action="/cycle/recheck/skip"' in cycle
     assert 'class="staleact"' in cycle
-
-    # And the sweep actually treads more carefully on a long queue.
-    rc = (Path(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
-    assert "LONG_QUEUE" in rc and "REST_MULTIPLIER" in rc
 
 
 def test_check_a_list_sits_under_lifetimes_delivered():

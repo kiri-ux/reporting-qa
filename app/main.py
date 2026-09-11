@@ -2007,6 +2007,7 @@ def _behind_count(db: Session) -> int:
 def checks_set(request: Request, pick: list[str] = Form(default=[]),
                one: str = Form(""), on: str = Form(""), back: str = Form(""),
                run: str = Form(""), period: str = Form(""),
+               runall: str = Form(""), stop: str = Form(""),
                who: str = Form(""), db: Session = Depends(get_db)):
     """Switch checks on or off - one from its own row, or every ticked one.
 
@@ -2026,10 +2027,20 @@ def checks_set(request: Request, pick: list[str] = Form(default=[]),
     known = {fn.__name__ for fn, _ in CHECKS}
     name = who.strip() or whoami(request) or ""
     if run:
-        # The same form, a third button. A browser sends a button's own name
-        # and value only when it is the one pressed, so Run, the row's switch
-        # and the two bulk buttons do not get in each other's way.
+        # The same form, more buttons. A browser sends a button's own name and
+        # value only when it is the one pressed, so Run, Run all, Stop, the
+        # row's switch and the two bulk buttons do not get in each other's way.
         _start_check_run(db, run, period)
+    elif runall:
+        from .cycle import current_period
+        from .recheck import ALL_KEY, start_job
+        at = period or settings.default_period or current_period()
+        start_job(db, f"{ALL_KEY}:{at}", period=at, stale_only=True)
+    elif stop:
+        from .cycle import current_period
+        from .recheck import stop_job
+        at = period or settings.default_period or current_period()
+        stop_job(db, stop if ":" in stop else f"{stop}:{at}")
     elif one:
         key, _sep, want = one.partition("|")
         if key in known:
@@ -2091,13 +2102,32 @@ def _start_check_run(db: Session, name: str, period: str = "") -> None:
               products=CHECK_PRODUCTS.get(name), note=known[name][:255])
 
 
-@app.post("/checks/hold")
-def checks_hold(request: Request, on: str = Form(""), who: str = Form(""),
-                back: str = Form(""), db: Session = Depends(get_db)):
-    """Hold the automatic re-check, or let it go again."""
-    from .checkctl import set_hold
+@app.post("/checks/runall")
+def checks_run_everything(request: Request, period: str = Form(""),
+                   back: str = Form(""), db: Session = Depends(get_db)):
+    """Re-check everything on this cycle that the current rules have not read.
 
-    set_hold(db, on == "1", who=who.strip() or whoami(request) or "")
+    Nothing re-checks itself any more. A rule changing used to put the whole
+    board in a queue that ran for hours on its own schedule, while the person
+    who needed an answer this morning watched a number that was not moving.
+    """
+    from .cycle import current_period
+    from .recheck import ALL_KEY, start_job
+
+    period = period or settings.default_period or current_period()
+    start_job(db, f"{ALL_KEY}:{period}", period=period, stale_only=True)
+    return RedirectResponse(_back_to_rules(request, back), status_code=303)
+
+
+@app.post("/checks/stop")
+def checks_stop(request: Request, stop: str = Form(""), period: str = Form(""),
+                back: str = Form(""), db: Session = Depends(get_db)):
+    """Stop a run. It stops at the end of the batch it is on."""
+    from .cycle import current_period
+    from .recheck import stop_job
+
+    period = period or settings.default_period or current_period()
+    stop_job(db, stop if ":" in stop else f"{stop}:{period}")
     return RedirectResponse(_back_to_rules(request, back), status_code=303)
 
 
@@ -2534,11 +2564,12 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
     # AND WHICH ARE SWITCHED OFF. The page that lists every check is the page
     # to turn one off from - a check that is wrong more often than it is right
     # costs more than it saves, and until now stopping one meant a deploy.
-    from .checkctl import held, switched_off
+    from .checkctl import switched_off
     from .checks.rules import CHECK_PRODUCTS
-    from .recheck import running_jobs, stale_count
+    from .recheck import ALL_KEY, check_jobs, job_row
     off = switched_off()
-    jobs = running_jobs(db)
+    jobs = check_jobs(db, period)
+    all_job = job_row(db, f"{ALL_KEY}:{period}")
     for g in groups:
         for c in g["checks"]:
             c["n"] = counts.get(c["key"], 0)
@@ -2546,11 +2577,15 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
             # HOW MANY REPORTS RUNNING IT WOULD READ, so the button says what
             # it costs before it is pressed rather than after.
             c["scope"] = CHECK_PRODUCTS.get(c["key"])
-            c["job"] = jobs.get(f"check:{c['key']}:{period}")
+            c["job"] = jobs.get(c["key"])
         g["n"] = sum(c["n"] for c in g["checks"] if c["on"])
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
            "flag_period": month_label(period), "flag_period_key": period,
-           "checks_off": sorted(off), "recheck_held": held(),
+           "checks_off": sorted(off),
+           "all_job": ({"state": "stopped" if all_job.stalled else all_job.state,
+                        "done": all_job.done or 0, "total": all_job.total or 0,
+                        "changed": all_job.changed or 0}
+                       if all_job is not None else None),
            # WHICH TAB, IN THE URL. The page has no script of its own - the
            # sheet injects it as innerHTML - so a switch that reloaded it
            # landed back on What is owed every time.

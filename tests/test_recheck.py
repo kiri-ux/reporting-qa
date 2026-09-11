@@ -907,36 +907,27 @@ def test_a_switched_off_check_does_not_run_and_says_so(monkeypatch):
     assert calls == ["other"]
 
 
-def test_the_sweep_can_be_held(tmp_path, monkeypatch):
-    """A rule being worked on means a deploy an hour, and every one of them put
-    the whole board in the queue. Held, the sweep does not start on its own; the
-    count of what is behind stays on the Checks page with a button to run it."""
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'h.db'}")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    import importlib
-    from app import config as cfg_mod
-    importlib.reload(cfg_mod)
-    from app import db as db_mod
-    importlib.reload(db_mod)
-    db_mod.init_db()
-    from app import checkctl
-    checkctl.refresh()
+def test_nothing_re_checks_itself_on_its_own():
+    """The automatic sweep is gone, and it was asked for. A rule changing put
+    every report on the board in a queue that ran for hours on its own
+    schedule, while the person who needed an answer this morning watched a
+    number that was not moving.
 
-    db = db_mod.SessionLocal()
-    assert not checkctl.held()
-    checkctl.set_hold(db, True, who="kiri")
-    assert checkctl.held()
-    checkctl.set_hold(db, False, who="kiri")
-    assert not checkctl.held()
-    db.close()
-
-    # And the sweeper reads it. Held is checked before it claims the sweep, so
-    # the other worker is not locked out of a run it is allowed to make.
+    Re-checking is pressed now: Run against one check, or Run all. The order
+    re-read stays automatic - the product checks stand down entirely until it
+    has happened, and nobody would know to press it.
+    """
     import inspect
+
     from app import recheck
+
     src = inspect.getsource(recheck.start_sweeper)
-    assert "held()" in src
-    assert src.index("held()") < src.index("_claim(")
+    assert "_remap_orders_if_stale()" in src
+    assert "sweep_once(" not in src
+    # And the switch that used to hold it is gone with it.
+    from app import checkctl
+    assert not hasattr(checkctl, "held")
+    assert not hasattr(checkctl, "set_hold")
 
 
 def test_several_checks_can_be_switched_at_once(tmp_path, monkeypatch):
@@ -1039,10 +1030,10 @@ def test_both_workers_agree_on_the_rules_hash_after_a_switch(tmp_path,
     db.close()
 
 
-def test_a_sweeper_that_throws_does_not_wedge_the_worker():
-    """One flag says a sweeper is already going. A throw in the preamble - the
-    order re-read is the heaviest thing in the file - left it set with no
-    sweeper behind it, and that worker never started another one."""
+def test_a_thread_that_throws_does_not_wedge_the_worker():
+    """One flag says this is already going. A throw in it - the order re-read
+    is an 850 MB download and the heaviest thing in the file - left it set with
+    nothing behind it, and that worker never started another one."""
     import inspect
 
     from app import recheck
@@ -1051,8 +1042,6 @@ def test_a_sweeper_that_throws_does_not_wedge_the_worker():
     # The flag comes off in a finally, not at each early return.
     assert "finally:\n            _running.clear()" in src
     assert src.count("_running.clear()") == 1
-    body = src[src.index("def _sweep_forever"):]
-    assert "_remap_orders_if_stale()" in body
 
 
 def test_one_check_can_be_run_over_only_the_reports_it_is_about(tmp_path,
@@ -1155,3 +1144,66 @@ def test_the_ctv_scope_matches_both_ctv_products():
     names |= set(getattr(P, "DELIVERS", {}))
     hit = sorted(n for n in names if "CTV" in n)
     assert hit == ["CTV", "Social Mirror CTV"], hit
+
+
+def test_the_sheet_sends_which_button_was_pressed():
+    """EVERY BUTTON IN THE RULES SHEET DID NOTHING, in silence.
+
+    A browser sends a submit button's own name and value only when it is the
+    one clicked, which is what lets Run, a row's On/Off and the two bulk
+    buttons share one form. `new FormData(form)` does NOT include it - so the
+    sheet posted a form saying nothing at all and the server did nothing with
+    it. On the full page, where the browser submits for itself, all of it
+    worked, which is why it went unnoticed.
+    """
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parent.parent / "app" / "templates"
+            / "base.html").read_text()
+    js = base[base.index("function loadSheet"):]
+    js = js[:js.index("function openSheet")]
+    assert "new FormData(f)" in js
+    assert "e.submitter" in js
+    assert "data.append(hit.name" in js
+    # e.submitter is not everywhere yet, so the last button pressed is
+    # remembered as well.
+    assert "_lastHit" in base
+
+
+def test_a_finished_run_still_says_what_it_did(tmp_path, monkeypatch):
+    """A run over a check nobody's reports match finishes before the page comes
+    back, so the button reappeared and nothing on screen said it had run - which
+    is indistinguishable from the button not working, and that is how it was
+    read."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'j.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from app.recheck import check_jobs
+
+    db = db_mod.SessionLocal()
+    db.add(db_mod.RecheckJob(key="check:check_ctv_tile:2026-08", state="done",
+                             total=0, done=0, changed=0, period="2026-08"))
+    db.add(db_mod.RecheckJob(key="check:check_row_math:2026-08",
+                             state="running", total=96, done=12, changed=3,
+                             period="2026-08"))
+    db.commit()
+
+    got = check_jobs(db, "2026-08")
+    assert got["check_ctv_tile"]["state"] == "done"
+    assert got["check_ctv_tile"]["total"] == 0
+    assert got["check_row_math"] == {"state": "running", "done": 12,
+                                     "total": 96, "changed": 3}
+    # Another cycle's runs are not this cycle's.
+    assert check_jobs(db, "2026-07") == {}
+    db.close()
+
+    from pathlib import Path
+    body = (Path(__file__).resolve().parent.parent / "app" / "templates"
+            / "rules_body.html").read_text()
+    assert "nothing to read" in body
+    assert "read{% if c.job.changed %}" in body

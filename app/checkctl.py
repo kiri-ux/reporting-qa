@@ -1,4 +1,4 @@
-"""Which checks are switched on, and whether the sweep is allowed to run.
+"""Which checks are switched on.
 
 WHY THIS EXISTS.
 
@@ -16,8 +16,8 @@ So both ends move here:
   * The fingerprint ignores a check that is off. Editing a rule nobody has
     switched on costs nothing, and the "every deploy re-reads seven hundred
     PDFs" problem stops being every deploy.
-  * The sweep can be held. Held, it does not start on its own; the board still
-    counts what is behind and there is a button to run it deliberately.
+  * Nothing re-checks itself. Re-checking is pressed, from the Checks page:
+    Run against one check, or Run all.
 
 CACHED FOR FIFTEEN SECONDS, and read through the process-wide session rather
 than a passed-in one. `open_findings` is a property on the model - it is
@@ -38,9 +38,8 @@ import time
 
 log = logging.getLogger("reportqa.checks")
 
-HOLD_KEY = "recheck_hold"
 _TTL = 15.0
-_cache: dict = {"at": 0.0, "off": frozenset(), "hold": False}
+_cache: dict = {"at": 0.0, "off": frozenset()}
 
 
 # --------------------------------------------------------------- reading it
@@ -53,28 +52,25 @@ def _load() -> None:
     if time.monotonic() - _cache["at"] < _TTL:
         return
     off: set[str] = set()
-    hold = False
     try:
         from sqlalchemy import select
 
-        from .db import AppSetting, CheckSetting, SessionLocal
+        from .db import CheckSetting, SessionLocal
 
         db = SessionLocal()
         try:
             for row in db.scalars(select(CheckSetting)):
                 if not row.enabled:
                     off.add(row.name)
-            got = db.scalar(select(AppSetting).where(AppSetting.key == HOLD_KEY))
-            hold = bool(got and got.value == "1")
         finally:
             db.close()
     except Exception as exc:                                     # noqa: BLE001
         # Everything on. See the module docstring: a check that stopped running
         # because a query failed is worse than a slow page.
         log.debug("check settings unreadable, everything stays on: %s", exc)
-        _cache.update(at=time.monotonic(), off=frozenset(), hold=False)
+        _cache.update(at=time.monotonic(), off=frozenset())
         return
-    _cache.update(at=time.monotonic(), off=frozenset(off), hold=hold)
+    _cache.update(at=time.monotonic(), off=frozenset(off))
 
 
 def switched_off() -> frozenset[str]:
@@ -85,12 +81,6 @@ def switched_off() -> frozenset[str]:
 
 def is_on(name: str) -> bool:
     return name not in switched_off()
-
-
-def held() -> bool:
-    """Is the automatic re-check sweep on hold?"""
-    _load()
-    return bool(_cache["hold"])
 
 
 # ------------------------------------------------- a finding to its check
@@ -171,7 +161,6 @@ def set_check(db, name: str, on: bool, who: str = "", note: str = "") -> None:
     from sqlalchemy import select
 
     from .db import CheckSetting
-
     from .version import forget_fingerprint, rules_version
 
     was = rules_version()
@@ -196,8 +185,8 @@ def set_check(db, name: str, on: bool, who: str = "", note: str = "") -> None:
     # GOING OFF COSTS NOTHING. The hash moved because that rule's source is no
     # longer part of it, but no stored answer changes: a finding from a check
     # that is off stops counting the moment it is off, read at display time.
-    # So the reports are stamped with the new hash where they stand, and the
-    # sweep has nothing to do.
+    # So the reports are stamped with the new hash where they stand, and
+    # nothing is left to re-read.
     from sqlalchemy import update
 
     from .db import Report
@@ -205,22 +194,3 @@ def set_check(db, name: str, on: bool, who: str = "", note: str = "") -> None:
     db.execute(update(Report).where(Report.rules_version == was)
                .values(rules_version=now))
     db.commit()
-
-
-def set_hold(db, on: bool, who: str = "") -> None:
-    """Hold the automatic sweep, or let it go again."""
-    import datetime as dt
-
-    from sqlalchemy import select
-
-    from .db import AppSetting
-
-    row = db.scalar(select(AppSetting).where(AppSetting.key == HOLD_KEY))
-    if row is None:
-        row = AppSetting(key=HOLD_KEY)
-        db.add(row)
-    row.value = "1" if on else ""
-    row.changed_by = who or ""
-    row.changed_at = dt.datetime.utcnow()
-    db.commit()
-    refresh()

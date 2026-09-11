@@ -1,54 +1,32 @@
-build 2026.09.11-234
+build 2026.09.11-235
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
-EVERY NAME A CTV PRODUCT PRINTS, written down from the orders rather than from
-the reports that happened to be to hand. The word OTT appeared nowhere in the
-code. These were all read as no product at all:
+EVERY BUTTON IN THE RULES SHEET WAS DOING NOTHING, in silence. A browser sends
+a submit button's own name and value only when it is the one clicked - which is
+what lets Run, the row's On/Off and the two bulk buttons share one form. The
+sheet posts the form itself, and the call it used does not include the button.
+So the sheet posted a form saying nothing and the server did nothing with it.
+It worked on the full page, where the browser submits for itself, which is why
+it went unnoticed.
 
-  Prime OTT, Amazon OTT, Behavioral OTT      line items
-  OTT Amazon, CTV Amazon                     line items
-  Connected TV                               line items
-  Social Mirror OTT                          line items
-  YouTube TV                                 line items
-  OTT / Amazon CTV / Prime OTT Performance   widget titles
+NOTHING RE-CHECKS ITSELF ANY MORE. It all lives on the Reporting flags page:
 
-Which compounds: a report whose CTV prints as OTT carried no CTV product, so
-the page-one tile had no CTV rows to be measured against, so the check said
-nothing at all about it.
+  Run all re-checks     everything on this cycle the current rules have not read
+  Run                   one check, over the reports it can say anything about
+  Stop                  ends a run at the end of the batch it is on
 
-YouTube TV rows are CTV inventory for the tile and the product stays YouTube -
-the order is YouTube+, not a CTV buy. The CTV Run reads YouTube reports for
-that reason: a report whose only CTV is YouTube TV carries no product with CTV
-in its name.
+A run says how far through it is - "412 of 1,395" - and what it did when it
+finishes: "96 read, 3 changed", or "nothing to read". A run that finished fast
+used to leave no trace at all, which is indistinguishable from the button not
+working.
 
-NOTHING TO COMPARE IT TO IS NOT THE SAME AS NOTHING WRONG. The tile check
-returned an empty list when it found no CTV rows, which reads on the report as
-a pass. Where the client has a CTV order and the report prints the tile, that
-is now a finding: "CTV completion rate could not be checked". Either the grid
-is missing or it is titled something the tool has not been taught. With no CTV
-order it stays quiet - a tile with no rows is "a CTV tile on a report with no
-CTV", which is a check of its own.
+The Hold switch is gone with the sweep it held.
 
-THE CTV TILE CHECK NEVER RAN ON A SINGLE REPORT before this. It wanted "CTV
-Completion Rate" alone on a line, and page one puts three tiles side by side,
-so pdftotext prints the three headings as one line. It reads the tile down its
-own column now: 98.60% on Watsontown, 98.90% on Central Penn, both inside their
-own CTV rows, both correctly silent.
+THE ORDER RE-READ STAYS AUTOMATIC, deliberately. The order list is parsed once
+and only the answer is kept, so a change to the import code leaves every loaded
+order carrying the old reading - and the product checks stand down entirely
+until it is re-read. Nobody would know to press that, and it is what hid the
+Geo-Framing fix.
 
-RUN ONE CHECK NOW, over only the reports it is about. A Run button on every row
-of the flags tab. Only checks that read the inside of a product's own widget
-are scoped by product, matched against what was DETECTED on the report:
-
-  CTV tile                       CTV, Social Mirror CTV, YouTube
-  Social Mirror ad-size naming   Social Mirror
-  Social Mirror preview shape    Social Mirror
-  Geo-fencing row names          Mobile Conquesting
-
-Everything else reads the whole cycle, which is slower and never wrong. A check
-about a product being ABSENT is never scoped.
-
-A row with a run going stays on screen. "Flagging now" hides the checks with no
-count, which is every check that has just been fixed.
-
-972 tests pass.
+974 tests pass.

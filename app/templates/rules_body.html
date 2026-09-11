@@ -100,33 +100,9 @@
       already flagged. Switching one back on re-checks the reports it did not
       see.</p>
 
-    {# THE SWEEP, AND THE SWITCH THAT HOLDS IT. Changing a rule puts every
-       report in the queue to be judged again, which is right when the rule is
-       finished and wrong while it is being worked on. #}
-    <div class="holdbar{% if recheck_held %} onhold{% endif %}">
-      <form method="post" action="/checks/hold">
-        <input type="hidden" name="back" value="{{ back_to }}">
-        <input type="hidden" name="on" value="{{ '' if recheck_held else '1' }}">
-        <button type="submit">{{ 'Start re-checking again' if recheck_held
-                                 else 'Hold re-checks' }}</button>
-      </form>
-      <span class="sub">
-        {% if recheck_held %}
-          Automatic re-checking is on hold.
-          {% if behind %}{{ behind }} report{{ '' if behind == 1 else 's' }}
-            behind the current rules.{% else %}Nothing is behind.{% endif %}
-        {% else %}
-          Re-checking runs on its own when the rules change.
-          {% if behind %}{{ behind }} report{{ '' if behind == 1 else 's' }}
-            still to go.{% endif %}
-        {% endif %}
-        {% if checks_off %}
-          {{ checks_off|length }} check{{ '' if checks_off|length == 1 else 's' }}
-          switched off.
-        {% endif %}
-      </span>
-    </div>
-
+    {# NOTHING RE-CHECKS ITSELF. A rule changing used to put the whole board in
+       a queue that ran for hours on its own schedule, while the person who
+       needed the answer watched a number that was not moving. #}
     {# WHOSE DESK IT GOES TO. A finding says a report is wrong and never said
        who fixes it, so telling a template problem from an order problem from a
        broken feed was something you either knew or asked somebody. #}
@@ -146,6 +122,28 @@
     <form method="post" action="/checks/set" class="flagform">
     <input type="hidden" name="back" value="{{ back_to }}">
     <input type="hidden" name="period" value="{{ flag_period_key }}">
+    <div class="holdbar{% if all_job and all_job.state == 'running' %} onhold{% endif %}">
+      {% if all_job and all_job.state == 'running' %}
+        <button type="submit" name="stop" value="all">Stop</button>
+        <span class="sub">{{ all_job.done }} of {{ all_job.total }} re-checked.</span>
+      {% else %}
+        <button type="submit" name="runall" value="1">Run all re-checks</button>
+        <span class="sub">
+          {% if behind %}{{ behind }} report{{ '' if behind == 1 else 's' }}
+            behind the current rules.{% else %}Nothing is behind.{% endif %}
+          {% if all_job and all_job.state == 'stopped' %}
+            Last run stopped at {{ all_job.done }} of {{ all_job.total }}.
+          {% elif all_job and all_job.total %}
+            Last run read {{ all_job.done }}{% if all_job.changed %},
+            {{ all_job.changed }} changed{% endif %}.
+          {% endif %}
+          {% if checks_off %}
+            {{ checks_off|length }} check{{ '' if checks_off|length == 1 else 's' }}
+            switched off.
+          {% endif %}
+        </span>
+      {% endif %}
+    </div>
     {# ALL, OR THE ONES ACTUALLY FIRING. Radio and a sibling selector, like the
        tabs above. #}
     {# FLAGGING NOW IS THE DEFAULT. The whole list is a reference; the ones
@@ -199,9 +197,13 @@
                    The sweep gets to everything eventually, and eventually can
                    be overnight. #}
                 <td class="fl-run">
-                  {% if c.job %}
+                  {% if c.job and c.job.state == 'running' %}
                     <span class="runjob">{{ c.job.done }} of {{ c.job.total }}</span>
                   {% else %}
+                    {% if c.job %}
+                      <span class="runjob">{% if not c.job.total %}nothing to read
+                        {%- else %}{{ c.job.done }} read{% if c.job.changed %}, {{ c.job.changed }} changed{% endif %}{% endif %}</span>
+                    {% endif %}
                     <button type="submit" name="run" value="{{ c.key }}"
                       class="mini"
                       data-tip="Re-check now, reading only the reports this check can say anything about{% if c.scope %} - the ones carrying {{ c.scope|join(' or ') }}{% endif %}.">Run</button>

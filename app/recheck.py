@@ -672,12 +672,22 @@ def _wait_for_a_quiet_box() -> None:
 
 
 def start_sweeper() -> None:
-    """Run the sweep in the background until nothing is stale.
+    """Re-read the order export if the import code has changed. That is all.
+
+    THE AUTOMATIC REPORT SWEEP IS GONE, and it was asked for. A rule changing
+    put every report on the board in a queue that ran for hours, on its own
+    schedule, while the person who needed an answer this morning watched a
+    number that was not moving. Re-checking is a thing you press now: Run
+    against one check, or Run all, both on the Checks page, both saying how far
+    through they are.
+
+    The order re-read stays automatic, and it has to. The order list is parsed
+    once and only the answer is kept, so a change to the import code leaves
+    every loaded order carrying the old reading - and the product checks stand
+    down entirely until it is re-read. Nobody would know to press that.
 
     A daemon thread rather than a scheduler: it has one job, it finishes, and
-    it must not keep a worker alive at shutdown. Both workers start one and
-    exactly one of them gets the claim; the other returns straight away rather
-    than running a second stream of pdftotext against the same box.
+    it must not keep a worker alive at shutdown.
     """
     if _running.is_set():
         return
@@ -694,121 +704,26 @@ def start_sweeper() -> None:
         # Render sends traffic the moment the container answers, so the people
         # who reload straight after a deploy are exactly the ones who land in
         # it, and the site takes minutes to come up for them.
-        #
-        # Nothing here is urgent. The reports it corrects have been on the
-        # board for hours.
         time.sleep(60)
-        # OUTSIDE THE auto_recheck GATE, deliberately.
-        #
-        # This used to sit behind it, so on a deploy with the automatic report
-        # sweep turned off the order export was never re-read either - and the
-        # board went on answering from order data an older import produced,
-        # with nothing to show for it but the same product finding coming back.
-        # Re-reading the orders is not the same job as re-reading the PDFs.
-        #
-        # WHATEVER HAPPENS, THE FLAG COMES OFF. It is one flag saying "a
-        # sweeper is already going", and a throw anywhere below - the order
-        # re-read is an 850 MB download and the heaviest thing in this file -
-        # used to leave it set with no sweeper behind it. That worker then
-        # declined to start one ever again, quietly, for the life of the
-        # process: the count on the board sits where it is, and everything else
-        # looks fine.
+        # WHATEVER HAPPENS, THE FLAG COMES OFF. It is one flag saying "this is
+        # already going", and a throw below - the order re-read is an 850 MB
+        # download and the heaviest thing in this file - used to leave it set
+        # with nothing behind it. That worker then declined to start another
+        # one ever again, quietly, for the life of the process.
         try:
-            _sweep_forever()
+            # INSIDE background(). Every other heavy thing this service does
+            # marks itself so a page load outranks it, and the single heaviest
+            # one was running at full priority in the web process right after
+            # every deploy that touches the order code.
+            _wait_for_a_quiet_box()
+            with background():
+                _remap_orders_if_stale()
         except Exception as exc:                                 # noqa: BLE001
-            log.warning("recheck sweep stopped: %s", exc)
+            log.warning("order re-read stopped: %s", exc)
         finally:
             _running.clear()
 
-    def _sweep_forever():
-        import time
-        from .proc import background
-
-        # INSIDE background(), WHICH IT NEVER WAS. Every other heavy thing this
-        # service does marks itself so a page load outranks it, and the single
-        # heaviest one - an 850 MB download and a two-million-row parse - was
-        # the one running at full priority, in the web process, right after
-        # every deploy that touches the order code. That is most deploys, and
-        # it is when the health check fails.
-        _wait_for_a_quiet_box()
-        with background():
-            _remap_orders_if_stale()
-        if not settings.auto_recheck:
-            return
-        # HELD BY A PERSON. Not the same thing as auto_recheck, which is a
-        # deployment setting nobody here can reach: this is a switch on the
-        # Checks page, for the afternoon when a rule is being worked on and
-        # having the board re-read itself after every deploy is the problem
-        # rather than the fix. The count of what is behind stays on the board,
-        # with a button to run it deliberately.
-        from .checkctl import held
-        if held():
-            log.info("recheck sweep: held")
-            return
-        own = SessionLocal()
-        try:
-            if not _claim(own, SWEEP_KEY):
-                log.info("recheck sweep: another worker has it")
-                return
-        finally:
-            own.close()
-        try:
-            with background():            # low priority: pages come first
-                while True:
-                    db = SessionLocal()
-                    started = time.monotonic()
-                    try:
-                        _wait_for_the_sync(db)
-                        if not stale_count(db, scoped=True):
-                            log.info("recheck sweep: nothing stale")
-                            break
-                        n = sweep_once(db)
-                        _touch(db, SWEEP_KEY, state="running")   # still alive
-                        if not n:
-                            break
-                    except Exception as exc:   # a dead database is not this thread's problem
-                        log.warning("recheck sweep paused: %s", exc)
-                        break
-                    finally:
-                        db.close()
-                    # REST IN PROPORTION TO THE QUEUE. A long queue is a
-                    # deploy that changed the rules, and the board being usable
-                    # while that works itself through matters more than it
-                    # finishing quickly.
-                    took = time.monotonic() - started
-                    left = stale_count(db_count := SessionLocal(), scoped=True)
-                    db_count.close()
-                    if left > LONG_QUEUE:
-                        time.sleep(min(took * REST_MULTIPLIER, MAX_REST_LONG))
-                    else:
-                        time.sleep(min(took, MAX_REST_SECONDS))
-                    # ONLY ON A LONG QUEUE, WHICH IS THE DEPLOY-DRIVEN ONE.
-                    #
-                    # I put this on every batch in 199 and it stalled the thing
-                    # it was meant to protect: a partner Re-check of 15 reports
-                    # is pressed BY the person whose traffic it then waits for,
-                    # so it sat at "0 of 15" for as long as she kept looking at
-                    # the board. A queue somebody asked for is not the queue
-                    # that needed slowing down.
-                    if left > LONG_QUEUE:
-                        _wait_for_a_quiet_box()
-                    # AND STAND ASIDE WHILE SOMEBODY IS ON THE BOARD.
-                    #
-                    # Build 185 gave this to the order re-read and not to the
-                    # sweep, and the sweep is the longer of the two: a deploy
-                    # that touches the rules queues every report on the board
-                    # for a full pdftotext, so on a day of several builds it
-                    # never drains and is simply always running. Ten batches
-                    # deep it is indistinguishable from an outage.
-                    _wait_for_a_quiet_box()
-        finally:
-            db2 = SessionLocal()
-            try:
-                _release(db2, SWEEP_KEY)
-            finally:
-                db2.close()
-
-    threading.Thread(target=run, name="recheck-sweeper", daemon=True).start()
+    threading.Thread(target=run, name="order-remap", daemon=True).start()
 
 
 # ------------------------------------------------------ re-check on demand
@@ -915,6 +830,15 @@ def start_job(db: Session, key: str, *, group: str | None = None,
                                      products=products)
                 if not batch:
                     break
+                # ASKED TO STOP. A run over the whole cycle is twelve hundred
+                # PDFs, and until this it could only be waited out - the button
+                # that stopped it was the one that also marked every report
+                # current without reading it, which is a different thing and
+                # not always what was wanted.
+                if _asked_to_stop(own, key):
+                    _touch(own, key, state="stopped", done=done,
+                           changed=changed)
+                    return
                 if not stale_only:
                     after = max(r.id for r in batch)
                 for rep in batch:
@@ -945,6 +869,55 @@ def start_job(db: Session, key: str, *, group: str | None = None,
 
     threading.Thread(target=run, name=f"recheck-{key}", daemon=True).start()
     return {"done": 0, "total": total}
+
+
+def _asked_to_stop(db: Session, key: str) -> bool:
+    """Did somebody press Stop while this was running?"""
+    from .db import RecheckJob
+
+    try:
+        db.expire_all()
+        row = db.scalar(select(RecheckJob).where(RecheckJob.key == key))
+    except Exception:                                            # noqa: BLE001
+        return False
+    return bool(row is not None and row.state != "running")
+
+
+def stop_job(db: Session, key: str) -> bool:
+    """Ask a running job to stop. It stops at the end of its current batch."""
+    from .db import RecheckJob
+
+    row = db.scalar(select(RecheckJob).where(RecheckJob.key == key))
+    if row is None or row.state != "running":
+        return False
+    row.state = "stopping"
+    row.updated_at = dt.datetime.utcnow()
+    db.commit()
+    return True
+
+
+ALL_KEY = "all"
+
+
+def check_jobs(db: Session, period: str) -> dict:
+    """{check name: how its last Run went} for this cycle.
+
+    NOT ONLY THE ONES STILL GOING. A run over a check nobody's reports match
+    finishes before the page comes back, so the button simply reappeared and
+    nothing on screen said it had run at all - which is indistinguishable from
+    the button not working, and that is how it was read.
+    """
+    from .db import RecheckJob
+
+    out: dict = {}
+    rows = db.scalars(select(RecheckJob).where(
+        RecheckJob.key.like(f"check:%:{period}"))).all()
+    for j in rows:
+        name = j.key.split(":")[1]
+        out[name] = {"state": "stopped" if j.stalled else j.state,
+                     "done": j.done or 0, "total": j.total or 0,
+                     "changed": j.changed or 0}
+    return out
 
 
 def skip_the_sweep(db: Session, *, period: str | None = None,

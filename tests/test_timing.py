@@ -1367,7 +1367,7 @@ def test_the_recheck_banner_names_the_build_and_stops():
     from pathlib import Path
     page = (Path(__file__).resolve().parents[1] / "app" / "templates"
             / "cycle.html").read_text()
-    i = page.index("reports are being re-checked in the background")
+    i = page.index("were judged by rules that have since")
     banner = page[i:i + 1600]
     assert "{{ build_label }}" in banner
     assert "{{ build_notes }}" not in banner
@@ -1529,8 +1529,11 @@ def test_the_order_re_read_waits_for_a_gap_and_runs_niced(monkeypatch):
 
     from pathlib import Path as _P
     src = (_P(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
-    at = src.index("_wait_for_a_quiet_box()\n        with background():")
-    assert "_remap_orders_if_stale()" in src[at:at + 200], \
+    at = src.index("def start_sweeper")
+    body = src[at:src.index("\ndef ", at + 10)]
+    i = body.index("_wait_for_a_quiet_box()")
+    assert "with background():" in body[i:i + 200]
+    assert "_remap_orders_if_stale()" in body[i:i + 260], \
         "the heaviest job in the service is the one not marked background"
 
 
@@ -1575,21 +1578,32 @@ def test_a_fit_page_snaps_back_if_something_scrolls_it():
     assert "min-width: 901px" in guard
 
 
-def test_the_sweep_stands_aside_too_not_only_the_order_re_read():
+def test_nothing_re_checks_itself_any_more():
     """185 gave the quiet-box wait to the order re-read and not to the sweep,
-    and the sweep is the longer of the two: a deploy that touches the rules
-    queues every report on the board for a full pdftotext, so on a day of
-    several builds it never drains and is simply always running."""
+    and the sweep was the longer of the two: a deploy that touches the rules
+    queued every report on the board for a full pdftotext, so on a day of
+    several builds it never drained and was simply always running.
+
+    It is gone. Re-checking is pressed - Run against one check, or Run all,
+    both on the Checks page, both saying how far through they are. What stays
+    automatic is the order re-read, because the product checks stand down
+    entirely until it has happened and nobody would know to press it.
+    """
     from pathlib import Path as _P
     src = (_P(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
     at = src.index("def start_sweeper")
-    body = src[at:]
-    assert body.count("_wait_for_a_quiet_box()") >= 2, \
-        "only the order re-read waits; the sweep runs straight through"
-    # ONLY ON A LONG QUEUE. Put on every batch, it stalled the thing it was
-    # meant to protect: a partner Re-check of 15 reports is pressed BY the
-    # person whose traffic it then waits for, and it sat at "0 of 15".
-    rest = body.index("MAX_REST_SECONDS))")
-    tail = body[rest:rest + 700]
-    at = tail.index("_wait_for_a_quiet_box()")
-    assert "if left > LONG_QUEUE:" in tail[:at]
+    body = src[at:src.index("\ndef ", at + 10)]
+    assert "_remap_orders_if_stale()" in body
+    assert "_wait_for_a_quiet_box()" in body
+    assert "sweep_once(" not in body
+    assert "_claim(" not in body
+
+    # And a run somebody pressed can be stopped, which until now took the
+    # button that also marks every report current without reading it.
+    main = (_P(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert "def checks_stop(" in main
+    assert "def stop_job(" in src
+    rules = (_P(__file__).resolve().parents[1] / "app" / "templates"
+             / "rules_body.html").read_text()
+    assert 'name="runall"' in rules and 'name="stop"' in rules
+

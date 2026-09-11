@@ -238,16 +238,22 @@ def test_the_order_re_read_is_not_gated_behind_the_report_sweep(monkeypatch):
     import - the one that had no Social Mirror CTV key and no per-order flights.
 
     The re-read that would have fixed it sat behind auto_recheck, so on a deploy
-    with the report sweep off the export was never read again. Re-reading the
-    orders is not the same job as re-reading the PDFs.
+    with the report sweep off the export was never read again.
+
+    THE REPORT SWEEP IS GONE ENTIRELY NOW - re-checking is pressed, from the
+    Checks page - and this is the one thing that stayed automatic, for the same
+    reason it was pulled out from behind the gate. The order list is parsed once
+    and only the answer is kept, so a change to the import code leaves every
+    loaded order carrying the old reading and the product checks stand down
+    until it is re-read. Nobody would know to press that.
     """
     import inspect
     from app import recheck as rmod
     src = inspect.getsource(rmod.start_sweeper)
     assert "_remap_orders_if_stale()" in src
-    before = src.index("_remap_orders_if_stale()")
-    after = src.index("if not settings.auto_recheck")
-    assert before < after, "the re-read still runs only when the sweep is on"
+    # And it is the whole of what this thread does.
+    assert "sweep_once(" not in src
+    assert "auto_recheck" not in src
 
 
 def test_the_stale_orders_banner_is_a_button_not_a_bar():
