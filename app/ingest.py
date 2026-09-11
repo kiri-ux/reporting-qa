@@ -512,6 +512,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
             path = final
         rep.filename = name
         rep.stored_path = str(path)
+        rep.file_at = dt.datetime.utcnow()
         rep.client = meta.get("client", "") or rep.client
         rep.account_ids = meta.get("account_ids", "") or rep.account_ids
         rep.market = batch.market or rep.market

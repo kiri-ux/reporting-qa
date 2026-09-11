@@ -1522,7 +1522,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                # is fifty rows a page, so a filter that only sees what is
                # rendered found one of thirteen and said so with a straight
                # face.
-               hand: str = Query(""),
+               hand: str = Query(""), waiting: str = Query(""),
                # THE REPORT TABLE'S OWN COLUMN FILTERS, applied here.
                #
                # They filtered the fifty rows the browser had, which is not
@@ -1617,6 +1617,12 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # Counted before the filter, so the chip can say how many there are even
     # while it is on and the rest are hidden.
     hand_total = sum(1 for e in rows if e.forced_by)
+    # ASKED FOR AGAIN AND NOTHING HAS COME. Counted before the filter, so the
+    # chip can say how many there are while it is on and the rest are hidden.
+    wait_total = sum(1 for e in rows
+                     if e.report and e.report.waiting_on_file)
+    if waiting:
+        rows = [e for e in rows if e.report and e.report.waiting_on_file]
     if hand:
         rows = [e for e in rows if e.forced_by]
     # Each column filters on the row's own value rather than on whatever its
@@ -1718,7 +1724,12 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                 # the batch that corrected it, so this is the answer to "did
                 # the repull land" for every row at once - a question that
                 # otherwise takes opening sixty-four reports.
-                _arrived(db, r) if r else "",
+                (_eastern(r.file_at, "%Y-%m-%d %H:%M") if r.file_at
+                 else _arrived(db, r)) if r else "",
+                # ASKED FOR AGAIN AND NOTHING HAS COME. The difference between
+                # "the repull never arrived" and "it arrived and is still
+                # wrong", which are two entirely different jobs.
+                "no new file" if (r and r.waiting_on_file) else "",
                 r.effective_severity if r else "",
                 "; ".join(finds),
                 "yes" if (r and r.needs_resend) else "",
@@ -1732,8 +1743,8 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
             f"report-qa-{period}-{stamp}.csv",
             ["Partner", "Client", "Kind", "Products", "Order", "Line items",
              "Starts", "Ends", "Buyer", "Reporter", "Status", "File",
-             "File arrived", "Severity", "Findings", "Needs resend", "Sent as",
-             "Reviewed by", "Note", "Link"], out)
+             "File arrived", "Waiting on", "Severity", "Findings",
+             "Needs resend", "Sent as", "Reviewed by", "Note", "Link"], out)
 
     # The reports table was 24,851 of the page's 30,342 DOM nodes and four
     # seconds of browser time. The server was never the slow part.
@@ -1804,6 +1815,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # The hand-added chip beside the search: how many there are, and
         # whether it is on.
         "hand_total": hand_total, "hand_on": bool(hand),
+        "wait_total": wait_total, "wait_on": bool(waiting),
         "min_days": MIN_DAYS_IN_MONTH,
         "orders_stale": _orders_stale(db),
         "orders_syncing": _orders_syncing(db),
@@ -3453,6 +3465,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     _old_findings = list(rep.findings or [])
     _old_acked = list(rep.acked or [])
     rep.stored_path = str(target)
+    rep.file_at = dt.datetime.utcnow()
     rep.logo_hash = logo
     rep.pages = result["pages"]
     rep.impressions = result["impressions"]
@@ -3549,6 +3562,7 @@ async def replace_report(report_id: int, request: Request,
     if path is not None and not str(path).lower().endswith(extension(filekind)):
         path = path.with_suffix(extension(filekind))
         rep.stored_path = str(path)
+        rep.file_at = dt.datetime.utcnow()
     _rename(rep, file.filename or "", db)
     if path is None:
         store = settings.data_dir / f"batch-{rep.batch_id}"
@@ -3614,6 +3628,7 @@ async def replace_report(report_id: int, request: Request,
     _old_findings = list(rep.findings or [])
     _old_acked = list(rep.acked or [])
     rep.stored_path = str(path)
+    rep.file_at = dt.datetime.utcnow()
     # AND THE NEW FILE'S LOGO. This was taken and handed to the checks and then
     # thrown away, so a report whose default logo had been FIXED went on
     # carrying the old file's fingerprint - grouped with the reports that still

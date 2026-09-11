@@ -246,6 +246,12 @@
             title="Hide the partners nothing has arrived for yet">
       Only started</button>
     <span class="count" id="cnt-groups"></span>
+    {% if wait_total or wait_on %}
+      <a class="mini toggle{{ ' on' if wait_on }}"
+         href="/cycle?{{ keep('waiting') }}{% if not wait_on %}&waiting=1{% endif %}#reports"
+         data-tip="Reports somebody asked for again - marked Needs fix, or failed after the partner already had them - where no new file has reached the tool since. The finding on them is still about the file that was wrong."
+        >No new file <b>{{ wait_total }}</b></a>
+    {% endif %}
     {% if q %}
       <a class="chip" href="/cycle?{{ keep('q') }}"
          title="Drop this search">{{ q }} &times;</a>
@@ -687,7 +693,9 @@
           <span class="pill p-info"
                 data-tip="SEO is a separate report, pulled outside TapClicks and uploaded here. It goes into the partner's folder with the rest, and the checks are not run on it.">SEO</span>
           {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
-        <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
+        <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>
+          {%- if e.report and e.report.waiting_on_file %}<span class="waitfile"
+            data-tip="Asked for again on {{ e.report.asked_at|et }}. The file here still arrived {{ e.report.file_at|et }} - nothing new has reached the tool since.">no new file</span>{% endif %}{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch"
             data-v="{{ (e.report.open_findings if e.report else [])
                        |map(attribute='code')|select|map('finding_kind')

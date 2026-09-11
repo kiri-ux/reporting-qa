@@ -4591,3 +4591,64 @@ def test_a_verdict_lands_back_on_the_row():
     assert 'id="r{{ e.report.id }}"' in cycle
     base = (TPL / "base.html").read_text()
     assert "tr:target > td" in base
+
+
+def test_a_report_asked_for_again_says_no_file_has_come(tmp_path, monkeypatch):
+    """64 REPORTS WERE FLAGGED, ALL 64 WERE ASKED FOR AGAIN, 10 CAME BACK AND
+    54 DID NOT - AND NOTHING ANYWHERE SAID SO.
+
+    The board showed the same finding on all of them, because the finding was
+    still true of the file each one still had. Telling "the repull never
+    arrived" from "it arrived and is still wrong" meant opening them one at a
+    time, and they are two entirely different jobs: one is chasing the pull,
+    the other is reading a report.
+    """
+    import datetime as _dt
+    import importlib
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'w.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.main
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)
+    app.db.init_db()
+
+    asked = _dt.datetime(2026, 9, 11, 10, 0)
+    old_file = _dt.datetime(2026, 9, 3, 14, 29)
+    new_file = _dt.datetime(2026, 9, 11, 10, 24)
+
+    def rep(**kw):
+        base = dict(batch_id=1, period="2026-08", filename="x.pdf",
+                    stored_path="", severity="fail", findings=[], checks=[],
+                    acked=[], review_state="new")
+        base.update(kw)
+        return app.db.Report(**base)
+
+    # Asked for again, nothing has come.
+    waiting = rep(client="Never came", resend_at=asked, file_at=old_file)
+    # Asked for again and the new file is here - still failing, but that is a
+    # report to read, not a pull to chase.
+    came = rep(client="Came back", resend_at=asked, file_at=new_file)
+    # Marked Needs fix by a person: the same ask, said the other way.
+    by_hand = rep(client="Needs fix", review_state="needs_fix",
+                  reviewed_at=asked, file_at=old_file)
+    # Nobody has asked for anything.
+    quiet = rep(client="Quiet", file_at=old_file)
+
+    assert waiting.waiting_on_file is True
+    assert came.waiting_on_file is False
+    assert by_hand.waiting_on_file is True
+    assert quiet.waiting_on_file is False
+    # A report with no arrival time recorded cannot answer, and says so by
+    # saying nothing rather than by guessing.
+    assert rep(client="Unknown", resend_at=asked).waiting_on_file is False
+
+    cycle = (TPL / "cycle.html").read_text()
+    assert "waiting_on_file" in cycle
+    assert "No new file <b>{{ wait_total }}</b>" in cycle
+    main_src = (Path(__file__).resolve().parent.parent / "app"
+                / "main.py").read_text()
+    assert 'waiting: str = Query("")' in main_src
+    assert '"Waiting on"' in main_src

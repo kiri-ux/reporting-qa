@@ -1,32 +1,36 @@
-build 2026.09.11-240
+build 2026.09.11-241
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
-"FILE ARRIVED" IN THE CSV. When the file currently on a report reached the
-tool. A report moves to the batch that corrected it, so this answers "did the
-repull land" for every row at once - filter to the finding, download, sort by
-that column. Anything still stamped yesterday never got a new file; anything
-stamped today got one and is still failing. Two different problems, and until
-now telling them apart meant opening every report.
+"NO NEW FILE" ON ANY REPORT ASKED FOR AGAIN THAT HAS NOT COME BACK.
 
-A CHECK'S ROW SAYS HOW MANY IT IS FLAGGING NOW, not how many the last run
-found. The run's number is a photograph of the minute it finished, and one from
-this morning standing beside a board that has moved is a number that disagrees
-with the badge in the same row - "339 read, 1 flagged" next to a 64.
+64 reports were flagged, all 64 were asked for again, 10 came back and 54 did
+not - and nothing anywhere said so. The board showed the same finding on all of
+them, because the finding was still true of the file each one still had.
+Telling the two apart meant opening reports one at a time, and they are
+entirely different jobs: one is chasing a pull, the other is reading a report.
 
---- also in this install, from 239 ---
+  - A tag on the row: no new file, with when it was asked for and when the file
+    it still has arrived.
+  - A chip beside the search: No new file, with the count. Click it for that
+    list on its own.
+  - Two columns in the CSV: File arrived, and Waiting on.
 
-THE RESEND MARK WAS NEVER COMING OFF. It says a failure turned up on a file the
-partner already has, and the board shows that ahead of everything else -
-including ahead of what the new file says. Nothing that replaces a file was
-clearing it. Cleared now on all three paths, and the reports already standing
-are put right on the next boot.
+Asked for means either way of asking - a person marking it Needs fix, or a
+re-check finding a failure on a copy the partner already has.
 
-A PICTURE THAT IS NOT A PREVIEW IS NOT CALLED A BANNER. Social Mirror Ad
-Screenshots sits under the grid on the same page and its strip is 2205x464.
-The check says nothing unless the pictures and the rows line up one to one.
+A CHECK'S ROW SAYS HOW MANY IT IS FLAGGING NOW, not how many its last run
+found. A count from an earlier run standing beside a board that has moved
+disagrees with the badge in the same row.
 
-A VERDICT LANDS BACK ON THE ROW, not the top of the board, with a highlight
-that fades.
+--- also in this install ---
 
-982 tests pass.
+The resend mark is cleared by every path that puts a new file on a report, and
+the ones already stuck are put right on the next boot.
+
+The Social Mirror preview check no longer calls the Ad Screenshots strip a
+display banner.
+
+A verdict lands back on the row, not the top of the board.
+
+983 tests pass.

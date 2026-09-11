@@ -122,6 +122,18 @@ class Report(Base):
     # it is "send it again". They were the same status and the resends were
     # invisible among everything else waiting to be read.
     resend_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # WHEN THE FILE THAT IS ON THIS REPORT REACHED THE TOOL.
+    #
+    # 64 reports were flagged, every one of them was asked for again, ten came
+    # back and fifty-four did not - and there was nothing anywhere that said
+    # so. The board showed the same finding on all 64, because the finding was
+    # still true of the file it still had. Finding out which was which meant
+    # opening them one at a time.
+    #
+    # Stamped where the file is stamped rather than read off the batch, so it
+    # survives a report moving batches and costs no join on a board of twelve
+    # hundred rows.
+    file_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # Indexes of findings a person has looked at and accepted. The finding
     # stays on the report - it is a note about a known quirk, not a mistake -
     # but it stops counting against the severity.
@@ -292,6 +304,35 @@ class Report(Base):
     def needs_resend(self) -> bool:
         """A failure appeared after this went to the partner."""
         return bool(self.resend_at)
+
+    @property
+    def asked_at(self):
+        """When somebody asked for this report to be done again, or None.
+
+        Two ways of asking, and they mean the same thing to whoever pulls it:
+        a person marking it Needs fix, and a re-check finding a failure on a
+        copy the partner already has.
+        """
+        marks = [self.resend_at]
+        if self.review_state == "needs_fix":
+            marks.append(self.reviewed_at)
+        got = [m for m in marks if m]
+        return max(got) if got else None
+
+    @property
+    def waiting_on_file(self) -> bool:
+        """Asked for again, and the file on it is still the one that was wrong.
+
+        64 reports were flagged, all 64 were asked for again, 10 came back and
+        54 did not - and nothing anywhere said so. The board showed the same
+        finding on all of them, because the finding was still true of the file
+        each one still had, and telling the two apart meant opening them one at
+        a time.
+        """
+        asked = self.asked_at
+        if not asked or not self.file_at:
+            return False
+        return self.file_at < asked
 
     @property
     def board_state(self) -> str:
@@ -1008,6 +1049,12 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "dbx_as", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("reports", "dbx_stamp", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("reports", "resend_at", "TIMESTAMP"),
+    # BACKFILLED FROM THE BATCH, which is where this fact lived before it had a
+    # column. A report moves to the batch that corrected it, so the batch's
+    # arrival time is the arrival time of the file on it.
+    ("reports", "file_at", "TIMESTAMP",
+     "UPDATE reports SET file_at = (SELECT received_at FROM batches "
+     "WHERE batches.id = reports.batch_id) WHERE file_at IS NULL"),
     ("deliveries", "tag", "VARCHAR(64) DEFAULT '' NOT NULL"),
     ("partners", "drive_folder_id", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("order_lines", "detail", "JSON"),
