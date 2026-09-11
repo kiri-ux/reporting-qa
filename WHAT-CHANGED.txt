@@ -1,37 +1,32 @@
-build 2026.09.11-239
+build 2026.09.11-240
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
+"FILE ARRIVED" IN THE CSV. When the file currently on a report reached the
+tool. A report moves to the batch that corrected it, so this answers "did the
+repull land" for every row at once - filter to the finding, download, sort by
+that column. Anything still stamped yesterday never got a new file; anything
+stamped today got one and is still failing. Two different problems, and until
+now telling them apart meant opening every report.
+
+A CHECK'S ROW SAYS HOW MANY IT IS FLAGGING NOW, not how many the last run
+found. The run's number is a photograph of the minute it finished, and one from
+this morning standing beside a board that has moved is a number that disagrees
+with the badge in the same row - "339 read, 1 flagged" next to a 64.
+
+--- also in this install, from 239 ---
+
 THE RESEND MARK WAS NEVER COMING OFF. It says a failure turned up on a file the
-partner already has, and the board shows that as Report review ahead of
-everything else - ahead of what the new file says. Nothing that puts a new file
-on a report was clearing it, so 56 reports were repulled, arrived, and every
-one of them went on saying Report review about the copy it had replaced.
-Nothing on the board moved, which is what a resend looks like when it has not
-worked.
-
-Cleared now on all three paths: the feed, accepting a file that was held, and
-uploading a correction by hand. The pulled-sign-off mark goes with it - the row
-was saying "Paloma signed this off, then a re-check found a failure" about a
-file Paloma has never seen.
-
-AND THE ONES ALREADY STANDING ARE PUT RIGHT ON THE NEXT BOOT. A report moves to
-the batch that corrected it, so a batch that arrived after the mark was set is
-a file that arrived after the mark was set. Nothing to press.
+partner already has, and the board shows that ahead of everything else -
+including ahead of what the new file says. Nothing that replaces a file was
+clearing it. Cleared now on all three paths, and the reports already standing
+are put right on the next boot.
 
 A PICTURE THAT IS NOT A PREVIEW IS NOT CALLED A BANNER. Social Mirror Ad
-Screenshots sits under the grid on the same page and its strip is 2205x464,
-which is a banner shape by any measure - Midwest Technical Institute was
-failed for it with three square previews above it. The check says nothing
-unless the pictures and the rows line up one to one.
+Screenshots sits under the grid on the same page and its strip is 2205x464.
+The check says nothing unless the pictures and the rows line up one to one.
 
 A VERDICT LANDS BACK ON THE ROW, not the top of the board, with a highlight
-that fades. Signing off a report near the bottom of a page of fifty meant
-scrolling down to it again, every time.
-
-A RUN COUNTS WHAT IT WAS FOR. "339 read, 1 changed" counted reports whose
-severity moved - a report already failing picks up this finding and goes on
-failing. It says "339 read, 64 flagged" now, and the 64 is a link to those
-reports on the board.
+that fades.
 
 982 tests pass.

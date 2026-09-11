@@ -205,10 +205,16 @@
                         <span class="runjob"
                           data-tip="No report on this cycle carries {{ c.scope|join(' or ') if c.scope else 'anything this check reads' }}, on the report or on the order.">no reports to read</span>
                       {% else %}
-                        <span class="runjob">{{ c.job.done }} read{% if c.job.changed %},
+                        {# HOW MANY IT IS FLAGGING NOW, not how many that run
+                           found. The run's own number is a photograph of the
+                           minute it finished - reports are corrected and
+                           re-read all day, and a count from this morning
+                           standing beside a board that has moved is a number
+                           that disagrees with the one in the same row. #}
+                        <span class="runjob">{{ c.job.done }} read{% if c.n %},
                           {%- if c.seen_at %} <a href="{{ c.seen_at }}"
-                            data-tip="Open the reports this check is flagging.">{{ c.job.changed }} flagged</a>
-                          {%- else %} {{ c.job.changed }} flagged{% endif %}{% endif %}</span>
+                            data-tip="Open the reports this check is flagging now.">{{ c.n }} flagged</a>
+                          {%- else %} {{ c.n }} flagged{% endif %}{% endif %}</span>
                       {% endif %}
                     {% endif %}
                     <button type="submit" name="run" value="{{ c.key }}"

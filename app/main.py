@@ -1166,6 +1166,19 @@ def orders_view(request: Request, view: str = Query("clients"),
                   if settings.s3_configured else ""})
 
 
+def _arrived(db: Session, rep) -> str:
+    """When the file currently on this report reached the app.
+
+    A report moves to the batch that corrected it, so the batch's own arrival
+    time is the arrival time of the file that is there now - which is the
+    answer to "did the repull land" for every row at once. Sortable, because
+    the question is which of these is still yesterday's.
+    """
+    b = db.get(Batch, rep.batch_id) if rep.batch_id else None
+    at = getattr(b, "received_at", None)
+    return _eastern(at, "%Y-%m-%d %H:%M") if at else ""
+
+
 def _csv_href(request: Request) -> str:
     """/cycle.csv with this page's filters and without its paging."""
     from urllib.parse import urlencode
@@ -1701,6 +1714,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                 e.account_ids, e.line_ids, e.starts_on or "", e.ends_on or "",
                 e.buyer, e.reporter, STATE_LABEL.get(e.state, e.state),
                 r.filename if r else "",
+                # WHEN THE FILE THAT IS THERE NOW ARRIVED. A report moves to
+                # the batch that corrected it, so this is the answer to "did
+                # the repull land" for every row at once - a question that
+                # otherwise takes opening sixty-four reports.
+                _arrived(db, r) if r else "",
                 r.effective_severity if r else "",
                 "; ".join(finds),
                 "yes" if (r and r.needs_resend) else "",
@@ -1714,8 +1732,8 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
             f"report-qa-{period}-{stamp}.csv",
             ["Partner", "Client", "Kind", "Products", "Order", "Line items",
              "Starts", "Ends", "Buyer", "Reporter", "Status", "File",
-             "Severity", "Findings", "Needs resend", "Sent as", "Reviewed by",
-             "Note", "Link"], out)
+             "File arrived", "Severity", "Findings", "Needs resend", "Sent as",
+             "Reviewed by", "Note", "Link"], out)
 
     # The reports table was 24,851 of the page's 30,342 DOM nodes and four
     # seconds of browser time. The server was never the slow part.

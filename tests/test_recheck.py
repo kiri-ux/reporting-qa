@@ -1206,7 +1206,12 @@ def test_a_finished_run_still_says_what_it_did(tmp_path, monkeypatch):
     body = (Path(__file__).resolve().parent.parent / "app" / "templates"
             / "rules_body.html").read_text()
     assert "no reports to read" in body
-    assert "read{% if c.job.changed %}" in body
+    # HOW MANY IT IS FLAGGING NOW, not how many that run found. The run's own
+    # number is a photograph of the minute it finished, and a count from this
+    # morning standing beside a board that has moved is a number that
+    # disagrees with the badge in the same row - which is what it did.
+    assert "read{% if c.n %}" in body
+    assert "c.job.changed" not in body
 
 
 def test_the_run_scope_reads_the_orders_not_only_the_stored_products(tmp_path,

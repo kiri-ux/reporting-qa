@@ -4559,8 +4559,13 @@ def test_the_csv_is_the_rows_the_filters_left(tmp_path, monkeypatch):
     # The file says what it is for: the name, what it was flagged for, whether
     # it has to go out again, and where to open it.
     head = whole.splitlines()[0]
-    for col in ("File", "Severity", "Findings", "Needs resend", "Link"):
+    for col in ("File", "File arrived", "Severity", "Findings", "Needs resend",
+                "Link"):
         assert col in head, col
+    # WHEN THE FILE THAT IS THERE NOW ARRIVED. A report moves to the batch that
+    # corrected it, so this answers "did the repull land" for every row at
+    # once - a question that otherwise takes opening sixty-four reports.
+    assert whole.splitlines()[1].count("2026-") >= 3
 
     # The link on the page carries the filters and drops the paging.
     page = c.get("/cycle?period=2026-08&col_partner=M2&page=2").text
