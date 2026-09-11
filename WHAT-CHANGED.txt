@@ -1,38 +1,37 @@
-build 2026.09.11-237
+build 2026.09.11-239
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
-DOWNLOAD CSV IS THE ROWS THE FILTERS LEFT. It exported the whole cycle - every
-filter on the board was ignored, so the file you got after narrowing 1,275
-reports down to the nine that needed repulling had all 1,275 in it. It is the
-same route as the board now rather than a second one that filters for itself:
-written twice it drifts the first time a filter changes.
+THE RESEND MARK WAS NEVER COMING OFF. It says a failure turned up on a file the
+partner already has, and the board shows that as Report review ahead of
+everything else - ahead of what the new file says. Nothing that puts a new file
+on a report was clearing it, so 56 reports were repulled, arrived, and every
+one of them went on saying Report review about the copy it had replaced.
+Nothing on the board moved, which is what a resend looks like when it has not
+worked.
 
-Every row the filter leaves, not the page, and the columns are the ones the
-question needs:
+Cleared now on all three paths: the feed, accepting a file that was held, and
+uploading a correction by hand. The pulled-sign-off mark goes with it - the row
+was saying "Paloma signed this off, then a re-check found a failure" about a
+file Paloma has never seen.
 
-  File            what the report is called
-  Severity        where it stands
-  Findings        what it was flagged for, by kind
-  Needs resend    it has gone to the partner and a failure appeared after
-  Sent as         the name it was filed under
-  Link            straight to the report
+AND THE ONES ALREADY STANDING ARE PUT RIGHT ON THE NEXT BOOT. A report moves to
+the batch that corrected it, so a batch that arrived after the mark was set is
+a file that arrived after the mark was set. Nothing to press.
 
---- also in this install ---
+A PICTURE THAT IS NOT A PREVIEW IS NOT CALLED A BANNER. Social Mirror Ad
+Screenshots sits under the grid on the same page and its strip is 2205x464,
+which is a banner shape by any measure - Midwest Technical Institute was
+failed for it with three square previews above it. The check says nothing
+unless the pictures and the rows line up one to one.
 
-RUN FOUND NOTHING BECAUSE THE SCOPE WAS BUILT ON THE ANSWER THE FIX HAD JUST
-CORRECTED. A report's product list is what the detector made of it the last
-time it was read, and the reports the CTV scope exists for are exactly the ones
-the old detector got wrong. The orders count as well now: a report is in the
-CTV run if its stored products mention CTV OR the client bought a CTV product.
+A VERDICT LANDS BACK ON THE ROW, not the top of the board, with a highlight
+that fades. Signing off a report near the bottom of a page of fifty meant
+scrolling down to it again, every time.
 
-EVERY BUTTON IN THE RULES SHEET WAS DOING NOTHING, in silence. A browser sends
-a submit button's own name and value only when it is the one clicked. The sheet
-posts the form itself, and the call it used does not include the button.
+A RUN COUNTS WHAT IT WAS FOR. "339 read, 1 changed" counted reports whose
+severity moved - a report already failing picks up this finding and goes on
+failing. It says "339 read, 64 flagged" now, and the 64 is a link to those
+reports on the board.
 
-NOTHING RE-CHECKS ITSELF ANY MORE. Run all re-checks, Run against one check,
-and Stop - all on the Reporting flags page, all saying how far through they
-are. The order re-read stays automatic: the product checks stand down entirely
-until it has happened and nobody would know to press it.
-
-976 tests pass.
+982 tests pass.

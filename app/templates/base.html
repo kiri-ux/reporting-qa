@@ -164,6 +164,14 @@ body{margin:0;background:var(--plane);color:var(--ink);
  border:1px solid var(--line);border-radius:8px}
 .holdbar.onhold{border-color:var(--gold);background:var(--gold-10,transparent)}
 .holdbar form{margin:0}
+/* THE ROW YOU JUST CAME BACK TO. Landing on it is most of the answer; saying
+   which one it is stops the eye hunting for a row that now looks like every
+   other row, because the thing that made it stand out is the thing you just
+   dealt with. Fades on its own - it is a place, not a state. */
+tr:target > td{background:var(--gold-10,rgba(240,185,66,.16));
+ animation:landed 2.4s ease-out forwards}
+@keyframes landed{0%{background:rgba(240,185,66,.34)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){tr:target > td{animation:none}}
 .staleact{display:flex;align-items:center;gap:10px;margin:6px 0 0}
 .staleact .acct{margin:0}
 .holdbar button{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;

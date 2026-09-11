@@ -485,6 +485,23 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
             _old_acked = list(rep.acked or [])
             rep.review_state = "new"
             rep.reviewed_at = None
+            # AND THE MARKS ABOUT THE FILE THAT IS BEING REPLACED GO WITH IT.
+            #
+            # THE RESEND MARK IS THE WHOLE POINT OF THE RESEND. It says a
+            # failure turned up on a report the partner already has, and the
+            # board shows that as Report review ahead of anything else - so 56
+            # reports were repulled, arrived clean, and every one of them went
+            # on saying Report review about the copy that had been replaced.
+            # Nothing on the board moved, which is what a resend looks like
+            # when it has not worked.
+            rep.resend_at = None
+            # AND NOBODY HAS SIGNED THIS FILE OFF. The name and the pulled-
+            # sign-off mark belong to the copy before it: the row was saying
+            # "Paloma signed this off, then a re-check found a failure" about a
+            # file Paloma has never seen. It is waiting to be read for the
+            # first time, and that is what it should say.
+            rep.signoff_cleared_at = None
+            rep.reviewed_by = ""
             log.info("superseded report %s for %s %s", rep.id, rep.client, rep.period)
 
         # Now it can take its real name: either this is a new report, or it is

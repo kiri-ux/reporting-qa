@@ -1559,7 +1559,7 @@ def test_a_spend_product_is_read_off_its_own_tiles():
                   "Client CPE   Impressions   Events   Event Rate\n", []) == set()
 
 
-def _grid_pdf(dirpath, shots):
+def _grid_pdf(dirpath, shots, rows=None):
     """A two-page report whose second page is a Social Mirror grid.
 
     `shots` is [(width, height)] for the previews drawn on it. The station logo
@@ -1586,8 +1586,11 @@ def _grid_pdf(dirpath, shots):
                                   "  Clicks  CTR")
             y = 640
             for i, f in enumerate(files):
-                c.drawString(40, y, f"Acme_Social Mirror_{i}.gif   1,000"
-                                    f"   5   0.50%")
+                # `rows` short of the pictures: the extra ones are the
+                # screenshot widget under the grid, not previews.
+                if rows is None or i < rows:
+                    c.drawString(40, y, f"Acme_Social Mirror_{i}.gif   1,000"
+                                        f"   5   0.50%")
                 c.drawImage(str(f), 300, y - 10, width=90, height=20)
                 y -= 100
         else:
@@ -1604,7 +1607,26 @@ def _shape_ctx(path):
     return {"text": txt, "page_text": txt.split("\f"), "path": path}
 
 
-def test_a_display_banner_in_the_social_mirror_grid_is_a_finding(tmp_path):
+def test_a_picture_that_is_not_a_preview_is_not_called(tmp_path):
+    """Social Mirror Ad Screenshots sits under the grid on the same page, and
+    its screenshot strip is 2205x464 - a banner shape by any measure. Midwest
+    Technical Institute was failed for it with three perfectly good square
+    previews above it.
+
+    One picture per row or nothing is said: where the count does not line up,
+    this page has pictures on it that are not previews and there is no telling
+    which is which.
+    """
+    pytest.importorskip("reportlab")
+    from app.checks.quality import check_creative_shape
+
+    # Three rows, four pictures - the fourth is the screenshot strip.
+    pdf = _grid_pdf(tmp_path, [(1080, 1080), (1080, 1080), (1080, 1080),
+                               (2205, 464)], rows=3)
+    assert check_creative_shape(_shape_ctx(pdf)) == []
+
+
+def test_a_display_banner_in_the_social_mirror_grid_is_a_finding(monkeypatch):
     """WHAT A SOCIAL MIRROR CREATIVE LOOKS LIKE, which the name cannot tell you.
 
     Social Mirror renders one creative into a social feed, so the artwork is a
@@ -1612,17 +1634,45 @@ def test_a_display_banner_in_the_social_mirror_grid_is_a_finding(tmp_path):
     a leaderboard sitting in the Social Mirror grid, at a shape no social feed
     uses. The naming rule catches the ones whose file name still carries the
     size; this catches the picture, which is the thing being read.
-    """
-    pytest.importorskip("reportlab")
-    from app.checks.quality import check_creative_shape
 
-    # A leaderboard and a banner among the squares.
-    pdf = _grid_pdf(tmp_path, [(728, 90), (1080, 1080), (320, 50)])
-    got = check_creative_shape(_shape_ctx(pdf))
+    Read on a real report's grid rather than on a PDF written to match: the
+    first version of this test drew its own grid, `creative_rows` could not
+    parse a word of it, and the check passed on a page it had understood
+    nothing about.
+    """
+    import subprocess
+    from pathlib import Path
+
+    from app.checks import quality
+
+    pdf = Path(__file__).resolve().parent / "fixtures" / "central_penn.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    text = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
+                          capture_output=True, text=True).stdout
+    pages = text.split("\f")
+    at = next(i for i, t in enumerate(pages, 1)
+              if quality.SOCIAL_MIRROR_GRID.search(t))
+    ctx = {"text": text, "page_text": pages, "path": pdf}
+
+    # The page has one creative row. Its picture is the 400x1061 story it
+    # really carries: nothing is said.
+    assert quality.check_creative_shape(ctx) == []
+
+    # The same page, with a leaderboard where the story was.
+    monkeypatch.setattr(quality, "page_images", lambda _p: {at: [(728, 90)]})
+    got = quality.check_creative_shape(ctx)
     assert len(got) == 1, got
     assert got[0]["code"] == "creative_shape"
-    assert got[0]["title"].startswith("2 Social Mirror previews")
-    assert got[0]["where"] == "p2"
+    assert got[0]["title"] == "1 Social Mirror preview is a display banner"
+    assert "Social Mirror" in got[0]["detail"]
+    assert got[0]["where"] == f"p{at}"
+
+    # And a page whose pictures outnumber its rows says nothing, whatever
+    # shape they are - see the screenshot widget test above.
+    monkeypatch.setattr(quality, "page_images",
+                        lambda _p: {at: [(728, 90), (1080, 1080)]})
+    assert quality.check_creative_shape(ctx) == []
 
 
 def test_the_social_shapes_are_left_alone(tmp_path):

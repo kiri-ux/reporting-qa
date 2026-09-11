@@ -201,10 +201,15 @@
                     <span class="runjob">{{ c.job.done }} of {{ c.job.total }}</span>
                   {% else %}
                     {% if c.job %}
-                      <span class="runjob"
-                        {%- if not c.job.total %} data-tip="No report on this cycle carries {{ c.scope|join(' or ') if c.scope else 'anything this check reads' }}, on the report or on the order."{% endif %}>
-                        {%- if not c.job.total %}no reports to read
-                        {%- else %}{{ c.job.done }} read{% if c.job.changed %}, {{ c.job.changed }} changed{% endif %}{% endif %}</span>
+                      {% if not c.job.total %}
+                        <span class="runjob"
+                          data-tip="No report on this cycle carries {{ c.scope|join(' or ') if c.scope else 'anything this check reads' }}, on the report or on the order.">no reports to read</span>
+                      {% else %}
+                        <span class="runjob">{{ c.job.done }} read{% if c.job.changed %},
+                          {%- if c.seen_at %} <a href="{{ c.seen_at }}"
+                            data-tip="Open the reports this check is flagging.">{{ c.job.changed }} flagged</a>
+                          {%- else %} {{ c.job.changed }} flagged{% endif %}{% endif %}</span>
+                      {% endif %}
                     {% endif %}
                     <button type="submit" name="run" value="{{ c.key }}"
                       class="mini"

@@ -804,7 +804,7 @@ def start_job(db: Session, key: str, *, group: str | None = None,
               period: str | None = None, stale_only: bool = True,
               skip_signed: bool = False, signed_only: bool = False,
               logo: str | None = None, products: tuple | None = None,
-              note: str = "") -> dict:
+              note: str = "", count_for: str = "") -> dict:
     """Re-check a partner, or a whole cycle, now.
 
     The sweep gets to everything eventually; this is for when eventually is not
@@ -870,7 +870,20 @@ def start_job(db: Session, key: str, *, group: str | None = None,
                         own.commit()
                         out = {"ok": False}
                     done += 1
-                    if out.get("ok") and out.get("now") != was:
+                    if not out.get("ok"):
+                        pass
+                    elif count_for:
+                        # WHAT THE RUN WAS FOR. A severity that moved is the
+                        # wrong thing to count here: a report already failing
+                        # for something else picks up this finding and stays
+                        # failing, so "339 read, 1 changed" was true and said
+                        # nothing about the 64 reports the check had flagged.
+                        if any(f.get("check") == count_for
+                               for f in (rep.open_findings or [])):
+                            changed += 1
+                    elif out.get("now") != was or out.get("new_failures"):
+                        # A run over everything: the answer moved, whether or
+                        # not the severity did.
                         changed += 1
                     # Written every report, not every batch: a job that stops
                     # halfway has to be able to say where it got to.

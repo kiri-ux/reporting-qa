@@ -505,6 +505,38 @@ def get_db():
         db.close()
 
 
+def _clear_answered_resends(db: Session) -> int:
+    """Take the resend mark off reports whose file has already been replaced.
+
+    The mark says a failure turned up on a file the partner already has, and
+    the board shows that as Report review ahead of everything else. Every path
+    that puts a new file on a report clears it now; none of them did, so 56
+    reports were repulled, arrived, and went on saying Report review about the
+    copy they had replaced. Nothing on the board moved, which is exactly what a
+    resend looks like when it has not worked.
+
+    A report moves to the batch that corrected it, so a batch that arrived
+    AFTER the mark was set is a file that arrived after the mark was set. That
+    is the whole test, and it is why this can be done to the reports already
+    standing rather than only to the next ones.
+    """
+    from sqlalchemy import update
+
+    rows = db.execute(
+        select(Report.id).join(Batch, Batch.id == Report.batch_id)
+        .where(Report.resend_at.isnot(None),
+               Batch.received_at > Report.resend_at)).scalars().all()
+    if not rows:
+        return 0
+    db.execute(update(Report).where(Report.id.in_(rows))
+               .values(resend_at=None, signoff_cleared_at=None, reviewed_by=""))
+    db.commit()
+    import logging as _logging
+    _logging.getLogger("report-qa").info(
+        "cleared the resend mark on %d reports already replaced", len(rows))
+    return len(rows)
+
+
 @app.on_event("startup")
 def _startup():
     init_db()
@@ -528,6 +560,7 @@ def _startup():
         # blank, and blank means Drive - which is how a Dropbox partner's
         # client got a Drive link.
         backfill_targets(db)
+        _clear_answered_resends(db)
     except Exception:
         import traceback; traceback.print_exc(); db.rollback()
     finally:
@@ -2027,7 +2060,12 @@ def review_report(report_id: int, request: Request, state: str = Form(...),
                 target = path
         except Exception:                                    # noqa: BLE001
             pass
-    resp = RedirectResponse(target or _back_cookie(request) or "/cycle",
+    # AND BACK TO THE ROW, NOT THE TOP OF THE BOARD. A verdict on a report near
+    # the bottom of a page of fifty sent you to the top and you scrolled down
+    # to it again, every time.
+    to = (target or _back_cookie(request) or "/cycle").split("#")[0]
+    to += f"#r{report_id}"
+    resp = RedirectResponse(to,
                             status_code=303)
     # First sign-off of the day remembers you, so there is no separate step to
     # find before the thing you came to do.
@@ -2150,7 +2188,8 @@ def _start_check_run(db: Session, name: str, period: str = "") -> None:
         return
     period = period or settings.default_period or current_period()
     start_job(db, f"check:{name}:{period}", period=period, stale_only=False,
-              products=CHECK_PRODUCTS.get(name), note=known[name][:255])
+              products=CHECK_PRODUCTS.get(name), note=known[name][:255],
+              count_for=name)
 
 
 @app.post("/checks/runall")
@@ -2604,7 +2643,7 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
     from .board import flag_counts
     from .cycle import current_period, month_label
     from .flag_catalog import (PACKS_MEANS, VERIFY_MEANS, WHO_MEANS,
-                               flags, unwritten)
+                               flags, kinds_for_check, unwritten)
     # HOW MANY REPORTS EACH ONE IS FLAGGING RIGHT NOW. The catalog listed all
     # 38 with equal weight, so a check firing on sixty reports this month read
     # exactly like one that has never fired - on the page somebody uses to
@@ -2629,6 +2668,11 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
             # it costs before it is pressed rather than after.
             c["scope"] = CHECK_PRODUCTS.get(c["key"])
             c["job"] = jobs.get(c["key"])
+            # WHERE THE ONES IT FLAGGED ARE. The count was a number on a page
+            # with no way to get from it to the reports it counted.
+            kinds = kinds_for_check(c["key"])
+            c["seen_at"] = (f"/cycle?period={period}&done=all&col_finding="
+                            + "|".join(kinds)) if kinds else ""
         g["n"] = sum(c["n"] for c in g["checks"] if c["on"])
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
            "flag_period": month_label(period), "flag_period_key": period,
@@ -3412,6 +3456,13 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     rep.acked = remap_acks(_old_findings, _old_acked, rep.findings)
     rep.review_state = "new"
     rep.reviewed_at = None
+    # THE MARKS ABOUT THE COPY BEING REPLACED GO WITH IT. The resend mark says
+    # a failure turned up on a file the partner already has, and the board
+    # shows that ahead of everything else - so a corrected file could land and
+    # the row would go on saying Report review about the copy it replaced.
+    rep.resend_at = None
+    rep.signoff_cleared_at = None
+    rep.reviewed_by = ""
     rep.source = ""                       # it is the feed's copy now
     rep.pending_path = rep.pending_name = ""
     rep.pending_at = None
@@ -3568,6 +3619,10 @@ async def replace_report(report_id: int, request: Request,
     rep.review_state = "new"
     rep.reviewed_at = None
     rep.reviewed_by = who.strip() or rep.reviewed_by
+    # The resend mark was about the file that just went. Whoever uploads the
+    # correction is doing the resending.
+    rep.resend_at = None
+    rep.signoff_cleared_at = None
     from .version import rules_version as _rv
     rep.rules_version = _rv()
     db.commit()

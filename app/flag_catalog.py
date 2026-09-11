@@ -489,3 +489,21 @@ def kind_of(code: str) -> str:
 
 def kind_name(key: str) -> str:
     return KIND_NAME.get(key, key)
+
+
+def kinds_for_check(name: str) -> list[str]:
+    """The filter values that lead to what this check flags.
+
+    The catalog is keyed on the CHECK; the board filters on the KIND of
+    finding, and one check can write several codes that merge into one kind.
+    This is the join, so "64 flagged" can be the link that shows you the 64.
+    """
+    from .checkctl import code_owners
+
+    out: list[str] = []
+    for code, owners in code_owners().items():
+        if name in owners:
+            key = kind_of(code)
+            if key and key not in out:
+                out.append(key)
+    return sorted(out)

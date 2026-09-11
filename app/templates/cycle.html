@@ -611,7 +611,9 @@
 {% macro reportrows(items, me) %}{% for e in items %}
       {# data-hand is what the "Added by hand" filter beside the search reads.
          The tag beside the client is the same fact for the eye. #}
-      <tr{% if e.forced_by %} data-hand="1"{% endif %}>
+      {# WHERE YOU WERE. Signing a report off sent you back to the top of the
+         board and you scrolled down to the row again, every time. #}
+      <tr{% if e.report %} id="r{{ e.report.id }}"{% endif %}{% if e.forced_by %} data-hand="1"{% endif %}>
         {# The row's own checkbox. data-clear says this report has nothing
            open, which is what "Select the ones that passed" acts on. #}
         <td class="pick">{% if e.report %}

@@ -1263,3 +1263,128 @@ def test_the_run_scope_reads_the_orders_not_only_the_stored_products(tmp_path,
     assert stale_count(db, period="2026-08", stale_only=False,
                        products=("CTV", "YouTube")) == 2
     db.close()
+
+
+def test_a_run_counts_what_it_was_for_not_what_moved():
+    """"339 read, 1 changed" was true and said nothing about the 64 reports the
+    check had flagged.
+
+    It counted reports whose SEVERITY moved. A report already failing for
+    something else picks up this finding and goes on failing, so the number
+    that came back was the count of reports that happened to cross a threshold
+    - which is not the question anybody presses Run to ask.
+    """
+    import inspect
+
+    from app import recheck
+
+    src = inspect.getsource(recheck.start_job)
+    # A per-check run counts the reports it is flagging.
+    assert 'f.get("check") == count_for' in src
+    assert "rep.open_findings" in src
+    # A run over everything counts the reports whose ANSWER moved, whether or
+    # not the severity did.
+    assert 'out.get("new_failures")' in src
+
+
+def test_the_flagged_count_leads_to_the_reports():
+    """A number on a page with no way to get from it to the reports it counted.
+
+    The catalog is keyed on the check; the board filters on the KIND of
+    finding, and one check can write several codes that merge into one kind.
+    """
+    from pathlib import Path
+
+    from app.flag_catalog import kinds_for_check
+
+    assert kinds_for_check("check_ctv_tile") == ["ctv_not_ctv"]
+    # One check, two kinds - both have to be in the link or half the reports
+    # it counted are missing from what it opens.
+    assert kinds_for_check("check_products") == ["product_missing",
+                                                 "product_rogue"]
+    assert kinds_for_check("check_not_a_thing") == []
+
+    body = (Path(__file__).resolve().parent.parent / "app" / "templates"
+            / "rules_body.html").read_text()
+    assert "flagged</a>" in body
+    assert 'href="{{ c.seen_at }}"' in body
+    main = (Path(__file__).resolve().parent.parent / "app" / "main.py").read_text()
+    assert 'col_finding=' in main and '"|".join(kinds)' in main
+
+
+def test_a_replaced_file_drops_the_resend_mark(tmp_path, monkeypatch):
+    """56 REPORTS WERE REPULLED, ARRIVED CLEAN, AND NOTHING ON THE BOARD MOVED.
+
+    The resend mark says a failure turned up on a file the partner already has,
+    and the board shows that as Report review ahead of everything else -
+    including ahead of what the new file says. Every path that puts a new file
+    on a report clears the sign-off; none of them cleared this, so every one of
+    those reports went on saying Report review about the copy it had replaced.
+
+    The pulled-sign-off mark went with it. The row was saying "Paloma signed
+    this off, then a re-check found a failure" about a file Paloma has never
+    seen.
+    """
+    from app import ingest, main
+
+    text = open(ingest.__file__).read()
+    at = text.index("superseded report")
+    before = text[at - 1200:at]
+    assert "rep.resend_at = None" in before
+    assert "rep.signoff_cleared_at = None" in before
+
+    # And the two paths in main: accepting the file that was held, and
+    # replacing one by hand.
+    msrc = open(main.__file__).read()
+    assert msrc.count("rep.resend_at = None") >= 3
+
+
+def test_the_reports_already_replaced_are_put_right(tmp_path, monkeypatch):
+    """It cannot only be fixed for the next ones. A report moves to the batch
+    that corrected it, so a batch that arrived AFTER the mark was set is a file
+    that arrived after the mark was set - which is the whole test."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'rs.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    import app.config
+    import app.db
+    import app.main
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)
+    app.db.init_db()
+
+    db = app.db.SessionLocal()
+    marked = dt.datetime(2026, 9, 10, 12, 0)
+    # The file arrived AFTER the mark: the resend happened.
+    after = app.db.Batch(market="M", period="2026-08",
+                         received_at=dt.datetime(2026, 9, 11, 10, 24))
+    # And one where it did not: the mark still stands.
+    before = app.db.Batch(market="M", period="2026-08",
+                          received_at=dt.datetime(2026, 9, 9, 8, 0))
+    db.add_all([after, before])
+    db.flush()
+    for batch, client in ((after, "Replaced"), (before, "Still waiting")):
+        db.add(app.db.Report(batch_id=batch.id, period="2026-08", client=client,
+                             filename=f"{client}.pdf", stored_path="",
+                             severity="pass", findings=[], checks=[], acked=[],
+                             review_state="new", reviewed_by="Paloma",
+                             signoff_cleared_at=marked, resend_at=marked))
+    db.commit()
+
+    from sqlalchemy import select
+
+    n = app.main._clear_answered_resends(db)
+    assert n == 1
+    db.expire_all()
+    done = db.scalars(select(app.db.Report).where(
+        app.db.Report.client == "Replaced")).first()
+    waiting = db.scalars(select(app.db.Report).where(
+        app.db.Report.client == "Still waiting")).first()
+    assert done.resend_at is None and done.signoff_cleared_at is None
+    assert done.reviewed_by == ""
+    assert done.board_state != "review"
+    assert waiting.resend_at == marked
+    assert waiting.board_state == "review"
+    # Idempotent - it runs on every boot.
+    assert app.main._clear_answered_resends(db) == 0
+    db.close()

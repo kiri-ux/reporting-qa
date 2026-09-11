@@ -3427,15 +3427,17 @@ def test_signing_off_lands_on_the_page_you_pressed_it_on(tmp_path, monkeypatch):
     here = "http://testserver/cycle?period=2026-08&group=Stroudsburg"
     resp = c.post(f"/report/{rid}/review", data={"state": "reviewed", "who": "T"},
                   headers={"referer": here}, follow_redirects=False)
-    assert resp.headers["location"] == "/cycle?period=2026-08&group=Stroudsburg", \
-        resp.headers["location"]
+    # AND ON THE ROW. It landed at the top of the board and you scrolled down
+    # to the row again, every time.
+    assert resp.headers["location"] == \
+        "/cycle?period=2026-08&group=Stroudsburg#r1", resp.headers["location"]
 
     # From inside the viewer the cookie still wins - that is the one place this
     # must not land.
     resp = c.post(f"/report/{rid}/review", data={"state": "new"},
                   headers={"referer": f"http://testserver/report/{rid}/view"},
                   follow_redirects=False)
-    assert resp.headers["location"] == "/cycle?period=2026-08&group=Dubois"
+    assert resp.headers["location"] == "/cycle?period=2026-08&group=Dubois#r1"
 
 
 def test_the_serve_panel_says_which_days_are_in(tmp_path, monkeypatch):
@@ -4564,3 +4566,23 @@ def test_the_csv_is_the_rows_the_filters_left(tmp_path, monkeypatch):
     page = c.get("/cycle?period=2026-08&col_partner=M2&page=2").text
     assert "/cycle.csv?period=2026-08&amp;col_partner=M2" in page
     assert "page=2" not in page[page.index("/cycle.csv"):page.index("/cycle.csv") + 90]
+
+
+def test_a_verdict_lands_back_on_the_row():
+    """Signing a report off sent you to the top of the board, and you scrolled
+    down to the row again, every time - on a page of fifty, all cycle."""
+    import inspect
+
+    from app import main
+
+    src = inspect.getsource(main.review_report)
+    assert 'to += f"#r{report_id}"' in src
+    # Any fragment already on the way back is replaced rather than kept: the
+    # top of the table is better than the top of the page and the row is
+    # better than both.
+    assert '.split("#")[0]' in src
+
+    cycle = (TPL / "cycle.html").read_text()
+    assert 'id="r{{ e.report.id }}"' in cycle
+    base = (TPL / "base.html").read_text()
+    assert "tr:target > td" in base

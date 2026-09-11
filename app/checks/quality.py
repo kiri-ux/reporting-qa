@@ -1986,18 +1986,25 @@ def check_creative_shape(ctx) -> list[dict]:
         wide = [(w, h) for w, h in shots if w / h >= BANNER_RATIO]
         if not wide:
             continue
-        # THE NAME, WHEN THE COUNTS AGREE. pdfimages lists a page's pictures in
-        # the order they are drawn, which is the order of the rows - but only
-        # while there is one picture per row. Where anything else is on the
-        # page the pairing is a guess, and a finding naming the wrong creative
-        # is worse than one naming none.
+        # ONE PICTURE PER ROW, OR NOTHING IS SAID.
+        #
+        # pdfimages lists a page's pictures in the order they are drawn, which
+        # is the order of the rows - while the previews are the only pictures
+        # on the page. They are not: Social Mirror Ad Screenshots sits under
+        # the grid on the same page, and its screenshot strip is 2205x464,
+        # which is a banner shape by any measure. Midwest Technical Institute
+        # was failed for it, with three perfectly good square previews above.
+        #
+        # So the count has to line up before anything is called. Where it does
+        # not, this page has pictures that are not previews on it and there is
+        # no telling which is which - which is a check that stays quiet rather
+        # than one that guesses.
         names = [n for _t, n, _at in creative_rows(text)]
-        if len(names) == len(shots):
-            pairs = dict(zip(shots, names))
-            bad += [pairs[s] for s in wide if s in pairs]
-        else:
-            bad += [f"{w}x{h}" for w, h in wide]
-        if first is None:
+        if len(names) != len(shots):
+            continue
+        pairs = dict(zip(shots, names))
+        bad += [pairs[s] for s in wide if s in pairs]
+        if first is None and wide:
             first = i
     if not bad:
         return []
