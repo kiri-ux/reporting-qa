@@ -1117,3 +1117,38 @@ def test_the_run_button_is_in_the_same_form_as_the_switches():
     # A row with a run going stays on screen - Flagging now hides the checks
     # with no count, which is every check that has just been fixed.
     assert "not c.n and not c.job" in body
+
+
+def test_a_check_about_a_missing_product_is_never_scoped_by_product():
+    """The scope is matched against what was DETECTED ON THE REPORT, so a check
+    about a product being ABSENT must not be in it.
+
+    "A CTV tile on a report with no CTV" only ever fires on a report with no
+    CTV detected. Scoping it to reports carrying CTV would skip every report it
+    is about, and the run would come back clean in thirty seconds.
+    """
+    from app.checks.rules import CHECK_PRODUCTS
+
+    for name in ("check_rogue_ctv", "check_geofence_widget",
+                 "check_products", "check_required_widgets",
+                 "check_completion_present"):
+        assert name not in CHECK_PRODUCTS, name
+    # And the ones that are in it read the inside of that product's own widget.
+    assert set(CHECK_PRODUCTS) == {"check_ctv_tile", "check_social_mirror_sizes",
+                                   "check_creative_shape",
+                                   "check_geofence_names"}
+
+
+def test_the_ctv_scope_matches_both_ctv_products():
+    """"CTV" and "Social Mirror CTV" are the two product names carrying CTV
+    inventory, and the scope is a substring match, so both are read."""
+    import sys
+
+    from app.checks import products as P
+
+    names = set()
+    for item in getattr(P, "PRODUCT_LEADS", []):
+        names.add(item[0])
+    names |= set(getattr(P, "DELIVERS", {}))
+    hit = sorted(n for n in names if "CTV" in n)
+    assert hit == ["CTV", "Social Mirror CTV"], hit

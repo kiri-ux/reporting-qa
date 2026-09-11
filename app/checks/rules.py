@@ -2155,15 +2155,29 @@ CHECKS: list[tuple] = [
 # Matched against the report's stored product list, loosely. Only the checks
 # where the answer is not in doubt are here; anything missing runs over the
 # whole cycle, which is slower and never wrong.
+# ONLY THE CHECKS THAT READ THE INSIDE OF A WIDGET. That is the safe half of
+# the distinction, and the other half is a way to miss the finding you went
+# looking for.
+#
+# The list is matched against what was DETECTED ON THE REPORT, so a check about
+# a product being ABSENT must never be here: "a CTV tile on a report with no
+# CTV" only ever fires on a report with no CTV detected, and scoping it to
+# reports carrying CTV would skip every report it is about. check_rogue_ctv and
+# the geo-fencing widget check were in this list for a day and are out for that
+# reason.
+#
+# check_store_visits is out too, on the weaker version of the same argument: a
+# store visits widget is not only ever Mobile Conquesting, and a scope that is
+# nearly right is worse than none.
 CHECK_PRODUCTS: dict[str, tuple[str, ...]] = {
+    # The tile is compared against CTV's own grids, so a report with no CTV on
+    # it has nothing for this to say.
     "check_ctv_tile": ("CTV",),
-    "check_rogue_ctv": ("CTV",),
+    # Both read the rows of the Social Mirror creative grid.
     "check_social_mirror_sizes": ("Social Mirror",),
     "check_creative_shape": ("Social Mirror",),
+    # Reads the rows of the geo-fencing table, which comes with the product.
     "check_geofence_names": ("Mobile Conquesting",),
-    "check_geofence_widget": ("Mobile Conquesting",),
-    "check_store_visits": ("Mobile Conquesting",),
-    "check_social_placement_totals": ("Meta", "Social Mirror"),
 }
 
 

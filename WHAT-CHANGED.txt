@@ -1,4 +1,4 @@
-build 2026.09.11-232
+build 2026.09.11-233
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
@@ -20,8 +20,24 @@ hundred instead of twelve hundred. It is a full re-check of those reports, not
 a run of that one rule: the cost is reading the PDF either way, and
 half-judging a report is how one ends up carrying two builds' answers.
 
+WHICH REPORTS A RUN READS. Only checks that read the inside of a product's own
+widget are scoped by product, and the scope is matched against what was
+DETECTED on the report:
+
+  CTV tile                       CTV, Social Mirror CTV
+  Social Mirror ad-size naming   Social Mirror
+  Social Mirror preview shape    Social Mirror
+  Geo-fencing row names          Mobile Conquesting
+
+Everything else reads the whole cycle, which is slower and never wrong. A check
+about a product being ABSENT is never scoped: "a CTV tile on a report with no
+CTV" only fires on a report with no CTV detected, so scoping it to reports
+carrying CTV would skip every report it is about and come back clean in thirty
+seconds. That one and the geo-fencing widget check were scoped for one build
+and are not now.
+
 A row with a run going stays on screen. "Flagging now" hides the checks with no
 count, which is every check that has just been fixed - the one you came to
 press Run on.
 
-966 tests pass.
+968 tests pass.
