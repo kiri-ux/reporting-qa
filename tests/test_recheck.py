@@ -1205,5 +1205,61 @@ def test_a_finished_run_still_says_what_it_did(tmp_path, monkeypatch):
     from pathlib import Path
     body = (Path(__file__).resolve().parent.parent / "app" / "templates"
             / "rules_body.html").read_text()
-    assert "nothing to read" in body
+    assert "no reports to read" in body
     assert "read{% if c.job.changed %}" in body
+
+
+def test_the_run_scope_reads_the_orders_not_only_the_stored_products(tmp_path,
+                                                                     monkeypatch):
+    """THE SCOPE WAS BUILT ON THE ANSWER THE FIX HAD JUST CORRECTED.
+
+    A report's product list is what the detector made of it LAST TIME it was
+    read. The reports this scope exists for are exactly the ones the detector
+    used to get wrong: a report whose CTV prints as OTT carried no CTV product,
+    nothing has re-read it since, and the stored list still says so. Scoping on
+    that alone skips precisely the reports the check was written for, and comes
+    back "nothing to read" in a second - which is what pressing Run did.
+
+    The orders do not have that problem. They are re-imported whenever the
+    import code changes, so they say what the client bought today.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'s.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    db_mod.init_db()
+    from app.recheck import stale_count
+
+    db = db_mod.SessionLocal()
+    # Bought CTV; the report was last read by the detector that could not see
+    # it, so its stored products say nothing about CTV.
+    db.add(db_mod.OrderLine(market="M", client="Bought CTV", account_ids="1",
+                            product="CTV", starts_on=dt.date(2026, 8, 1),
+                            ends_on=dt.date(2026, 9, 30), live=True))
+    db.add(db_mod.Report(batch_id=1, period="2026-08", client="Bought CTV",
+                         filename="a.pdf", stored_path="",
+                         products="Mobile Conquesting, Video", severity="pass",
+                         findings=[], checks=[], acked=[], rules_version="old"))
+    # Detected CTV, no order loaded for them at all.
+    db.add(db_mod.Report(batch_id=1, period="2026-08", client="Shows CTV",
+                         filename="b.pdf", stored_path="",
+                         products="CTV, Display", severity="pass",
+                         findings=[], checks=[], acked=[], rules_version="old"))
+    # Neither.
+    db.add(db_mod.OrderLine(market="M", client="Display only", account_ids="3",
+                            product="Display", starts_on=dt.date(2026, 8, 1),
+                            ends_on=dt.date(2026, 9, 30), live=True))
+    db.add(db_mod.Report(batch_id=1, period="2026-08", client="Display only",
+                         filename="c.pdf", stored_path="", products="Display",
+                         severity="pass", findings=[], checks=[], acked=[],
+                         rules_version="old"))
+    db.commit()
+
+    assert stale_count(db, period="2026-08", stale_only=False) == 3
+    # Both halves count, and the third is left alone.
+    assert stale_count(db, period="2026-08", stale_only=False,
+                       products=("CTV", "YouTube")) == 2
+    db.close()

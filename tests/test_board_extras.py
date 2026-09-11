@@ -1611,7 +1611,7 @@ def test_the_columns_are_in_the_order_that_was_asked_for():
     import re
     body = (TPL / "rules_body.html").read_text()
     at = body.index('class="flagt"')
-    order = re.findall(r'class="(fl-\w+)"', body[at:at + 3200])
+    order = re.findall(r'class="(fl-\w+)"', body[at:at + 4500])
     assert order[:8] == ["fl-tick", "fl-n", "fl-what", "fl-pass", "fl-who",
                          "fl-how", "fl-run", "fl-on"], order
 

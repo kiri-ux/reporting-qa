@@ -455,8 +455,27 @@ def _stale_query(db: Session, periods: list[str] | None, group: str | None,
         # tile has nothing to say about a report with no CTV on it, and reading
         # twelve hundred PDFs to find the hundred it is about is the difference
         # between an answer this morning and an answer tomorrow.
+        #
+        # THE ORDER COUNTS AS WELL AS THE REPORT, and that is not belt and
+        # braces - it is the whole thing working at all.
+        #
+        # A report's product list is what the detector made of it LAST TIME it
+        # was read. The reports this scope is for are exactly the ones the
+        # detector used to get wrong: a report whose CTV prints as OTT carried
+        # no CTV product, nothing re-read it, and the stored list still says so.
+        # Scoping on that alone skips precisely the reports the check was
+        # written for, and comes back "nothing to read" in a second.
+        #
+        # The orders do not have that problem. They are re-imported whenever the
+        # import code changes, so they say what the client bought today.
         from sqlalchemy import or_
-        q = q.where(or_(*[Report.products.ilike(f"%{p}%") for p in products]))
+
+        from .db import OrderLine
+
+        like = [Report.products.ilike(f"%{p}%") for p in products]
+        bought = select(OrderLine.client).where(
+            or_(*[OrderLine.product.ilike(f"%{p}%") for p in products]))
+        q = q.where(or_(*like, Report.client.in_(bought)))
     if stale_only:
         q = q.where(Report.rules_version != rules_version())
     if logo:

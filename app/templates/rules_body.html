@@ -201,7 +201,9 @@
                     <span class="runjob">{{ c.job.done }} of {{ c.job.total }}</span>
                   {% else %}
                     {% if c.job %}
-                      <span class="runjob">{% if not c.job.total %}nothing to read
+                      <span class="runjob"
+                        {%- if not c.job.total %} data-tip="No report on this cycle carries {{ c.scope|join(' or ') if c.scope else 'anything this check reads' }}, on the report or on the order."{% endif %}>
+                        {%- if not c.job.total %}no reports to read
                         {%- else %}{{ c.job.done }} read{% if c.job.changed %}, {{ c.job.changed }} changed{% endif %}{% endif %}</span>
                     {% endif %}
                     <button type="submit" name="run" value="{{ c.key }}"
