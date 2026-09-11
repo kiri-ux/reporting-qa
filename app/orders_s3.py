@@ -22,7 +22,7 @@ from .db import OrderSync
 
 log = logging.getLogger("report-qa")
 from .roster import import_orders
-from .version import product_map_version
+from .version import map_stamp
 
 
 class CredentialsMissing(RuntimeError):
@@ -397,8 +397,7 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
     # when the cycle rolls over, because the file has not changed. August's
     # orders were dropped as "starts after the period" by an import that ran
     # while the board was still on July, and stayed dropped.
-    from .cycle import current_period
-    mapv = f"{product_map_version()}:{settings.default_period or current_period()}"
+    mapv = map_stamp()
     remap = bool(prev and prev.ok and (prev.map_version or "") != mapv)
 
     if not force and not remap and prev and prev.ok:

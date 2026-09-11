@@ -119,13 +119,16 @@ def test_the_sweeper_leaves_the_orders_alone_when_the_mapping_is_current(monkeyp
     """Otherwise every deploy re-downloads an 850 MB export for nothing."""
     from app import recheck as rmod
     from app.db import OrderSync
-    from app.version import product_map_version
+    from app.version import map_stamp
 
     eng = create_engine("sqlite://")
     Base.metadata.create_all(eng)
     Session = sessionmaker(bind=eng)
     s = Session()
-    s.add(OrderSync(ok=True, state="done", map_version=product_map_version(),
+    # map_stamp(), NOT the bare hash. Writing the hash here is what let the
+    # two halves drift: the test agreed with itself while production wrote a
+    # stamp neither reader recognised.
+    s.add(OrderSync(ok=True, state="done", map_version=map_stamp(),
                     synced_at=dt.datetime.utcnow()))
     s.commit()
     s.close()
@@ -192,7 +195,7 @@ def test_the_board_says_when_the_orders_were_read_by_older_code(monkeypatch):
     rounds of screenshots."""
     from app import main as mmod
     from app.db import OrderSync
-    from app.version import product_map_version
+    from app.version import map_stamp
 
     eng = create_engine("sqlite://")
     Base.metadata.create_all(eng)
@@ -204,7 +207,8 @@ def test_the_board_says_when_the_orders_were_read_by_older_code(monkeypatch):
     assert mmod._orders_stale(s) is True
 
     s.query(OrderSync).delete()
-    s.add(OrderSync(ok=True, state="done", map_version=product_map_version(),
+    # map_stamp() is what a real sync writes - see the one-producer test.
+    s.add(OrderSync(ok=True, state="done", map_version=map_stamp(),
                     synced_at=dt.datetime.utcnow()))
     s.commit()
     assert mmod._orders_stale(s) is False
@@ -1465,3 +1469,89 @@ def test_a_monthly_that_already_arrived_is_flagged_not_deleted(db):
     assert sorted(rows) == ["lifetime", "monthly"]
     assert "14 days" in rows["monthly"].covered_by_lifetime
     assert rows["lifetime"].covered_by_lifetime == ""
+
+
+# ------------------------------------------- one producer for the sync stamp
+def test_the_stamp_written_is_the_stamp_compared_against(db):
+    """THE SYNC STAMPED "<hash>:<period>" AND FOUR READERS COMPARED IT TO THE
+    BARE HASH. They never matched, and nothing said so - they just kept
+    reporting the orders as stale.
+
+    What that cost: _orders_current was False on every request, so the product
+    check abstained on every report on the board, for ever. Susquehanna River
+    Valley's missing Geo-Framing Display was fixed in the parser and fixed in
+    the product map and never once appeared, because the check that raises it
+    had been standing down the whole time. The export was also re-downloaded
+    and re-parsed after every deploy, for the same reason.
+    """
+    import datetime as dt
+
+    from app.db import OrderSync
+    from app.recheck import _orders_current
+    from app.version import map_stamp
+
+    db.add(OrderSync(source="s3://x", ok=True, rows=1, state="done",
+                     synced_at=dt.datetime.utcnow(), map_version=map_stamp()))
+    db.commit()
+    assert _orders_current(db) is True, "a fresh sync reads as stale"
+
+    # And the bare hash, which is what was being written before, does not.
+    from app.version import product_map_version
+    db.query(OrderSync).update({"map_version": product_map_version()})
+    db.commit()
+    assert _orders_current(db) is False
+
+
+def test_nothing_builds_the_stamp_by_hand():
+    """Two producers is how the halves drifted apart. There is one now, and
+    this fails if a second appears."""
+    import pathlib
+    import re
+    app = pathlib.Path(__file__).resolve().parent.parent / "app"
+    hand = []
+    for src in app.glob("*.py"):
+        if src.name == "version.py":
+            continue
+        for i, line in enumerate(src.read_text().split("\n"), 1):
+            if re.search(r"product_map_version\s*\(\s*\)", line):
+                hand.append(f"{src.name}:{i}: {line.strip()}")
+    assert hand == [], "build the stamp with version.map_stamp(): " + "; ".join(hand)
+
+
+# ---------------------------------------------- the finding it was hiding
+def test_the_missing_geoframing_finding_fires_once_the_orders_are_current():
+    """Susquehanna River Valley, the two months as a pair. July carries a
+    "Geo- Framing Display" line item - the column is narrow, so the name wraps
+    at its own hyphen - and August does not."""
+    import pathlib
+
+    from app.checks.parser import extract_tables, pdf_text
+    from app.checks.products import detect
+    from app.checks.rules import check_products
+
+    fx = pathlib.Path(__file__).resolve().parent / "fixtures"
+    expected = {"Display", "Geo-Framing Display", "Mobile Conquesting"}
+
+    def judge(name, current=True):
+        text = pdf_text(fx / name)
+        tables = extract_tables(text, strict=True)
+        return check_products({"text": text, "tables": tables,
+                               "products": detect(text, tables),
+                               "expected_products": expected,
+                               "orders_current": current, "is_seo": False,
+                               "expected_any": [], "quiet_products": set()})
+
+    assert [f["title"] for f in judge("srv_august_missing_geoframing.pdf")] == \
+        ["Ordered but not on the report: Geo-Framing Display"]
+    assert judge("srv_july_has_geoframing.pdf") == []
+    # And with the orders reading as stale - which they did, on every report,
+    # every day - the check does not run at all.
+    from app.checks.parser import extract_tables as _et, pdf_text as _pt
+    from app.checks.rules import _rule_applies, skip_reason
+    text = _pt(fx / "srv_august_missing_geoframing.pdf")
+    tables = _et(text, strict=True)
+    stale = {"text": text, "tables": tables, "products": detect(text, tables),
+             "expected_products": expected, "orders_current": False,
+             "is_seo": False, "expected_any": [], "quiet_products": set()}
+    assert _rule_applies(check_products, stale) is False
+    assert "older import code" in skip_reason(check_products, stale)

@@ -2108,9 +2108,22 @@ def test_moving_the_cycle_re_reads_the_export():
     """Nothing re-reads the export when the cycle rolls over - the file has not
     changed, so the ETag says there is nothing to do. That is how August's
     orders stayed dropped after the board moved to August."""
-    src = (Path(__file__).resolve().parents[1] / "app" / "orders_s3.py").read_text()
-    assert 'mapv = f"{product_map_version()}:' in src
-    assert "default_period or current_period()" in src
+    from app.version import map_stamp, product_map_version
+
+    stamp = map_stamp()
+    assert stamp.startswith(product_map_version() + ":")
+    # The period is the tail, so the stamp moves when the cycle does and the
+    # export is read again for the new month.
+    from app import config as cfg
+    was = cfg.settings.default_period
+    try:
+        cfg.settings.default_period = "2026-07"
+        july = map_stamp()
+        cfg.settings.default_period = "2026-08"
+        assert map_stamp() != july
+        assert map_stamp().endswith(":2026-08")
+    finally:
+        cfg.settings.default_period = was
 
 
 def test_a_beta_client_is_not_a_missing_order():

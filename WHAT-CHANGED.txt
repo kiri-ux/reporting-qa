@@ -1,46 +1,41 @@
-build 2026.09.11-249
+build 2026.09.11-250
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-AN AMAZON PREMIUM BUY IS TWO HALVES AND EACH HALF CARRIES ITS OWN WIDGETS.
-Window World - Bowling Green served 29,085 impressions on "Amazon CTV" and
-1,202 on "Video Amazon" - 96% of the campaign was the CTV half - and the report
-carried the Video creative and completion widgets and not one CTV widget
-anywhere. The page-one tile read 0.34% with nothing on the report to read it
-off. Re-checked on this build it says:
+THE PRODUCT CHECK HAS BEEN SWITCHED OFF ON EVERY REPORT ON THE BOARD, FOR AS
+LONG AS THE STAMP HAS HAD A PERIOD ON IT. That is why the missing Geo-Framing
+never appeared, on any build, however many times the parser was fixed.
 
-  CTV VCR not matching throughout                       p1
-  No Amazon Premium CTV Creative Performance widget
-  No Amazon Premium CTV Video Completion Performance by Creative widget
-  2 Amazon Premium Display widgets on a buy with no Amazon Display    p4
+The order sync writes "<hash>:<period>" - the period is in there so the export
+gets re-read when the cycle rolls. Four readers compared that against the bare
+"<hash>". They never matched, and nothing said so; they just reported the
+orders as stale for ever, and check_products abstains while they are stale.
 
-Which halves ran is read off the line items and their impressions. A half that
-served nothing is owed nothing - TapClicks prints no widgets for it. And the
-widgets are only asked for when nothing on the report already breaks that half
-out: Renegade Marine runs plain Connected TV beside 14,142 impressions of
-Amazon Prime CTV and both report under "Connected TV (CTV) Creative
-Performance", so asking for an Amazon-branded copy would fail a report carrying
-everything it owes. Either spelling counts, CTV or OTT.
+The same mismatch was re-downloading and re-parsing the whole order export
+after every single deploy.
 
-AND BOTH DISPLAY WIDGETS ARE NAMED WHEN THEY SHARE A LINE. "Click Performance
-by Ad Size" and "Conversion Performance by Ad Size" print side by side, so in
-the text they are one line, and the line-anchored pattern read the pair as a
-single widget with a forty-word title. Same shape as the CTV tile bug. The
-finding now names both and points at the first.
+One producer now - version.map_stamp() - and a test that fails if a second one
+appears. Two existing tests had been writing the bare hash themselves, which is
+why they passed while production did not.
 
-Silent on all four CTV fixtures and on the 317-page everything-sample.
+Susquehanna River Valley is a paired fixture now. July, which has the line
+item, says nothing. August, which does not, says "Ordered but not on the
+report: Geo-Framing Display". With the orders reading stale, the check does not
+run at all and says why.
 
---- also in this install ---
+A CONVERSION BREAKOUT IS NOT EVIDENCE THAT A PRODUCT RAN. Charlottesville's
+Earthly Cleaning bought Display and Performance Max - four line items, not one
+of them CTV - and TapClicks printed "CTV Click Conversion Performance Breakout"
+and "CTV View-through Conversion Performance Breakout" on it anyway. Those two
+titles were the whole of the evidence, so the report was credited with CTV and
+then failed for having no Top CTV Publishers widget: a missing widget for a
+product nobody bought, off the back of two widgets that should not be there.
 
-Every pacing goal is cut to the days the product actually had, in the panel and
-in the findings.
+The widgets that mean a product ran are its creative, completion and publisher
+breakouts. A real CTV buy also has CTV line items, which are still read, so
+nothing that genuinely ran loses its product.
 
-Cancelled buys are out of the pacing panel, and their money is out of the goal.
+AFTER INSTALLING: re-read the orders once, then run the checks. Both numbers
+have been wrong since before this session started.
 
-The two YouTube widgets are an either/or decided by the line items, and the
-channel list counts under either of its two names.
-
-A short campaign's monthly is dropped if no file came and flagged "lifetime
-covers this" if one did.
-
-1007 tests pass.
+1012 tests pass.

@@ -492,3 +492,44 @@ def test_both_display_widgets_are_named_when_they_share_a_line():
     # "Amazon CTV" puts the product after the word, "Video Amazon" before it.
     assert '"Amazon CTV"' in out[0]["detail"]
     assert '"Video Amazon"' in out[0]["detail"]
+
+
+def test_a_conversion_breakout_is_not_evidence_the_product_ran():
+    """Charlottesville's Earthly Cleaning bought Display and Performance Max -
+    four line items, not one of them CTV - and TapClicks printed "CTV Click
+    Conversion Performance Breakout" and "CTV View-through Conversion
+    Performance Breakout" on it anyway. Those two titles were the whole of the
+    evidence, so the report was credited with CTV and then FAILED for having no
+    Top CTV Publishers widget: a missing widget for a product nobody bought,
+    off the back of two widgets that should not be there."""
+    from app.checks.products import detect
+    titles = ["CTV Click Conversion Performance Breakout",
+              "CTV View-through Conversion Performance Breakout",
+              "Social Mirror CTV Click Conversion Performance Breakout",
+              "Amazon Premium Video + CTV View-through Conversion Performance"]
+    for t in titles:
+        assert "CTV" not in detect(t + "\n", []), t
+    # The widgets that DO mean it ran.
+    for t in ("Connected TV (CTV) Creative Performance",
+              "Connected TV (CTV) Completion Performance by Strategy",
+              "Amazon Premium OTT Creative Performance"):
+        assert "CTV" in detect(t + "\n", []), t
+
+
+def test_a_real_ctv_buy_keeps_its_product_from_the_line_items():
+    """The line items are the record, so a CTV buy whose only CTV widget was a
+    conversion breakout does not lose the product and get failed the other way
+    round - "ordered but not on the report"."""
+    from app.checks.parser import extract_tables, pdf_text
+    from app.checks.products import detect
+    fx = Path(__file__).parent / "fixtures" / "renegade_marine.pdf"
+    text = pdf_text(fx)
+    # Take every CTV-named creative and completion grid title off it, leaving
+    # only the conversion breakouts and the line items.
+    stripped = "\n".join(
+        "" if ("Creative Performance" in l or "Completion Performance" in l)
+        and ("CTV" in l or "OTT" in l or "Connected TV" in l) else l
+        for l in text.split("\n"))
+    assert "Creative Performance" not in "".join(
+        l for l in stripped.split("\n") if "CTV" in l)
+    assert "CTV" in detect(stripped, extract_tables(stripped, strict=True))

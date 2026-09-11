@@ -42,7 +42,21 @@ SECTION_PATTERNS: list[tuple[str, str]] = [
     # cost-tile rule picks up as a title. Reading CTV off that would mean a
     # report whose only CTV is a rogue tile detects CTV - which is the finding
     # "a CTV tile on a report with no CTV", switched off by its own evidence.
-    ("CTV", r"(?:Connected TV|\bCTV\b|\bOTT\b).*\bPerformance\b"),
+    # A CONVERSION BREAKOUT IS NOT EVIDENCE THAT THE PRODUCT RAN.
+    #
+    # Charlottesville's Earthly Cleaning bought Display and Performance Max -
+    # four line items, not one of them CTV - and TapClicks printed "CTV Click
+    # Conversion Performance Breakout" and "CTV View-through Conversion
+    # Performance Breakout" on it anyway. Those two titles were the whole of
+    # the evidence, so the report was credited with CTV and then FAILED for
+    # having no Top CTV Publishers widget: a missing widget for a product
+    # nobody bought, off the back of two widgets that should not be there.
+    #
+    # The widgets that mean a product ran are its creative, completion and
+    # publisher breakouts. A real CTV buy also has CTV line items, which are
+    # read below, so nothing that genuinely ran loses its product here.
+    ("CTV", r"^(?!.*\bConversion)(?=.*(?:Connected TV|\bCTV\b|\bOTT\b))"
+            r".*\bPerformance\b"),
     ("Meta", r"^Meta\b"),
     ("TikTok", r"^TikTok\b"),
     ("DOOH", r"^DOOH\b"),

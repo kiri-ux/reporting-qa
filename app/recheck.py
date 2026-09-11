@@ -140,12 +140,12 @@ def _orders_current(db: Session) -> bool:
     saying the same wrong thing about the same report over and over.
     """
     from .db import OrderSync
-    from .version import product_map_version
+    from .version import map_stamp
     row = db.scalars(select(OrderSync).where(OrderSync.state != "running")
                      .order_by(OrderSync.id.desc()).limit(1)).first()
     if row is None or not row.ok:
         return True                    # nothing loaded: a different problem
-    return (row.map_version or "") == product_map_version()
+    return (row.map_version or "") == map_stamp()
 
 
 def sibling_for(db, client: str, period: str, market: str,
@@ -598,7 +598,7 @@ def _remap_orders_if_stale() -> None:
     sweep that runs after it.
     """
     from .db import OrderSync
-    from .version import product_map_version
+    from .version import map_stamp
 
     db = SessionLocal()
     try:
@@ -606,7 +606,7 @@ def _remap_orders_if_stale() -> None:
                           .order_by(OrderSync.id.desc()).limit(1)).first()
         if prev is None or not prev.ok:
             return                        # nothing loaded, so nothing is stale
-        if (prev.map_version or "") == product_map_version():
+        if (prev.map_version or "") == map_stamp():
             return
         from .orders_s3 import begin_sync, sync as sync_orders
         claim = begin_sync(db, trigger="rules")

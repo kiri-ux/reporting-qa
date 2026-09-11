@@ -1327,13 +1327,13 @@ def _orders_stale(db: Session) -> bool:
     That silence is what turned one bug into three rounds of screenshots.
     """
     from .db import OrderSync
-    from .version import product_map_version
+    from .version import map_stamp
     from .orders_s3 import NOT_A_SYNC
     row = db.scalars(select(OrderSync)
                      .where(OrderSync.state != "running",
                             ~OrderSync.source.like(NOT_A_SYNC))
                      .order_by(desc(OrderSync.id)).limit(1)).first()
-    return bool(row and row.ok and (row.map_version or "") != product_map_version())
+    return bool(row and row.ok and (row.map_version or "") != map_stamp())
 
 
 def _delivered(db: Session, period: str, groups) -> dict:
@@ -4240,7 +4240,7 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
     """
     from .checks.products import map_order_products
     from .roster import _ran_during, client_lines
-    from .version import product_map_version
+    from .version import map_stamp
 
     rep = db.get(Report, report_id)
     if not rep:
@@ -4372,9 +4372,9 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
         "nav": "cycle", "rep": rep, "rows": rows, "other": other,
         "dead": dead, "sync": sync,
         "io_order_url": settings.io_order_url,
-        "map_now": product_map_version(),
+        "map_now": map_stamp(),
         "stale": bool(sync and sync.ok and
-                      (sync.map_version or "") != product_map_version()),
+                      (sync.map_version or "") != map_stamp()),
         # Pressing Re-read the orders used to land back on a page that looked
         # exactly the same, because the sync takes minutes. These two say what
         # happened.
@@ -4399,7 +4399,7 @@ def order_lines(oid: str, request: Request, db: Session = Depends(get_db)):
     find out which of the two was stale was to guess from a screenshot. The
     order number on the list check opens this beside it now.
     """
-    from .version import product_map_version
+    from .version import map_stamp
 
     oid = re.sub(r"[^0-9]", "", oid or "")[:12]
     if not oid:
@@ -4460,7 +4460,7 @@ def order_lines(oid: str, request: Request, db: Session = Depends(get_db)):
         "dropped": gone,
         "io_line_url": settings.io_line_url,
         "stale": bool(sync and sync.ok and
-                      (sync.map_version or "") != product_map_version())})
+                      (sync.map_version or "") != map_stamp())})
 
 
 @app.get("/orders/pull-range.csv")

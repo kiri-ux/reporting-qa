@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.11-249"
+BUILD = "2026.09.11-250"
 BUILD_NOTES = ("")
 
 # ---------------------------------------------------------------------------
@@ -197,6 +197,30 @@ def product_map_version() -> str:
         except OSError:
             return ""
     return h.hexdigest()[:16]
+
+
+def map_stamp() -> str:
+    """What gets written onto a finished order sync, and compared against.
+
+    ONE PRODUCER, BECAUSE TWO WERE NOT EQUAL. The sync stamped
+    "<hash>:<period>" - the period is in there because the same export read in
+    July and in August gives different answers, and nothing re-reads it when
+    the cycle rolls - while four readers compared that against the bare hash.
+    They never matched, and nothing said so; they just kept reporting the
+    orders as stale.
+
+    What that cost: `_orders_current` was False on every request, so the
+    product check abstained on every report on the board, for ever. Susquehanna
+    River Valley's missing Geo-Framing Display was fixed in the parser, fixed
+    in the product map, and never once appeared, because the check that raises
+    it had been standing down the whole time. The order export was also being
+    re-downloaded and re-parsed after every single deploy, for the same reason.
+
+    Anything comparing an OrderSync.map_version compares it to THIS.
+    """
+    from .config import settings
+    from .cycle import current_period
+    return f"{product_map_version()}:{settings.default_period or current_period()}"
 
 
 _FINGERPRINT: str | None = None
