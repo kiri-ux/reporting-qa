@@ -195,6 +195,31 @@ NEXT_TITLE = re.compile(
 TITLE_HEAD = re.compile(r"^\s*Top\s+\S.*$")
 
 
+def _rejoin(head: str, tail: str) -> str:
+    """Put a wrapped line item name back together.
+
+    A WORD BROKEN AT A HYPHEN IS NOT TWO WORDS. The column is narrow, so
+    "Susquehanna River Valley Visitors Bureau - Geo-Framing Display" is printed
+    as "... - Geo-" and "Framing Display", and joining those with a space gives
+    "Geo- Framing Display" - which matches no product pattern anywhere, so the
+    report carried no Geo-Framing at all and every client running it was owed a
+    finding that could not fire. "Geo-Retargeting Event Mobile" breaks the same
+    way on the same reports.
+
+    Only where the hyphen ENDS A WORD. "Bureau -" is the separator between the
+    client and the strategy and has a space in front of it; joining that one up
+    would make "Bureau -Keyword Display".
+    """
+    head, tail = (head or "").strip(), (tail or "").strip()
+    if not head:
+        return tail
+    if not tail:
+        return head
+    if head.endswith("-") and len(head) > 1 and not head[-2].isspace():
+        return head + tail
+    return head + " " + tail
+
+
 def extract_tables(text: str, strict: bool = True) -> list[Table]:
     """A table starts at a header line carrying at least three metric labels.
     strict=True keeps only rows that resolve Impressions, Clicks and CTR, which
@@ -323,7 +348,7 @@ def extract_tables(text: str, strict: bool = True) -> list[Table]:
                 if (head[1] < name_col_end and as_number(head[0]) is None
                         and not looks_like_heading and len(cells) == 1):
                     prev_name, prev_vals = table.rows[-1]
-                    table.rows[-1] = ((prev_name + " " + raw.strip()).strip(), prev_vals)
+                    table.rows[-1] = (_rejoin(prev_name, raw.strip()), prev_vals)
                 gap = False
                 continue
             if not values:

@@ -1100,6 +1100,31 @@ body.fit .pdfwrap object{height:100%}
     paint();
   });
 
+  // WHERE YOU WERE, WHEN THE ROW YOU WERE ON HAS GONE.
+  //
+  // A verdict sends you back to #r<id>, which is the row you just acted on.
+  // Signing one off takes it OUT of Pending - that is the point of signing it
+  // off - so the row is not there to land on and the browser stays at the top
+  // of the board, which is the thing this was meant to stop.
+  //
+  // So: the row if it is there, the reports table if it is not. Runs on load
+  // rather than on the hash, because the browser has already given up by then.
+  (function () {
+    var h = window.location.hash || '';
+    if (!/^#r\d+$/.test(h)) return;
+    if (document.getElementById(h.slice(1))) return;    // the row is there
+    var table = document.getElementById('reports');
+    if (!table) return;
+    var go = function () {
+      table.scrollIntoView({block: 'start'});
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', go);
+    } else {
+      go();
+    }
+  })();
+
   // Copy a link. navigator.clipboard needs a secure context, and this is also
   // opened over plain http on the office network, where it is simply absent -
   // so the button has to say it failed rather than doing nothing at all.

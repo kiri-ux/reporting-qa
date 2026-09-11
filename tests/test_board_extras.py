@@ -4674,3 +4674,22 @@ def test_the_stale_banner_does_not_read_as_a_running_recheck():
     assert "Mark all as current" in banner
     assert "Queued by" not in banner
     assert "Skip this re-check" not in banner
+
+
+def test_a_verdict_lands_on_the_reports_table_when_the_row_has_gone():
+    """Signing a report off takes it OUT of Pending - that is the point of
+    signing it off - so the row the verdict sends you back to is not there to
+    land on, and the browser stays at the top of the board. Which is the thing
+    the anchor was added to stop.
+
+    The row if it is there, the reports table if it is not.
+    """
+    base = (TPL / "base.html").read_text()
+    at = base.index("WHERE YOU WERE, WHEN THE ROW YOU WERE ON HAS GONE")
+    block = base[at:at + 1200]
+    assert "test(h)" in block
+    assert "document.getElementById(h.slice(1))" in block
+    assert "getElementById('reports')" in block
+    assert "scrollIntoView" in block
+    cycle = (TPL / "cycle.html").read_text()
+    assert 'id="reports"' in cycle

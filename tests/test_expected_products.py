@@ -649,3 +649,60 @@ def test_the_reason_is_stored_on_the_report():
     viewer = (Path(__file__).resolve().parent.parent / "app" / "templates"
               / "viewer.html").read_text()
     assert "c.why or skip_why.get" in viewer
+
+
+def test_a_hyphen_wrapped_line_item_is_put_back_together():
+    """THE SAME CLIENT, TWO MONTHS, ONE RIGHT AND ONE WRONG.
+
+    July's report carries "Susquehanna River Valley Visitors Bureau -
+    Geo-Framing Display" and August's does not, which is the finding. Neither
+    one produced it, because the column is narrow enough that the name wraps at
+    its own hyphen - pdftotext prints "... - Geo-" and "Framing Display" - and
+    the two halves were joined with a space. "Geo- Framing Display" matches no
+    product pattern anywhere, so the report carried no Geo-Framing at all and
+    the finding could not fire on either month.
+
+    Joined at the hyphen only where the hyphen ends a word: "Bureau -" is the
+    separator between the client and the strategy and has a space in front of
+    it, and joining that one up would make "Bureau -Keyword Display".
+    """
+    import subprocess
+    from pathlib import Path
+
+    from app.checks.parser import extract_tables
+    from app.checks.products import any_of_groups, detect
+    from app.checks.rules import run_all
+
+    here = Path(__file__).resolve().parent / "fixtures"
+    right = here / "srv_july_has_geoframing.pdf"
+    wrong = here / "srv_august_missing_geoframing.pdf"
+    if not right.exists() or not wrong.exists():
+        pytest.skip("fixtures missing")
+
+    def read(p):
+        return subprocess.run(["pdftotext", "-layout", str(p), "-"],
+                              capture_output=True, text=True).stdout
+
+    names = [r[0] for t in extract_tables(read(right), strict=True)
+             if "Line Item" in (t.title or "") for r in t.rows]
+    assert any(n.endswith("Geo-Framing Display") for n in names), names
+    # The other wrap on the same page breaks the same way.
+    assert any("Geo-Retargeting Event Mobile" in n for n in names), names
+    # And the separator is left alone.
+    assert any(" - Keyword Display" in n for n in names), names
+
+    assert "Geo-Framing Display" in detect(read(right),
+                                           extract_tables(read(right), strict=True))
+    assert "Geo-Framing Display" not in detect(read(wrong),
+                                               extract_tables(read(wrong), strict=True))
+
+    # Read the way the check reads it: the month that has it says nothing, the
+    # month that does not is the finding.
+    exp = {"Display", "Geo-Framing Display", "Mobile Conquesting"}
+    anyof = any_of_groups(["Display Ads", "Geo-Framing Display Ads",
+                           "Mobile Conquesting Display & Video Ads"], exp)
+    ok = run_all(right, expected_products=exp, expected_any=anyof)
+    bad = run_all(wrong, expected_products=exp, expected_any=anyof)
+    assert [f["title"] for f in ok["findings"] if f["code"] == "product_missing"] == []
+    assert [f["title"] for f in bad["findings"] if f["code"] == "product_missing"] == \
+        ["Ordered but not on the report: Geo-Framing Display"]

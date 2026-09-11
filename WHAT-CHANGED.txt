@@ -1,35 +1,34 @@
-build 2026.09.11-242
+build 2026.09.11-243
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
-THE CTV TILE WAS BEING MEASURED AGAINST HALF ITS OWN PARTS. Renegade Marine's
-tile reads 71.73% and its Connected TV (CTV) grids run 98.51% to 99.31%, which
-is a failure by any reading - until you scroll two pages on and find "Amazon
-Premium Video Completion Performance by Creative" at 37.80% and 38.34%. Amazon
-Premium is a CTV buy, those rows are in the tile, and the check never looked at
-them.
+A LINE ITEM NAME THAT WRAPS AT ITS OWN HYPHEN IS ONE NAME. The column is
+narrow, so "Susquehanna River Valley Visitors Bureau - Geo-Framing Display"
+prints as "... - Geo-" and "Framing Display", and the two halves were joined
+with a space. "Geo- Framing Display" matches no product pattern anywhere, so
+the report carried no Geo-Framing at all and the missing-product finding could
+not fire on the month that was wrong OR the month that was right. The same wrap
+was mangling "Geo-Retargeting Event Mobile" on the same page.
 
-Two reasons it missed them: the widget is titled "Amazon Premium Video" with no
-CTV or OTT in it, and its column is headed "100% Completed" where the CTV grid
-says "100% Completion Rate" - so even once the title matched it read as a grid
-with no completion column. With those rows in, the range is 37.80% to 99.31%,
-71.73% sits inside it, and nothing is said. That report is a test fixture now.
+Joined at the hyphen only where the hyphen ends a word. The " - " between the
+client and the strategy has a space in front of it and is left alone.
 
-Renamed to "CTV VCR not matching throughout", on the row and in the filter.
+Read the way the check reads it: July, which has the line item, says nothing.
+August, which does not, says "Ordered but not on the report: Geo-Framing
+Display". Both months are test fixtures now, as a pair.
 
-A COPY BUTTON BESIDE THE CLIENT NAME on the board. Appears on hover, turns to
-a tick.
-
-THE STALE BANNER NO LONGER READS AS A RUNNING RE-CHECK. It said "Queued by
-build ..." and offered "Skip this re-check", both left from when a sweep
-started itself off the back of that count. It says "Nothing is running", "Rules
-last changed in build ...", and the button is "Mark all as current".
+A VERDICT LANDS ON THE REPORTS TABLE WHEN THE ROW HAS GONE. Marking a report
+Reviewed takes it out of Pending - that is the point of marking it - so the row
+the verdict sends you back to is not there to land on and the browser stayed at
+the top of the board. The row if it is there, the table if it is not.
 
 --- also in this install ---
 
-"No new file" on any report asked for again that has not come back - a tag on
-the row, a chip with the count beside the search, and two columns in the CSV.
+The CTV tile is measured against Amazon Premium Video's completion rows as well
+as the Connected TV ones, and the finding is called "CTV VCR not matching
+throughout".
 
-The resend mark is cleared by every path that puts a new file on a report.
+A copy button beside the client name, and the stale-reports banner no longer
+reads as a re-check somebody did not start.
 
-985 tests pass.
+987 tests pass.
