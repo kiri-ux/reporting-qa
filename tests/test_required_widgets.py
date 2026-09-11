@@ -381,6 +381,48 @@ def test_a_real_amazon_display_buy_says_nothing(sample):
 def test_a_report_with_no_line_items_makes_no_claim():
     """"No Amazon Display line" is true of every report whose line item grid
     did not parse, and that is not an answer about the buy."""
-    from app.checks.rules import check_rogue_amazon_display
+    from app.checks.rules import _rule_applies, check_rogue_amazon_display
     text = "Amazon Premium Display Conversion Performance by Ad Size\n"
     assert check_rogue_amazon_display({"text": text}) == []
+    assert _rule_applies(check_rogue_amazon_display, {"text": text}) is False
+
+
+def _amz(*lines: str) -> dict:
+    grid = ("Amazon Premium Display Conversion Performance by Ad Size\n"
+            "Line Item Performance\n"
+            + "".join(f" {n}   1,000   10   1.00%\n" for n in lines))
+    return {"text": grid}
+
+
+def test_only_an_amazon_video_or_ctv_buy_is_asked():
+    """Her rule: only Amazon video + CTV products, and no Amazon Display. The
+    widget is not wrong in itself - a client running Amazon Premium Display
+    owes it - so the question is only ever put to that one buy."""
+    from app.checks.rules import _rule_applies, check_rogue_amazon_display as C
+
+    # Not an Amazon buy at all. Never mind that the widget is sitting there.
+    ctx = _amz("Acme - Homeowners Behavioral Display")
+    assert _rule_applies(C, ctx) is False and C(ctx) == []
+
+    # An Amazon buy that includes Display. The widget is owed.
+    ctx = _amz("Acme - Homeowners Behavioral Amazon Display",
+               "Acme - Homeowners Behavioral Amazon Video")
+    assert _rule_applies(C, ctx) is False and C(ctx) == []
+
+    # Either half of the CTV + Video buy on its own is enough to ask. An Amazon
+    # month can deliver all of its impressions through one of the two, and the
+    # video-only month is where a Display widget full of video frames turns up.
+    for line in ("Acme - Homeowners Behavioral Amazon Video",
+                 "Acme - Homeowners Behavioral Amazon CTV",
+                 "Acme - Homeowners Behavioral Amazon OTT",
+                 "Acme - Homeowners Behavioral Amazon Prime CTV",
+                 "Acme - Homeowners Behavioral CTV Amazon"):
+        ctx = _amz(line)
+        assert _rule_applies(C, ctx) is True, line
+        assert len(C(ctx)) == 1, line
+
+
+def test_the_check_is_scoped_to_the_amazon_products():
+    """A Run on this check reads the CTV and Video reports, not all 1,417."""
+    from app.checks.rules import CHECK_PRODUCTS
+    assert CHECK_PRODUCTS["check_rogue_amazon_display"] == ("CTV", "Video")

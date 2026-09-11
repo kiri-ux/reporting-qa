@@ -1126,9 +1126,17 @@ def test_a_check_about_a_missing_product_is_never_scoped_by_product():
                  "check_completion_present"):
         assert name not in CHECK_PRODUCTS, name
     # And the ones that are in it read the inside of that product's own widget.
+    #
+    # check_rogue_amazon_display is scoped, and belongs here, because the
+    # product it is scoped BY is the one that has to be PRESENT: an Amazon
+    # Premium CTV + Video buy, which the import maps to CTV and Video. The
+    # product it is about being absent is Amazon Display, which is not in the
+    # scope and could not be - that is the distinction this test guards.
     assert set(CHECK_PRODUCTS) == {"check_ctv_tile", "check_social_mirror_sizes",
                                    "check_creative_shape",
-                                   "check_geofence_names"}
+                                   "check_geofence_names",
+                                   "check_rogue_amazon_display"}
+    assert "Display" not in CHECK_PRODUCTS["check_rogue_amazon_display"]
 
 
 def test_the_ctv_scope_matches_both_ctv_products():

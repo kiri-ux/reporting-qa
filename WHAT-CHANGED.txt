@@ -1,28 +1,39 @@
-build 2026.09.11-246
+build 2026.09.11-248
 Changed files only. Everything since 130 - install this one.
-38 checks - one new one, on by default.
+38 checks.
 
-NEW: AN AMAZON PREMIUM DISPLAY WIDGET ON A BUY WITH NO AMAZON DISPLAY IN IT.
-Fisher Tire bought Amazon Premium CTV and Video - its line items end "Amazon
-Video" and "Amazon CTV" and nothing else - and page 6 carried "Amazon Premium
-Display Conversion Performance by Ad Size" with 21 impressions at 1920x1080 in
-it. 1920x1080 is a video frame, not a display banner: TapClicks filed video
-delivery under a product the client never bought, and it went out reading as a
-display campaign nobody ordered.
+A MONTHLY GOAL IS A RATE, NOT A TARGET FOR THE CALENDAR MONTH. Every goal is
+now cut to the days the product actually had, and the panel and the findings
+quote the same number.
 
-Read off the line items, which are what the buy is in its own words. A report
-running real Amazon Display has Amazon Display lines - "Retargeting Amazon
-Display", "Behavioral Amazon Premium Display" - and says nothing. Checked
-against the 317-page everything-sample, which runs Amazon Display for real and
-carries three of these widgets: silent. A report whose line item grid did not
-parse says nothing either, rather than reading "no Amazon Display line" off a
-grid it could not read.
+Kermit Celebration Days launched on 20 and 27 August and read "62% short"
+across the board. Not one of its products was behind:
 
-It is "Widgets that should be there, and ones that should not" on the rules
-page, and it names the widget and the Amazon lines that are actually on the
-buy.
+  CTV, Video          32,365 / 25,806   +25%   160,000 a month · 5 of 31 days
+  Display             59,323 / 58,065    +2%   150,000 a month · 12 of 31 days
+  Mobile Conquesting  39,222 / 38,710    +1%   100,000 a month · 12 of 31 days
+  Online Audio        13,007 / 11,613   +12%   30,000 a month · 12 of 31 days
+  All impressions    168,637 / 134,194  +26%   440,000 a month across the above
+
+The arithmetic was already in the code, as a mute button. The row kept the
+whole month's goal, the finding was built out of it, and a separate line
+silenced the ones that landed in band once cut - so the panel and the finding
+went on printing a figure neither of them believed. It is done before the
+percentage is worked out now, in one place, for impressions and spend alike.
+
+Each row says what it was cut from, on the row: "150,000 a month · 12 of 31
+days from Aug 20". The figure being divided by is on neither the order nor the
+report, so it has to say where it came from. The totals add up the rows above
+them rather than the month's goals.
+
+Untouched: a line that ran the whole month, which is already measured against
+the right figure, and a lifetime, which is the whole campaign and carries no
+day count.
 
 --- also in this install ---
+
+An Amazon Premium Display widget on an Amazon CTV + Video buy is flagged. Only
+that buy - a client running Amazon Premium Display owes the widget.
 
 Cancelled buys are out of the pacing panel, and their money is out of the goal.
 
@@ -32,4 +43,4 @@ channel list counts under either of its two names.
 A short campaign's monthly is dropped if no file came and flagged "lifetime
 covers this" if one did.
 
-996 tests pass.
+1003 tests pass.

@@ -160,11 +160,64 @@ def is_paced(product: str) -> bool:
 MIN_DAYS_TO_PACE = 7
 
 
-def pacing_rows(text: str, ordered: dict) -> list[dict]:
+def days_in_month(period: str | None) -> int | None:
+    """How many days there are in "2026-08". None when it cannot be read."""
+    import calendar
+
+    if not period:
+        return None
+    try:
+        y, m = (int(x) for x in str(period).split("-")[:2])
+        return calendar.monthrange(y, m)[1]
+    except (ValueError, IndexError, calendar.IllegalMonthError):
+        return None
+
+
+def pro_rata(goal, days, period) -> tuple[float | None, int | None]:
+    """The month's goal cut to the days the product actually had.
+
+    A MONTHLY GOAL IS A RATE, NOT A TARGET FOR THE CALENDAR MONTH. Kermit
+    Celebration Days launched on 20 and 27 August and its report read "62%
+    short" across the board - Display 59,323 against 150,000, Mobile
+    Conquesting 39,222 against 100,000, CTV and Video 32,365 against 160,000.
+    Every one of those is a full month's goal charged to a campaign that had
+    twelve days, or five. Against the days they actually ran, all four are on
+    pace or slightly ahead, and the report that read as a disaster was fine.
+
+    Returns (goal for those days, days in the month). The goal comes back
+    untouched, with None beside it, whenever there is nothing to cut it by - a
+    lifetime carries no day count, and a line that ran the whole month is
+    already being measured against the right figure.
+    """
+    if goal is None or not days:
+        return goal, None
+    in_month = days_in_month(period)
+    if not in_month or days >= in_month:
+        return goal, None
+    return float(goal) * days / in_month, in_month
+
+
+def pro_rata_note(full, days, in_month, started, money=False) -> str:
+    """"150,000 a month · 12 of 31 days from Aug 20" - what the row is cut
+    from, said on the row rather than left in a tooltip."""
+    if not in_month or full is None:
+        return ""
+    figure = f"${full:,.0f}" if money else f"{full:,.0f}"
+    note = f"{figure} a month · {days} of {in_month} days"
+    if started:
+        note += f" from {started.strftime('%b %-d')}"
+    return note
+
+
+def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dict]:
     """One row per product the order bought, plus a total row for impressions.
 
     `ordered` is roster.ordered_for(): {product: {budget, impressions}}. For a
     lifetime those are the whole campaign's figures rather than one month's.
+
+    WITH `period`, A GOAL IS CUT TO THE DAYS THE PRODUCT ACTUALLY HAD. See
+    pro_rata. Without it, and on a lifetime - which carries no day count - the
+    figures are the ones the order states.
     """
     from .spend import report_spend
 
@@ -189,18 +242,29 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
         when = {"started": want.get("started"), "days": want.get("days")}
         if product in SPEND_PRODUCTS:
             got = spent.get(product)
+            full = want.get("budget")
+            goal, in_month = pro_rata(full, when["days"], period)
             rows.append({"product": product, "unit": "money",
-                         "served": got, "ordered": want.get("budget"),
+                         "served": got, "ordered": goal, "full": full,
+                         "in_month": in_month,
+                         "month_note": pro_rata_note(full, when["days"],
+                                                     in_month, when["started"],
+                                                     money=True),
                          "basis": want.get("basis") or "",
-                         "pace": pacing_pct(got, want.get("budget")), **when})
+                         "pace": pacing_pct(got, goal), **when})
             continue
         # A grouped buy - "CTV, Video" - takes the delivery of both halves.
         parts = [x.strip() for x in product.split(",")]
         got = sum(served["by_product"].get(p, 0.0) for p in parts) or None
+        full = want.get("impressions")
+        goal, in_month = pro_rata(full, when["days"], period)
         rows.append({"product": product, "unit": "impressions",
-                     "served": got, "ordered": want.get("impressions"),
+                     "served": got, "ordered": goal, "full": full,
+                     "in_month": in_month,
+                     "month_note": pro_rata_note(full, when["days"], in_month,
+                                                 when["started"]),
                      "basis": want.get("basis") or "",
-                     "pace": pacing_pct(got, want.get("impressions")), **when})
+                     "pace": pacing_pct(got, goal), **when})
 
     # NOTHING WAS BOUGHT ON IMPRESSIONS, SO THERE IS NOTHING TO PACE ON THEM.
     #
@@ -214,13 +278,22 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
     # in the order, so a goal that had no row above it - a flat product - was
     # still in the denominator, and the total did not add up to the list it sat
     # under.
-    want_total = sum(v["impressions"] for p, v in ordered.items()
-                     if p not in SPEND_PRODUCTS and is_paced(p)
-                     and v.get("impressions") is not None)
+    #
+    # AND IT ADDS UP THE ROWS' OWN GOALS, so a total under four pro-rated rows
+    # is not a full month's goal. Kermit's four products were each cut to the
+    # twelve or five days they ran and the total underneath still said 440,000,
+    # which is 62% short of nothing in particular.
+    want_total = sum(r["ordered"] for r in rows
+                     if r["unit"] != "money" and r.get("ordered") is not None)
+    full_total = sum(r.get("full") or 0.0 for r in rows if r["unit"] != "money")
     if bought_impressions and (want_total or served["total"]):
         rows.append({"product": "All impressions", "unit": "impressions",
                      "served": served["total"] or None,
                      "ordered": want_total or None,
+                     "full": full_total or None,
+                     "month_note": (f"{full_total:,.0f} a month across the products above"
+                                    if full_total and round(full_total) != round(want_total)
+                                    else ""),
                      "pace": pacing_pct(served["total"] or None, want_total or None),
                      "total": True,
                      "unattributed": served["unattributed"],
@@ -234,10 +307,17 @@ def pacing_rows(text: str, ordered: dict) -> list[dict]:
     if money:
         spent_total = sum(r["served"] for r in money if r["served"])
         want_money = sum(r["ordered"] for r in money if r["ordered"])
+        full_money = sum(r.get("full") or 0.0 for r in money)
         if want_money or spent_total:
             money.append({"product": "All spend", "unit": "money",
                           "served": spent_total or None,
                           "ordered": want_money or None,
+                          "full": full_money or None,
+                          "month_note": (f"${full_money:,.0f} a month across the "
+                                         f"products above"
+                                         if full_money
+                                         and round(full_money) != round(want_money)
+                                         else ""),
                           "pace": pacing_pct(spent_total or None,
                                              want_money or None),
                           "total": True})

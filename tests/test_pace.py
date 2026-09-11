@@ -257,3 +257,128 @@ def test_a_cancelled_buy_is_not_a_pacing_row():
     assert "Performance Max" in [r["product"] for r in rows]
     ordered["PPC"].pop("stopped")
     assert "PPC" in [r["product"] for r in pacing_rows(text, ordered)]
+
+
+# ------------------------------------------- a monthly goal is a rate, not a
+# ------------------------------------------- target for the calendar month
+def _kermit_rows(period="2026-08"):
+    """Kermit Celebration Days, August 2026. Four products, two launch dates,
+    and a report the panel called 62% short while every one of them was on
+    pace. Order 55727: Display, Mobile Conquesting and Online Audio from the
+    20th, CTV and Video from the 27th."""
+    import datetime as dt
+
+    import app.checks.served as S
+    from app.checks.served import pacing_rows
+
+    def want(imps, day, days):
+        return {"impressions": float(imps), "budget": None, "basis": "",
+                "started": dt.date(2026, 8, day), "days": days}
+
+    ordered = {"CTV, Video": want(160_000, 27, 5),
+               "Display": want(150_000, 20, 12),
+               "Mobile Conquesting": want(100_000, 20, 12),
+               "Online Audio": want(30_000, 20, 12)}
+    real = S.served_impressions
+    S.served_impressions = lambda _t: {
+        "by_product": {"CTV": 32_365.0, "Video": 0.0, "Display": 59_323.0,
+                       "Mobile Conquesting": 39_222.0, "Online Audio": 13_007.0},
+        "total": 168_637.0, "unattributed": 0.0, "flat": 0.0}
+    try:
+        rows = pacing_rows("Line Item Performance\n", ordered, period=period)
+    finally:
+        S.served_impressions = real
+    return {r["product"]: r for r in rows}
+
+
+def test_a_part_month_is_paced_against_the_days_it_actually_ran():
+    rows = _kermit_rows()
+    # 160,000 a month over 5 of 31 days is 25,806, and 32,365 is ahead of it.
+    assert round(rows["CTV, Video"]["ordered"]) == 25_806
+    assert rows["CTV, Video"]["pace"] > 0
+    for name, goal in (("Display", 58_065), ("Mobile Conquesting", 38_710),
+                       ("Online Audio", 11_613)):
+        assert round(rows[name]["ordered"]) == goal, name
+        assert abs(rows[name]["pace"]) < 15, name
+    # The whole report flips from 62% short to comfortably over.
+    total = rows["All impressions"]
+    assert round(total["ordered"]) == 134_194
+    assert total["pace"] > 0
+
+
+def test_the_row_says_what_the_goal_was_cut_from():
+    """The figure being divided by is on neither the order nor the report, so
+    the row has to say where it came from."""
+    note = _kermit_rows()["Display"]["month_note"]
+    assert "150,000 a month" in note
+    assert "12 of 31 days" in note and "Aug 20" in note
+    assert _kermit_rows()["All impressions"]["month_note"] == \
+        "440,000 a month across the products above"
+
+
+def test_a_full_month_is_left_alone():
+    """A line that ran the whole month is already being measured against the
+    right figure, and cutting it would be arithmetic for its own sake."""
+    import datetime as dt
+
+    import app.checks.served as S
+    from app.checks.served import pacing_rows
+
+    ordered = {"Display": {"impressions": 150_000.0, "budget": None, "basis": "",
+                           "started": dt.date(2026, 8, 1), "days": 31}}
+    real = S.served_impressions
+    S.served_impressions = lambda _t: {"by_product": {"Display": 60_000.0},
+                                       "total": 60_000.0, "unattributed": 0.0,
+                                       "flat": 0.0}
+    try:
+        row = pacing_rows("x", ordered, period="2026-08")[0]
+    finally:
+        S.served_impressions = real
+    assert row["ordered"] == 150_000.0
+    assert row["in_month"] is None and row["month_note"] == ""
+
+
+def test_a_lifetime_is_not_pro_rated():
+    """A lifetime is the whole campaign. It carries no day count, so there is
+    nothing to cut the goal by and no period is passed for it."""
+    import app.checks.served as S
+    from app.checks.served import pacing_rows
+
+    ordered = {"Display": {"impressions": 900_000.0, "budget": None,
+                           "basis": "6 months at the monthly figure",
+                           "started": None, "days": None}}
+    real = S.served_impressions
+    S.served_impressions = lambda _t: {"by_product": {"Display": 850_000.0},
+                                       "total": 850_000.0, "unattributed": 0.0,
+                                       "flat": 0.0}
+    try:
+        row = pacing_rows("x", ordered, period="2026-08")[0]
+    finally:
+        S.served_impressions = real
+    assert row["ordered"] == 900_000.0 and row["month_note"] == ""
+
+
+def test_spend_is_pro_rated_the_same_way():
+    """A month's budget is a rate too. A line twelve days old spending twelve
+    days of it is not 61% under budget."""
+    import datetime as dt
+
+    from app.checks.rules import check_pacing
+
+    ctx = {"period": "2026-08", "is_lifetime": False,
+           "budgets": {"PPC": 3100.0},
+           "ordered": {"PPC": {"started": dt.date(2026, 8, 20), "days": 12}},
+           "text": "PPC Spend\n Total Spend   $1,200.00\n"}
+    import app.checks.spend as SP
+    real = SP.report_spend
+    SP.report_spend = lambda _t: {"PPC": 1200.0}
+    try:
+        # 3,100 a month over 12 of 31 days is 1,200 - exactly on budget.
+        assert check_pacing(ctx) == []
+        SP.report_spend = lambda _t: {"PPC": 300.0}
+        out = check_pacing(ctx)
+        assert len(out) == 1 and "75% under" in out[0]["title"]
+        assert "12 of 31 days" in out[0]["detail"]
+        assert "$3,100.00 a month" in out[0]["detail"]
+    finally:
+        SP.report_spend = real

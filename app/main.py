@@ -3724,7 +3724,12 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                                  if v.get("stopped"))
             ordered = {k: v for k, v in ordered.items() if not v.get("stopped")}
             if ordered:
-                pacing = pacing_rows(pdf_text(Path(rep.stored_path)), ordered)
+                # A MONTHLY GOAL IS A RATE. The period cuts each goal to the
+                # days the product actually had - see served.pro_rata. A
+                # lifetime is the whole campaign and carries no day count, so
+                # it is unaffected either way.
+                pacing = pacing_rows(pdf_text(Path(rep.stored_path)), ordered,
+                                     period=None if rep.is_lifetime else rep.period)
                 if not pacing:
                     pacing_why = ("nothing this client bought is paced on a "
                                   "number - " + ", ".join(sorted(ordered)) +

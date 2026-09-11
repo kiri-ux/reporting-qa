@@ -861,7 +861,7 @@ def check_pacing(ctx) -> list[dict]:
     budgets = ctx.get("budgets") or {}
     if not budgets:
         return []
-    from .served import MIN_DAYS_TO_PACE
+    from .served import MIN_DAYS_TO_PACE, pro_rata
     from .spend import report_spend
 
     # The same "when did it launch" the impression rows carry. A budget is a
@@ -869,27 +869,37 @@ def check_pacing(ctx) -> list[dict]:
     when = {p: v for p, v in (ctx.get("ordered") or {}).items()}
     spent = report_spend(ctx.get("text") or "")
     out = []
-    for product, budget in sorted(budgets.items()):
-        if not budget or budget <= 0:
+    for product, full in sorted(budgets.items()):
+        if not full or full <= 0:
             continue
         got = spent.get(product)
         if got is None:
             continue                    # this report does not print its spend
+        row = when.get(product) or {}
+        days = row.get("days")
+        # A MONTH'S BUDGET IS A RATE, NOT A TARGET FOR THE CALENDAR MONTH. A
+        # line that launched on the 20th was asked for twelve days of it, and
+        # charging it the whole month says "61% under budget" about a campaign
+        # spending exactly what it should. Same arithmetic as the impression
+        # rows and the panel - see served.pro_rata.
+        budget, cut = pro_rata(full, days, ctx.get("period"))
         ratio = got / budget
         if abs(ratio - 1.0) < PACING_BAND:
             continue
-        row = when.get(product) or {}
-        days = row.get("days")
         if days is not None and days <= MIN_DAYS_TO_PACE:
             continue
         way = "under" if ratio < 1 else "over"
+        against = (f"a budget of ${budget:,.2f} over the {days} of {cut} days "
+                   f"it ran, from ${full:,.2f} a month" if cut
+                   else f"a monthly budget of ${full:,.2f}")
         out.append(_f("pacing", "warn",
                       f"{product} spend is {abs(1 - ratio) * 100:.0f}% {way} budget",
-                      f"${got:,.2f} spent against a monthly budget of "
-                      f"${budget:,.2f}.",
-                      [("Spend on the report", f"${got:,.2f}"),
-                       ("Monthly budget on the order", f"${budget:,.2f}"),
-                       ("That is", f"{ratio * 100:.0f}% of budget")]
+                      f"${got:,.2f} spent against {against}.",
+                      [("Spend on the report", f"${got:,.2f}")]
+                      + ([(f"Owed over {days} of {cut} days", f"${budget:,.2f}")]
+                         if cut else [])
+                      + [("Monthly budget on the order", f"${full:,.2f}"),
+                         ("That is", f"{ratio * 100:.0f}% of budget")]
                       + _when_rows(row)
                       + [("Flagged at", f"{PACING_BAND * 100:.0f}% either way")]))
     return out
@@ -1039,31 +1049,6 @@ def _when_rows(row) -> list[tuple[str, str]]:
     return out
 
 
-def _within_band_pro_rata(ctx, row, days: int) -> bool:
-    """Is this row on pace once the goal is cut to the days it actually ran?
-
-    False whenever the answer is not knowable - no period, no figures, or a
-    line that ran the whole month, where the goal is already the right one.
-    """
-    import calendar
-
-    period = ctx.get("period") or ""
-    served, ordered = row.get("served"), row.get("ordered")
-    if not period or served is None or not ordered or not days:
-        return False
-    try:
-        y, m = (int(x) for x in period.split("-"))
-        in_month = calendar.monthrange(y, m)[1]
-    except (ValueError, calendar.IllegalMonthError):
-        return False
-    if days >= in_month:
-        return False
-    goal = float(ordered) * days / in_month
-    if not goal:
-        return False
-    return abs((float(served) / goal * 100.0) - 100.0) < PACE_BAND
-
-
 def check_impression_pacing(ctx) -> list[dict]:
     """Impressions more than 50% off the order, either way.
 
@@ -1099,7 +1084,11 @@ def check_impression_pacing(ctx) -> list[dict]:
                    and len([p for p in ordered if is_paced(p)]) == 1)
 
     out = []
-    for row in pacing_rows(ctx.get("text") or "", ordered):
+    # THE GOAL IS CUT TO THE DAYS THE PRODUCT ACTUALLY HAD - see pro_rata. The
+    # panel does the same, so the finding and the screen quote one number.
+    for row in pacing_rows(ctx.get("text") or "", ordered,
+                           period=None if ctx.get("is_lifetime")
+                           else ctx.get("period")):
         pace = row.get("pace")
         if pace is None or abs(pace) < PACE_BAND or row.get("total"):
             continue
@@ -1125,34 +1114,38 @@ def check_impression_pacing(ctx) -> list[dict]:
         days = row.get("days")
         if days is not None and days <= MIN_DAYS_TO_PACE:
             continue
-        # AND HALF A MONTH IS JUDGED AGAINST HALF A MONTH'S GOAL.
-        #
-        # Dunham Poughkeepsie's Meta line launched on 17 August and ran 15 of
-        # the 31 days. The order's 100,000 is a MONTH's goal, so the most it
-        # could have delivered is about half of it, and 33,241 against the
-        # whole thing reads "67% short" - a number about the calendar rather
-        # than about the campaign. Against the 48,000-odd it was actually asked
-        # for over those fifteen days it is inside the band, so nothing is
-        # said.
-        #
-        # The finding already prints the launch date and the day count, so it
-        # was carrying the explanation for its own wrongness.
-        if days is not None and _within_band_pro_rata(ctx, row, days):
-            continue
+        # HALF A MONTH IS JUDGED AGAINST HALF A MONTH'S GOAL, and that now
+        # happens in pacing_rows, before `pace` is worked out. It used to be a
+        # mute button here: the row kept the whole month's goal, the finding
+        # was built out of it, and this line silenced the ones that landed in
+        # band once cut. So the panel and the finding went on quoting a figure
+        # neither of them believed - Kermit Celebration Days launched on the
+        # 20th and the 27th and read "62% short" across four products that were
+        # every one of them on pace.
 
         def fmt(v):
             return f"{v:,.0f}"
         word = "over" if pace > 0 else "short"
-        trace = [("Served on the report", fmt(row["served"])),
-                 ("Ordered", fmt(row["ordered"])),
-                 ("Difference", f"{pace:+.0f}%")]
+        # BOTH FIGURES, WHEN THE GOAL WAS CUT. "Ordered 58,065" on its own is
+        # not a number anybody recognises - it is not on the order and not on
+        # the report, it is the month's goal across the days this line had.
+        cut = row.get("in_month")
+        trace = [("Served on the report", fmt(row["served"]))]
+        if cut:
+            trace += [(f"Owed over {row['days']} of {cut} days",
+                       fmt(row["ordered"])),
+                      ("Monthly goal on the order", fmt(row["full"]))]
+        else:
+            trace.append(("Ordered", fmt(row["ordered"])))
+        trace.append(("Difference", f"{pace:+.0f}%"))
         trace += _when_rows(row)
         if row.get("basis"):
             trace.append(("Order figure is", row["basis"]))
         out.append(_f("pacing_off", "warn",
                       f"{row['product']} is {abs(pace):.0f}% {word}",
                       f"{fmt(row['served'])} served against {fmt(row['ordered'])} "
-                      f"ordered"
+                      + (f"owed over {row['days']} of {cut} days, from a monthly "
+                         f"goal of {fmt(row['full'])}" if cut else "ordered")
                       + (f" ({row['basis']})" if row.get("basis") else "")
                       + ".",
                       trace=trace))
@@ -1979,25 +1972,44 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
 AMZ_DISPLAY_WIDGET = re.compile(
     r"^[ \t]*(Amazon Premium Display\b[^\n]*?\bPerformance\b[^\n]*)$", re.M)
 AMZ_DISPLAY_LINE = re.compile(r"Amazon(?:\s+(?:Premium|Prime))?\s+Display\b", re.I)
+# The buy this check is about: Amazon Premium CTV + Video. Either half on its
+# own counts - an Amazon month can deliver all of its impressions through one
+# of the two, and a month that ran video only is exactly where a Display widget
+# with video frames in it turns up.
+AMZ_AV_LINE = re.compile(
+    r"(?:Amazon(?:\s+(?:Premium|Prime))?\s+(?:CTV|OTT|Video)"
+    r"|(?:CTV|OTT|Video)\s+(?:Amazon|Prime))\b", re.I)
 
 
-def check_rogue_amazon_display(ctx) -> list[dict]:
-    """An Amazon Premium Display widget on a report that bought no Amazon
-    Display."""
+def _amazon_av_buy(text: str) -> bool:
+    """Is this an Amazon Premium CTV/Video buy with no Amazon Display in it?
+
+    ONLY THAT BUY. The widget is not wrong in itself - a client running Amazon
+    Premium Display owes it - so the question is only ever asked of a report
+    whose Amazon lines are the video and CTV halves and nothing else.
+    """
     from .quality import line_item_names
 
-    text = ctx.get("text") or ""
-    hits = list(AMZ_DISPLAY_WIDGET.finditer(text))
-    if not hits:
-        return []
     names = [n for n, _at in line_item_names(text)]
     # NOTHING TO READ IS NOT AN ANSWER. A report with no line item grid cannot
     # say what was bought, and "no Amazon Display line" would then be true of
     # every report that failed to parse.
     if not names:
-        return []
+        return False
     if any(AMZ_DISPLAY_LINE.search(n) for n in names):
+        return False
+    return any(AMZ_AV_LINE.search(n) for n in names)
+
+
+def check_rogue_amazon_display(ctx) -> list[dict]:
+    """An Amazon Premium Display widget on an Amazon CTV + Video buy."""
+    from .quality import line_item_names
+
+    text = ctx.get("text") or ""
+    hits = list(AMZ_DISPLAY_WIDGET.finditer(text))
+    if not hits or not _amazon_av_buy(text):
         return []
+    names = [n for n, _at in line_item_names(text)]
     titles = []
     for m in hits:
         t = m.group(1).strip()
@@ -2280,7 +2292,7 @@ CHECKS: list[tuple] = [
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),
     (check_rogue_amazon_display,
-     "No Amazon Premium Display widget on a buy with no Amazon Display"),
+     "No Amazon Premium Display widget on an Amazon CTV + Video buy"),
     (check_strategy_categorized, "Every strategy line names the product it runs"),
     (check_truncated_text,  "No text is cut off for want of space"),
     (check_blank_screenshots, "Every ad screenshot rendered"),
@@ -2341,6 +2353,12 @@ CHECK_PRODUCTS: dict[str, tuple[str, ...]] = {
     "check_creative_shape": ("Social Mirror",),
     # Reads the rows of the geo-fencing table, which comes with the product.
     "check_geofence_names": ("Mobile Conquesting",),
+    # AMAZON PREMIUM CTV + VIDEO ONLY. The import maps that order to CTV and
+    # Video, so a Run on this check reads those reports and leaves the other
+    # fourteen hundred alone. The check itself then asks the narrower question
+    # - are the Amazon lines the video and CTV halves, with no Amazon Display
+    # among them - off the report's own line items.
+    "check_rogue_amazon_display": ("CTV", "Video"),
 }
 
 
@@ -2368,7 +2386,8 @@ SKIP_WHY = {
     "check_variant_preview_links": "no creative grid with a preview link column",
     "check_devices_known": "no device breakout on the report",
     "check_required_widgets": "none of this report's products owe a widget",
-    "check_rogue_amazon_display": "no Amazon Premium Display widget on the report",
+    "check_rogue_amazon_display": "not an Amazon Premium CTV or Video buy, or "
+                                  "it runs Amazon Display for real",
     "check_geofence_names": "no geo-fencing table on the report",
     "check_geofence_widget": "no geo-fenced Mobile Conquesting on the report",
     "check_rogue_ctv": "no CTV tile on the report",
@@ -2460,6 +2479,14 @@ def _rule_applies(rule, ctx) -> bool:
         # nothing about who it is for.
         return bool(ctx.get("client")) and (bool(ctx.get("text"))
                                             or bool(ctx.get("filed_as")))
+    if name == "check_rogue_amazon_display":
+        # ONLY THE AMAZON PREMIUM CTV + VIDEO BUY, AND ONLY WHERE THERE IS NO
+        # AMAZON DISPLAY. The widget belongs on an Amazon Display report, so
+        # asking the question of a report that never bought Amazon video or
+        # CTV is not a check standing down - it is a check that was never about
+        # that report. Said here so the report page reads "skipped" with the
+        # reason, rather than "passed" on 1,417 reports it never looked at.
+        return _amazon_av_buy(ctx.get("text") or "")
     if name == "check_lifetime_goal":
         return bool(ctx.get("is_lifetime")) and bool(ctx.get("ordered"))
     if name == "check_pacing_off":
