@@ -1876,6 +1876,48 @@ W_AMZ_SITE   = "Amazon Premium Site and App Performance"
 W_YT_PLACE   = "YouTube+ Placement Performance"
 W_YT_CHAN    = "Top 10 YouTube Channel Performance"
 W_YTTV_CHAN  = "Top 10 YouTube TV Channel Performance"
+# AMAZON PREMIUM IS SOLD AS CTV + VIDEO AND REPORTED AS TWO SETS OF WIDGETS.
+# TapClicks writes the CTV half's titles with either CTV or OTT in them.
+W_AMZ_CTV_CREAT = "Amazon Premium CTV Creative Performance"
+W_AMZ_OTT_CREAT = "Amazon Premium OTT Creative Performance"
+W_AMZ_CTV_COMP  = "Amazon Premium CTV Video Completion Performance by Creative"
+W_AMZ_OTT_COMP  = "Amazon Premium OTT Video Completion Performance by Creative"
+W_AMZ_VID_CREAT = "Amazon Premium Video Creative Performance"
+W_AMZ_VID_COMP  = "Amazon Premium Video Completion Performance by Creative"
+
+
+# A CREATIVE OR COMPLETION GRID NAMED FOR THAT HALF OF THE BUY, whoever sells
+# it. Renegade Marine runs plain Connected TV alongside Amazon Prime CTV and
+# TapClicks reports both under "Connected TV (CTV) Creative Performance" - so
+# asking it for an Amazon-branded CTV widget is asking for a second copy of a
+# breakout that is already on the report.
+HALF_GRID = {
+    "ctv": re.compile(r"^[ \t]*\S.*\b(?:Connected TV|CTV|OTT)\b.*"
+                      r"(?:Creative|Completion) Performance.*$", re.M),
+    "video": re.compile(r"^[ \t]*\S.*\bVideo\b.*"
+                        r"(?:Creative|Completion) Performance.*$", re.M),
+}
+
+
+def _amazon_halves(text: str) -> set[str]:
+    """Which halves of an Amazon Premium buy actually delivered this month.
+
+    {"ctv"}, {"video"}, both, or nothing. Read off the line items and their
+    impressions, because an Amazon month can deliver all of it through one of
+    the two and TapClicks prints no widgets for the half that served nothing -
+    so a half with no delivery behind it is not owed anything.
+    """
+    from .quality import line_item_totals
+
+    out: set[str] = set()
+    for name, imps, _clicks in line_item_totals(text):
+        if not imps or not re.search(r"\bAmazon\b", name, re.I):
+            continue
+        if re.search(r"\b(?:CTV|OTT)\b", name, re.I):
+            out.add("ctv")
+        elif re.search(r"\bVideo\b", name, re.I):
+            out.add("video")
+    return out
 
 # (product codes, ad-section header, [widget titles], plain-English why)
 REQUIRED_WIDGETS: list[tuple] = [
@@ -1969,8 +2011,14 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
 # The line items are what the buy is, in its own words. A report carrying real
 # Amazon Display has Amazon Display lines - "Retargeting Amazon Display",
 # "Behavioral Amazon Premium Display" - and says nothing here.
+# NOT ANCHORED TO THE LINE. "Amazon Premium Display Click Performance by Ad
+# Size" and "... Conversion Performance by Ad Size" print SIDE BY SIDE on one
+# page, so in the text they are one line, and a line-anchored pattern reads the
+# pair as a single widget with a title forty words long. That is the same shape
+# as the CTV tile bug: three tiles on one line, one anchored pattern, nothing
+# matched. Matched as a title wherever it sits on the line.
 AMZ_DISPLAY_WIDGET = re.compile(
-    r"^[ \t]*(Amazon Premium Display\b[^\n]*?\bPerformance\b[^\n]*)$", re.M)
+    r"Amazon Premium Display\s+\w+\s+Performance(?:\s+by\s+[A-Z]\w*(?:\s+[A-Z]\w*)?)?")
 AMZ_DISPLAY_LINE = re.compile(r"Amazon(?:\s+(?:Premium|Prime))?\s+Display\b", re.I)
 # The buy this check is about: Amazon Premium CTV + Video. Either half on its
 # own counts - an Amazon month can deliver all of its impressions through one
@@ -2012,17 +2060,26 @@ def check_rogue_amazon_display(ctx) -> list[dict]:
     names = [n for n, _at in line_item_names(text)]
     titles = []
     for m in hits:
-        t = m.group(1).strip()
+        t = m.group(0).strip()
         if t not in titles:
             titles.append(t)
     # THE END OF THE LINE ITEM NAME IS THE PART THAT SAYS WHICH PRODUCT IT IS.
     # The front is the client and the targeting, identical across the buy, so
     # a list of shortened fronts reads as four copies of the same row.
+    # FROM THE LAST "Amazon" TO THE END, and the word in front of it when that
+    # leaves "Amazon" standing alone. Both spellings are in the wild - "Amazon
+    # CTV" puts the product after, "Video Amazon" puts it before - and a tail
+    # of just "Amazon" says nothing about which half of the buy the line is.
     amazon = []
     for n in names:
-        m = re.search(r"\bAmazon\b.*$", n, re.I)
-        if m and m.group(0) not in amazon:
-            amazon.append(m.group(0).strip())
+        ms = list(re.finditer(r"\bAmazon\b", n, re.I))
+        if not ms:
+            continue
+        tail = n[ms[-1].start():].strip()
+        if tail.lower() == "amazon":
+            tail = " ".join(n.split()[-2:])
+        if tail not in amazon:
+            amazon.append(tail)
     return [_f("widget_rogue", "fail",
                "Amazon Premium Display widget on a buy with no Amazon Display"
                if len(titles) == 1 else
@@ -2033,7 +2090,7 @@ def check_rogue_amazon_display(ctx) -> list[dict]:
                + (" - the Amazon lines end "
                   + ", ".join(f'"{n}"' for n in amazon[:4])
                   + ("..." if len(amazon) > 4 else "") if amazon else "") + ".",
-               where=_where(ctx, hits[0].start(1), titles[0]))]
+               where=_where(ctx, hits[0].start(), titles[0]))]
 
 
 YT_TV_LINE = re.compile(r"\bYou\s*Tube\s*TV\b", re.I)
@@ -2134,6 +2191,34 @@ def check_required_widgets(ctx) -> list[dict]:
         # that had everything it owed.
         n = 1 if title == W_CTV_PUBS else len(whys)
         owed(title, n, " and ".join(whys))
+
+    # AMAZON PREMIUM'S TWO HALVES EACH CARRY THEIR OWN CREATIVE AND COMPLETION
+    # WIDGETS, AND THE LINE ITEMS SAY WHICH HALVES RAN.
+    #
+    # Window World - Bowling Green served 29,085 impressions on "Amazon CTV"
+    # and 1,202 on "Video Amazon" - 96% of the campaign was the CTV half - and
+    # the report carried the Video creative and completion widgets and not one
+    # CTV widget anywhere. The page-one CTV Completion Rate tile read 0.34%
+    # with nothing on the report to read it off.
+    #
+    # Read off the line items, and only the halves that actually delivered:
+    # TapClicks prints no widgets for a half that served nothing, and asking
+    # for them would fail a report that is complete.
+    for half, why, pair in (
+            ("ctv", "Amazon Premium CTV",
+             ((W_AMZ_CTV_CREAT, (W_AMZ_OTT_CREAT,)),
+              (W_AMZ_CTV_COMP, (W_AMZ_OTT_COMP,)))),
+            ("video", "Amazon Premium Video",
+             ((W_AMZ_VID_CREAT, ()), (W_AMZ_VID_COMP, ())))):
+        if half not in _amazon_halves(text):
+            continue
+        # AND ONLY WHEN NOTHING ON THE REPORT ALREADY BREAKS THAT HALF OUT.
+        # See HALF_GRID: a client running plain Connected TV beside Amazon
+        # Prime CTV gets one set of CTV widgets covering both.
+        if HALF_GRID[half].search(text):
+            continue
+        for title, alt in pair:
+            owed(title, 1, why, alt=alt)
 
     # YouTube. A YouTube TV only campaign owes the TV channel widget and
     # nothing else, which is why this is not in the table above: the report's

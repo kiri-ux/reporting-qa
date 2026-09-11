@@ -426,3 +426,69 @@ def test_the_check_is_scoped_to_the_amazon_products():
     """A Run on this check reads the CTV and Video reports, not all 1,417."""
     from app.checks.rules import CHECK_PRODUCTS
     assert CHECK_PRODUCTS["check_rogue_amazon_display"] == ("CTV", "Video")
+
+
+# ------------------------------------ the half of an Amazon buy with no widget
+WW = Path(__file__).parent / "fixtures" / "window_world_bowling_green.pdf"
+
+
+def _ww() -> str:
+    from app.checks.parser import pdf_text
+    return pdf_text(WW)
+
+
+def test_an_amazon_ctv_half_with_no_ctv_widget_anywhere():
+    """Window World - Bowling Green served 29,085 impressions on "Amazon CTV"
+    and 1,202 on "Video Amazon" - 96% of the campaign was the CTV half - and
+    the report carried the Video creative and completion widgets and not one
+    CTV widget anywhere. The page-one tile read 0.34% with nothing on the
+    report to read it off."""
+    from app.checks.rules import _amazon_halves, check_required_widgets
+    text = _ww()
+    assert _amazon_halves(text) == {"ctv", "video"}
+    assert [f["title"] for f in check_required_widgets({"text": text,
+                                                        "products": set()})] == \
+        ["No Amazon Premium CTV Creative Performance widget",
+         "No Amazon Premium CTV Video Completion Performance by Creative widget"]
+
+
+def test_plain_connected_tv_beside_amazon_ctv_covers_both(sample):
+    """Renegade Marine runs Connected TV alongside Amazon Prime CTV - 14,142
+    impressions on it - and TapClicks reports both under "Connected TV (CTV)
+    Creative Performance". Asking for an Amazon-branded copy would fail a
+    report that carries everything it owes."""
+    from app.checks.parser import pdf_text
+    from app.checks.rules import _amazon_halves, check_required_widgets
+    fx = Path(__file__).parent / "fixtures" / "renegade_marine.pdf"
+    text = pdf_text(fx)
+    assert "ctv" in _amazon_halves(text)
+    assert check_required_widgets({"text": text, "products": set()}) == []
+    # And the everything-sample, which writes the same widgets with OTT in the
+    # title instead of CTV.
+    assert check_required_widgets({"text": sample, "products": set()}) == []
+
+
+def test_a_half_that_served_nothing_is_owed_nothing():
+    """An Amazon month can deliver all of it through one of the two, and
+    TapClicks prints no widgets for the half that served nothing."""
+    from app.checks.rules import _amazon_halves
+    grid = ("Line Item Performance\n"
+            " Acme - Boats Behavioral Amazon CTV      12,000   10   0.08%\n"
+            " Acme - Boats Behavioral Amazon Video         0    0   0.00%\n")
+    assert _amazon_halves(grid) == {"ctv"}
+
+
+def test_both_display_widgets_are_named_when_they_share_a_line():
+    """"Click Performance by Ad Size" and "Conversion Performance by Ad Size"
+    print side by side, so in the text they are one line. A line-anchored
+    pattern read the pair as one widget with a forty-word title - the same
+    shape as the CTV tile bug."""
+    from app.checks.rules import check_rogue_amazon_display
+    out = check_rogue_amazon_display({"text": _ww()})
+    assert len(out) == 1
+    assert out[0]["title"].startswith("2 Amazon Premium Display widgets")
+    assert '"Amazon Premium Display Click Performance by Ad Size"' in out[0]["detail"]
+    assert '"Amazon Premium Display Conversion Performance by Ad Size"' in out[0]["detail"]
+    # "Amazon CTV" puts the product after the word, "Video Amazon" before it.
+    assert '"Amazon CTV"' in out[0]["detail"]
+    assert '"Video Amazon"' in out[0]["detail"]
