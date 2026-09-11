@@ -219,7 +219,8 @@
          moment something makes them wrong: a rule change reaches them through
          the report's own Check this file again, and marking a logo re-checks
          every report carrying it, signed off or not. #}
-      <a href="/cycle.csv?period={{ period }}" class="on">Download CSV</a>
+      <a href="{{ csv_href }}" class="on"
+         data-tip="Every row the filters leave, not the page. Carries the file name, what it was flagged for, whether it needs resending and a link to each report.">Download CSV</a>
     </span>
   </div>
 

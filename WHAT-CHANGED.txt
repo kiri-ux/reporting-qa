@@ -1,42 +1,38 @@
-build 2026.09.11-236
+build 2026.09.11-237
 Changed files only. Everything since 130 - install this one.
 37 checks.
+
+DOWNLOAD CSV IS THE ROWS THE FILTERS LEFT. It exported the whole cycle - every
+filter on the board was ignored, so the file you got after narrowing 1,275
+reports down to the nine that needed repulling had all 1,275 in it. It is the
+same route as the board now rather than a second one that filters for itself:
+written twice it drifts the first time a filter changes.
+
+Every row the filter leaves, not the page, and the columns are the ones the
+question needs:
+
+  File            what the report is called
+  Severity        where it stands
+  Findings        what it was flagged for, by kind
+  Needs resend    it has gone to the partner and a failure appeared after
+  Sent as         the name it was filed under
+  Link            straight to the report
+
+--- also in this install ---
 
 RUN FOUND NOTHING BECAUSE THE SCOPE WAS BUILT ON THE ANSWER THE FIX HAD JUST
 CORRECTED. A report's product list is what the detector made of it the last
 time it was read, and the reports the CTV scope exists for are exactly the ones
-the old detector got wrong: a report whose CTV prints as OTT carried no CTV
-product, nothing has re-read it since, and the stored list still says so. The
-filter skipped precisely the reports the check was written for.
-
-The orders count as well now. A report is in the CTV run if its stored products
-mention CTV OR the client bought a CTV product. The orders do not have the
-stale problem - they are re-imported whenever the import code changes, so they
-say what the client bought today.
-
-An empty run says "no reports to read" and says on hover what it looked at, on
-the report and on the order. It said nothing anybody would notice.
-
---- also in this install, from 235 ---
+the old detector got wrong. The orders count as well now: a report is in the
+CTV run if its stored products mention CTV OR the client bought a CTV product.
 
 EVERY BUTTON IN THE RULES SHEET WAS DOING NOTHING, in silence. A browser sends
-a submit button's own name and value only when it is the one clicked - which is
-what lets Run, the row's On/Off and the two bulk buttons share one form. The
-sheet posts the form itself, and the call it used does not include the button.
-It worked on the full page, where the browser submits for itself.
+a submit button's own name and value only when it is the one clicked. The sheet
+posts the form itself, and the call it used does not include the button.
 
-NOTHING RE-CHECKS ITSELF ANY MORE. It all lives on the Reporting flags page:
+NOTHING RE-CHECKS ITSELF ANY MORE. Run all re-checks, Run against one check,
+and Stop - all on the Reporting flags page, all saying how far through they
+are. The order re-read stays automatic: the product checks stand down entirely
+until it has happened and nobody would know to press it.
 
-  Run all re-checks     everything on this cycle the current rules have not read
-  Run                   one check, over the reports it can say anything about
-  Stop                  ends a run at the end of the batch it is on
-
-A run says how far through it is - "412 of 1,395" - and what it did when it
-finishes: "96 read, 3 changed", or "no reports to read".
-
-THE ORDER RE-READ STAYS AUTOMATIC. The order list is parsed once and only the
-answer is kept, so a change to the import code leaves every loaded order
-carrying the old reading - and the product checks stand down entirely until it
-is re-read. Nobody would know to press that.
-
-975 tests pass.
+976 tests pass.

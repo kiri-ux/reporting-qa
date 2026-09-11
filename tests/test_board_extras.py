@@ -4494,3 +4494,73 @@ def test_the_same_problem_is_one_line_in_the_filter():
     # And a row is found by the kind, not by the code.
     assert _finding_codes(rows[0]) == {"ctr_mismatch"}
     assert kind_of("nothing_written_yet") == "nothing_written_yet"
+
+
+def test_the_csv_is_the_rows_the_filters_left(tmp_path, monkeypatch):
+    """It exported the whole cycle. Every filter on the board - partner,
+    status, which finding - was ignored, so the file you got after narrowing
+    1,275 reports down to the nine that needed repulling had all 1,275 in it.
+
+    It is the same route as the board now rather than a second one that filters
+    for itself. Written twice it would drift the first time a filter changed;
+    written once it cannot.
+    """
+    import datetime as _dt
+    import importlib
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'c.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import app.config
+    import app.db
+    import app.main
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)
+    app.db.init_db()
+    from fastapi.testclient import TestClient
+
+    db = app.db.SessionLocal()
+    b = app.db.Batch(market="M1", period="2026-08")
+    db.add(b)
+    db.flush()
+    plan = [("Alpha", "M1", "row_ctr"), ("Beta", "M1", "row_ctr"),
+            ("Gamma", "M2", "pacing"), ("Delta", "M2", None)]
+    for i, (client, market, code) in enumerate(plan):
+        db.add(app.db.OrderLine(market=market, client=client,
+                                account_ids=str(1000 + i), product="Display",
+                                starts_on=_dt.date(2026, 8, 1),
+                                ends_on=_dt.date(2026, 9, 30), live=True))
+        finds = ([{"code": code, "severity": "fail", "title": "x"}]
+                 if code else [])
+        db.add(app.db.Report(batch_id=b.id, period="2026-08", client=client,
+                             market=market, account_ids=str(1000 + i),
+                             filename=f"{client}.pdf", stored_path="",
+                             severity="fail" if code else "pass",
+                             findings=finds, checks=[], acked=[],
+                             review_state="new", rules_version="x"))
+    db.commit()
+    db.close()
+
+    c = TestClient(app.main.app)
+    whole = c.get("/cycle.csv?period=2026-08&done=all").text
+    assert whole.count("\r\n") == 5, whole            # header and four rows
+    assert "Findings" in whole.splitlines()[0]
+
+    # The finding filter reaches the file.
+    one = c.get("/cycle.csv?period=2026-08&done=all&col_finding=ctr_mismatch").text
+    assert "Alpha" in one and "Beta" in one
+    assert "Gamma" not in one and "Delta" not in one
+
+    # And so does the partner filter.
+    two = c.get("/cycle.csv?period=2026-08&done=all&col_partner=M2").text
+    assert "Gamma" in two and "Alpha" not in two
+
+    # The file says what it is for: the name, what it was flagged for, whether
+    # it has to go out again, and where to open it.
+    head = whole.splitlines()[0]
+    for col in ("File", "Severity", "Findings", "Needs resend", "Link"):
+        assert col in head, col
+
+    # The link on the page carries the filters and drops the paging.
+    page = c.get("/cycle?period=2026-08&col_partner=M2&page=2").text
+    assert "/cycle.csv?period=2026-08&amp;col_partner=M2" in page
+    assert "page=2" not in page[page.index("/cycle.csv"):page.index("/cycle.csv") + 90]

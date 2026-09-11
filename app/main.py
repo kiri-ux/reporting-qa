@@ -1133,6 +1133,15 @@ def orders_view(request: Request, view: str = Query("clients"),
                   if settings.s3_configured else ""})
 
 
+def _csv_href(request: Request) -> str:
+    """/cycle.csv with this page's filters and without its paging."""
+    from urllib.parse import urlencode
+
+    keep = [(k, v) for k, v in request.query_params.multi_items()
+            if k not in ("page", "cards", "rows", "frag")]
+    return "/cycle.csv" + ("?" + urlencode(keep) if keep else "")
+
+
 def _csv_response(filename: str, header: list[str], rows) -> Response:
     """Whatever the page is showing, downloadable. Written through csv.writer
     so a client name with a comma or a quote in it survives the trip."""
@@ -1437,6 +1446,14 @@ def _recheck_jobs(db: Session) -> dict:
     return out
 
 
+# THE CSV IS THE SAME ROUTE, not a second one that filters for itself.
+#
+# It was its own function and it exported the whole cycle: every filter on the
+# board - partner, status, which finding - was ignored, so the file you got
+# after narrowing 1,275 reports down to the nine that needed repulling had all
+# 1,275 in it. Written twice it would drift the first time a filter changed;
+# written once it cannot.
+@app.get("/cycle.csv")
 @app.get("/", response_class=HTMLResponse)
 @app.get("/cycle", response_class=HTMLResponse)
 def cycle_view(request: Request, period: str = Query(""), group: str = Query(""),
@@ -1636,6 +1653,37 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # half - and a signed-off report sorts last of all when they are shown.
     rows.sort(key=lambda e: (1 if e.ready else 0, 0 if e.report else 1))
 
+    if request.url.path.endswith(".csv"):
+        # EVERY ROW THE FILTER LEAVES, not the page. The table is capped and
+        # the question the file answers - which reports had to be redone - is
+        # not a question about the fifty on screen.
+        from .flag_catalog import kind_name
+        base = str(request.base_url).rstrip("/")
+        out = []
+        for e in rows:
+            r = e.report
+            finds = sorted({kind_name(k) for k in _finding_codes(e)})
+            out.append([
+                e.market, e.client, e.kind, ", ".join(e.products),
+                e.account_ids, e.line_ids, e.starts_on or "", e.ends_on or "",
+                e.buyer, e.reporter, STATE_LABEL.get(e.state, e.state),
+                r.filename if r else "",
+                r.effective_severity if r else "",
+                "; ".join(finds),
+                "yes" if (r and r.needs_resend) else "",
+                (r.delivered_as or r.dbx_as or "") if r else "",
+                (r.reviewed_by if r else e.done_by) or "",
+                (r.review_note if r else e.done_note) or "",
+                f"{base}/report/{r.id}/view" if r else "",
+            ])
+        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M")
+        return _csv_response(
+            f"report-qa-{period}-{stamp}.csv",
+            ["Partner", "Client", "Kind", "Products", "Order", "Line items",
+             "Starts", "Ends", "Buyer", "Reporter", "Status", "File",
+             "Severity", "Findings", "Needs resend", "Sent as", "Reviewed by",
+             "Note", "Link"], out)
+
     # The reports table was 24,851 of the page's 30,342 DOM nodes and four
     # seconds of browser time. The server was never the slow part.
     total = len(rows)
@@ -1688,6 +1736,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # 145 others, so the one thing you came to the page for - the link you
         # are about to send - was found by scrolling.
         "delivered": delivered,
+        # THE FILE FOLLOWS THE FILTERS, so the link carries them. Paging does
+        # not go with it - the file is every row the filter leaves.
+        "csv_href": _csv_href(request),
         "views": _saved_views(db),
         "not_owed": sorted(not_owed, key=lambda r: (r["market"] or "",
                                                     r["client"] or "")),
@@ -2834,24 +2885,6 @@ def cycle_recheck(period: str = Form(""), group: str = Form(""),
               skip_signed=False)
     back = f"/cycle?period={period}" + (f"&group={quote(group)}" if group else "")
     return RedirectResponse(back, status_code=303)
-
-
-@app.get("/cycle.csv")
-def cycle_csv(period: str = Query(""), db: Session = Depends(get_db)):
-    from .board import expected_for
-    from .cycle import current_period
-    period = period or settings.default_period or current_period()
-    rows = [[e.market, e.client, e.kind, ", ".join(e.products),
-             e.account_ids, e.line_ids, e.starts_on or "", e.ends_on or "",
-             e.buyer, e.reporter,
-             e.state, e.report.reviewed_by if e.report else e.done_by,
-             e.report.review_note if e.report else e.done_note]
-            for e in expected_for(db, period)]
-    return _csv_response(f"report-qa-cycle-{period}.csv",
-                         ["Partner", "Client", "Kind", "Products",
-                          "Order", "Line items", "Starts", "Ends", "Buyer",
-                          "Reporter", "Status",
-                          "Reviewed by", "Note"], rows)
 
 
 @app.get("/inbound", response_class=HTMLResponse)
