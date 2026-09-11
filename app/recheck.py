@@ -448,8 +448,15 @@ def recent_periods(n: int) -> list[str]:
 def _stale_query(db: Session, periods: list[str] | None, group: str | None,
                  period: str | None, stale_only: bool = True,
                  skip_signed: bool = False, signed_only: bool = False,
-                 logo: str | None = None):
+                 logo: str | None = None, products: tuple | None = None):
     q = select(Report)
+    if products:
+        # ONLY THE REPORTS A CHECK CAN SAY ANYTHING ABOUT. A rule about the CTV
+        # tile has nothing to say about a report with no CTV on it, and reading
+        # twelve hundred PDFs to find the hundred it is about is the difference
+        # between an answer this morning and an answer tomorrow.
+        from sqlalchemy import or_
+        q = q.where(or_(*[Report.products.ilike(f"%{p}%") for p in products]))
     if stale_only:
         q = q.where(Report.rules_version != rules_version())
     if logo:
@@ -487,11 +494,11 @@ def _stale_query(db: Session, periods: list[str] | None, group: str | None,
 def stale_count(db: Session, *, scoped: bool = False, group: str | None = None,
                 period: str | None = None, stale_only: bool = True,
                 skip_signed: bool = False, signed_only: bool = False,
-                logo: str | None = None) -> int:
+                logo: str | None = None, products: tuple | None = None) -> int:
     from sqlalchemy import func
     periods = recent_periods(settings.recheck_periods) if scoped else None
     q = _stale_query(db, periods, group, period, stale_only, skip_signed,
-                     signed_only, logo)
+                     signed_only, logo, products)
     return db.scalar(select(func.count()).select_from(q.subquery())) or 0
 
 
@@ -500,12 +507,13 @@ def _stale_batch(db: Session, limit: int, *, scoped: bool = True,
                  stale_only: bool = True, after: int = 0,
                  skip_signed: bool = False,
                  signed_only: bool = False,
-                 logo: str | None = None) -> list[Report]:
+                 logo: str | None = None,
+                 products: tuple | None = None) -> list[Report]:
     """Newest cycles first. The month somebody is working on is the one where a
     stale answer is actually in the way."""
     periods = recent_periods(settings.recheck_periods) if scoped else None
     q = _stale_query(db, periods, group, period, stale_only, skip_signed,
-                     signed_only, logo)
+                     signed_only, logo, products)
     if after:
         q = q.where(Report.id > after)
     # Stale-only runs shrink their own queue, so newest-first is right. A run
@@ -861,7 +869,8 @@ def _touch(db: Session, key: str, **fields) -> None:
 def start_job(db: Session, key: str, *, group: str | None = None,
               period: str | None = None, stale_only: bool = True,
               skip_signed: bool = False, signed_only: bool = False,
-              logo: str | None = None) -> dict:
+              logo: str | None = None, products: tuple | None = None,
+              note: str = "") -> dict:
     """Re-check a partner, or a whole cycle, now.
 
     The sweep gets to everything eventually; this is for when eventually is not
@@ -881,9 +890,10 @@ def start_job(db: Session, key: str, *, group: str | None = None,
     row.state = "running"
     row.total = stale_count(db, group=group, period=period,
                             stale_only=stale_only, skip_signed=skip_signed,
-                            signed_only=signed_only, logo=logo)
+                            signed_only=signed_only, logo=logo,
+                            products=products)
     row.done = row.changed = 0
-    row.note = ""
+    row.note = note or ""
     row.started_at = row.updated_at = dt.datetime.utcnow()
     db.commit()
     total = row.total
@@ -901,7 +911,8 @@ def start_job(db: Session, key: str, *, group: str | None = None,
                                      period=period, stale_only=stale_only,
                                      after=0 if stale_only else after,
                                      skip_signed=skip_signed,
-                                     signed_only=signed_only, logo=logo)
+                                     signed_only=signed_only, logo=logo,
+                                     products=products)
                 if not batch:
                     break
                 if not stale_only:
@@ -921,7 +932,8 @@ def start_job(db: Session, key: str, *, group: str | None = None,
                     # Written every report, not every batch: a job that stops
                     # halfway has to be able to say where it got to.
                     _touch(own, key, done=done, changed=changed)
-            _touch(own, key, state="done", done=done, changed=changed)
+            _touch(own, key, state="done", done=done, changed=changed,
+                   note=note)
         except Exception as exc:                                 # noqa: BLE001
             log.warning("recheck job %s stopped: %s", key, exc)
             try:

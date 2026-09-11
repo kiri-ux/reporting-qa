@@ -1901,3 +1901,109 @@ def check_store_visits(ctx) -> list[dict]:
                       f"not clipped, so every visit should be in it.", trace,
                       where=spot))
     return out
+
+
+# ------------------------------- a preview that is not the kind of ad it is on
+# WHAT A SOCIAL MIRROR CREATIVE LOOKS LIKE, which is the half the name cannot
+# tell you. Social Mirror renders one creative into a social feed, so its
+# artwork is a square, a feed image or a story - 1080x1080, 1200x628,
+# 1080x1920. What turns up instead, often, is a display build: a leaderboard or
+# a banner, sitting in the Social Mirror grid with a preview that is plainly a
+# display ad rendered at a shape no social feed uses.
+#
+# The naming rule catches the ones whose file name still carries the size. This
+# catches the picture, which is the thing being read, and it is a different
+# finding: one is a name to fix, this is the wrong creative on the report.
+#
+# ONLY THE WIDE SHAPES ARE SAFE TO CALL. The widest social creative is the
+# 1200x628 feed image at 1.91:1; a leaderboard is 8:1, a banner 6.4:1, a
+# billboard 3.9:1. There is a clean gap between those and nothing to argue
+# about. The tall display sizes are NOT here on purpose - a 300x600 half page
+# is 0.5:1 and a story is 0.5625:1, and no threshold separates those two
+# without being wrong about somebody's story every month.
+BANNER_RATIO = 2.4
+# Below this it is an icon, a play button or a rating star, not a preview.
+MIN_PREVIEW_PX = 120
+
+
+def page_images(path) -> dict:
+    """{page number: [(width, height)]} for the pictures on each page.
+
+    TEMPLATE CHROME IS DROPPED, and it is dropped by being reused rather than
+    by being recognized. The partner's logo is one PDF object drawn on all
+    eleven pages, and every station's is a different shape - a wide wordmark
+    reads as a leaderboard to anything measuring width over height. An object
+    that appears on more than one page is furniture; a creative preview appears
+    once.
+
+    Best effort: no poppler, an unreadable file, an odd listing - all of them
+    mean no pictures rather than a broken check.
+    """
+    from .. import proc as _proc
+
+    try:
+        out = _proc.run(["pdfimages", "-list", str(path)],
+                        capture_output=True, text=True, timeout=60)
+    except Exception:                                            # noqa: BLE001
+        return {}
+    rows = []
+    for line in (out.stdout or "").splitlines():
+        bits = line.split()
+        # page num type width height ... object_id ...
+        if len(bits) < 11 or bits[2] != "image":
+            continue
+        try:
+            page, w, h, obj = int(bits[0]), int(bits[3]), int(bits[4]), bits[10]
+        except ValueError:
+            continue
+        rows.append((page, w, h, obj))
+    seen: dict = {}
+    for page, _w, _h, obj in rows:
+        seen.setdefault(obj, set()).add(page)
+    got: dict = {}
+    for page, w, h, obj in rows:
+        if len(seen.get(obj) or ()) > 1:
+            continue
+        got.setdefault(page, []).append((w, h))
+    return got
+
+
+def check_creative_shape(ctx) -> list[dict]:
+    """A Social Mirror preview that is a display banner."""
+    pages = ctx.get("page_text") or []
+    path = ctx.get("path")
+    if not pages or not path:
+        return []
+    pics = page_images(path)
+    if not pics:
+        return []
+    bad, first = [], None
+    for i, text in enumerate(pages, start=1):
+        if not SOCIAL_MIRROR_GRID.search(text):
+            continue
+        shots = [(w, h) for w, h in (pics.get(i) or [])
+                 if w >= MIN_PREVIEW_PX and h > 0]
+        wide = [(w, h) for w, h in shots if w / h >= BANNER_RATIO]
+        if not wide:
+            continue
+        # THE NAME, WHEN THE COUNTS AGREE. pdfimages lists a page's pictures in
+        # the order they are drawn, which is the order of the rows - but only
+        # while there is one picture per row. Where anything else is on the
+        # page the pairing is a guess, and a finding naming the wrong creative
+        # is worse than one naming none.
+        names = [n for _t, n, _at in creative_rows(text)]
+        if len(names) == len(shots):
+            pairs = dict(zip(shots, names))
+            bad += [pairs[s] for s in wide if s in pairs]
+        else:
+            bad += [f"{w}x{h}" for w, h in wide]
+        if first is None:
+            first = i
+    if not bad:
+        return []
+    return [_f("creative_shape", "fail",
+               f"{len(bad)} Social Mirror preview"
+               f"{'s' if len(bad) > 1 else ''} {'are' if len(bad) > 1 else 'is'}"
+               f" a display banner",
+               _sample(bad),
+               where=f"p{first}" if first else "")]

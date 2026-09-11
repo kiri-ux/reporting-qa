@@ -2006,6 +2006,7 @@ def _behind_count(db: Session) -> int:
 @app.post("/checks/set")
 def checks_set(request: Request, pick: list[str] = Form(default=[]),
                one: str = Form(""), on: str = Form(""), back: str = Form(""),
+               run: str = Form(""), period: str = Form(""),
                who: str = Form(""), db: Session = Depends(get_db)):
     """Switch checks on or off - one from its own row, or every ticked one.
 
@@ -2024,7 +2025,12 @@ def checks_set(request: Request, pick: list[str] = Form(default=[]),
 
     known = {fn.__name__ for fn, _ in CHECKS}
     name = who.strip() or whoami(request) or ""
-    if one:
+    if run:
+        # The same form, a third button. A browser sends a button's own name
+        # and value only when it is the one pressed, so Run, the row's switch
+        # and the two bulk buttons do not get in each other's way.
+        _start_check_run(db, run, period)
+    elif one:
         key, _sep, want = one.partition("|")
         if key in known:
             set_check(db, key, want == "1", who=name)
@@ -2052,6 +2058,37 @@ def _back_to_rules(request: Request, back: str = "") -> str:
     if to.startswith("/rules") and "tab=" not in to:
         to += ("&" if "?" in to else "?") + "tab=flags"
     return to
+
+
+@app.post("/checks/run")
+def checks_run(request: Request, name: str = Form(""), period: str = Form(""),
+               back: str = Form(""), db: Session = Depends(get_db)):
+    """Re-check now, over only the reports this check can say anything about.
+
+    The sweep gets to everything eventually, and eventually was overnight and
+    still going. A rule about the CTV tile has nothing to say about a report
+    with no CTV on it, so this reads the hundred reports that carry the product
+    rather than the twelve hundred on the board.
+
+    It is a full re-check of those reports, not a run of that one rule: the
+    cost is reading the PDF, which happens either way, and half-judging a
+    report is how a report ends up carrying two different builds' answers.
+    """
+    _start_check_run(db, name, period)
+    return RedirectResponse(_back_to_rules(request, back), status_code=303)
+
+
+def _start_check_run(db: Session, name: str, period: str = "") -> None:
+    from .checks.rules import CHECKS, CHECK_PRODUCTS
+    from .cycle import current_period
+    from .recheck import start_job
+
+    known = {fn.__name__: label for fn, label in CHECKS}
+    if name not in known:
+        return
+    period = period or settings.default_period or current_period()
+    start_job(db, f"check:{name}:{period}", period=period, stale_only=False,
+              products=CHECK_PRODUCTS.get(name), note=known[name][:255])
 
 
 @app.post("/checks/hold")
@@ -2498,14 +2535,21 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
     # to turn one off from - a check that is wrong more often than it is right
     # costs more than it saves, and until now stopping one meant a deploy.
     from .checkctl import held, switched_off
+    from .checks.rules import CHECK_PRODUCTS
+    from .recheck import running_jobs, stale_count
     off = switched_off()
+    jobs = running_jobs(db)
     for g in groups:
         for c in g["checks"]:
             c["n"] = counts.get(c["key"], 0)
             c["on"] = c["key"] not in off
+            # HOW MANY REPORTS RUNNING IT WOULD READ, so the button says what
+            # it costs before it is pressed rather than after.
+            c["scope"] = CHECK_PRODUCTS.get(c["key"])
+            c["job"] = jobs.get(f"check:{c['key']}:{period}")
         g["n"] = sum(c["n"] for c in g["checks"] if c["on"])
     ctx = {"nav": "rules", "min_days": MIN_DAYS_IN_MONTH,
-           "flag_period": month_label(period),
+           "flag_period": month_label(period), "flag_period_key": period,
            "checks_off": sorted(off), "recheck_held": held(),
            # WHICH TAB, IN THE URL. The page has no script of its own - the
            # sheet injects it as innerHTML - so a switch that reloaded it

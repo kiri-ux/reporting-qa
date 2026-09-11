@@ -1557,3 +1557,109 @@ def test_a_spend_product_is_read_off_its_own_tiles():
     # The "Client Ad Cost" column inside a creative table is not a widget title.
     assert detect("Creative Group Name   Search Themes   Client Ad Cost   "
                   "Client CPE   Impressions   Events   Event Rate\n", []) == set()
+
+
+def _grid_pdf(dirpath, shots):
+    """A two-page report whose second page is a Social Mirror grid.
+
+    `shots` is [(width, height)] for the previews drawn on it. The station logo
+    is drawn on both pages, which is what makes it furniture.
+    """
+    from PIL import Image
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    logo = dirpath / "logo.png"
+    Image.new("RGB", (200, 60), (0, 0, 0)).save(logo)
+    files = []
+    for i, (w, h) in enumerate(shots):
+        f = dirpath / f"shot{i}.png"
+        Image.new("RGB", (w, h), (30 + i * 40, 90, 200)).save(f)
+        files.append(f)
+    out = dirpath / "grid.pdf"
+    c = canvas.Canvas(str(out), pagesize=letter)
+    for page in (1, 2):
+        c.drawImage(str(logo), 30, 730, width=100, height=30)
+        if page == 2:
+            c.drawString(40, 700, "Social Mirror Creative Performance")
+            c.drawString(40, 685, "Preview Image  Creative Name  Impressions"
+                                  "  Clicks  CTR")
+            y = 640
+            for i, f in enumerate(files):
+                c.drawString(40, y, f"Acme_Social Mirror_{i}.gif   1,000"
+                                    f"   5   0.50%")
+                c.drawImage(str(f), 300, y - 10, width=90, height=20)
+                y -= 100
+        else:
+            c.drawString(40, 700, "Digital Marketing Report")
+        c.showPage()
+    c.save()
+    return out
+
+
+def _shape_ctx(path):
+    import subprocess
+    txt = subprocess.run(["pdftotext", "-layout", str(path), "-"],
+                         capture_output=True, text=True).stdout
+    return {"text": txt, "page_text": txt.split("\f"), "path": path}
+
+
+def test_a_display_banner_in_the_social_mirror_grid_is_a_finding(tmp_path):
+    """WHAT A SOCIAL MIRROR CREATIVE LOOKS LIKE, which the name cannot tell you.
+
+    Social Mirror renders one creative into a social feed, so the artwork is a
+    square, a feed image or a story. What turns up instead is a display build -
+    a leaderboard sitting in the Social Mirror grid, at a shape no social feed
+    uses. The naming rule catches the ones whose file name still carries the
+    size; this catches the picture, which is the thing being read.
+    """
+    pytest.importorskip("reportlab")
+    from app.checks.quality import check_creative_shape
+
+    # A leaderboard and a banner among the squares.
+    pdf = _grid_pdf(tmp_path, [(728, 90), (1080, 1080), (320, 50)])
+    got = check_creative_shape(_shape_ctx(pdf))
+    assert len(got) == 1, got
+    assert got[0]["code"] == "creative_shape"
+    assert got[0]["title"].startswith("2 Social Mirror previews")
+    assert got[0]["where"] == "p2"
+
+
+def test_the_social_shapes_are_left_alone(tmp_path):
+    """The square, the feed image and the story. The tall display sizes are
+    deliberately not called: a 300x600 half page is 0.5:1 and a story is
+    0.5625:1, and no threshold separates those without being wrong about
+    somebody's story every month."""
+    pytest.importorskip("reportlab")
+    from app.checks.quality import check_creative_shape
+
+    pdf = _grid_pdf(tmp_path, [(1080, 1080), (1200, 628), (1080, 1920),
+                               (300, 600)])
+    assert check_creative_shape(_shape_ctx(pdf)) == []
+
+
+def test_the_station_logo_is_furniture_not_a_preview(tmp_path):
+    """Every station's logo is a different shape and a wide wordmark reads as a
+    leaderboard to anything measuring width over height. It is dropped by being
+    drawn on every page rather than by being recognized."""
+    pytest.importorskip("reportlab")
+    from app.checks.quality import check_creative_shape, page_images
+
+    pdf = _grid_pdf(tmp_path, [(1080, 1080)])
+    pics = page_images(pdf)
+    assert (200, 60) not in [s for got in pics.values() for s in got]
+    assert check_creative_shape(_shape_ctx(pdf)) == []
+
+
+def test_a_real_report_with_a_story_creative_is_quiet():
+    """Central Penn's Social Mirror grid carries one 400x1061 story. It is the
+    shape the check is written to leave alone, on a real file."""
+    from pathlib import Path
+
+    from app.checks.quality import check_creative_shape, page_images
+
+    pdf = Path(__file__).resolve().parent / "fixtures" / "central_penn.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    assert (400, 1061) in page_images(pdf).get(5, [])
+    assert check_creative_shape(_shape_ctx(pdf)) == []

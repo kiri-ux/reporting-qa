@@ -82,31 +82,20 @@
        right there. #}
     <div class="msg">
       <b>{{ stale.total }} reports are being re-checked in the background.</b>
-      It works through on its own and the number comes down - nothing is wrong
-      and nothing needs pressing. Pages are slower while it runs.
-      {# SIGNED-OFF REPORTS ARE IN THAT NUMBER NOW. They are what has gone to
-         the partner, so a check added afterward has to reach them; a new
-         failure on one shows as Report review rather than dropping back into
-         the pile waiting to be read. #}
-      {% if stale.signed_stale %}
-        <div style="margin-top:6px">{{ stale.signed_stale }} of them
-          {{ 'has' if stale.signed_stale == 1 else 'have' }} been signed off.
-          A new failure on one that has gone out shows as Report review.</div>
-      {% endif %}
-      <div class="acct" style="margin-top:5px">Queued by
-        <b>{{ build_label }}</b></div>
+      Pages are slower while it runs.
     </div>
-    {# AND A WAY TO SAY "NOT THIS ONE".
-       Most deploys do not change how a report is judged, and the fingerprint
-       cannot tell: it is a hash, and it moves when the FORMULA changes as
-       readily as when a rule does. One build changed the formula itself and
-       queued 872 reports to be read again to arrive at exactly what they
-       already said. That is an afternoon of somebody's box for nothing, and
-       there was no way to stop it. #}
-    <form method="post" action="/cycle/recheck/skip" style="margin-top:8px">
+    {# THE BUILD AND THE WAY OUT, ON ONE LINE, at the end of the sentence they
+       belong to.
+       AND A WAY TO SAY "NOT THIS ONE". Most deploys do not change how a report
+       is judged, and the fingerprint cannot tell: it is a hash, and it moves
+       when the FORMULA changes as readily as when a rule does. One build
+       changed the formula itself and queued 872 reports to be read again to
+       arrive at exactly what they already said. #}
+    <form method="post" action="/cycle/recheck/skip" class="staleact">
       <input type="hidden" name="period" value="{{ period }}">
+      <span class="acct">Queued by <b>{{ build_label }}</b></span>
       <button class="mini" type="submit"
-              data-tip="Marks all {{ stale.total }} as current without reading them, and stops the sweep. Use it when you know the deploy changed nothing about how a report is judged - the build note above says. If it DID change a rule, this skips corrections that were owed.">Skip this re-check</button>
+              data-tip="Marks all {{ stale.total }} as current without reading them, and stops the sweep. Use it when you know the deploy changed nothing about how a report is judged. If it DID change a rule, this skips corrections that were owed.">Skip this re-check</button>
     </form>
   </div>
 {% endif %}

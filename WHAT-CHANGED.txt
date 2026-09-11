@@ -1,40 +1,27 @@
-build 2026.09.10-230
+build 2026.09.11-232
 Changed files only. Everything since 130 - install this one.
-36 checks.
+37 checks.
 
-RE-CHECKS WERE NOT RUNNING. Two faults, both introduced in 227 with the
-switches.
+THE CTV TILE CHECK NEVER RAN ON A SINGLE REPORT. It wanted "CTV Completion
+Rate" alone on a line, and page one puts three tiles side by side, so
+pdftotext prints the three headings as one line. It stood down on every report
+on the board, and a skipped check with a dash beside it reads exactly like a
+check that is working and finding nothing.
 
-The two workers disagreed about what the current rules are. The rules hash was
-cached once per process, which was safe while it was a pure function of the
-source and stopped being safe the moment a check could be switched off: only
-the worker that took the click recomputed. The other one kept the old hash,
-stamped every report it re-checked with it, and the first worker went on
-counting those same reports as behind. That is a count that sits still while
-the sweep works. The hash is cached against the set of switched-off checks now,
-and the switches are re-read every fifteen seconds, so both workers agree
-within fifteen seconds of a change.
+It reads the tile down its own column now - the tile to its left is the product
+breakout, which is nothing but percentages. Checked against the real files:
+98.60% on Watsontown, 98.90% on Central Penn, both inside their own CTV rows,
+both correctly silent.
 
-And a sweeper that threw wedged its worker for good. One flag says a sweeper is
-already going, and it only came off on the paths that were written. The order
-re-read runs before the sweep and is the heaviest thing in the file; one throw
-there left the flag set with nothing behind it, and that worker never started
-another sweeper. It comes off in a finally now.
+RUN ONE CHECK NOW, over only the reports it is about. A Run button on every row
+of the flags tab. A rule about the CTV tile has nothing to say about a report
+with no CTV on it, so it reads the reports carrying the product - about a
+hundred instead of twelve hundred. It is a full re-check of those reports, not
+a run of that one rule: the cost is reading the PDF either way, and
+half-judging a report is how one ends up carrying two builds' answers.
 
-A skipped check says WHICH of its reasons. The product check stands down for
-three and printed all three at once, which does not answer the question. The
-one that matters: changing how a product name is read means every product
-finding goes quiet until the order export has been read again, so a fix ships,
-the re-check runs, and the finding it was written for does not appear. The
-report now says that in as many words.
+A row with a run going stays on screen. "Flagging now" hides the checks with no
+count, which is every check that has just been fixed - the one you came to
+press Run on.
 
---- also in this install ---
-
-A Display order spends the geo-framing allowance. Geo-Framing may print as an
-ordinary Display widget, but not while the client also has a plain Display
-order - one widget was answering for both.
-
-Switch several checks at once, and stay on the tab. The sweep covers the cycle
-being worked rather than three cycles.
-
-958 tests pass.
+966 tests pass.

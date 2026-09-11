@@ -1611,9 +1611,9 @@ def test_the_columns_are_in_the_order_that_was_asked_for():
     import re
     body = (TPL / "rules_body.html").read_text()
     at = body.index('class="flagt"')
-    order = re.findall(r'class="(fl-\w+)"', body[at:at + 2600])
-    assert order[:7] == ["fl-tick", "fl-n", "fl-what", "fl-pass", "fl-who",
-                         "fl-how", "fl-on"], order
+    order = re.findall(r'class="(fl-\w+)"', body[at:at + 3200])
+    assert order[:8] == ["fl-tick", "fl-n", "fl-what", "fl-pass", "fl-who",
+                         "fl-how", "fl-run", "fl-on"], order
 
 
 def test_a_fix_nobody_has_written_is_blank_rather_than_invented():
@@ -2841,7 +2841,14 @@ def test_a_long_recheck_queue_says_why_the_board_is_slow():
     # And a way to stop one that cannot change an answer - see
     # test_a_pointless_sweep_can_be_stopped.
     assert 'action="/cycle/recheck/skip"' in cycle
-    assert "nothing is wrong" in cycle and "nothing needs pressing" in cycle
+    # AND NOTHING ELSE. It also said the number comes down on its own, that
+    # nothing is wrong and nothing needs pressing, and how many of them were
+    # signed off - three sentences of reassurance above the two facts, on a
+    # banner whose job is to say why the board is slow. Say the fact and stop.
+    assert "nothing is wrong" not in cycle
+    assert "signed_stale" not in cycle
+    # The build and the way out sit on one line at the end of it.
+    assert 'class="staleact"' in cycle
 
     # And the sweep actually treads more carefully on a long queue.
     rc = (Path(__file__).resolve().parents[1] / "app" / "recheck.py").read_text()
@@ -4273,9 +4280,10 @@ def test_every_status_can_be_picked_even_when_none_is_on_the_page():
     base = (TPL / "base.html").read_text()
     assert "(th.dataset.always || '').split('|')" in base
 
-    # And the banner says signed-off reports are in the queue, not outside it.
-    assert "{{ stale.signed_stale }} of them" in cycle
-    assert "shows as Report review" in cycle
+    # The banner used to explain the same thing in a sentence. The status is
+    # in the menu, which is where somebody acts on it.
+    assert "shows as Report review" not in cycle
+    assert "review" in cycle
 
 
 def test_the_reports_can_be_filtered_by_which_finding():

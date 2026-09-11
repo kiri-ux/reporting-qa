@@ -234,6 +234,16 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "A creative row that does not say which creative it is.",
          ADMIN, True,
          "Verify you see a blank creative name, alert Alyssa if yes."),
+        ("check_creative_shape",
+         "A Social Mirror preview that is a display banner - a leaderboard or "
+         "a banner sitting in the Social Mirror grid, where the artwork should "
+         "be a square, a feed image or a story. The name may be right; the "
+         "creative is not.",
+         BUYER, True,
+         "Look at the preview column. A social creative is square, 1200x628 or "
+         "a tall story; a leaderboard or a banner in that grid is a display "
+         "build that went out as a social ad. Flag the buyer to have the "
+         "right creative loaded."),
         ("check_social_mirror_sizes",
          "A Social Mirror creative named with an ad size, which is a display "
          "name on a social ad.",
@@ -450,6 +460,8 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
     ("creative_name_blank", "Creatives with no name", ("creative_name_blank",)),
     ("social_mirror_ad_size", "Social Mirror creatives named with an ad size",
      ("social_mirror_ad_size",)),
+    ("creative_shape", "A Social Mirror preview is a display banner",
+     ("creative_shape",)),
     ("text_truncated", "Labels cut off", ("text_truncated",)),
     ("conversion_names", "Conversions badly named",
      ("conversion_name_blank", "conversion_name_retargeting")),

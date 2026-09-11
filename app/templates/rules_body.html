@@ -145,6 +145,7 @@
        that one whatever is ticked. #}
     <form method="post" action="/checks/set" class="flagform">
     <input type="hidden" name="back" value="{{ back_to }}">
+    <input type="hidden" name="period" value="{{ flag_period_key }}">
     {# ALL, OR THE ONES ACTUALLY FIRING. Radio and a sibling selector, like the
        tabs above. #}
     {# FLAGGING NOW IS THE DEFAULT. The whole list is a reference; the ones
@@ -168,7 +169,10 @@
         <table class="flagt">
           <tbody>
             {% for c in g.checks %}
-              <tr class="{% if not c.on %}isoff{% elif not c.n %}quiet{% endif %}">
+              {# A ROW WITH A RUN GOING STAYS ON SCREEN. Flagging now hides
+                 the checks with no count, which is every check that has just
+                 been fixed - and that is the one you came to press Run on. #}
+              <tr class="{% if not c.on %}isoff{% elif not c.n and not c.job %}quiet{% endif %}">
                 <td class="fl-tick"><input type="checkbox" name="pick"
                   value="{{ c.key }}" aria-label="Select {{ c.label }}"></td>
                 <td class="fl-n">
@@ -191,6 +195,17 @@
                 {# A BUTTON'S OWN name/value IS ONLY SENT WHEN IT IS THE
                    BUTTON PRESSED, so one row's switch and the bulk buttons
                    share a form without getting in each other's way. #}
+                {# RUN IT NOW, over the reports it can say anything about.
+                   The sweep gets to everything eventually, and eventually can
+                   be overnight. #}
+                <td class="fl-run">
+                  {% if c.job %}
+                    <span class="runjob">{{ c.job.done }} of {{ c.job.total }}</span>
+                  {% else %}
+                    <button type="submit" name="run" value="{{ c.key }}"
+                      class="mini"
+                      data-tip="Re-check now, reading only the reports this check can say anything about{% if c.scope %} - the ones carrying {{ c.scope|join(' or ') }}{% endif %}.">Run</button>
+                  {% endif %}</td>
                 <td class="fl-on">
                   <button type="submit" name="one"
                     value="{{ c.key }}|{{ '' if c.on else '1' }}"

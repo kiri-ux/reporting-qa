@@ -1053,3 +1053,67 @@ def test_a_sweeper_that_throws_does_not_wedge_the_worker():
     assert src.count("_running.clear()") == 1
     body = src[src.index("def _sweep_forever"):]
     assert "_remap_orders_if_stale()" in body
+
+
+def test_one_check_can_be_run_over_only_the_reports_it_is_about(tmp_path,
+                                                                monkeypatch):
+    """The sweep gets to everything eventually. Eventually was overnight and
+    still going, with the answer wanted this morning.
+
+    A rule about the CTV tile has nothing to say about a report with no CTV on
+    it, so the button reads the reports carrying the product rather than the
+    twelve hundred on the board. It is a full re-check of those reports, not a
+    run of that one rule: the cost is reading the PDF, which happens either
+    way, and half-judging a report is how one ends up carrying two builds'
+    answers.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'r.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    import app.config
+    import app.db
+    import app.main
+    for m in (app.config, app.db, app.main):
+        importlib.reload(m)
+    app.db.init_db()
+
+    db = app.db.SessionLocal()
+    for i, products in enumerate(["CTV, Display", "Display", "Social Mirror",
+                                  "Connected TV (CTV)"]):
+        db.add(app.db.Report(batch_id=1, period="2026-08", client=f"C{i}",
+                             filename=f"c{i}.pdf", stored_path="",
+                             products=products, severity="pass", findings=[],
+                             checks=[], acked=[], rules_version="x"))
+    db.commit()
+
+    from app.checks.rules import CHECK_PRODUCTS
+    from app.recheck import stale_count
+
+    assert CHECK_PRODUCTS["check_ctv_tile"] == ("CTV",)
+    # Two of the four carry CTV. The other two are not read at all.
+    assert stale_count(db, period="2026-08", stale_only=False) == 4
+    assert stale_count(db, period="2026-08", stale_only=False,
+                       products=("CTV",)) == 2
+    # A check with nothing written for it runs over the whole cycle, which is
+    # slower and never wrong.
+    assert CHECK_PRODUCTS.get("check_date_range") is None
+    db.close()
+
+
+def test_the_run_button_is_in_the_same_form_as_the_switches():
+    """A browser sends a button's own name and value only when it is the one
+    pressed, so Run, the row's switch and the two bulk buttons share one form
+    without a line of JavaScript - which the rules sheet could not run anyway,
+    being injected as innerHTML."""
+    from pathlib import Path
+
+    body = (Path(__file__).resolve().parent.parent / "app" / "templates"
+            / "rules_body.html").read_text()
+    assert 'name="run" value="{{ c.key }}"' in body
+    # One form, and the Run button inside it. A nested form is not valid HTML
+    # and the browser drops it.
+    assert body.count('<form method="post" action="/checks/set"') == 1
+    assert body.index('action="/checks/set"') < body.index('name="run"')
+    # A row with a run going stays on screen - Flagging now hides the checks
+    # with no count, which is every check that has just been fixed.
+    assert "not c.n and not c.job" in body

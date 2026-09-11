@@ -16,6 +16,7 @@ from .parser import (as_number, date_range, SKIP_LINE, Table, extract_tables, he
 from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
 from .quality import (check_blank_screenshots, check_conversion_names,
                       check_creative_names, check_social_mirror_sizes,
+                      check_creative_shape,
                       check_strategy_categorized, check_truncated_text,
                       check_completion_present, check_site_ctr,
                       check_store_visits, STORE_TABLE,
@@ -1601,7 +1602,19 @@ def _num(v: str):
 # thirty points below everything it averages, so the tile was built over rows
 # that are not CTV, and the client was sent a number that matches nothing else
 # on their report.
-CTV_TILE = re.compile(r"^[ \t]*CTV Completion Rate[ \t]*$", re.M)
+# NOT ANCHORED TO A LINE OF ITS OWN. It was, and it never matched a single
+# report: page one puts three tiles side by side, so pdftotext prints
+# "Your Product Breakout by Impressions   CTV Completion Rate   CTV Cost Per
+# Completed View" as ONE line. The check stood down on every report on the
+# board and the catalog showed it flagging nothing, which reads exactly like a
+# check that is working and finding nothing wrong.
+CTV_TILE = re.compile(r"CTV Completion Rate")
+# How far either side of the label the tile's own number may sit. It is
+# centered under a heading of its own width, and the neighbouring tile's figure
+# is a column away.
+TILE_DRIFT = 14
+# The tile's number is a few lines below its heading, under the white space.
+TILE_LINES = 14
 # The widgets that hold CTV's own completion figures. Both are titled for the
 # product, so a completion column under either of them is CTV's.
 CTV_GRIDS = re.compile(
@@ -1616,14 +1629,26 @@ CTV_TILE_SLACK = 2.0
 
 
 def _ctv_tile_pct(text: str):
-    """The percentage inside the page-one CTV Completion Rate tile."""
+    """The percentage inside the page-one CTV Completion Rate tile.
+
+    READ DOWN ITS OWN COLUMN. Three tiles share those lines, so taking the
+    first percentage after the heading takes whichever tile prints one first -
+    and the one to the left of this is the product breakout, which is nothing
+    but percentages.
+    """
     m = CTV_TILE.search(text)
     if not m:
         return None, None
-    for v in PCT.findall(_widget_block(text, m.end(), limit=400)):
-        n = _num(v)
-        if n is not None:
-            return n, m.start()
+    head = text.rfind("\n", 0, m.start()) + 1
+    lo = m.start() - head - TILE_DRIFT
+    hi = m.end() - head + TILE_DRIFT
+    for line in text[m.end():].split("\n")[1:TILE_LINES]:
+        for pm in PCT.finditer(line):
+            if pm.end() < lo or pm.start() > hi:
+                continue
+            n = _num(pm.group(1))
+            if n is not None:
+                return n, m.start()
     return None, m.start()
 
 
@@ -2106,6 +2131,7 @@ CHECKS: list[tuple] = [
     (check_conversion_names, "Every conversion is named for what the user did"),
     (check_creative_names,  "Every creative row says which creative it is"),
     (check_social_mirror_sizes, "No Social Mirror creative is named with an ad size"),
+    (check_creative_shape,  "Every Social Mirror preview is a social creative"),
     (check_widget_errors,   "No widget printed an error instead of its data"),
     (check_page_banners,    "The template's page banners are switched off"),
     (check_social_placement_totals,
@@ -2118,6 +2144,29 @@ CHECKS: list[tuple] = [
 
 # Why a rule had nothing to do. "Nothing to check against" is true of every
 # skipped rule and tells you nothing about which one you are looking at.
+# WHICH REPORTS A CHECK CAN SAY ANYTHING ABOUT.
+#
+# A rule about the CTV tile has nothing to say about a report with no CTV on
+# it. The background sweep does not care - it is re-judging everything anyway -
+# but "I need to know this morning which reports to repull" does: reading
+# twelve hundred PDFs to find the hundred a check is about is the difference
+# between an answer now and an answer tomorrow.
+#
+# Matched against the report's stored product list, loosely. Only the checks
+# where the answer is not in doubt are here; anything missing runs over the
+# whole cycle, which is slower and never wrong.
+CHECK_PRODUCTS: dict[str, tuple[str, ...]] = {
+    "check_ctv_tile": ("CTV",),
+    "check_rogue_ctv": ("CTV",),
+    "check_social_mirror_sizes": ("Social Mirror",),
+    "check_creative_shape": ("Social Mirror",),
+    "check_geofence_names": ("Mobile Conquesting",),
+    "check_geofence_widget": ("Mobile Conquesting",),
+    "check_store_visits": ("Mobile Conquesting",),
+    "check_social_placement_totals": ("Meta", "Social Mirror"),
+}
+
+
 SKIP_WHY = {
     "check_products": "this is an SEO report, or no order list is loaded for "
                       "this client, or the loaded one was read by older import "
@@ -2150,6 +2199,7 @@ SKIP_WHY = {
     "check_blank_screenshots": "no ad screenshot widget on the report",
     "check_conversion_names": "no conversion breakout on the report",
     "check_creative_names": "no creative grid on the report that has a name column - PPC prints the ad preview instead of a file name",
+    "check_creative_shape": "no Social Mirror grid on the report, or its pictures could not be read",
     "check_widget_errors": "",
     "check_page_banners": "",
     "check_social_mirror_sizes": "no Social Mirror creative grid on the report",
@@ -2251,6 +2301,8 @@ def _rule_applies(rule, ctx) -> bool:
     if name in ("check_line_items", "check_creative", "check_device",
                 "check_row_math"):
         return bool(ctx.get("tables"))
+    if name == "check_creative_shape":
+        return bool(SOCIAL_MIRROR_GRID.search(ctx.get("text") or ""))
     if name == "check_ctv_tile":
         return bool(CTV_TILE.search(ctx.get("text") or ""))
     if name == "check_completion_rates":

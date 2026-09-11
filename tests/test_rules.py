@@ -3784,3 +3784,61 @@ def test_the_ctv_tile_check_needs_a_tile():
 
     assert not _rule_applies(check_ctv_tile, {"text": "Meta Performance\n"})
     assert _rule_applies(check_ctv_tile, {"text": "CTV Completion Rate\n"})
+
+
+def test_the_ctv_tile_is_found_on_a_real_report():
+    """IT NEVER MATCHED ONE. The pattern wanted "CTV Completion Rate" alone on
+    a line, and page one puts three tiles side by side - pdftotext prints the
+    three headings as one line. So the check stood down on every report on the
+    board, and the catalog showed it flagging nothing, which reads exactly like
+    a check that is working and finding nothing wrong.
+
+    Read on the real files rather than on a fixture written to match the
+    pattern, which is how this got shipped in the first place.
+    """
+    import subprocess
+    from pathlib import Path
+
+    from app.checks.rules import _ctv_full_rates, _ctv_tile_pct, check_ctv_tile
+
+    here = Path(__file__).resolve().parent / "fixtures"
+    for name, want in (("watsontown", 98.6), ("central_penn", 98.9)):
+        pdf = here / f"{name}.pdf"
+        if not pdf.exists():
+            continue
+        text = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
+                              capture_output=True, text=True).stdout
+        tile, at = _ctv_tile_pct(text)
+        assert tile == want, (name, tile)
+        assert at is not None
+        # ITS OWN COLUMN. The tile to the left is the product breakout, which
+        # is nothing but percentages - taking the first one after the heading
+        # takes that one.
+        rows = _ctv_full_rates(text)
+        assert rows, name
+        assert min(v for _n, v in rows) - 2 <= tile <= max(v for _n, v in rows) + 2
+        # And these two reports are right, so nothing is said about them.
+        assert check_ctv_tile({"text": text, "page_of": lambda _o: 1}) == []
+
+
+def test_a_ctv_tile_built_over_other_products_is_a_finding():
+    """The tile is an average of CTV's own rows, so it sits between the
+    smallest and the largest of them. One built over rows that are not CTV does
+    not, and that is the whole check."""
+    from app.checks.rules import check_ctv_tile
+
+    text = (
+        "   Your Product Breakout by Impressions        CTV Completion Rate"
+        "        CTV Cost Per Completed View\n"
+        "\n"
+        "   41.20%                                            62.10%"
+        "                          0.04\n"
+        "\n"
+        "Connected TV (CTV) Completion Performance\n"
+        " Line Item                         100% Completion Rate\n"
+        " Acme - Retargeting                          98.51%\n"
+        " Acme - Prospecting                          97.40%\n")
+    got = check_ctv_tile({"text": text, "page_of": lambda _o: 1})
+    assert len(got) == 1
+    assert got[0]["code"] == "ctv_tile_off"
+    assert "62.10%" in got[0]["detail"]
