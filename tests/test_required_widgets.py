@@ -19,9 +19,13 @@ TITLES = [
     "Amazon Inventory Source Performance",
     "Amazon Premium Site and App Performance",
     "YouTube+ Placement Performance",
-    "Top 10 YouTube Channel Performance",
-    "Top 10 YouTube TV Channel Performance",
 ]
+
+# THE CHANNEL LIST IS ONE WIDGET UNDER TWO NAMES. TapClicks writes it "Top 10
+# YouTube TV Channel Performance" on a TV buy and drops the TV elsewhere, so
+# either spelling satisfies it and neither is dropped on its own.
+CHANNEL_TITLES = ["Top 10 YouTube TV Channel Performance",
+                  "Top 10 YouTube Channel Performance"]
 
 
 @pytest.fixture(scope="module")
@@ -83,17 +87,78 @@ def test_youtube_tv_only_does_not_owe_the_youtube_plus_widgets():
     assert check_required_widgets({"text": text, "products": {"YouTube Video Ads"}}) == []
 
 
-def test_youtube_plus_owes_both_of_its_widgets():
+def test_youtube_plus_owes_the_placement_widget_and_not_the_channel_list():
+    """The two are an either/or. A YouTube+ buy has placements to break out;
+    the channel list is the TV buy's widget."""
     text = "YOUTUBE+ ADS - PAGE 1\nYouTube+ Placement Performance\n"
-    out = check_required_widgets({"text": text, "products": set()})
-    assert [f["title"] for f in out] == ["No Top 10 YouTube Channel Performance widget"]
+    assert check_required_widgets({"text": text, "products": set()}) == []
+    out = check_required_widgets({"text": "YOUTUBE+ ADS - PAGE 1\n",
+                                  "products": set()})
+    assert [f["title"] for f in out] == ["No YouTube+ Placement Performance widget"]
 
 
-def test_youtube_on_the_order_with_no_section_still_owes_the_plus_widgets():
+def test_youtube_on_the_order_with_no_section_still_owes_the_plus_widget():
     """A report that dropped the YouTube pages entirely is the worst case."""
     out = check_required_widgets({"text": "OVERVIEW - PAGE 1\n",
                                   "products": {"YouTube Video Ads"}})
-    assert len(out) == 2
+    assert [f["title"] for f in out] == ["No YouTube+ Placement Performance widget"]
+
+
+def _yt_ctx(text: str, *lines: str) -> dict:
+    grid = "Line Item Performance\n" + "".join(
+        f" {n}   1,000   10   1.00%\n" for n in lines)
+    return {"text": text + grid, "products": {"YouTube Video Ads"}}
+
+
+def test_either_spelling_of_the_channel_list_satisfies_a_tv_buy():
+    """Braden's Furniture ran YouTube TV only, carried "Top 10 YouTube TV
+    Channel Performance" on page 18, and was failed for having no "Top 10
+    YouTube Channel Performance" widget. It is the same widget."""
+    for title in CHANNEL_TITLES:
+        ctx = _yt_ctx(f"YOUTUBE+ ADS - PAGE 1\n{title}\n",
+                      "Bradens Furniture - YouTube TV")
+        assert check_required_widgets(ctx) == []
+    # Neither of them is a failure, named for the buy that was made.
+    ctx = _yt_ctx("YOUTUBE+ ADS - PAGE 1\n", "Bradens Furniture - YouTube TV")
+    assert [f["title"] for f in check_required_widgets(ctx)] == \
+        ["No Top 10 YouTube TV Channel Performance widget"]
+
+
+def test_the_sample_runs_both_so_it_owes_the_placement_widget(sample):
+    """The everything-sample carries YouTube TV lines and YouTube+ lines, so
+    by her rule the placement breakout is the one it owes."""
+    from app.checks.rules import _youtube_lines
+    tv, other = _youtube_lines({"text": sample})
+    assert tv and other
+    text = sample
+    for drop in CHANNEL_TITLES:
+        text = _drop(text, drop)
+    assert check_required_widgets({"text": text, "products": set()}) == []
+
+
+def test_youtube_tv_line_items_owe_the_channel_list_and_not_the_placements():
+    """Her rule, in her words: if the YouTube line items are ONLY YouTube TV,
+    the channel performance is needed and the placement widget is not."""
+    ctx = _yt_ctx("YOUTUBE+ ADS - PAGE 1\nTop 10 YouTube TV Channel Performance\n",
+                  "Bradens Furniture - YouTube TV")
+    assert check_required_widgets(ctx) == []
+    ctx = _yt_ctx("YOUTUBE+ ADS - PAGE 1\nYouTube+ Placement Performance\n",
+                  "Bradens Furniture - YouTube TV")
+    assert [f["title"] for f in check_required_widgets(ctx)] == \
+        ["No Top 10 YouTube TV Channel Performance widget"]
+
+
+def test_one_non_tv_youtube_line_flips_it_to_the_placement_widget():
+    """And if any non-YouTube-TV line is in there, the placement widget is
+    needed and the channel list is not - even with TV alongside it."""
+    ctx = _yt_ctx("YOUTUBE+ ADS - PAGE 1\nYouTube+ Placement Performance\n",
+                  "Bradens Furniture - YouTube TV",
+                  "Bradens Furniture - In-Market Auto YouTube+")
+    assert check_required_widgets(ctx) == []
+    ctx = _yt_ctx("YOUTUBE+ ADS - PAGE 1\nTop 10 YouTube TV Channel Performance\n",
+                  "Bradens Furniture - In-Market Auto YouTube+")
+    assert [f["title"] for f in check_required_widgets(ctx)] == \
+        ["No YouTube+ Placement Performance widget"]
 
 
 def test_a_report_owing_nothing_abstains():

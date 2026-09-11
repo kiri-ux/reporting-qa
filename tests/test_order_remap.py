@@ -1435,3 +1435,33 @@ def test_a_cancelled_line_is_out_of_the_lifetime_goal(db):
 
     month = ordered_for(db, "Paragon Casino Resort", "55583", "2026-08")
     assert month["Social Mirror"]["impressions"] == 85_000
+
+
+def test_a_monthly_that_already_arrived_is_flagged_not_deleted(db):
+    """Braden's Furniture ran 3 to 16 August and had both rows on the board.
+
+    The one-report rule can only take a row off before a file lands on it, and
+    the monthly PDF was pulled first. Deleting the row then hides a report
+    somebody already did the work for, so it stays and says why.
+    """
+    import datetime as dt
+    from app.board import expected_for
+    from app.db import Batch, OrderLine, Report
+    D = dt.date.fromisoformat
+    b = Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1))
+    db.add(b)
+    db.flush()
+    db.add(OrderLine(market="M", client="Bradens Furniture", account_ids="55439",
+                     line_ids="9", product="CTV", campaign="CTV + Video Ads",
+                     live=True, starts_on=D("2026-08-03"), ends_on=D("2026-08-16"),
+                     order_starts_on=D("2026-08-03"), order_ends_on=D("2026-08-16")))
+    db.add(Report(batch_id=b.id, filename="b.pdf", client="Bradens Furniture",
+                  market="M", period="2026-08", account_ids="55439",
+                  severity="warn", findings=[], checks=[], acked=[],
+                  review_state="new", stored_path="", rules_version="x",
+                  is_lifetime=False))
+    db.commit()
+    rows = {e.kind: e for e in expected_for(db, "2026-08")}
+    assert sorted(rows) == ["lifetime", "monthly"]
+    assert "14 days" in rows["monthly"].covered_by_lifetime
+    assert rows["lifetime"].covered_by_lifetime == ""

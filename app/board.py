@@ -109,6 +109,13 @@ class Expected:
     # gets the last word. Who said so and why.
     forced_by: str = ""
     forced_note: str = ""
+    # THE MONTHLY THAT WAS PULLED BEFORE THE BOARD COULD SAY IT WAS NOT NEEDED.
+    #
+    # A campaign shorter than a month owes one report, not two, and the rule
+    # that says so can only take the row off before a file lands on it. Once a
+    # monthly is uploaded, deleting the row hides a PDF somebody already pulled
+    # and is waiting on a verdict for. The row stays and carries this instead.
+    covered_by_lifetime: str = ""
     # THE LAST DAY THIS CLIENT ACTUALLY DELIVERED, when the campaign is
     # cancelled or complete. The end date on the order is what it was SOLD to
     # run to - nothing on the export says when somebody hit cancel - so a
@@ -1076,8 +1083,16 @@ def expected_for(db: Session, period: str,
     # the same numbers, and the lifetime is the one the client is owed. Only
     # when it IS the first - a client who has had monthlies before is mid
     # relationship, and last month's report is not this month's.
+    #
+    # DROP IT IF NOTHING HAS ARRIVED, SAY SO IF SOMETHING HAS. Braden's
+    # Furniture ran 3 to 16 August and had a monthly on the board next to its
+    # lifetime, because the monthly PDF was pulled and uploaded before this
+    # rule got a chance to take the row off. Deleting a row with a file on it
+    # hides a report somebody already did the work for and is waiting on a
+    # verdict for, so the row stays and carries the reason it did not need to
+    # exist.
     for (mk, ck, kind), e in list(rows.items()):
-        if kind != "monthly" or e.report is not None or e.forced_by:
+        if kind != "monthly" or e.forced_by:
             continue
         life = rows.get((mk, ck, "lifetime"))
         if life is None or ck in seen_before:
@@ -1085,14 +1100,20 @@ def expected_for(db: Session, period: str,
         if not (life.starts_on and life.ends_on):
             continue
         days = (life.ends_on - life.starts_on).days + 1
-        if days <= SHORT_CAMPAIGN_DAYS:
-            if skipped is not None:
-                skipped.append({"market": e.market, "client": e.client,
-                                "why": f"campaign ran {days} days and its "
-                                       f"lifetime covers the same ground",
-                                "kind": "monthly", "days": days,
-                                "starts": life.starts_on, "ends": life.ends_on})
-            del rows[(mk, ck, kind)]
+        if days > SHORT_CAMPAIGN_DAYS:
+            continue
+        if e.report is not None:
+            e.covered_by_lifetime = (
+                f"campaign ran {days} days, {life.starts_on} to "
+                f"{life.ends_on} - the lifetime covers the same days")
+            continue
+        if skipped is not None:
+            skipped.append({"market": e.market, "client": e.client,
+                            "why": f"campaign ran {days} days and its "
+                                   f"lifetime covers the same ground",
+                            "kind": "monthly", "days": days,
+                            "starts": life.starts_on, "ends": life.ends_on})
+        del rows[(mk, ck, kind)]
 
     out = list(rows.values())
     _stamp_done(db, period, out)

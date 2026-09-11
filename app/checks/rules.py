@@ -1964,6 +1964,29 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
     return bool(products & NO_SITE_APP_PRODUCTS) and inventory
 
 
+YT_TV_LINE = re.compile(r"\bYou\s*Tube\s*TV\b", re.I)
+YT_LINE = re.compile(r"\bYou\s*Tube\b", re.I)
+
+
+def _youtube_lines(ctx) -> tuple[list[str], list[str]]:
+    """The report's YouTube line items, split into TV and everything else.
+
+    Which of the two YouTube widgets a report owes is decided by what was
+    bought, not by the section banner - TapClicks prints a YouTube TV buy under
+    "YOUTUBE+ ADS" like any other. The line item grid is where the buy is
+    written down in its own words.
+    """
+    from .quality import line_item_names
+
+    tv, other = [], []
+    for name, _at in line_item_names(ctx.get("text") or ""):
+        name = (name or "").strip()
+        if not YT_LINE.search(name):
+            continue
+        (tv if YT_TV_LINE.search(name) else other).append(name)
+    return tv, other
+
+
 def check_required_widgets(ctx) -> list[dict]:
     """Products that owe a particular widget have to actually carry it."""
     from ..product_codes import code_for
@@ -1988,8 +2011,12 @@ def check_required_widgets(ctx) -> list[dict]:
                 return _where(ctx, i, word)
         return ""
 
-    def owed(title: str, n: int, why: str):
-        have = heads.get(title, 0)
+    def owed(title: str, n: int, why: str, alt: tuple = ()):
+        # ALT IS THE SAME WIDGET UNDER ANOTHER NAME. TapClicks prints the
+        # YouTube channel list as "Top 10 YouTube TV Channel Performance" on a
+        # YouTube TV buy and drops the TV elsewhere, and Braden's Furniture was
+        # failed for a widget that was on page 18 with the wrong word in it.
+        have = heads.get(title, 0) + sum(heads.get(a, 0) for a in alt)
         if have >= n:
             return
         if n > 1:
@@ -2039,15 +2066,32 @@ def check_required_widgets(ctx) -> list[dict]:
     # YouTube. A YouTube TV only campaign owes the TV channel widget and
     # nothing else, which is why this is not in the table above: the report's
     # own sections are what say which of the two ran.
-    yt_plus = "YOUTUBE+ ADS" in secs
-    yt_tv = "YOUTUBE TV ADS" in secs
-    if "YT" in codes and not (yt_plus or yt_tv):
-        yt_plus = True                      # ran YouTube, no section says which
+    #
+    # THE TWO WIDGETS ARE AN EITHER/OR, AND THE LINE ITEMS DECIDE WHICH.
+    #
+    # YouTube TV and nothing else owes the channel list and NOT the placement
+    # breakout - there are no placements on a TV buy. Any YouTube line item
+    # that is not TV flips it: that buy owes the placement breakout and not the
+    # channel list. Asking for both failed every YouTube report one way or the
+    # other, and Braden's Furniture - YouTube TV only - was failed for both at
+    # once, with its channel list sitting on page 18.
+    #
+    # Read off the line item names rather than the section banners. A report
+    # with no banners at all still prints its line items, and "YOUTUBE+ ADS"
+    # is the banner TapClicks uses for both.
+    tv, non_tv = _youtube_lines(ctx)
+    yt_plus = bool(non_tv) or "YOUTUBE+ ADS" in secs
+    yt_tv = bool(tv) or "YOUTUBE TV ADS" in secs
+    if tv or non_tv:
+        # The line items are the better witness: a TV-only buy still prints
+        # under the YOUTUBE+ banner.
+        yt_plus, yt_tv = bool(non_tv), bool(tv) and not non_tv
+    elif "YT" in codes and not (yt_plus or yt_tv):
+        yt_plus = True                      # ran YouTube, nothing says which
     if yt_plus:
         owed(W_YT_PLACE, 1, "YouTube+")
-        owed(W_YT_CHAN, 1, "YouTube+")
     if yt_tv:
-        owed(W_YTTV_CHAN, 1, "YouTube TV")
+        owed(W_YTTV_CHAN, 1, "YouTube TV", alt=(W_YT_CHAN,))
 
     # BARCK+ targeting owes the generic site and app breakout. The report
     # names its own BARCK+ widget, so this does not depend on knowing which

@@ -1,34 +1,30 @@
-build 2026.09.11-243
+build 2026.09.11-244
 Changed files only. Everything since 130 - install this one.
 37 checks.
 
-A LINE ITEM NAME THAT WRAPS AT ITS OWN HYPHEN IS ONE NAME. The column is
-narrow, so "Susquehanna River Valley Visitors Bureau - Geo-Framing Display"
-prints as "... - Geo-" and "Framing Display", and the two halves were joined
-with a space. "Geo- Framing Display" matches no product pattern anywhere, so
-the report carried no Geo-Framing at all and the missing-product finding could
-not fire on the month that was wrong OR the month that was right. The same wrap
-was mangling "Geo-Retargeting Event Mobile" on the same page.
+THE TWO YOUTUBE WIDGETS ARE AN EITHER/OR, AND THE LINE ITEMS DECIDE WHICH.
+YouTube TV and nothing else owes the channel list and NOT the placement
+breakout. Any YouTube line item that is not TV flips it: that buy owes the
+placement breakout and not the channel list. Asking for both failed every
+YouTube report one way or the other.
 
-Joined at the hyphen only where the hyphen ends a word. The " - " between the
-client and the strategy has a space in front of it and is left alone.
+Read off the line item names, not the section banner. TapClicks prints a
+YouTube TV buy under "YOUTUBE+ ADS" like everything else, so the banner cannot
+tell the two apart. Sections are still the fallback when a report has no line
+item grid to read.
 
-Read the way the check reads it: July, which has the line item, says nothing.
-August, which does not, says "Ordered but not on the report: Geo-Framing
-Display". Both months are test fixtures now, as a pair.
+AND THE CHANNEL LIST IS ONE WIDGET UNDER TWO NAMES. TapClicks writes it "Top 10
+YouTube TV Channel Performance" on a TV buy and drops the TV elsewhere. Bradens
+Furniture carried it on page 18 and was failed for having no "Top 10 YouTube
+Channel Performance" widget. Either spelling counts now.
 
-A VERDICT LANDS ON THE REPORTS TABLE WHEN THE ROW HAS GONE. Marking a report
-Reviewed takes it out of Pending - that is the point of marking it - so the row
-the verdict sends you back to is not there to land on and the browser stayed at
-the top of the board. The row if it is there, the table if it is not.
+Both of those findings on 1486 go away on a re-check.
 
---- also in this install ---
+A SHORT CAMPAIGN'S MONTHLY IS DROPPED IF NOTHING CAME, FLAGGED IF SOMETHING
+DID. Bradens ran 3 to 16 August and had a monthly next to its lifetime because
+the monthly PDF was pulled and uploaded before the board got a chance to say it
+was not owed. Deleting a row with a file on it hides a report somebody already
+did the work for, so the row stays and carries "lifetime covers this" beside
+the monthly tag, with the dates in the tooltip.
 
-The CTV tile is measured against Amazon Premium Video's completion rows as well
-as the Connected TV ones, and the finding is called "CTV VCR not matching
-throughout".
-
-A copy button beside the client name, and the stale-reports banner no longer
-reads as a re-check somebody did not start.
-
-987 tests pass.
+990 tests pass.

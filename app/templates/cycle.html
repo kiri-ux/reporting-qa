@@ -703,7 +703,13 @@
              never asked for again. #}
           <span class="pill p-info"
                 data-tip="SEO is a separate report, pulled outside TapClicks and uploaded here. It goes into the partner's folder with the rest, and the checks are not run on it.">SEO</span>
-          {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
+          {% else %}<span class="pill p-month">monthly</span>
+          {# THE LIFETIME ALREADY COVERS THIS. The row is only here because the
+             file arrived before the board could say it was not needed. #}
+          {% if e.covered_by_lifetime %}<br>
+            <span class="pendtag"
+                  data-tip="{{ e.covered_by_lifetime|capitalize }}. This monthly was pulled before the board could say it was not owed; the row is still here because the file is.">lifetime covers this</span>
+          {% endif %}{% endif %}</td>
         <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>
           {%- if e.report and e.report.waiting_on_file %}<span class="waitfile"
             data-tip="Asked for again on {{ e.report.asked_at|et }}. The file here still arrived {{ e.report.file_at|et }} - nothing new has reached the tool since.">no new file</span>{% endif %}{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
