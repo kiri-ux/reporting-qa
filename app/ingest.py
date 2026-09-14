@@ -525,6 +525,14 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         rep.severity = result["severity"]
         rep.findings = result["findings"]
         rep.checks = result.get("checks") or []
+        # WHETHER THIS IS AN SEO REPORT WAS WORKED OUT AND THEN THROWN AWAY.
+        # seo_guess decides what the product check is allowed to say, and the
+        # row never recorded it - so the board could not tell an SEO report
+        # from any other, and neither could anything downstream of it.
+        rep.is_seo = bool(seo_guess)
+        # And nothing is checked on one, so it is good to go on arrival.
+        from .db import sign_off_seo
+        sign_off_seo(rep)
         if replaced:
             from .recheck import remap_acks
             rep.acked = remap_acks(_old_findings, _old_acked, rep.findings)

@@ -31,8 +31,9 @@ def test_grid_rows_joins_a_name_that_wrapped_below_its_own_numbers(sample):
     # The whole summary grid, not just the ten rows on page one - and each row
     # once, though two grid titles both end in "Line Item Performance".
     # 3,756 in the main grid plus the ten DOOH rows, which count in "DOOH Ads
-    # Served" and were being thrown away.
-    assert len(names) == 3766
+    # Served" and were being thrown away - and Belmont Park's Family Keyword
+    # line, whose name has a gap in it, which was being thrown away too.
+    assert len(names) == 3767
 
 
 def test_section_at_names_the_page_a_fault_is_on(sample):
@@ -362,6 +363,45 @@ def test_the_ctr_finding_carries_its_arithmetic():
     assert "Filtered clicks / filtered impressions" in labels
 
 
+def test_a_gap_inside_a_line_item_name_does_not_lose_the_row():
+    """Belmont Park. "Belmont Park - Family -   Family Keyword Social Mirror"
+    has three spaces in the middle of its own name, so its second cell was the
+    rest of the name rather than a number and the whole row was dropped - the
+    15,253 impressions and 71 clicks the report was then failed for."""
+    pdf = Path(__file__).parent / "fixtures" / "belmont_park_gap_in_name.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    from app.checks.parser import pdf_text
+    rows = q.line_item_totals(pdf_text(str(pdf)))
+    assert len(rows) == 14
+    assert sum(r[1] for r in rows) == 224870
+    assert sum(r[2] for r in rows) == 1601
+    assert any("Family Keyword Social Mirror" in r[0] for r in rows)
+
+
+def test_belmont_park_adds_up_and_says_nothing():
+    from app.checks.rules import run_all
+    pdf = Path(__file__).parent / "fixtures" / "belmont_park_gap_in_name.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    codes = {f["code"] for f in run_all(pdf)["findings"]}
+    assert "line_items_under_total" not in codes
+    assert not {c for c in codes if "clicks" in c and "unaccounted" in c}
+
+
+def test_prose_ending_in_a_figure_is_still_not_a_row():
+    text = ("OVERVIEW - PAGE 1\n"
+            "Line Item Performance\n"
+            " Line Item Name    Impressions   Clicks   CTR\n"
+            "\n"
+            " Acme Co - Display   10,000   50   0.50%\n"
+            "\n"
+            " This campaign delivered across the whole market and reached an\n"
+            "   audience of roughly   40,000\n")
+    rows = q.line_item_totals(text)
+    assert len(rows) == 1 and rows[0][1] == 10000 and rows[0][2] == 50
+
+
 # ------------------------------------------------------------ site CTR
 def test_a_site_clicking_at_46_percent_is_found():
     """The real one: "Slicing Hero: Sword Master", 783 impressions, 365 clicks.
@@ -639,6 +679,70 @@ def test_the_samples_visits_page_reconciles(sample):
     got = q.store_visits(sample)
     assert got and got["locations"] == 1 and got["rows"] == [1.0] and got["visits"] == 1
     assert q.check_store_visits({"text": sample}) == []
+
+
+TWO_NAMES_ONE_ADDRESS = (
+    "VISITS - PAGE 1\n"
+    "Mobile Conquesting Visit Performance   Mobile Conquesting Number of Store Locations\n"
+    "\n"
+    "                                                          1\n"
+    "                                        " + q.LOCATIONS_LABEL + "\n"
+    "\n"
+    "                                        Mobile Conquesting Visits by Store Location\n"
+    "                                        Business Name   Address   City   State   Zip   Visits\n"
+    "\n"
+    "                                        Belmont Park   3146 Mission BLVD   San Diego   CA   92109   78\n"
+    "                                        Belmont Park - custom   3146 Mission BLVD   San Diego   CA   92109   27\n"
+    "\n"
+    "           105                420\n"
+    "\n"
+    "        Visits               Estimated Visits (4x Verified Data)\n")
+
+
+def test_one_store_entered_under_two_names_is_one_location():
+    """The headline counts places and the table counts rows. Same address, so
+    the two agree and there is nothing to say."""
+    got = q.store_visits(TWO_NAMES_ONE_ADDRESS)
+    assert len(got["rows"]) == 2 and got["addresses"] == 1
+    assert q.check_store_visits({"text": TWO_NAMES_ONE_ADDRESS}) == []
+
+
+def test_a_wrapped_address_still_pairs_up():
+    text = TWO_NAMES_ONE_ADDRESS.replace(
+        "3146 Mission BLVD   San Diego   CA   92109   78\n",
+        "3146 Mission   San Diego   CA   92109   78\n"
+        "                                                       BLVD\n")
+    text = text.replace(
+        "3146 Mission BLVD   San Diego   CA   92109   27\n",
+        "3146 Mission   San Diego   CA   92109   27\n"
+        "                                                       BLVD\n")
+    assert q.store_visits(text)["addresses"] == 1
+    assert q.check_store_visits({"text": text}) == []
+
+
+def test_two_real_addresses_under_one_headline_still_fails():
+    text = TWO_NAMES_ONE_ADDRESS.replace("3146 Mission BLVD   San Diego   CA   92109   27",
+                                         "700 Garnet AVE   San Diego   CA   92109   27")
+    f = next(x for x in q.check_store_visits({"text": text})
+             if x["code"] == "store_locations_mismatch")
+    assert "2 addresses" in f["detail"]
+
+
+def test_the_repeat_count_is_named_when_they_still_disagree():
+    text = TWO_NAMES_ONE_ADDRESS.replace(
+        "                                                          1\n",
+        "                                                          4\n")
+    f = next(x for x in q.check_store_visits({"text": text})
+             if x["code"] == "store_locations_mismatch")
+    assert "1 address" in f["detail"] and "2 rows" in f["detail"]
+
+
+def test_visits_are_still_added_up_across_every_row():
+    """Two rows at one address are one location and two lots of visits."""
+    text = TWO_NAMES_ONE_ADDRESS.replace("           105     ", "           78      ")
+    f = next(x for x in q.check_store_visits({"text": text})
+             if x["code"] == "store_visits_mismatch")
+    assert "105" in f["detail"]
 
 
 def test_a_report_with_no_visits_page_abstains():

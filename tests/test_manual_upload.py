@@ -1275,9 +1275,11 @@ def test_an_seo_row_uploads_without_running_the_checks(client):
     assert rep.severity == "pass"
     assert rep.stored_path, "it is stored, so it packages with the rest"
 
-    # The board does not claim it passed.
-    board = c.get("/cycle?period=2026-07").text
-    assert "Checks not run" in board
+    # AND IT IS SIGNED OFF ON ARRIVAL, so it is in Completed rather than
+    # Pending - nothing is checked on one, so nobody has to say so.
+    assert rep.review_state == "reviewed" and rep.ready is True
+    board = c.get("/cycle?period=2026-07&done=completed").text
+    assert "Checks not run" in board, "the board still says nothing was read"
     assert "not checked" in board
     page = c.get(f"/report/{rep.id}/view").text
     assert "The checks were not run on this report." in page
@@ -1434,3 +1436,54 @@ def test_a_switched_off_product_check_says_so_on_the_report(client):
     db.commit()
     assert "The product check is switched off" not in \
         c.get(f"/report/{rep_id}/view").text
+
+
+def test_an_seo_report_is_good_to_go_on_arrival(client):
+    """Nothing is checked on an SEO report - it is pulled by hand outside
+    TapClicks and uploaded to sit with the rest and go into the partner's
+    folder - so the sign-off was a box somebody ticked to say "yes, still
+    nothing to look at", once per SEO client per month, forever."""
+    c, (db, dbm, imod) = client
+    db.add(_order_line(dbm, "Red Hawk Fire", "Search Engine Optimization+",
+                       market="7 Mountains KY", ids="44255"))
+    db.commit()
+
+    pdf = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    r = c.post("/cycle/upload",
+               data={"period": "2026-07", "market": "7 Mountains KY",
+                     "client": "Red Hawk Fire", "account_ids": "44255",
+                     "kind": "monthly"},
+               files={"file": ("seo.pdf", pdf, "application/pdf")})
+    assert r.status_code in (200, 303)
+    db.expire_all()
+    rep = db.query(dbm.Report).filter_by(client="Red Hawk Fire").one()
+    assert rep.is_seo is True
+    assert rep.checks_skipped is True
+    assert rep.review_state == "reviewed"
+    assert rep.reviewed_by == dbm.SEO_SIGNED_BY
+    assert rep.reviewed_at is not None
+    assert rep.ready is True, "an SEO report still needs signing off"
+    assert rep.board_state == "ready"
+
+
+def test_a_person_still_outranks_it():
+    """The rule is "nobody has to look", not "nobody may". Somebody marking one
+    Needs fix keeps it, and a failure is never signed off over the top of."""
+    from app.db import Report, sign_off_seo
+
+    rep = Report(is_seo=True, review_state="new", severity="pass",
+                 findings=[], acked=[], checks=[])
+    assert sign_off_seo(rep) is True and rep.review_state == "reviewed"
+    # Already decided by a person - left alone.
+    rep2 = Report(is_seo=True, review_state="needs_fix", severity="pass",
+                  findings=[], acked=[], checks=[])
+    assert sign_off_seo(rep2) is False and rep2.review_state == "needs_fix"
+    # Not an SEO report at all.
+    rep3 = Report(is_seo=False, review_state="new", severity="pass",
+                  findings=[], acked=[], checks=[])
+    assert sign_off_seo(rep3) is False and rep3.review_state == "new"
+    # Failing, which cannot happen today and is free to guard.
+    rep4 = Report(is_seo=True, review_state="new", severity="fail", acked=[],
+                  findings=[{"code": "x", "severity": "fail", "title": "t"}],
+                  checks=[])
+    assert sign_off_seo(rep4) is False and rep4.review_state == "new"

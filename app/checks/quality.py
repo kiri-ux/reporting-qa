@@ -92,6 +92,39 @@ def _looks_like_row(t: str) -> bool:
     return len(cells) >= 3 and all(NUMERIC.match(c) for c in cells[1:])
 
 
+NAME_CELLS_MAX = 3
+
+
+def _name_width(cells: list[str], min_cells: int) -> int:
+    """How many opening cells are the row's name, or 0 if this is not a row.
+
+    A ROW'S NAME CAN HAVE A GAP IN IT. The rule was "everything after the first
+    cell is a number", and a name is one cell only if nobody typed two spaces
+    into it. "Belmont Park - Family -   Family Keyword Social Mirror" has three
+    spaces in the middle, so its second cell was the rest of its own name, the
+    line did not read as a row, and it was dropped whole - 15,253 impressions
+    and 71 clicks off a report whose fourteen rows add up to its top line
+    exactly. It was then failed for both.
+
+    So the name is whatever comes before the numbers rather than the first cell
+    on its own - capped, because a line of prose ending in a figure is not a
+    row and the cap is what keeps it from looking like one.
+    """
+    n = len(cells)
+    if n < min_cells:
+        return 0
+    first = n
+    for i in range(n - 1, 0, -1):
+        if not NUMERIC.match(cells[i]):
+            break
+        first = i
+    if first >= n:                       # nothing numeric on the end
+        return 0
+    if n - first < min_cells - 1:        # too few figures to be a data row
+        return 0
+    return first if first <= NAME_CELLS_MAX else 0
+
+
 def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
               min_cells: int = 3) -> list[tuple[str, int]]:
     """Rows of a grid, as (first cell, offset), with wrapped cells joined.
@@ -187,14 +220,15 @@ def grid_rows(text: str, start: int, stop_at_new_section: bool = True,
         if _is_chrome(line):
             continue
         cells = [c for c in re.split(r"\s{2,}", t) if c]
-        if len(cells) >= min_cells and all(NUMERIC.match(c) for c in cells[1:]):
+        name_cells = _name_width(cells, min_cells)
+        if name_cells:
             tail = split_pending()
             if cur is not None:
                 cur.extend(tail)
                 rows.append((" ".join(cur), cur_at))
             head = pending
             pending = []
-            cur, cur_at = head + [_clean_cell(cells[0])], at
+            cur, cur_at = head + [_clean_cell(" ".join(cells[:name_cells]))], at
             if not lead:
                 # The opening of the first row, which every other row of this
                 # grid repeats. Two words is enough to recognize "Window World"
@@ -1806,6 +1840,22 @@ STORE_ROW = re.compile(r"\s{2,}[A-Z]{2}\s{2,}\d{5}\s+([\d,]+)\s*$")
 INT_ONLY = re.compile(r"^[\d,]+$")
 
 
+def _store_place(line: str) -> str:
+    """The street address and zip out of one store row.
+
+    THE HEADLINE COUNTS PLACES AND THE TABLE COUNTS ROWS. A store entered twice
+    under two names - "Belmont Park" and "Belmont Park - custom" - is two rows
+    and one place, so the two figures disagree with nothing wrong. The address
+    is what tells them apart, so it is what gets compared.
+    """
+    cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
+    if len(cells) < 5:
+        return ""
+    addr, zip_ = cells[-5], cells[-2]
+    key = re.sub(r"[^a-z0-9 ]", " ", f"{addr} {zip_}".lower())
+    return re.sub(r"\s+", " ", key).strip()
+
+
 def _number_above(lines: list[str], i: int, want: int = 1) -> list[float] | None:
     """The figures printed above a tile's caption.
 
@@ -1840,14 +1890,15 @@ def store_visits(text: str) -> dict | None:
             break
         end = n
 
-    rows = []
+    rows, places = [], []
     for n in range(start, end + 1):
         hit = STORE_ROW.search(lines[n])
         if hit:
             try:
                 rows.append(float(hit.group(1).replace(",", "")))
             except ValueError:
-                pass
+                continue
+            places.append(_store_place(lines[n]))
 
     locations = visits = None
     for n, line in enumerate(lines):
@@ -1862,7 +1913,11 @@ def store_visits(text: str) -> dict | None:
 
     clipped = "Grid contains more rows" in "\n".join(lines[start:end + 1])
     return {"locations": locations, "rows": rows, "visits": visits,
-            "clipped": clipped}
+            "clipped": clipped, "places": places,
+            # A row whose address would not parse is counted on its own rather
+            # than folded in with every other one that would not parse.
+            "addresses": (len(set(places)) if places and all(places)
+                          else len(rows))}
 
 
 def check_store_visits(ctx) -> list[dict]:
@@ -1881,16 +1936,22 @@ def check_store_visits(ctx) -> list[dict]:
              ("Visits", f"{got['visits']:,.0f}"
               if got["visits"] is not None else "not printed"),
              ("Visits in the store table", f"{sum(got['rows']):,.0f}"),
+             ("Separate addresses in the table", f"{got['addresses']}"),
              ("Store rows", ", ".join(f"{v:,.0f}" for v in got["rows"][:10]))]
 
-    if got["locations"] is not None and int(got["locations"]) != len(got["rows"]):
+    if (got["locations"] is not None
+            and int(got["locations"]) != got["addresses"]):
+        dupes = len(got["rows"]) - got["addresses"]
+        note = (f" The table has {len(got['rows'])} rows, {dupes} of them a "
+                f"repeat of an address already in it." if dupes else "")
         out.append(_f("store_locations_mismatch", "fail",
                       "Store location count does not match the table",
                       f"The report says {got['locations']:,.0f} location"
                       f"{'s' if got['locations'] != 1 else ''} tracked a visit, "
-                      f"and lists {len(got['rows'])}. The table is not clipped, "
-                      f"so they are counting different things.", trace,
-                      where=spot))
+                      f"and lists {got['addresses']} address"
+                      f"{'es' if got['addresses'] != 1 else ''}.{note} The table "
+                      f"is not clipped, so they are counting different things.",
+                      trace, where=spot))
 
     if got["visits"] is not None and abs(sum(got["rows"]) - got["visits"]) > 0.5:
         out.append(_f("store_visits_mismatch", "fail",

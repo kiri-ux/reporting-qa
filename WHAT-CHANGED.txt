@@ -1,30 +1,41 @@
-build 2026.09.14-259
+build 2026.09.14-261
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-PPC PAGES ON A BUY WITH NO PPC IS BACK, AND IT FIRES ON ALL THREE.
+BELMONT PARK SOCIAL MIRROR - A GAP IN A LINE ITEM'S NAME LOST THE WHOLE ROW.
 
-  Ski Barn      PPC on a buy with no PPC     p18
-  Usdan         PPC on a buy with no PPC     p14
-  Earthly       PPC on a buy with no PPC     p12
+"Belmont Park - Family -   Family Keyword Social Mirror" has three spaces in
+the middle of its own name. A row was read as "first cell is the name, every
+cell after it is a number", so that second cell was the rest of the name, the
+line did not look like a row, and it was dropped whole.
 
-  "This report carries the PPC cost-per-click glossary and the ad extension
-  breakdown. Neither the report's other products nor the order is a PPC buy."
+That is exactly the two findings on it: 15,253 impressions and 71 clicks. The
+fourteen rows add up to 224,870 and 1,601 on the nose.
 
-I pulled this family a build ago on the reading that the glossary is template
-prose rather than a page anybody ordered. It is template prose AND it is a page
-nobody ordered, and those are not in conflict: a report should not carry four
-pages explaining a product the client is not buying. All three reports carry
-byte-identical text, so it is one rule for all three - which is your call, and
-it means Usdan is flagged too.
+The name is now whatever comes before the numbers rather than the first cell on
+its own, capped at three cells so a line of prose ending in a figure still is
+not a row. The report is a fixture now.
 
-PPC line items are named for the strategy rather than the product, so the buy
-is read off the report's products and the order. A client who really runs PPC
-says nothing, whichever of the two carries it.
+Across the 317-page sample this recovers one row and loses none.
 
-Performance Max keeps its own. "Performance Max Other Google Conversions" is
-PMax's widget and PMax is a product people buy, so only PPC's own copy counts.
+STORE VISITS COMPARES ADDRESSES, NOT ROWS.
 
-All three reports are fixtures now, and so is a PPC buy that has to stay quiet.
+Belmont Park again: one store entered twice, "Belmont Park" and "Belmont Park -
+custom", both at 3146 Mission BLVD, 92109. The headline counts places and the
+table counts rows, so 1 against 2 was the two widgets both being right.
 
-1026 tests pass.
+Address and zip identify a location now. Two rows at one address are one
+location. Two rows at two addresses still fail. When the counts genuinely
+disagree the finding names the repeats.
+
+Visits are still added across every row - 78 and 27 is 105, which is what the
+tile says.
+
+SEO REPORTS SIGN THEMSELVES OFF ON ARRIVAL.
+
+Nothing is checked on one, so there was never anything for a person to read
+first. Signed by "Report QA" so you can tell yours from the tool's. The feed, a
+manual upload, and replacing a file are all covered. It will not touch a report
+you have already marked, and it will not sign off one that failed.
+
+1036 tests pass.

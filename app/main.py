@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 from . import brand, selfcheck, version
 from .config import settings
 from .db import (Batch, Delivery, Inbound, KnownLogo, OrderLine, OrderSync,
-                 Partner, Report, SessionLocal, WorkerBoot, init_db)
+                 Partner, Report, SessionLocal, WorkerBoot, init_db,
+                 sign_off_seo)
 from .ingest import (finish_batch, parse_postmark, process_batch,
                     prune_old_pdfs, sweep_stale)
 from .lookup import find as _find
@@ -3371,6 +3372,10 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         rules_version=_rv())
     db.add(rep)
     db.flush()
+    # AN SEO REPORT IS GOOD TO GO THE MOMENT IT ARRIVES. Nothing is checked on
+    # one, so the sign-off was a box somebody ticked to say "yes, still nothing
+    # to look at", once per SEO client per month.
+    sign_off_seo(rep)
     attach_owners(db, rep)
     # NAMED HERE TOO, NOT ONLY ON THE FEED.
     #
@@ -3679,6 +3684,10 @@ async def replace_report(report_id: int, request: Request,
     rep.signoff_cleared_at = None
     from .version import rules_version as _rv
     rep.rules_version = _rv()
+    # A REPLACED SEO REPORT IS GOOD TO GO AGAIN. The sign-off is cleared above
+    # because it belonged to the file that just went; nothing is checked on the
+    # new one either, so it does not need a person to say so twice.
+    sign_off_seo(rep)
     db.commit()
     return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 

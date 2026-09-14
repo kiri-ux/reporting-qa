@@ -1062,6 +1062,36 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
 ]
 
 
+SEO_SIGNED_BY = "Report QA"
+
+
+def sign_off_seo(rep) -> bool:
+    """An SEO report is good to go the moment it arrives.
+
+    Nothing is checked on one - it is pulled by hand outside TapClicks and
+    uploaded to sit with the rest and go into the partner's folder - so the
+    sign-off was a box somebody ticked to say "yes, still nothing to look at",
+    once per SEO client per month, forever.
+
+    NOT IF IT IS FAILING, which cannot happen today and is free to guard.
+    `ready` already requires no failure, so a report that somehow raised one
+    keeps showing it rather than being signed off over the top of it.
+
+    NOT IF SOMEBODY HAS ALREADY SAID SOMETHING. A person marking one Needs fix
+    outranks this: the rule is "nobody has to look", not "nobody may".
+    """
+    if not getattr(rep, "is_seo", False):
+        return False
+    if (rep.review_state or "new") != "new" or rep.reviewed_at:
+        return False
+    if (rep.effective_severity or "") == "fail":
+        return False
+    rep.review_state = "reviewed"
+    rep.reviewed_by = SEO_SIGNED_BY
+    rep.reviewed_at = dt.datetime.utcnow()
+    return True
+
+
 def _existing_columns(conn, table: str) -> set[str]:
     from sqlalchemy import inspect
     insp = inspect(conn)
