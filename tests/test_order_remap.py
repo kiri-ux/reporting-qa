@@ -1589,14 +1589,22 @@ def test_a_report_silenced_by_stale_orders_is_queued_by_the_re_read(db):
 
     stood = rep("Susquehanna", [{"key": "check_products", "state": "skipped",
                                  "why": why}])
+    # THE CASE THAT MATTERED: judged before the reason was recorded at all.
+    # Susquehanna River Valley's stored answer is from 3 September, so it
+    # carried a skipped product check with no `why` on it - and the first
+    # version of this matched on the reason text, which meant the one report
+    # the whole thing was written for was the one it missed.
+    old = rep("Judged in September", [{"key": "check_products",
+                                       "state": "skipped"}])
     other = rep("Fine", [{"key": "check_products", "state": "passed"}])
     # Skipped, but for its own reason - nothing to do with the orders.
     elsewhere = rep("No CTV", [{"key": "check_ctv_tile", "state": "skipped",
                                 "why": "no CTV completion tile on page one"}])
     db.commit()
 
-    assert queue_stood_down(db) == 1
+    assert queue_stood_down(db) == 2
     assert stood.rules_version == "", "the silenced report was not queued"
+    assert old.rules_version == "", "a stored answer with no reason was missed"
     assert other.rules_version == "current"
     assert elsewhere.rules_version == "current", "queued a report it is not about"
     # And it is idempotent - a second re-read has nothing left to do.

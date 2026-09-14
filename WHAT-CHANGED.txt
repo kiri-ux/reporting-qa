@@ -1,43 +1,31 @@
-build 2026.09.14-255
+build 2026.09.14-256
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-THE GEO-FRAMING FINDING IS NOT BROKEN. I built Susquehanna's three order lines
-exactly as the pacing panel shows them and ran the whole path end to end:
+YOUR ORDERS ARE CURRENT NOW. The yellow "these rows were written by older
+import code" box is gone from the order lines panel on 1623, which is the
+thing that had check_products switched off. That part is fixed.
 
-  expected_products : Display, Geo-Framing Display, Mobile Conquesting
-  expected_any      : [Geo-Framing Display]
-  detected on report: Display, Mobile Conquesting
-  finding           : Ordered but not on the report: Geo-Framing Display
+WHAT IS LEFT IS THE STORED ANSWER. Susquehanna's report was last judged on 3
+September and findings are stored, so it is still showing what it said then.
+Press "Check this file again" on that report and the geo-framing finding will
+be there.
 
-The ONLY thing standing between that and the screen is the order list reading
-as stale, which switches check_products off on every report on the board.
+AND THE TWO THINGS THAT WERE SUPPOSED TO HAVE DONE THAT FOR YOU BOTH MISSED IT
+FOR THE SAME REASON. Each matched on the sentence the tool writes when a check
+stands down - and that sentence only exists on reports judged since the
+sentence did. A 3 September answer has a skipped product check with no reason
+recorded on it, so:
 
-SO THE REPORT PAGE SAYS SO, WHERE THE FINDINGS ARE. It has been saying it all
-along, one click down inside the "10 skipped" expander, which nobody opens
-because the count above it reads as routine. It is on the page now:
+  - the re-read did not queue it
+  - the report page did not say the product check had not run
+
+Both key off the check being skipped now, whatever the reason. Which means the
+one report the whole thing was written for was the one both filters hid.
+
+So on this build the page says it without being asked:
 
   The product check did not run.
-  The order list was read by older import code - it has to be read again
-  before this check can say anything.
-
-AND A FAILED SYNC IS NAMED. A sync that fails looks exactly like a button
-nobody pressed: both leave the orders stale and the banner up. If the last one
-failed, the banner now carries its error. If it says NoCredentialsError or a
-timeout, no amount of pressing the button will help and the problem is S3.
-
-PPC IS OUT OF THE ROGUE-WIDGET CHECK. I got that one wrong. "Cost: Amount
-Spent on the PPC campaign" and the ad extension diagram are not PPC pages -
-they are template prose TapClicks prints on every report. Usdan Summer Camp
-runs Display and Meta, no PPC and no Performance Max, and carries the same
-lines on page 14. Both reports that looked wrong are clean now, and both are
-fixtures so it cannot come back.
-
-If the glossary should not print on a report with no Google product on it,
-that is one message to Alyssa about the template, not fourteen hundred
-findings.
-
-"All impressions" and "All spend" are "Total", so the calendar mark fits on
-the line.
+  This answer was stored before the reason was recorded. Check the file again.
 
 1023 tests pass.

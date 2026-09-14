@@ -626,13 +626,8 @@ def _remap_orders_if_stale() -> None:
         db.close()
 
 
-# The words skip_reason writes onto a report whose product check stood down
-# because the loaded orders were read by older import code.
-STOOD_DOWN = "older import code"
-
-
 def queue_stood_down(db: Session) -> int:
-    """Queue every report whose product check abstained for stale orders.
+    """Queue every report whose product check abstained.
 
     A RE-READ FIXES THE ORDERS AND NOT THE REPORTS. Findings are stored, so a
     report that abstained while the orders were stale keeps saying so for ever
@@ -642,16 +637,24 @@ def queue_stood_down(db: Session) -> int:
     finding stayed unwritten through four builds that each fixed a different
     reason for it.
 
-    Read off what the report itself recorded, so it touches exactly the reports
-    that stood down and nothing else.
+    ANY REASON, NOT JUST THE STALE-ORDERS ONE. The first version matched on
+    the sentence skip_reason writes, which only exists on reports judged since
+    that sentence did - and Susquehanna River Valley's answer is from 3
+    September, so it carried a skipped product check with no reason recorded
+    and was not queued. The report that this whole thing is about was the one
+    the filter missed.
+
+    A report whose product check did not run has no answer about its products.
+    Reading it again costs one PDF and settles it, whichever of the reasons it
+    was.
     """
     from .db import Report
 
     n = 0
     for rep in db.scalars(select(Report).where(Report.rules_version != "")).all():
         for c in (rep.checks or []):
-            if (isinstance(c, dict) and c.get("state") == "skipped"
-                    and STOOD_DOWN in (c.get("why") or "")):
+            if (isinstance(c, dict) and c.get("key") == "check_products"
+                    and c.get("state") == "skipped"):
                 rep.rules_version = ""    # the Run picks it up from here
                 n += 1
                 break

@@ -123,9 +123,16 @@
        time, one click down. #}
     {% set stood = rep.checks|selectattr('key','equalto','check_products')
                              |selectattr('state','equalto','skipped')|list %}
-    {% if stood and stood[0].why %}
+    {# AND WITH NO REASON RECORDED, WHICH IS THE CASE THAT MATTERED. The reason
+       is only stored on reports judged since skip_reason existed, and
+       Susquehanna River Valley's answer is from 3 September - so the one
+       report this was written for was the one the condition hid. #}
+    {% if stood %}
       <p class="allclear" style="background:var(--warn-bg);color:var(--ink)">
-        <b>The product check did not run.</b><br>{{ stood[0].why|capitalize }}.</p>
+        <b>The product check did not run.</b><br>
+        {%- if stood[0].why %} {{ stood[0].why|capitalize }}.
+        {%- else %} This answer was stored before the reason was recorded.
+        Check the file again.{% endif %}</p>
     {% endif %}
 
     {% if rep.checks and not rep.checks_skipped %}
