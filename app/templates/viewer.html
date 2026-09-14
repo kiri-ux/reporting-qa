@@ -184,15 +184,20 @@
             {% endif %}
             <tr{% if p.total %} class="tot"{% endif %}>
               <td>{{ p.product }}
-                {# WHAT THE GOAL WAS CUT FROM. A monthly goal is a rate, so a
-                   line that launched on the 20th is owed twelve days of it -
-                   and the figure it is being divided by is then on neither
-                   the order nor the report, so the row has to say where it
-                   came from. #}
-                {%- if p.month_note %}<br><span class="acct" style="font-size:11px"
-                  title="A monthly goal is a rate. This product had part of the month, so the figure it is measured against is that goal across the days it actually ran.">{{ p.month_note }}</span>{% endif %}
-                {%- if p.basis %}<br><span class="acct" style="font-size:11px"
-                  title="The order does not carry this figure in the unit the panel is asking about, so it was worked out from the one it does carry and the length of the flight. Derived, not stated.">{{ p.basis }}</span>{% endif %}</td>
+                {# ON THE ICON, NOT ON THE ROW. Three gray lines under every
+                   product name was more of the panel than the numbers were,
+                   and the panel is read by scanning the percentages. The fact
+                   still has to be somewhere - the figure being divided by is
+                   on neither the order nor the report - so it is one hover
+                   away instead of in the way. #}
+                {%- if p.month_note %} <span class="dayspan" data-tip="{{ p.month_note }}"
+                  ><svg viewBox="0 0 16 16" width="12" height="12" fill="none"
+                    stroke="currentColor" stroke-width="1.4" aria-hidden="true"
+                    ><rect x="2" y="3" width="12" height="11" rx="1.5"/><path
+                      d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke-linecap="round"
+                    /></svg></span>{% endif %}
+                {%- if p.basis %} <span class="dayspan"
+                  data-tip="{{ p.basis }}">&#8226;</span>{% endif %}</td>
               <td class="mono nw">
                 {% if p.unit == 'money' %}
                   {% if p.served is not none %}${{ '{:,.0f}'.format(p.served) }}{% else %}—{% endif %}/{%

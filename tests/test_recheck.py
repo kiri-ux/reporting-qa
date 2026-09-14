@@ -1144,7 +1144,9 @@ def test_the_ctv_scope_matches_both_ctv_products():
         names.add(item[0])
     names |= set(getattr(P, "DELIVERS", {}))
     hit = sorted(n for n in names if "CTV" in n)
-    assert hit == ["CTV", "Social Mirror CTV"], hit
+    # Three now: Amazon Premium is its own CTV product, and a Run scoped to
+    # CTV has to read its reports too.
+    assert hit == ["Amazon CTV", "CTV", "Social Mirror CTV"], hit
 
 
 def test_the_sheet_sends_which_button_was_pressed():

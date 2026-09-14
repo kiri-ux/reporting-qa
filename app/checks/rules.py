@@ -1649,7 +1649,7 @@ CTV_TILE_SLACK = 2.0
 # The orders that sell CTV, by the product name the import gives them. YouTube+
 # is not one: its order is YouTube, and only its YouTube TV line items are CTV
 # inventory - which is a fact about the rows, not about the order.
-CTV_ORDERS = frozenset({"CTV", "Social Mirror CTV"})
+CTV_ORDERS = frozenset({"CTV", "Social Mirror CTV", "Amazon CTV"})
 
 
 def _ctv_tile_pct(text: str):
@@ -1923,7 +1923,7 @@ def _amazon_halves(text: str) -> set[str]:
 REQUIRED_WIDGETS: list[tuple] = [
     ({"CTV", "CV"}, "CTV ADS",              [W_CTV_PUBS], "Connected TV"),
     ({"SMC"},       "SOCIAL MIRROR CTV ADS", [W_CTV_PUBS], "Social Mirror CTV"),
-    ({"AD", "AV"},  "AMAZON ADS",           [W_AMZ_INV, W_AMZ_SITE], "Amazon Premium"),
+    ({"AD", "AV", "AC"}, "AMAZON ADS",      [W_AMZ_INV, W_AMZ_SITE], "Amazon Premium"),
 ]
 
 # The ads section for a product, written as it appears in the page header
@@ -1961,7 +1961,8 @@ def _dooh_only(ctx) -> bool:
 # Products whose inventory breakout is NOT the generic site-and-app list. A
 # billboard has neither. A CTV ad runs on Samsung TV Plus and Pluto, which the
 # report lists as Top CTV Publishers - and that widget IS the breakout.
-NO_SITE_APP_PRODUCTS = {"DOOH", "CTV", "Social Mirror CTV", "Video"}
+NO_SITE_APP_PRODUCTS = {"DOOH", "CTV", "Social Mirror CTV", "Video",
+                        "Amazon CTV", "Amazon Video"}
 
 
 def _site_app_not_owed(ctx, heads: dict) -> bool:

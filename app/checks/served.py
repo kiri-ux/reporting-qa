@@ -27,6 +27,20 @@ from .quality import line_item_totals
 # Conquesting line on every report matched nothing at all.
 NICKNAMES: list[tuple[str, str]] = [
     ("Mobile Conquesting", r"\bmobile\b"),
+    # AMAZON PUTS ITS NAME ON EITHER SIDE OF THE FORMAT. "... Behavioral Amazon
+    # CTV" and "... Products Video Amazon" are the same buy written two ways,
+    # and the order's own patterns are anchored to the front of a product name
+    # so they only ever caught the first. The second fell through to the
+    # generic "video" and went into the plain Video row.
+    #
+    # Before the bare OTT nickname below, so "OTT Amazon" is Amazon's CTV and
+    # not the plain Connected TV product.
+    ("Amazon CTV", r"\b(?:ctv|ott)\b.*\b(?:amazon|prime)\b"
+                   r"|\b(?:amazon|prime)\b.*\b(?:ctv|ott)\b"),
+    ("Amazon Video", r"\bvideo\b.*\b(?:amazon|prime)\b"
+                     r"|\b(?:amazon|prime)\b.*\bvideo\b"),
+    ("Amazon Display", r"\bdisplay\b.*\b(?:amazon|prime)\b"
+                       r"|\b(?:amazon|prime)\b.*\bdisplay\b"),
     ("CTV", r"\bott\b"),
     ("Native Display", r"\bnativ\w*\b"),
 ]
@@ -198,15 +212,19 @@ def pro_rata(goal, days, period) -> tuple[float | None, int | None]:
 
 
 def pro_rata_note(full, days, in_month, started, money=False) -> str:
-    """"150,000 a month · 12 of 31 days from Aug 20" - what the row is cut
-    from, said on the row rather than left in a tooltip."""
+    """What the row was cut from, for the calendar icon's tooltip.
+
+    ON THE ICON, NOT ON THE ROW. Three gray lines under every product name was
+    more of the panel than the numbers were, and the panel is read by scanning
+    the percentages. The fact still has to be somewhere - the figure being
+    divided by is on neither the order nor the report - so it is one hover
+    away instead of in the way.
+    """
     if not in_month or full is None:
         return ""
     figure = f"${full:,.0f}" if money else f"{full:,.0f}"
-    note = f"{figure} a month · {days} of {in_month} days"
-    if started:
-        note += f" from {started.strftime('%b %-d')}"
-    return note
+    when = f" from {started.strftime('%b %-d')}" if started else ""
+    return f"Live {days} of {in_month} days{when} · {figure} a month"
 
 
 def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dict]:
@@ -291,7 +309,8 @@ def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dic
                      "served": served["total"] or None,
                      "ordered": want_total or None,
                      "full": full_total or None,
-                     "month_note": (f"{full_total:,.0f} a month across the products above"
+                     "month_note": (f"{full_total:,.0f} a month across the "
+                                    f"products above"
                                     if full_total and round(full_total) != round(want_total)
                                     else ""),
                      "pace": pacing_pct(served["total"] or None, want_total or None),

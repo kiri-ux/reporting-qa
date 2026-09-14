@@ -590,7 +590,7 @@ def test_a_display_order_spends_the_geo_framing_allowance():
 
     # Nothing else changes - Amazon's two halves are untouched.
     assert any_of_groups(["Amazon Premium CTV + Video Ads"], {"Display"}) == [
-        frozenset({"CTV", "Video"})]
+        frozenset({"Amazon CTV", "Amazon Video"})]
 
 
 def test_the_missing_geo_framing_order_is_a_finding():

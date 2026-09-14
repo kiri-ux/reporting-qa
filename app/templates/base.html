@@ -424,6 +424,13 @@ button[data-tip],a[data-tip]{cursor:pointer}
 .pacing tr.tot td{font-weight:700;border-bottom:0;border-top:1px solid var(--ink-2)}
 .pacing tr.sub2 td{border-bottom:0;padding-top:0;font-size:11.5px}
 .pacing .off{color:var(--crit);font-weight:700}
+/* THE CALENDAR MARK BESIDE A PRODUCT WHOSE GOAL WAS CUT TO THE DAYS IT RAN.
+   Three gray lines under every product name was more of the panel than the
+   numbers were, and the panel is read by scanning the percentages. Quiet
+   enough to scan past, there when you look for it. */
+.dayspan{display:inline-flex;align-items:center;color:var(--muted);
+ vertical-align:-1px;margin-left:4px;cursor:help}
+.dayspan:hover{color:var(--ink-2)}
 /* NOT A PROBLEM TO FIX. It says what the file was called when it arrived and
    what it is filed as now - housekeeping, and it was drawn in warning colors
    with a border round it, which reads as something waiting on you. */

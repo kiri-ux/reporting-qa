@@ -221,7 +221,7 @@ def test_products_detected_from_sections_not_the_footnote():
 def test_order_product_names_map_to_report_names():
     from app.checks.products import map_order_product
     assert map_order_product("Mobile Conquesting Display & Video Ads") == "Mobile Conquesting"
-    assert map_order_product("Amazon Premium CTV + Video Ads") == "CTV"
+    assert map_order_product("Amazon Premium CTV + Video Ads") == "Amazon CTV"
     assert map_order_product("Pay-Per-Click Ads") == "PPC"
 
 

@@ -75,7 +75,8 @@ def test_the_earliest_match_wins_not_the_longest():
     assert m("DOOH Display & Video Ads") == "DOOH"
     assert m("Mobile Conquesting Display & Video Ads") == "Mobile Conquesting"
     assert m("Meta Display & Video Ads") == "Meta"
-    assert m("Amazon Premium CTV + Video Ads") == "CTV"
+    # Amazon Premium is its own buy now, not the plain CTV one.
+    assert m("Amazon Premium CTV + Video Ads") == "Amazon CTV"
 
 
 def test_punctuation_does_not_hide_a_product():
@@ -183,7 +184,8 @@ from app.checks.products import map_order_products as mp
 
 def test_a_plus_in_the_product_name_means_two_products():
     assert mp("CTV + Video Ads") == ["CTV", "Video"]
-    assert mp("Amazon Premium CTV + Video Ads") == ["CTV", "Video"]
+    assert mp("Amazon Premium CTV + Video Ads") == ["Amazon CTV", "Amazon Video"]
+    assert mp("Amazon Premium Display Ads") == ["Amazon Display"]
 
 
 def test_a_plus_that_belongs_to_the_name_is_not_a_separator():
@@ -254,7 +256,7 @@ def test_social_mirror_is_not_on_the_list():
 # same - that buy runs both, and its report carries both.
 from app.checks.products import any_of_groups
 
-AMAZON = [frozenset({"CTV", "Video"})]
+AMAZON = [frozenset({"Amazon CTV", "Amazon Video"})]
 
 
 def _any(exp, found, groups=AMAZON):
@@ -265,9 +267,10 @@ def _any(exp, found, groups=AMAZON):
 
 def test_amazon_premium_is_satisfied_by_either_half():
     assert any_of_groups(["Amazon Premium CTV + Video Ads"]) == AMAZON
-    assert _any(["CTV", "Video"], ["CTV"]) == []
-    assert _any(["CTV", "Video"], ["Video"]) == []
-    assert _any(["CTV", "Video"], ["CTV", "Video"]) == []
+    assert _any(["Amazon CTV", "Amazon Video"], ["Amazon CTV"]) == []
+    assert _any(["Amazon CTV", "Amazon Video"], ["Amazon Video"]) == []
+    assert _any(["Amazon CTV", "Amazon Video"],
+                ["Amazon CTV", "Amazon Video"]) == []
 
 
 def test_neither_half_turning_up_is_still_a_finding():
@@ -339,12 +342,12 @@ def test_the_geo_framing_chip_resolves():
 CTV_LINE_ITEMS = [
     # (line item name, the product it belongs to)
     # Amazon Premium CTV + Video
-    ("Acme - Retargeting Amazon CTV", "CTV"),
-    ("Acme - Prime CTV", "CTV"),
-    ("Acme - Prime OTT", "CTV"),
-    ("Acme - Amazon OTT", "CTV"),
-    ("Acme - OTT Amazon", "CTV"),
-    ("Acme - CTV Amazon", "CTV"),
+    ("Acme - Retargeting Amazon CTV", "Amazon CTV"),
+    ("Acme - Prime CTV", "Amazon CTV"),
+    ("Acme - Prime OTT", "Amazon CTV"),
+    ("Acme - Amazon OTT", "Amazon CTV"),
+    ("Acme - OTT Amazon", "Amazon CTV"),
+    ("Acme - CTV Amazon", "Amazon CTV"),
     # Connected TV, and CTV + Video
     ("Acme - Behavioral CTV", "CTV"),
     ("Acme - Behavioral OTT", "CTV"),
@@ -424,3 +427,73 @@ def test_the_ctv_run_reads_the_youtube_reports_too():
     from app.checks.rules import CHECK_PRODUCTS
 
     assert CHECK_PRODUCTS["check_ctv_tile"] == ("CTV", "YouTube")
+
+
+# ------------------------------- Amazon Premium is its own buy, not CTV + Video
+def test_amazon_premium_is_its_own_products():
+    """It was read as plain CTV, so a client running Connected TV alongside it
+    had one product where the board should show two, its delivery was added
+    into the CTV row, and the pacing panel could not say which of the two buys
+    was short."""
+    from app.checks.products import map_order_products as mp
+
+    assert mp("Amazon Premium CTV + Video Ads") == ["Amazon CTV", "Amazon Video"]
+    assert mp("Amazon Premium Display Ads") == ["Amazon Display"]
+    # And the plain buys are untouched.
+    assert mp("CTV + Video Ads") == ["CTV", "Video"]
+    assert mp("Connected TV Ads") == ["CTV"]
+    assert mp("Display Ads") == ["Display"]
+    assert mp("Social Mirror CTV Ads") == ["Social Mirror CTV"]
+
+
+def test_amazons_delivery_is_its_own_row():
+    """Piedmont Advantage Credit Union runs Amazon Premium and Connected TV
+    together. All of it was landing in one CTV row."""
+    from pathlib import Path
+
+    from app.checks.parser import pdf_text
+    from app.checks.served import served_impressions
+
+    fx = Path(__file__).parent / "fixtures" / "piedmont_amazon_lifetime.pdf"
+    got = served_impressions(pdf_text(fx))["by_product"]
+    assert round(got["Amazon CTV"]) == 249_837
+    assert round(got["Amazon Video"]) == 671_965
+    assert round(got["CTV"]) == 237_312       # the plain Connected TV buy
+    assert "Video" not in got, "an Amazon video line landed in the plain row"
+    assert served_impressions(pdf_text(fx))["unattributed"] == 0
+
+
+def test_amazon_writes_its_name_on_either_side_of_the_format():
+    """"... Behavioral Amazon CTV" and "... Products Video Amazon" are the same
+    buy written two ways. The order's patterns are anchored to the front of a
+    product name, so they only ever caught the first, and the second fell
+    through to the generic "video"."""
+    from app.checks.served import report_product
+
+    for name, want in (
+            ("Acme - Boats Behavioral Amazon CTV", "Amazon CTV"),
+            ("Acme - Boats Behavioral CTV Amazon", "Amazon CTV"),
+            ("Acme - Boats Behavioral Amazon Prime OTT", "Amazon CTV"),
+            ("Acme - Boats Behavioral OTT Amazon", "Amazon CTV"),
+            ("Acme - Products Video Amazon", "Amazon Video"),
+            ("Acme - Products Amazon Video", "Amazon Video"),
+            ("Acme - Retargeting Amazon Display", "Amazon Display"),
+            # And nothing Amazon about it stays where it was.
+            ("Acme - Boats Behavioral CTV", "CTV"),
+            ("Acme - Products Video", "Video"),
+            ("Acme - Keyword Display", "Display")):
+        assert report_product(name) == want, name
+
+
+def test_amazon_gets_its_own_chip():
+    """Without their own codes "Amazon CTV" reads as CTV and "Amazon Video" as
+    V, which is the whole thing this split exists to stop - two different buys
+    wearing the same chip."""
+    from app.product_codes import code_for
+
+    assert code_for("Amazon CTV") == "AC"
+    assert code_for("Amazon Video") == "AV"
+    assert code_for("Amazon Display") == "AD"
+    assert code_for("Amazon Premium CTV + Video Ads") == "AC"
+    assert code_for("CTV") == "CTV" and code_for("Video") == "V"
+    assert code_for("CTV + Video Ads") == "CV"

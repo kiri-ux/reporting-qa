@@ -33,10 +33,19 @@ PRODUCTS: list[tuple[str, str, str, tuple[str, ...]]] = [
      ("performance max ads (mgmt)", "performance max (mgmt)", "performance max mgmt")),
     ("ML",   "#61a6ef", "Meta Lead Display & Video Ads",       ("meta lead",)),
     ("SMC",  "#9966CC", "Social Mirror CTV Ads",               ("social mirror ctv",)),
-    ("CV",   "#008080", "CTV + Video Ads",                     ("ctv + video", "ctv and video")),
+    # AMAZON'S THREE HALVES, ABOVE THE BARE CTV/V/D CATCH-ALLS. Without their
+    # own codes "Amazon CTV" reads as CTV and "Amazon Video" as V, which is the
+    # whole thing this split exists to stop - two different buys wearing the
+    # same chip.
+    ("AC",   "#fdd0a2", "Amazon Premium CTV / OTT Ads",
+     ("amazon ctv", "amazon ott", "amazon prime ctv", "amazon prime ott",
+      "amazon premium ctv", "amazon premium ott")),
     ("AV",   "#fee6ce", "Amazon Premium Video & OTT Ads",
-     ("amazon premium video", "amazon premium (with twitch)", "twitch")),
-    ("AD",   "#fd8c52", "Amazon Premium Display Ads",          ("amazon premium display", "amazon premium")),
+     ("amazon premium video", "amazon video",
+      "amazon premium (with twitch)", "twitch")),
+    ("AD",   "#fd8c52", "Amazon Premium Display Ads",
+     ("amazon premium display", "amazon display", "amazon premium")),
+    ("CV",   "#008080", "CTV + Video Ads",                     ("ctv + video", "ctv and video")),
     # --- branded and named products ---
     ("MC",   "#befd1c", "Mobile Conquesting Display & Video",  ("mobile conquesting", "mobile conquest")),
     ("NV",   "#a14796", "Native Video Ads",                    ("native video",)),

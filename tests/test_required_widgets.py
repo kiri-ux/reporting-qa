@@ -518,11 +518,14 @@ def test_a_conversion_breakout_is_not_evidence_the_product_ran():
               "Amazon Premium Video + CTV View-through Conversion Performance"]
     for t in titles:
         assert "CTV" not in detect(t + "\n", []), t
-    # The widgets that DO mean it ran.
-    for t in ("Connected TV (CTV) Creative Performance",
-              "Connected TV (CTV) Completion Performance by Strategy",
-              "Amazon Premium OTT Creative Performance"):
-        assert "CTV" in detect(t + "\n", []), t
+    # The widgets that DO mean it ran, each under its own product: Amazon
+    # Premium is its own buy, not the plain Connected TV one.
+    for t, want in (("Connected TV (CTV) Creative Performance", "CTV"),
+                    ("Connected TV (CTV) Completion Performance by Strategy", "CTV"),
+                    ("Amazon Premium OTT Creative Performance", "Amazon CTV"),
+                    ("Amazon Premium CTV Creative Performance", "Amazon CTV"),
+                    ("Amazon Premium Video Creative Performance", "Amazon Video")):
+        assert want in detect(t + "\n", []), t
 
 
 def test_a_real_ctv_buy_keeps_its_product_from_the_line_items():

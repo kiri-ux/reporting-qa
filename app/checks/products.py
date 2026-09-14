@@ -55,6 +55,12 @@ SECTION_PATTERNS: list[tuple[str, str]] = [
     # The widgets that mean a product ran are its creative, completion and
     # publisher breakouts. A real CTV buy also has CTV line items, which are
     # read below, so nothing that genuinely ran loses its product here.
+    # AMAZON'S WIDGETS NAME THEMSELVES, and they come first for the same
+    # reason the tails do: "Amazon Premium CTV Creative Performance" is the
+    # Amazon buy's widget, not the plain Connected TV one.
+    ("Amazon Display", r"^(?!.*\bConversion)Amazon Premium Display\b.*\bPerformance\b"),
+    ("Amazon CTV", r"^(?!.*\bConversion)Amazon Premium (?:CTV|OTT)\b.*\bPerformance\b"),
+    ("Amazon Video", r"^(?!.*\bConversion)Amazon Premium Video\b.*\bPerformance\b"),
     ("CTV", r"^(?!.*\bConversion)(?=.*(?:Connected TV|\bCTV\b|\bOTT\b))"
             r".*\bPerformance\b"),
     ("Meta", r"^Meta\b"),
@@ -93,9 +99,18 @@ TAIL_PATTERNS: list[tuple[str, str]] = [
     # "Prime OTT", "Amazon OTT", "OTT Amazon", "CTV Amazon" and a plain
     # "Connected TV" were all no product at all - and a report made of them
     # carried no CTV, which takes the tile check out with it.
+    # AMAZON'S OWN TAILS FIRST. "... Behavioral Amazon CTV" and "... Amazon
+    # Prime OTT" are the Amazon buy, not the plain Connected TV one, and the
+    # generic tails below claimed both - which is what put Amazon's delivery
+    # into the CTV row of the pacing panel.
+    ("Amazon CTV", r"\b(?:Amazon |Amazon Premium |Amazon Prime |Prime )(?:CTV|OTT)$"),
+    ("Amazon CTV", r"\b(?:CTV|OTT) (?:Amazon|Prime)$"),
+    ("Amazon Video", r"\b(?:Amazon |Amazon Premium |Amazon Prime |Prime )Video$"),
+    ("Amazon Video", r"\bVideo Amazon$"),
+    ("Amazon Display", r"\b(?:Amazon |Amazon Premium |Amazon Prime |Prime )Display$"),
+    ("Amazon Display", r"\bDisplay Amazon$"),
     ("CTV", r"\b(?:CTV|OTT)$"),
     ("CTV", r"\bConnected TV$"),
-    ("CTV", r"\b(?:CTV|OTT) (?:Amazon|Prime)$"),
     ("Video", r"\bVideo$"),
     ("Display", r"\bDisplay$"),
     ("PPC", r"\bPPC$"),
@@ -132,7 +147,17 @@ ORDER_PRODUCT_MAP = {
     "connected tv ads": "CTV",
     "connected tv": "CTV",
     "ctv": "CTV",
-    "amazon premium ctv + video ads": "CTV",
+    # AMAZON PREMIUM IS ITS OWN BUY, NOT CTV AND VIDEO.
+    #
+    # It was read as plain CTV, so a client running Connected TV alongside it
+    # had one product where the board should show two, its delivery was added
+    # into the CTV row, and the pacing panel could not say which of the two
+    # buys was short. Its own products, the way Social Mirror CTV already is:
+    # sold as its own line item, reported in its own widgets.
+    "amazon premium video & ott ads": "Amazon Video",
+    # And the Display half, which was reading as CTV - so an Amazon Premium
+    # Display order looked like a Connected TV order on the board.
+    "amazon premium display ads": "Amazon Display",
     "youtube video ads": "YouTube",
     # All three are the YouTube section of the report. Without them the
     # fallback found "video ads" inside "YouTube+ Video Ads" and filed a live
@@ -199,7 +224,8 @@ DELIVERS = {
 # the report owes CTV or Video, and either satisfies it. Both are still allowed
 # on the report, and if NEITHER turns up that is still a finding.
 ANY_OF: list[tuple[str, frozenset]] = [
-    ("amazon premium", frozenset({"CTV", "Video"})),
+    ("amazon premium ctv", frozenset({"Amazon CTV", "Amazon Video"})),
+    ("amazon premium video", frozenset({"Amazon CTV", "Amazon Video"})),
     # WHAT A GEO-FRAMING BUY IS ALLOWED TO PRINT. Splitting it off the plain
     # Display product is right about the ORDER and says nothing about what the
     # report calls the widget - and a product the report has no name for is a
@@ -263,7 +289,20 @@ PRODUCT_LEADS: list[tuple[str, str]] = [
     ("Social Mirror CTV", r"social mirror ctv\b"),
     ("Social Mirror", r"social mirror\b"),
     ("Online Audio", r"online audio\b"),
-    ("CTV", r"(?:amazon premium|connected tv|ctv)\b"),
+    # BEFORE THE GENERIC CTV LEAD, and before Video and Display, or "Amazon
+    # Premium Display Ads" falls through to whichever bare word comes first.
+    ("Amazon Display", r"amazon (?:premium |prime )?display\b"),
+    ("Amazon CTV", r"amazon (?:premium |prime )?(?:ctv|ott)\b"),
+    ("Amazon Video", r"amazon (?:premium |prime )?video\b"),
+    ("Amazon CTV", r"amazon premium\b"),
+    # AND THE OTHER WORD ORDER, still ahead of the plain CTV lead. A report
+    # line item reads "... Behavioral CTV Amazon" as often as "... Amazon CTV",
+    # and these are searched rather than matched when the name is a line item -
+    # so without them the bare "ctv" below claimed it for Connected TV.
+    ("Amazon CTV", r"(?:ctv|ott)\b.*\b(?:amazon|prime)\b"),
+    ("Amazon Video", r"video\b.*\b(?:amazon|prime)\b"),
+    ("Amazon Display", r"display\b.*\b(?:amazon|prime)\b"),
+    ("CTV", r"(?:connected tv|ctv)\b"),
     ("YouTube", r"youtube\+?\b"),
     ("TikTok", r"tiktok\b"),
     ("Meta", r"(?:meta|facebook|instagram)\b"),
@@ -286,6 +325,19 @@ PRODUCT_LEADS: list[tuple[str, str]] = [
 ]
 
 
+
+# A WHOLE NAME THAT SELLS TWO PRODUCTS, READ BEFORE THE " + " IS SPLIT ON.
+#
+# "Amazon Premium CTV + Video Ads" split into "amazon premium ctv" and "video
+# ads" gives Amazon CTV and plain Video, which is the bug this table exists to
+# stop: the second half belongs to the same Amazon buy as the first. Checked
+# whole, first, so the split never sees it.
+ORDER_PRODUCT_PAIRS: dict[str, list[str]] = {
+    "amazon premium ctv + video ads": ["Amazon CTV", "Amazon Video"],
+    "amazon premium ctv + video": ["Amazon CTV", "Amazon Video"],
+    "amazon premium display + video ads": ["Amazon Display", "Amazon Video"],
+    "amazon premium display & video ads": ["Amazon Display", "Amazon Video"],
+}
 
 PUNCT = re.compile(r"[^a-z0-9+]+")
 
@@ -332,6 +384,8 @@ def map_order_products(name: str) -> list[str]:
     key = _flat(name)
     if not key:
         return []
+    if key in ORDER_PRODUCT_PAIRS:
+        return list(ORDER_PRODUCT_PAIRS[key])
     parts = [p.strip() for p in PLUS.split(key) if p.strip()]
     if len(parts) > 1:
         out: list[str] = []
@@ -485,6 +539,8 @@ def every_product() -> list[str]:
     is on it.
     """
     names = set(ORDER_PRODUCT_MAP.values())
+    for pair in ORDER_PRODUCT_PAIRS.values():
+        names |= set(pair)
     names |= {n for n, _rx in PRODUCT_LEADS}
     names |= NOT_ON_A_REPORT | RIDES_ALONG
     return sorted(names)
