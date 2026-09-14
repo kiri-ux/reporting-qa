@@ -615,10 +615,49 @@ def _remap_orders_if_stale() -> None:
         log.info("re-reading the order export: the product mapping changed")
         rec = sync_orders(db, force=True, claim_id=claim.id, trigger="rules")
         log.info("order re-read: %s", getattr(rec, "message", ""))
+        if getattr(rec, "ok", False):
+            n = queue_stood_down(db)
+            if n:
+                log.info("queued %d report(s) whose product check stood down "
+                         "for stale orders", n)
     except Exception as exc:              # noqa: BLE001
         log.warning("could not re-read the order export: %s", exc)
     finally:
         db.close()
+
+
+# The words skip_reason writes onto a report whose product check stood down
+# because the loaded orders were read by older import code.
+STOOD_DOWN = "older import code"
+
+
+def queue_stood_down(db: Session) -> int:
+    """Queue every report whose product check abstained for stale orders.
+
+    A RE-READ FIXES THE ORDERS AND NOT THE REPORTS. Findings are stored, so a
+    report that abstained while the orders were stale keeps saying so for ever
+    - and _restamp_changed_clients does not cover it, because that only queues
+    clients whose PRODUCTS moved. Susquehanna River Valley's did not: the
+    mapping version changed, its products did not, and the missing Geo-Framing
+    finding stayed unwritten through four builds that each fixed a different
+    reason for it.
+
+    Read off what the report itself recorded, so it touches exactly the reports
+    that stood down and nothing else.
+    """
+    from .db import Report
+
+    n = 0
+    for rep in db.scalars(select(Report).where(Report.rules_version != "")).all():
+        for c in (rep.checks or []):
+            if (isinstance(c, dict) and c.get("state") == "skipped"
+                    and STOOD_DOWN in (c.get("why") or "")):
+                rep.rules_version = ""    # the Run picks it up from here
+                n += 1
+                break
+    if n:
+        db.commit()
+    return n
 
 
 def _claim(db: Session, key: str) -> bool:

@@ -335,7 +335,12 @@ def test_a_full_month_is_left_alone():
     finally:
         S.served_impressions = real
     assert row["ordered"] == 150_000.0
-    assert row["in_month"] is None and row["month_note"] == ""
+    assert row["in_month"] is None
+    # The mark is still there, saying so. A missing one used to mean two
+    # different things - "this ran all month" and "this panel is not working"
+    # - with no way to tell them apart. The monthly figure is left off because
+    # it is the number already printed on the row.
+    assert row["month_note"] == "Live 31 of 31 days from Aug 1"
 
 
 def test_a_lifetime_is_not_pro_rated():
@@ -355,6 +360,7 @@ def test_a_lifetime_is_not_pro_rated():
         row = pacing_rows("x", ordered, period="2026-08")[0]
     finally:
         S.served_impressions = real
+    # No day count on a lifetime, so no mark either.
     assert row["ordered"] == 900_000.0 and row["month_note"] == ""
 
 
@@ -382,3 +388,24 @@ def test_spend_is_pro_rated_the_same_way():
         assert "$3,100.00 a month" in out[0]["detail"]
     finally:
         SP.report_spend = real
+
+
+def test_the_calendar_mark_is_on_every_row_that_has_a_day_count():
+    """Showing it only where the goal moved meant a missing mark said two
+    different things - "this ran all month" and "this panel is not working" -
+    and there was no way to tell them apart."""
+    import datetime as dt
+
+    from app.checks.served import pro_rata_note
+
+    aug1 = dt.date(2026, 8, 1)
+    # Cut: the monthly figure is worth saying, because the row is divided by
+    # something else.
+    assert pro_rata_note(222_220, 15, "2026-08", aug1) == \
+        "Live 15 of 31 days from Aug 1 · 222,220 a month"
+    # Not cut: the monthly figure IS the number on the row, so it is left off.
+    assert pro_rata_note(100_000, 31, "2026-08", aug1) == \
+        "Live 31 of 31 days from Aug 1"
+    # Nothing known, nothing said - a lifetime carries no day count.
+    assert pro_rata_note(None, None, "2026-08", None) == ""
+    assert pro_rata_note(100_000, 31, "", aug1) == ""

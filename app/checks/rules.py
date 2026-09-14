@@ -1646,6 +1646,20 @@ CTV_FULL_COL = re.compile(
 # A weighted mean sits between the smallest and largest of its parts. The slack
 # is for rounding and for a strategy the grid did not print.
 CTV_TILE_SLACK = 2.0
+
+# A COMPLETION RATE THIS LOW IS NOT A COMPLETION RATE.
+#
+# Window World's page one read 0.34% and another read 0.23% - those are
+# click-through rates, in the tile that is supposed to hold the share of
+# viewers who watched an ad to the end. A real CTV VCR runs somewhere in the
+# high tens to high nineties; nothing sells a video product that finishes two
+# ads in a thousand.
+#
+# Worth saying on its own, before anything is compared to anything. The tile
+# alone settles it, so it does not matter whether the report carries a CTV
+# grid to measure against - and "could not be checked" on a report whose tile
+# is plainly a CTR is the tool declining to say the one thing it knows.
+CTV_TILE_FLOOR = 5.0
 # The orders that sell CTV, by the product name the import gives them. YouTube+
 # is not one: its order is YouTube, and only its YouTube TV line items are CTV
 # inventory - which is a fact about the rows, not about the order.
@@ -1716,8 +1730,19 @@ def check_ctv_tile(ctx) -> list[dict]:
     tile, at = _ctv_tile_pct(text)
     if tile is None:
         return []
-    rows = _ctv_full_rates(text)
     page_of = ctx.get("page_of")
+    where = (f"p{page_of(at)} · " if page_of else "") + "CTV Completion Rate"
+    if tile < CTV_TILE_FLOOR:
+        return [_f("ctv_tile_off", "fail",
+                   "CTV VCR is not a completion rate",
+                   f"The tile reads {tile:.2f}%. A completion rate is the share "
+                   f"of viewers who watched an ad to the end, and no video "
+                   f"product finishes two ads in a thousand - this is a "
+                   f"click-through rate in the completion tile.",
+                   [("Tile on page one", f"{tile:.2f}%"),
+                    ("A completion rate below", f"{CTV_TILE_FLOOR:.0f}% is not one")],
+                   where=where)]
+    rows = _ctv_full_rates(text)
     if len(rows) < 1:
         # NOTHING TO COMPARE IT TO IS NOT THE SAME AS NOTHING WRONG.
         #
@@ -1737,8 +1762,7 @@ def check_ctv_tile(ctx) -> list[dict]:
                    f"The tile reads {tile:.2f}% and the client has a CTV "
                    f"order, and there is no CTV grid on the report to check it "
                    f"against.",
-                   where=(f"p{page_of(at)} · " if page_of else "")
-                         + "CTV Completion Rate")]
+                   where=where)]
     lo = min(v for _n, v in rows)
     hi = max(v for _n, v in rows)
     if lo - CTV_TILE_SLACK <= tile <= hi + CTV_TILE_SLACK:
@@ -1752,8 +1776,7 @@ def check_ctv_tile(ctx) -> list[dict]:
                f"{lo:.2f}% to {hi:.2f}%. An average sits between its own "
                f"figures, so the tile is built over rows that are not CTV.",
                trace,
-               where=(f"p{page_of(at)} · " if page_of else "")
-                     + "CTV Completion Rate")]
+               where=where)]
 
 
 # ---------------------------------------------------------------- devices

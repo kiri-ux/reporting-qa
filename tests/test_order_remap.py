@@ -1555,3 +1555,49 @@ def test_the_missing_geoframing_finding_fires_once_the_orders_are_current():
              "is_seo": False, "expected_any": [], "quiet_products": set()}
     assert _rule_applies(check_products, stale) is False
     assert "older import code" in skip_reason(check_products, stale)
+
+
+def test_a_report_silenced_by_stale_orders_is_queued_by_the_re_read(db):
+    """A RE-READ FIXES THE ORDERS AND NOT THE REPORTS.
+
+    Findings are stored, so a report whose product check abstained while the
+    orders were stale keeps saying so for ever - and _restamp_changed_clients
+    does not cover it, because that only queues clients whose PRODUCTS moved.
+    Susquehanna River Valley's did not: the mapping version changed, its
+    products did not, and the missing Geo-Framing finding stayed unwritten
+    through four builds that each fixed a different reason for it.
+    """
+    import datetime as dt
+
+    from app.checks.rules import check_products, skip_reason
+    from app.db import Batch, Report
+    from app.recheck import queue_stood_down
+
+    why = skip_reason(check_products, {"expected_products": {"Display"},
+                                       "orders_current": False})
+    b = Batch(email_subject="x", received_at=dt.datetime(2026, 8, 1))
+    db.add(b)
+    db.flush()
+
+    def rep(client, checks):
+        r = Report(batch_id=b.id, filename=f"{client}.pdf", client=client,
+                   market="M", period="2026-08", account_ids="1",
+                   severity="pass", findings=[], checks=checks, acked=[],
+                   review_state="new", stored_path="", rules_version="current")
+        db.add(r)
+        return r
+
+    stood = rep("Susquehanna", [{"key": "check_products", "state": "skipped",
+                                 "why": why}])
+    other = rep("Fine", [{"key": "check_products", "state": "passed"}])
+    # Skipped, but for its own reason - nothing to do with the orders.
+    elsewhere = rep("No CTV", [{"key": "check_ctv_tile", "state": "skipped",
+                                "why": "no CTV completion tile on page one"}])
+    db.commit()
+
+    assert queue_stood_down(db) == 1
+    assert stood.rules_version == "", "the silenced report was not queued"
+    assert other.rules_version == "current"
+    assert elsewhere.rules_version == "current", "queued a report it is not about"
+    # And it is idempotent - a second re-read has nothing left to do.
+    assert queue_stood_down(db) == 0

@@ -211,20 +211,31 @@ def pro_rata(goal, days, period) -> tuple[float | None, int | None]:
     return float(goal) * days / in_month, in_month
 
 
-def pro_rata_note(full, days, in_month, started, money=False) -> str:
-    """What the row was cut from, for the calendar icon's tooltip.
+def pro_rata_note(full, days, period, started, money=False) -> str:
+    """How long this product was live, for the calendar mark's tooltip.
 
     ON THE ICON, NOT ON THE ROW. Three gray lines under every product name was
     more of the panel than the numbers were, and the panel is read by scanning
-    the percentages. The fact still has to be somewhere - the figure being
-    divided by is on neither the order nor the report - so it is one hover
-    away instead of in the way.
+    the percentages.
+
+    ON EVERY ROW THAT HAS A DAY COUNT, not only the ones whose goal got cut.
+    Showing it only where the goal moved meant a missing mark said two
+    different things - "this ran all month" and "this panel is not working" -
+    and there was no way to tell them apart. "How long was this live" is worth
+    an answer on a full month too.
+
+    The monthly figure is only added when the goal WAS cut, because that is the
+    only time it differs from the number already printed on the row.
     """
-    if not in_month or full is None:
+    in_month = days_in_month(period)
+    if not in_month or not days:
         return ""
-    figure = f"${full:,.0f}" if money else f"{full:,.0f}"
     when = f" from {started.strftime('%b %-d')}" if started else ""
-    return f"Live {days} of {in_month} days{when} · {figure} a month"
+    note = f"Live {days} of {in_month} days{when}"
+    if days < in_month and full is not None:
+        figure = f"${full:,.0f}" if money else f"{full:,.0f}"
+        note += f" \u00b7 {figure} a month"
+    return note
 
 
 def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dict]:
@@ -265,9 +276,8 @@ def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dic
             rows.append({"product": product, "unit": "money",
                          "served": got, "ordered": goal, "full": full,
                          "in_month": in_month,
-                         "month_note": pro_rata_note(full, when["days"],
-                                                     in_month, when["started"],
-                                                     money=True),
+                         "month_note": pro_rata_note(full, when["days"], period,
+                                                     when["started"], money=True),
                          "basis": want.get("basis") or "",
                          "pace": pacing_pct(got, goal), **when})
             continue
@@ -279,7 +289,7 @@ def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dic
         rows.append({"product": product, "unit": "impressions",
                      "served": got, "ordered": goal, "full": full,
                      "in_month": in_month,
-                     "month_note": pro_rata_note(full, when["days"], in_month,
+                     "month_note": pro_rata_note(full, when["days"], period,
                                                  when["started"]),
                      "basis": want.get("basis") or "",
                      "pace": pacing_pct(got, goal), **when})

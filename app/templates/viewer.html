@@ -222,15 +222,11 @@
                 line items whose name maps to more than one product, so they count
                 in the total but not against a single product.</td></tr>
             {% endif %}
-            {# THE NUMBER IS NOT MISSING, IT IS NOT BEING ASKED ABOUT. A flat
-               product can still print impressions on the report, and dropping
-               them out of the total silently would read as the total being
-               wrong. #}
-            {% if p.total and p.flat %}
-              <tr class="sub2"><td colspan="3" class="acct"
-                  data-tip="Products bought flat - SEO, Live Chat, Website Visitor ID, Additional Billing, Performance Max, PPC. Nothing to deliver against, so they are not paced.">
-                {{ '{:,.0f}'.format(p.flat) }} not paced</td></tr>
-            {% endif %}
+            {# "19,463 not paced" IS OFF THE PANEL. A flat product's
+               impressions are not part of any comparison on this panel, so
+               the figure answered a question nobody was asking and sat under
+               the one row people do read. The total above it already counts
+               only what is paced. #}
           {% endfor %}
         </tbody>
       </table>

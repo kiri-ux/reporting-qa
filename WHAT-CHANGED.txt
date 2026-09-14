@@ -1,38 +1,45 @@
-build 2026.09.14-253
+build 2026.09.14-254
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-THE PACING PANEL IS ONE LINE PER PRODUCT AGAIN. The day count moved onto a
-small calendar mark beside the product name; hovering it says how long the
-product was live and what the monthly goal is.
+THE GEO-FRAMING ONE. Re-reading the orders fixed the ORDERS and never the
+REPORTS, and that is the last reason it kept not appearing.
 
-  Meta                171,962/107,526   +60% over
-  Mobile Conquesting  165,743/142,315   +16% over
-  Social Mirror       176,515/172,071    +3% over
-  TikTok               83,179/107,527   -23% short
-  YouTube              69,410/69,124     +0% over
-  All impressions     713,006/598,563   +19% over
+Findings are stored. A report whose product check abstained while the orders
+were stale keeps saying "skipped" until something reads it again - and the
+existing re-stamp only queues clients whose PRODUCTS moved. Susquehanna River
+Valley's did not: the mapping version changed, its products did not, so it was
+never queued, through four builds that each fixed a different reason for it.
 
-  hover: Live 15 of 31 days from Aug 1 · 222,220 a month
+A successful order re-read now queues every report whose product check stood
+down for stale orders, read off what the report itself recorded. So does the
+Re-read the orders button. After that a Run picks them up like anything else.
 
-Three gray lines under every product name was more of the panel than the
-numbers were, and the panel is read by scanning the percentages. The fact still
-has to be somewhere, because the figure being divided by is on neither the
-order nor the report - so it is one hover away instead of in the way.
+AND THE BOARD SAYS SO. While the orders are stale, check_products abstains on
+EVERY report - and the only sign of it was a tooltip on a toolbar button and a
+line inside the "n skipped" expander of one report. There is a banner on the
+cycle page now, with the button on it.
 
-The derived-figure note moved to a dot with the same treatment.
+So: install, press Re-read the orders, then Run. If the banner is not there
+after the re-read, the orders are current and the geo-framing finding will be
+on Susquehanna's August report after the Run.
+
+A CTV COMPLETION RATE OF 0.23% IS NOT A COMPLETION RATE. It is a click-through
+rate in the completion tile. That is settled by the tile on its own, so it no
+longer matters whether the report carries a CTV grid to measure against, and
+those reports stop reading "CTV VCR could not be checked" - which was the tool
+declining to say the one thing it knew.
+
+  CTV VCR is not a completion rate       p1 · CTV Completion Rate
+  The tile reads 0.34%. A completion rate is the share of viewers who watched
+  an ad to the end, and no video product finishes two ads in a thousand.
+
+Checked against every CTV fixture on hand - they run 71% to 99% and none of
+them is flagged.
 
 --- also in this install ---
 
-Amazon Premium is its own buy - Amazon CTV, Amazon Video, Amazon Display -
-split out of CTV and Video, with its own chips.
+The pacing panel is one line per product, with a calendar mark beside the name
+on every row that has a day count. "19,463 not paced" is off the panel.
 
-A widget for a product the buy does not include is one check, Amazon Display
-and PPC in one table.
-
-The product check had been switched off on every report on the board: the order
-sync writes "<hash>:<period>" and four readers compared it to the bare hash.
-
-AFTER INSTALLING: re-read the orders, then run the checks.
-
-1018 tests pass.
+1022 tests pass.

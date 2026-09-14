@@ -105,6 +105,30 @@
   </div>
 {% endif %}
 
+{# THE PRODUCT CHECK STANDING DOWN HAD TO BE HUNTED FOR.
+   While the loaded orders were read by older import code, check_products
+   abstains on EVERY report - it has nothing current to compare against. The
+   only sign of that was a tooltip on a toolbar button and a line inside the
+   "n skipped" expander of one report, so a fix would ship, the re-check would
+   run, and the finding it was written for still would not appear. Three
+   rounds of screenshots went past before anybody found the reason.
+   It says so on the board now, with the button that clears it. #}
+{% if orders_stale %}
+  <div class="stalebar orderstale">
+    <div class="msg">
+      <b>The product check is switched off on every report.</b>
+      The loaded orders were read by older import code, so
+      "ordered but not on the report" has nothing current to compare against
+      and stands down. Re-read the orders, then run the checks.
+    </div>
+    <form method="post" action="/orders/sync" class="staleact">
+      <input type="hidden" name="back" value="/cycle?period={{ period }}">
+      <button class="mini" type="submit"
+              data-tip="Reads the order export again with the import code running now, then queues every report whose product check stood down for this.">Re-read the orders</button>
+    </form>
+  </div>
+{% endif %}
+
 <section>
   {# data-tiles marks these as re-addable from the partner cards below. #}
   {# data-narrowed says the SERVER already filtered - ?group= or ?state=.

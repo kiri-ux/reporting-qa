@@ -581,3 +581,47 @@ def test_the_families_are_one_table():
     for row in ROGUE_WIDGETS:
         assert len(row) == 5, row[0]
         assert row[2] in ("line", "product"), row[0]
+
+
+def test_a_ctv_tile_that_is_plainly_a_click_through_rate():
+    """Window World's page one read 0.34% and another read 0.23% - those are
+    click-through rates, in the tile that holds the share of viewers who
+    watched an ad to the end.
+
+    Worth saying on its own, before anything is compared to anything: the tile
+    alone settles it, so it does not matter whether the report carries a CTV
+    grid to measure against. "CTV VCR could not be checked" on a report whose
+    tile is plainly a CTR is the tool declining to say the one thing it knows.
+    """
+    from app.checks.parser import pdf_text
+    from app.checks.rules import CTV_TILE_FLOOR, _ctv_tile_pct, check_ctv_tile
+
+    text = _ww()
+    tile, _at = _ctv_tile_pct(text)
+    assert tile is not None and tile < CTV_TILE_FLOOR
+    out = check_ctv_tile({"text": text, "expected_products": {"CTV"}})
+    assert [f["title"] for f in out] == ["CTV VCR is not a completion rate"]
+    assert out[0]["severity"] == "fail"
+    assert "0.34%" in out[0]["detail"]
+    # No CTV order needed, and no CTV grid: the tile settles it on its own.
+    # That is the difference from "could not be checked", which is what this
+    # report was getting.
+    assert [f["title"] for f in check_ctv_tile({"text": text})] == \
+        ["CTV VCR is not a completion rate"]
+
+
+def test_a_real_completion_rate_is_left_alone():
+    """Every CTV fixture on hand runs 71% to 99%. None of them is the tile
+    this is about."""
+    from app.checks.parser import pdf_text
+    from app.checks.rules import _ctv_tile_pct, check_ctv_tile
+
+    for name in ("renegade_marine.pdf", "central_penn.pdf", "watsontown.pdf",
+                 "fisher_tire_amazon_display.pdf"):
+        fx = Path(__file__).parent / "fixtures" / name
+        text = pdf_text(fx)
+        tile, _at = _ctv_tile_pct(text)
+        assert tile and tile > 50, name
+        assert [f for f in check_ctv_tile({"text": text,
+                                           "expected_products": {"CTV"}})
+                if "not a completion rate" in f["title"]] == [], name

@@ -4607,7 +4607,15 @@ def _run_sync(claim_id: int) -> None:
     """The actual work, off the request."""
     db = SessionLocal()
     try:
-        sync_orders(db, force=True, claim_id=claim_id, trigger="button")
+        rec = sync_orders(db, force=True, claim_id=claim_id, trigger="button")
+        # AND QUEUE THE REPORTS THE STALE ORDERS SILENCED. A re-read fixes the
+        # orders and not the reports: findings are stored, so a report whose
+        # product check abstained while the orders were stale keeps saying so
+        # until something reads it again. Pressing the button is somebody
+        # asking for that to be over.
+        if getattr(rec, "ok", False):
+            from .recheck import queue_stood_down
+            queue_stood_down(db)
     except Exception as exc:  # noqa: BLE001
         import traceback
         traceback.print_exc()
