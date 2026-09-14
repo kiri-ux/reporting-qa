@@ -155,6 +155,17 @@
       <label for="fo-live">Flagging now
         <span class="rcount">{{ flag_active }}</span></label>
       <span class="sub">in {{ flag_period }}</span>
+      {# OUTSIDE .bulk ON PURPOSE. Everything in there is pointer-events:none
+         until a box is ticked, which is the right rule for the two buttons
+         that act on a selection and exactly wrong for the one that MAKES the
+         selection - it would need a tick before it could tick anything.
+
+         TICKING TWENTY-ONE BOXES BY HAND TO UNDO ONE DECISION. Switching a
+         batch off is one click and switching them back on was thirty-eight.
+         Ticks only the rows on screen, so it follows the filter beside it
+         rather than quietly selecting the ones you cannot see. #}
+      <button type="button" id="pickall" class="pickall" data-all="Select all"
+              data-none="Clear">Select all</button>
       <span class="bulk">
         <button type="submit" name="on" value="">Switch off ticked</button>
         <button type="submit" name="on" value="1">Switch on ticked</button>

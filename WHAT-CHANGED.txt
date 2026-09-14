@@ -1,29 +1,28 @@
-build 2026.09.14-257
+build 2026.09.14-258
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-CHECK THE "21 OFF" CHIP ON THAT REPORT. I think the product check is switched
-off, and if it is, nothing else in this whole chain was ever going to matter.
+IT SAVED. Your two screenshots say so:
 
-A check somebody switched off is stored as "off" and counted in the "n off"
-chip - NOT the "n skipped" one. It does not run. Re-checking the file does
-nothing, re-reading the orders does nothing, and every build I shipped at this
-was aimed at the wrong thing, because "skipped" and "off" are two different
-states and I only ever looked at one of them.
+  before   1416 reports behind the current rules. 21 checks switched off.
+  after    1417 reports behind the current rules.
 
-The page says it now, without being asked:
+The "21 checks switched off" sentence is gone, and every button in the last
+column now reads On. That button shows the STATE, not the action - On means
+the check is running - which is why it looked like nothing happened when it
+had in fact just done what you asked.
 
-  The product check is switched off.
-  "Ordered but not on the report" cannot fire while it is off, on this report
-  or any other. Turn it on under "What the client bought" on the Reporting
-  flags page, then check this file again.
+SELECT ALL. A button beside the filter, ticking only the rows on screen so it
+follows "All" or "Flagging now" rather than quietly selecting the ones you
+cannot see. It says Clear once something is ticked.
 
-Read off the switch as it is NOW rather than the stored answer, because the
-switch is the thing to change.
+It had to live OUTSIDE the bulk bar. Everything in there is switched off until
+a box is ticked, which is the right rule for the two buttons that act on a
+selection and exactly wrong for the one that makes it - it would have needed a
+tick before it could tick anything.
 
-TO CHECK WITHOUT INSTALLING THIS: open 1623, expand "21 off", and look for
-"A product on the report that is not on the live orders". If it is in that
-list, switch it on from the Reporting flags page and check the file again -
-the finding will be there on the build you already have.
+Driven in a real browser rather than eyeballed: 38 boxes, Select all ticks 38
+and no hidden ones, the label toggles, and "Switch on ticked" leaves nothing
+switched off.
 
 1024 tests pass.

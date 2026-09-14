@@ -154,6 +154,13 @@ body{margin:0;background:var(--plane);color:var(--ink);
 .bulk button:hover{border-color:var(--velocity);color:var(--velocity)}
 .flagform:not(:has(input[name="pick"]:checked)) .bulk{opacity:.35;
  pointer-events:none}
+/* The one that makes the selection, so it cannot live inside the block that
+   is switched off until a selection exists. */
+.pickall{margin-left:auto;font-family:'GT Walsheim Pro',sans-serif;font-size:12px;
+ font-weight:700;padding:3px 11px;border-radius:14px;cursor:pointer;
+ border:1px solid var(--line);color:var(--muted);background:transparent}
+.pickall:hover{border-color:var(--velocity);color:var(--velocity)}
+.pickall + .bulk{margin-left:0}
 .fobar{flex-wrap:wrap}
 .onoff{font-family:'GT Walsheim Pro',sans-serif;font-size:11.5px;font-weight:700;
  padding:2px 10px;border-radius:12px;border:1px solid var(--line);cursor:pointer;
@@ -1785,6 +1792,25 @@ body.fit .pdfwrap object{height:100%}
   document.addEventListener('focusout', hide, true);
   window.addEventListener('scroll', hide, true);
   document.addEventListener('click', hide, true);
+})();
+</script>
+<script>
+/* SELECT ALL, AND ONLY WHAT IS ON SCREEN.
+   The list is filtered by a radio and a sibling selector, so "all" has to mean
+   the rows the filter is showing - ticking hidden rows would switch checks
+   somebody cannot see. offsetParent is null for a row CSS has hidden. */
+(function () {
+  var btn = document.getElementById('pickall');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    var boxes = [].filter.call(
+      document.querySelectorAll('input[name="pick"]'),
+      function (b) { return b.offsetParent !== null; });
+    if (!boxes.length) return;
+    var on = boxes.some(function (b) { return !b.checked; });
+    boxes.forEach(function (b) { b.checked = on; });
+    btn.textContent = on ? btn.dataset.none : btn.dataset.all;
+  });
 })();
 </script>
 </body></html>
