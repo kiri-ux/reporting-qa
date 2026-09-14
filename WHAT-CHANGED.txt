@@ -1,45 +1,43 @@
-build 2026.09.14-254
+build 2026.09.14-255
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-THE GEO-FRAMING ONE. Re-reading the orders fixed the ORDERS and never the
-REPORTS, and that is the last reason it kept not appearing.
+THE GEO-FRAMING FINDING IS NOT BROKEN. I built Susquehanna's three order lines
+exactly as the pacing panel shows them and ran the whole path end to end:
 
-Findings are stored. A report whose product check abstained while the orders
-were stale keeps saying "skipped" until something reads it again - and the
-existing re-stamp only queues clients whose PRODUCTS moved. Susquehanna River
-Valley's did not: the mapping version changed, its products did not, so it was
-never queued, through four builds that each fixed a different reason for it.
+  expected_products : Display, Geo-Framing Display, Mobile Conquesting
+  expected_any      : [Geo-Framing Display]
+  detected on report: Display, Mobile Conquesting
+  finding           : Ordered but not on the report: Geo-Framing Display
 
-A successful order re-read now queues every report whose product check stood
-down for stale orders, read off what the report itself recorded. So does the
-Re-read the orders button. After that a Run picks them up like anything else.
+The ONLY thing standing between that and the screen is the order list reading
+as stale, which switches check_products off on every report on the board.
 
-AND THE BOARD SAYS SO. While the orders are stale, check_products abstains on
-EVERY report - and the only sign of it was a tooltip on a toolbar button and a
-line inside the "n skipped" expander of one report. There is a banner on the
-cycle page now, with the button on it.
+SO THE REPORT PAGE SAYS SO, WHERE THE FINDINGS ARE. It has been saying it all
+along, one click down inside the "10 skipped" expander, which nobody opens
+because the count above it reads as routine. It is on the page now:
 
-So: install, press Re-read the orders, then Run. If the banner is not there
-after the re-read, the orders are current and the geo-framing finding will be
-on Susquehanna's August report after the Run.
+  The product check did not run.
+  The order list was read by older import code - it has to be read again
+  before this check can say anything.
 
-A CTV COMPLETION RATE OF 0.23% IS NOT A COMPLETION RATE. It is a click-through
-rate in the completion tile. That is settled by the tile on its own, so it no
-longer matters whether the report carries a CTV grid to measure against, and
-those reports stop reading "CTV VCR could not be checked" - which was the tool
-declining to say the one thing it knew.
+AND A FAILED SYNC IS NAMED. A sync that fails looks exactly like a button
+nobody pressed: both leave the orders stale and the banner up. If the last one
+failed, the banner now carries its error. If it says NoCredentialsError or a
+timeout, no amount of pressing the button will help and the problem is S3.
 
-  CTV VCR is not a completion rate       p1 · CTV Completion Rate
-  The tile reads 0.34%. A completion rate is the share of viewers who watched
-  an ad to the end, and no video product finishes two ads in a thousand.
+PPC IS OUT OF THE ROGUE-WIDGET CHECK. I got that one wrong. "Cost: Amount
+Spent on the PPC campaign" and the ad extension diagram are not PPC pages -
+they are template prose TapClicks prints on every report. Usdan Summer Camp
+runs Display and Meta, no PPC and no Performance Max, and carries the same
+lines on page 14. Both reports that looked wrong are clean now, and both are
+fixtures so it cannot come back.
 
-Checked against every CTV fixture on hand - they run 71% to 99% and none of
-them is flagged.
+If the glossary should not print on a report with no Google product on it,
+that is one message to Alyssa about the template, not fourteen hundred
+findings.
 
---- also in this install ---
+"All impressions" and "All spend" are "Total", so the calendar mark fits on
+the line.
 
-The pacing panel is one line per product, with a calendar mark beside the name
-on every row that has a day count. "19,463 not paced" is off the panel.
-
-1022 tests pass.
+1023 tests pass.

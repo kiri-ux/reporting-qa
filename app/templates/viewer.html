@@ -114,6 +114,20 @@
       <p class="allclear">Nothing to fix.</p>
     {% endif %}
 
+    {# THE PRODUCT CHECK STANDING DOWN, WHERE THE FINDINGS ARE.
+       "Ordered but not on the report" is the finding people come to this page
+       for, and when it abstains the only sign was a line inside the "n
+       skipped" expander - which nobody opens, because the count above it
+       reads as routine. Susquehanna River Valley's missing Geo-Framing went
+       unreported across five builds and the reason was on the page the whole
+       time, one click down. #}
+    {% set stood = rep.checks|selectattr('key','equalto','check_products')
+                             |selectattr('state','equalto','skipped')|list %}
+    {% if stood and stood[0].why %}
+      <p class="allclear" style="background:var(--warn-bg);color:var(--ink)">
+        <b>The product check did not run.</b><br>{{ stood[0].why|capitalize }}.</p>
+    {% endif %}
+
     {% if rep.checks and not rep.checks_skipped %}
       {# THE SWITCH AS IT IS NOW, not as it was when this was judged. A check
          somebody turned off this morning stopped counting this morning; the

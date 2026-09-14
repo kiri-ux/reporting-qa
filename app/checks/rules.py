@@ -2033,11 +2033,18 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
 #   Display Conversion Performance by Ad Size" with 21 impressions at 1920x1080
 #   in it. 1920x1080 is a video frame, not a display banner.
 #
-#   Charlottesville's Earthly Cleaning bought Display and Performance Max and
-#   carried four pages of PPC: "Cost: Amount Spent on the PPC campaign", the
-#   sitelink and callout extension diagram, the click glossary. Performance Max
-#   is charged per event - its own tiles on that report say Client CPE - so the
-#   cost-per-click glossary is PPC's and PPC is not on the buy.
+# PPC WAS IN HERE AND IS NOT ANY MORE, and the reason is worth keeping.
+# "Cost: Amount Spent on the PPC campaign" and the ad extension diagram look
+# like PPC pages on a buy with no PPC, and they are not pages at all - they are
+# template prose TapClicks prints on EVERY report. Usdan Summer Camp runs
+# Display and Meta, no PPC and no Performance Max, and carries the same lines
+# on page 14. A family built on that fires on nearly the whole board.
+#
+# A real PPC page is a widget with numbers in it - a PPC Ad Cost tile, a
+# Cost-Per-Click tile, an Other Google Conversions grid. Neither report that
+# looked wrong has one. If the glossary itself should not print on a report
+# with no Google product on it, that is one message to Alyssa about the
+# template, not fourteen hundred findings.
 #
 # ONE TABLE, so the next one somebody spots is a line rather than a check. Each
 # family says what to look for on the report and how to tell whether the buy
@@ -2059,19 +2066,10 @@ AMZ_AV_LINE = re.compile(
     r"(?:Amazon(?:\s+(?:Premium|Prime))?\s+(?:CTV|OTT|Video)"
     r"|(?:CTV|OTT|Video)\s+(?:Amazon|Prime))\b", re.I)
 
-# PPC'S OWN GLOSSARY, WHICH NAMES ITSELF. Its line items are no help - they are
-# named for the strategy, "... - Keywords", not the product - so the buy is
-# read off the report's products and the order instead.
-PPC_WIDGET = re.compile(
-    r"Amount Spent on the PPC campaign|PPC Other Google Conversions", re.I)
-
 # (label, what is on the report, how the buy is read, the test, what to call
 #  what was found - "" quotes the widget titles themselves)
 ROGUE_WIDGETS: list[tuple] = [
     ("Amazon Premium Display", AMZ_DISPLAY_WIDGET, "line", AMZ_DISPLAY_LINE, ""),
-    # Prose pages, not titled widgets, so they are named rather than quoted.
-    ("PPC", PPC_WIDGET, "product", "PPC",
-     "PPC pages - the cost-per-click glossary and the ad extension breakdown"),
 ]
 
 

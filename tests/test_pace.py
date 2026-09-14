@@ -250,7 +250,8 @@ def test_a_cancelled_buy_is_not_a_pacing_row():
     }
     rows = pacing_rows(text, ordered)
     assert "PPC" not in [r["product"] for r in rows]
-    total = [r for r in rows if r["product"] == "All spend"]
+    total = [r for r in rows if r["product"] == "Total"
+             and r["unit"] == "money"]
     assert not total or total[0]["ordered"] == 2000.0, \
         "the cancelled money is still in the total"
     # And it is only the cancelled one that goes.
@@ -301,7 +302,7 @@ def test_a_part_month_is_paced_against_the_days_it_actually_ran():
         assert round(rows[name]["ordered"]) == goal, name
         assert abs(rows[name]["pace"]) < 15, name
     # The whole report flips from 62% short to comfortably over.
-    total = rows["All impressions"]
+    total = rows["Total"]
     assert round(total["ordered"]) == 134_194
     assert total["pace"] > 0
 
@@ -312,7 +313,7 @@ def test_the_row_says_what_the_goal_was_cut_from():
     note = _kermit_rows()["Display"]["month_note"]
     assert "150,000 a month" in note
     assert "12 of 31 days" in note and "Aug 20" in note
-    assert _kermit_rows()["All impressions"]["month_note"] == \
+    assert _kermit_rows()["Total"]["month_note"] == \
         "440,000 a month across the products above"
 
 

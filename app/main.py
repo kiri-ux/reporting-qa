@@ -1336,6 +1336,26 @@ def _orders_stale(db: Session) -> bool:
     return bool(row and row.ok and (row.map_version or "") != map_stamp())
 
 
+def _orders_failed(db: Session) -> str:
+    """The last order sync's error, when the last one failed.
+
+    A SYNC THAT FAILS LOOKS EXACTLY LIKE A BUTTON NOBODY PRESSED. Both leave
+    the orders stale and the banner up, and the difference is the whole
+    difference between "press this" and "this is not going to work until
+    somebody looks at S3". The message was in the order page's history and
+    nowhere near the board.
+    """
+    from .db import OrderSync
+    from .orders_s3 import NOT_A_SYNC
+    row = db.scalars(select(OrderSync)
+                     .where(OrderSync.state != "running",
+                            ~OrderSync.source.like(NOT_A_SYNC))
+                     .order_by(desc(OrderSync.id)).limit(1)).first()
+    if row is None or row.ok:
+        return ""
+    return (row.message or "the order sync failed and said nothing")[:300]
+
+
 def _delivered(db: Session, period: str, groups) -> dict:
     """The finished partners, and their links, for the top of the board.
 
@@ -1818,6 +1838,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "wait_total": wait_total, "wait_on": bool(waiting),
         "min_days": MIN_DAYS_IN_MONTH,
         "orders_stale": _orders_stale(db),
+        "orders_failed": _orders_failed(db),
         "orders_syncing": _orders_syncing(db),
         # How many reports on this board still carry an older answer, and per
         # partner so a card can offer to fix just that one.

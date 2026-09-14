@@ -315,7 +315,7 @@ def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dic
                      if r["unit"] != "money" and r.get("ordered") is not None)
     full_total = sum(r.get("full") or 0.0 for r in rows if r["unit"] != "money")
     if bought_impressions and (want_total or served["total"]):
-        rows.append({"product": "All impressions", "unit": "impressions",
+        rows.append({"product": "Total", "unit": "impressions",
                      "served": served["total"] or None,
                      "ordered": want_total or None,
                      "full": full_total or None,
@@ -338,7 +338,7 @@ def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dic
         want_money = sum(r["ordered"] for r in money if r["ordered"])
         full_money = sum(r.get("full") or 0.0 for r in money)
         if want_money or spent_total:
-            money.append({"product": "All spend", "unit": "money",
+            money.append({"product": "Total", "unit": "money",
                           "served": spent_total or None,
                           "ordered": want_money or None,
                           "full": full_money or None,

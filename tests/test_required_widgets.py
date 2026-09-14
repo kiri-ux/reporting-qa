@@ -547,37 +547,36 @@ def test_a_real_ctv_buy_keeps_its_product_from_the_line_items():
     assert "CTV" in detect(stripped, extract_tables(stripped, strict=True))
 
 
-def test_ppc_pages_on_a_buy_with_no_ppc():
-    """Charlottesville's Earthly Cleaning bought Display and Performance Max
-    and carried four pages of PPC: "Cost: Amount Spent on the PPC campaign",
-    the sitelink and callout extension diagram, the click glossary. Performance
-    Max is charged per event - its own tiles on that report say Client CPE - so
-    the cost-per-click glossary is PPC's, and PPC is not on the buy.
+def test_the_ppc_glossary_is_template_prose_not_a_ppc_page():
+    """I BUILT A PPC FAMILY ON THIS AND IT WAS WRONG.
 
-    Its line items are no help either way: PPC lines are named for the strategy
-    rather than the product, so the buy is read off the report's products and
-    the order."""
+    "Cost: Amount Spent on the PPC campaign" and the ad extension diagram look
+    like PPC pages on a buy with no PPC. They are not pages at all - they are
+    template prose TapClicks prints on every report. Usdan Summer Camp runs
+    Display and Meta, no PPC and no Performance Max, and carries the same lines
+    on page 14, so a family built on that fires on nearly the whole board.
+
+    A real PPC page is a widget with numbers in it. Neither report that looked
+    wrong has one.
+    """
     from app.checks.parser import pdf_text
     from app.checks.rules import check_rogue_widgets
-    fx = Path(__file__).parent / "fixtures" / "earthly_cleaning_ppc_pages.pdf"
-    ctx = {"text": pdf_text(fx), "products": {"Display", "Performance Max"},
-           "expected_products": {"Display", "Performance Max"}}
-    out = check_rogue_widgets(ctx)
-    assert [f["title"] for f in out] == ["PPC on a buy with no PPC"]
-    assert "cost-per-click glossary" in out[0]["detail"]
 
-    # A client who actually runs PPC says nothing, whether the product is read
-    # off the report or off the order.
-    for key in ("products", "expected_products"):
-        live = dict(ctx, **{key: set(ctx[key]) | {"PPC"}})
-        assert check_rogue_widgets(live) == [], key
+    fx = Path(__file__).parent / "fixtures"
+    for name in ("usdan_no_ppc_boilerplate.pdf", "earthly_cleaning_ppc_pages.pdf"):
+        text = pdf_text(fx / name)
+        assert "Amount Spent on the PPC campaign" in text, name
+        ctx = {"text": text, "products": set(), "expected_products": set()}
+        assert check_rogue_widgets(ctx) == [], name
 
 
 def test_the_families_are_one_table():
     """The next one somebody spots should be a line, not a check."""
     from app.checks.rules import ROGUE_WIDGETS
     labels = [row[0] for row in ROGUE_WIDGETS]
-    assert "Amazon Premium Display" in labels and "PPC" in labels
+    assert "Amazon Premium Display" in labels
+    # PPC is deliberately not one - see the glossary test above.
+    assert "PPC" not in labels
     for row in ROGUE_WIDGETS:
         assert len(row) == 5, row[0]
         assert row[2] in ("line", "product"), row[0]

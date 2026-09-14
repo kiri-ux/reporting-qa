@@ -120,6 +120,8 @@
       The loaded orders were read by older import code, so
       "ordered but not on the report" has nothing current to compare against
       and stands down. Re-read the orders, then run the checks.
+      {% if orders_failed %}<br><b>The last order sync failed:</b>
+        {{ orders_failed }}{% endif %}
     </div>
     <form method="post" action="/orders/sync" class="staleact">
       <input type="hidden" name="back" value="/cycle?period={{ period }}">

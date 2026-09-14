@@ -4706,3 +4706,41 @@ def test_a_verdict_lands_on_the_reports_table_when_the_row_has_gone():
     assert "scrollIntoView" in block
     cycle = (TPL / "cycle.html").read_text()
     assert 'id="reports"' in cycle
+
+
+def test_a_failed_order_sync_is_named_on_the_board():
+    """A SYNC THAT FAILS LOOKS EXACTLY LIKE A BUTTON NOBODY PRESSED.
+
+    Both leave the orders stale and the banner up, and the difference is the
+    whole difference between "press this" and "this is not going to work until
+    somebody looks at S3". The message was in the order page's history and
+    nowhere near the board.
+    """
+    import datetime as dt
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app import main as mmod
+    from app.db import Base, OrderSync
+    from app.version import map_stamp
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+
+    s.add(OrderSync(source="s3://x", ok=False, rows=0, state="done",
+                    synced_at=dt.datetime.utcnow(),
+                    message="Sync crashed: NoCredentialsError"))
+    s.commit()
+    assert "NoCredentialsError" in mmod._orders_failed(s)
+
+    # A sync that worked says nothing, whatever the stamp on it.
+    s.query(OrderSync).delete()
+    s.add(OrderSync(source="s3://x", ok=True, rows=9, state="done",
+                    synced_at=dt.datetime.utcnow(), map_version=map_stamp()))
+    s.commit()
+    assert mmod._orders_failed(s) == ""
+    assert mmod._orders_stale(s) is False
+    s.close()
+    eng.dispose()
