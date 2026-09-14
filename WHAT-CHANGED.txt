@@ -1,28 +1,30 @@
-build 2026.09.14-258
+build 2026.09.14-259
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-IT SAVED. Your two screenshots say so:
+PPC PAGES ON A BUY WITH NO PPC IS BACK, AND IT FIRES ON ALL THREE.
 
-  before   1416 reports behind the current rules. 21 checks switched off.
-  after    1417 reports behind the current rules.
+  Ski Barn      PPC on a buy with no PPC     p18
+  Usdan         PPC on a buy with no PPC     p14
+  Earthly       PPC on a buy with no PPC     p12
 
-The "21 checks switched off" sentence is gone, and every button in the last
-column now reads On. That button shows the STATE, not the action - On means
-the check is running - which is why it looked like nothing happened when it
-had in fact just done what you asked.
+  "This report carries the PPC cost-per-click glossary and the ad extension
+  breakdown. Neither the report's other products nor the order is a PPC buy."
 
-SELECT ALL. A button beside the filter, ticking only the rows on screen so it
-follows "All" or "Flagging now" rather than quietly selecting the ones you
-cannot see. It says Clear once something is ticked.
+I pulled this family a build ago on the reading that the glossary is template
+prose rather than a page anybody ordered. It is template prose AND it is a page
+nobody ordered, and those are not in conflict: a report should not carry four
+pages explaining a product the client is not buying. All three reports carry
+byte-identical text, so it is one rule for all three - which is your call, and
+it means Usdan is flagged too.
 
-It had to live OUTSIDE the bulk bar. Everything in there is switched off until
-a box is ticked, which is the right rule for the two buttons that act on a
-selection and exactly wrong for the one that makes it - it would have needed a
-tick before it could tick anything.
+PPC line items are named for the strategy rather than the product, so the buy
+is read off the report's products and the order. A client who really runs PPC
+says nothing, whichever of the two carries it.
 
-Driven in a real browser rather than eyeballed: 38 boxes, Select all ticks 38
-and no hidden ones, the label toggles, and "Switch on ticked" leaves nothing
-switched off.
+Performance Max keeps its own. "Performance Max Other Google Conversions" is
+PMax's widget and PMax is a product people buy, so only PPC's own copy counts.
 
-1024 tests pass.
+All three reports are fixtures now, and so is a PPC buy that has to stay quiet.
+
+1026 tests pass.

@@ -547,36 +547,70 @@ def test_a_real_ctv_buy_keeps_its_product_from_the_line_items():
     assert "CTV" in detect(stripped, extract_tables(stripped, strict=True))
 
 
-def test_the_ppc_glossary_is_template_prose_not_a_ppc_page():
-    """I BUILT A PPC FAMILY ON THIS AND IT WAS WRONG.
+PPC_REPORTS = ["ski_barn_ppc_pages.pdf", "usdan_no_ppc_boilerplate.pdf",
+               "earthly_cleaning_ppc_pages.pdf"]
 
-    "Cost: Amount Spent on the PPC campaign" and the ad extension diagram look
-    like PPC pages on a buy with no PPC. They are not pages at all - they are
-    template prose TapClicks prints on every report. Usdan Summer Camp runs
-    Display and Meta, no PPC and no Performance Max, and carries the same lines
-    on page 14, so a family built on that fires on nearly the whole board.
 
-    A real PPC page is a widget with numbers in it. Neither report that looked
-    wrong has one.
+def test_ppc_pages_on_a_buy_with_no_ppc():
+    """Ski Barn carries the PPC cost-per-click glossary and the ad extension
+    breakdown on pages 18 and 19, with no data under either and no PPC on the
+    order. Usdan Summer Camp and Charlottesville's Earthly Cleaning carry the
+    same four lines and neither has PPC either.
+
+    ONE RULE FOR ALL THREE, BECAUSE THE TEXT IS IDENTICAL ON ALL THREE. This
+    family was pulled once, on the reading that the glossary is template prose
+    rather than a page anybody ordered. It is template prose AND it is a page
+    nobody ordered, and those are not in conflict: a report should not carry
+    four pages explaining a product the client is not buying.
+
+    Its line items are no help either way - PPC lines are named for the
+    strategy rather than the product - so the buy is read off the report's
+    products and the order.
     """
     from app.checks.parser import pdf_text
     from app.checks.rules import check_rogue_widgets
 
     fx = Path(__file__).parent / "fixtures"
-    for name in ("usdan_no_ppc_boilerplate.pdf", "earthly_cleaning_ppc_pages.pdf"):
+    for name in PPC_REPORTS:
         text = pdf_text(fx / name)
         assert "Amount Spent on the PPC campaign" in text, name
-        ctx = {"text": text, "products": set(), "expected_products": set()}
-        assert check_rogue_widgets(ctx) == [], name
+        ctx = {"text": text, "products": {"Display", "Meta"},
+               "expected_products": {"Display", "Meta"}}
+        out = check_rogue_widgets(ctx)
+        assert [f["title"] for f in out] == ["PPC on a buy with no PPC"], name
+        assert "cost-per-click glossary" in out[0]["detail"], name
+
+
+def test_a_client_who_runs_ppc_says_nothing():
+    """Whether the product is read off the report or off the order."""
+    from app.checks.parser import pdf_text
+    from app.checks.rules import check_rogue_widgets
+
+    fx = Path(__file__).parent / "fixtures" / "ski_barn_ppc_pages.pdf"
+    base = {"text": pdf_text(fx), "products": {"Display"},
+            "expected_products": {"Display"}}
+    for key in ("products", "expected_products"):
+        live = dict(base, **{key: set(base[key]) | {"PPC"}})
+        assert check_rogue_widgets(live) == [], key
+
+
+def test_performance_max_owns_its_own_google_widgets():
+    """"Performance Max Other Google Conversions" is PMax's, and PMax is a
+    product the client may well be buying. Only PPC's own copy counts."""
+    from app.checks.rules import PPC_WIDGET
+
+    assert not PPC_WIDGET.search(
+        "Performance Max Other Google Conversions - these are automatic "
+        "conversions Google tracks")
+    assert PPC_WIDGET.search(
+        '"Calls from ads" in the PPC Other Google Conversions widget')
 
 
 def test_the_families_are_one_table():
     """The next one somebody spots should be a line, not a check."""
     from app.checks.rules import ROGUE_WIDGETS
     labels = [row[0] for row in ROGUE_WIDGETS]
-    assert "Amazon Premium Display" in labels
-    # PPC is deliberately not one - see the glossary test above.
-    assert "PPC" not in labels
+    assert "Amazon Premium Display" in labels and "PPC" in labels
     for row in ROGUE_WIDGETS:
         assert len(row) == 5, row[0]
         assert row[2] in ("line", "product"), row[0]

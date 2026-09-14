@@ -2033,18 +2033,17 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
 #   Display Conversion Performance by Ad Size" with 21 impressions at 1920x1080
 #   in it. 1920x1080 is a video frame, not a display banner.
 #
-# PPC WAS IN HERE AND IS NOT ANY MORE, and the reason is worth keeping.
-# "Cost: Amount Spent on the PPC campaign" and the ad extension diagram look
-# like PPC pages on a buy with no PPC, and they are not pages at all - they are
-# template prose TapClicks prints on EVERY report. Usdan Summer Camp runs
-# Display and Meta, no PPC and no Performance Max, and carries the same lines
-# on page 14. A family built on that fires on nearly the whole board.
+#   Ski Barn carries the PPC cost-per-click glossary and the ad extension
+#   breakdown on pages 18 and 19, with no data under either of them and no PPC
+#   on the order. Usdan Summer Camp and Charlottesville's Earthly Cleaning
+#   carry the same four lines, and neither of them has PPC either.
 #
-# A real PPC page is a widget with numbers in it - a PPC Ad Cost tile, a
-# Cost-Per-Click tile, an Other Google Conversions grid. Neither report that
-# looked wrong has one. If the glossary itself should not print on a report
-# with no Google product on it, that is one message to Alyssa about the
-# template, not fourteen hundred findings.
+# ONE RULE FOR ALL THREE, BECAUSE THE TEXT IS IDENTICAL ON ALL THREE. I pulled
+# this family once, on the reading that the glossary is template prose rather
+# than a page anybody ordered. It is template prose AND it is a page nobody
+# ordered, and those are not in conflict: a report should not carry four pages
+# explaining a product the client is not buying. Her call, and it means Usdan
+# is flagged too.
 #
 # ONE TABLE, so the next one somebody spots is a line rather than a check. Each
 # family says what to look for on the report and how to tell whether the buy
@@ -2066,10 +2065,25 @@ AMZ_AV_LINE = re.compile(
     r"(?:Amazon(?:\s+(?:Premium|Prime))?\s+(?:CTV|OTT|Video)"
     r"|(?:CTV|OTT|Video)\s+(?:Amazon|Prime))\b", re.I)
 
+# PPC'S OWN GLOSSARY PAGES, WHICH NAME THEMSELVES. Its line items are no help -
+# they are named for the strategy, "... - Keywords", not the product - so the
+# buy is read off the report's products and the order instead.
+#
+# The cost line and the click glossary both, because a report carrying either
+# is carrying the pages. Performance Max has its own versions of these with its
+# own name on them, and they are not matched: "Performance Max Other Google
+# Conversions" is PMax's, and PMax is a product the client may well be buying.
+PPC_WIDGET = re.compile(
+    r"Amount Spent on the PPC campaign"
+    r"|(?<!Performance Max )PPC Other Google Conversions", re.I)
+
 # (label, what is on the report, how the buy is read, the test, what to call
 #  what was found - "" quotes the widget titles themselves)
 ROGUE_WIDGETS: list[tuple] = [
     ("Amazon Premium Display", AMZ_DISPLAY_WIDGET, "line", AMZ_DISPLAY_LINE, ""),
+    # Prose pages, not titled widgets, so they are named rather than quoted.
+    ("PPC", PPC_WIDGET, "product", "PPC",
+     "the PPC cost-per-click glossary and the ad extension breakdown"),
 ]
 
 
