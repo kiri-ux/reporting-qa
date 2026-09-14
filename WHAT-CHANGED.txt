@@ -1,41 +1,43 @@
-build 2026.09.14-261
+build 2026.09.14-262
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-BELMONT PARK SOCIAL MIRROR - A GAP IN A LINE ITEM'S NAME LOST THE WHOLE ROW.
+COLLECTIVE HEADS - NOT THE SAME BUG AS BELMONT PARK, BUT THE SAME GRID.
 
-"Belmont Park - Family -   Family Keyword Social Mirror" has three spaces in
-the middle of its own name. A row was read as "first cell is the name, every
-cell after it is a number", so that second cell was the rest of the name, the
-line did not look like a row, and it was dropped whole.
+A name tall enough moves its own columns down with it. TapClicks centers a
+cell vertically, so this row printed the CTR and the national average beside
+the first line of the name and the impressions and clicks on their own line
+underneath:
 
-That is exactly the two findings on it: 15,253 impressions and 71 clicks. The
-fourteen rows add up to 224,870 and 1,601 on the nose.
+  Collective Heads - Cumulus Media (Dallas-Fort        0.53%       7.53
+                                    99,848      526
+  Worth WBAP News Talk) - Behavioral Social
+  Mirror
 
-The name is now whatever comes before the numbers rather than the first cell on
-its own, capped at three cells so a line of prose ending in a figure still is
-not a row. The report is a fixture now.
+A line of nothing but figures is not a row and not the tail of a name, so it
+was thrown away - 99,848 impressions and 526 clicks, which is both failures on
+that report. The three rows add up to 208,965 and 718 exactly.
 
-Across the 317-page sample this recovers one row and loses none.
+A row short of its figures now takes them off the line immediately below when
+that line is nothing but figures. Immediately below only: a blank line means
+those numbers belong to whatever comes next.
 
-STORE VISITS COMPARES ADDRESSES, NOT ROWS.
+AND THE THIRD FLAG, WHICH WAS ITS OWN THING.
 
-Belmont Park again: one store entered twice, "Belmont Park" and "Belmont Park -
-custom", both at 3146 Mission BLVD, 92109. The headline counts places and the
-table counts rows, so 1 against 2 was the two widgets both being right.
+Two of the three line items name the station - "Collective Heads Fort Worth
+WBAP News Talk" - and the order names the group that owns it, "Collective
+Heads Cumulus Media Dallas Fort Worth WBAP News Talk". Same opening, same
+ending, "Cumulus Media Dallas" out of the middle. Far enough apart on a
+character ratio to be called a different client's report.
 
-Address and zip identify a location now. Two rows at one address are one
-location. Two rows at two addresses still fail. When the counts genuinely
-disagree the finding names the repeats.
+A name with a piece taken out of the middle is now the same client, as long as
+both ends are substantial. It is not reported as a typo on the order either -
+nobody typed anything wrong.
 
-Visits are still added across every row - 78 and 27 is 105, which is what the
-tile says.
+The report is a fixture and it comes back clean.
 
-SEO REPORTS SIGN THEMSELVES OFF ON ARRIVAL.
+Belmont Park's two fixes from 261 are in here as well: a gap inside a line
+item's name no longer loses the row, and store visits counts addresses rather
+than rows.
 
-Nothing is checked on one, so there was never anything for a person to read
-first. Signed by "Report QA" so you can tell yours from the tool's. The feed, a
-manual upload, and replacing a file are all covered. It will not touch a report
-you have already marked, and it will not sign off one that failed.
-
-1036 tests pass.
+1041 tests pass.

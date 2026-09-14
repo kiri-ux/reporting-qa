@@ -399,6 +399,49 @@ def line_item_names(text: str) -> list[tuple[str, int]]:
     return out
 
 
+def _figures(cells: list[str]) -> list[float]:
+    out = []
+    for c in cells:
+        if NUMERIC.match(c) and not c.endswith("%"):
+            try:
+                out.append(float(c.replace(",", "").lstrip("$")))
+            except ValueError:
+                pass
+    return out
+
+
+def _orphaned_figures(text: str, eol: int) -> list[float]:
+    """A row's left-hand columns when they printed on the line below.
+
+    HALF A ROW CAN LAND ON THE NEXT LINE. TapClicks centers a cell vertically,
+    so a name tall enough moves some of its own columns down with it. Collective
+    Heads Cumulus Media printed the CTR and the national average beside the
+    first line of the name and the impressions and clicks on the line under it,
+    on their own:
+
+        Collective Heads - Cumulus Media (Dallas-Fort        0.53%       7.53
+                                          99,848      526
+
+    The second line is all figures and no name, so it was not a row and not the
+    tail of one either - it was dropped, and with it 99,848 impressions and 526
+    clicks off a report whose three rows add up to its top line exactly. What
+    was left read as 47% of a campaign belonging to somebody else.
+
+    Only the line IMMEDIATELY below, and only when it is nothing but figures.
+    A blank line between them means the numbers belong to whatever comes next.
+    """
+    if eol < 0:
+        return []
+    nxt = text.find("\n", eol + 1)
+    line = text[eol + 1:nxt if nxt > 0 else len(text)]
+    if not line.strip():
+        return []
+    cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
+    if len(cells) < 2 or not all(NUMERIC.match(c) for c in cells):
+        return []
+    return _figures(cells)
+
+
 def line_item_totals(text: str) -> list[tuple[str, float, float]]:
     """(name, impressions, clicks) for every line item on the report.
 
@@ -424,13 +467,9 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
         eol = text.find("\n", at)
         line = text[at:eol if eol > 0 else len(text)]
         cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
-        vals = []
-        for c in cells[1:]:
-            if NUMERIC.match(c) and not c.endswith("%"):
-                try:
-                    vals.append(float(c.replace(",", "").lstrip("$")))
-                except ValueError:
-                    pass
+        vals = _figures(cells[1:])
+        if len(vals) < 2:
+            vals = _orphaned_figures(text, eol) + vals
         if len(vals) >= 2:
             row = (name, vals[0], vals[1])
         elif len(vals) == 1:

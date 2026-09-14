@@ -389,6 +389,44 @@ def test_belmont_park_adds_up_and_says_nothing():
     assert not {c for c in codes if "clicks" in c and "unaccounted" in c}
 
 
+def test_a_row_whose_figures_printed_on_the_line_below_is_whole():
+    """Collective Heads. A name tall enough moved the impressions and clicks
+    onto their own line under it, leaving the CTR and national average beside
+    the first line of the name. The all-figures line was not a row and not the
+    tail of one, so it went - 99,848 impressions and 526 clicks."""
+    pdf = Path(__file__).parent / "fixtures" / "collective_heads_split_row.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    from app.checks.parser import pdf_text
+    rows = q.line_item_totals(pdf_text(str(pdf)))
+    assert len(rows) == 3
+    assert sum(r[1] for r in rows) == 208965
+    assert sum(r[2] for r in rows) == 718
+    assert (99848.0, 526.0) == (rows[0][1], rows[0][2])
+
+
+def test_collective_heads_is_clean():
+    from app.checks.rules import run_all
+    pdf = Path(__file__).parent / "fixtures" / "collective_heads_split_row.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    assert run_all(pdf)["findings"] == []
+
+
+def test_a_blank_line_keeps_the_figures_below_it_out():
+    """The rescue only reaches the line immediately under the row. A gap means
+    those numbers belong to whatever comes next, not to the row above."""
+    text = ("OVERVIEW - PAGE 1\n"
+            "Line Item Performance\n"
+            " Line Item Name    Impressions   Clicks   CTR\n"
+            "\n"
+            " Acme Co - Display                  0.50%    9.10\n"
+            "\n"
+            "        10,000     50\n")
+    rows = q.line_item_totals(text)
+    assert rows == [("Acme Co - Display", 9.1, 0.0)]
+
+
 def test_prose_ending_in_a_figure_is_still_not_a_row():
     text = ("OVERVIEW - PAGE 1\n"
             "Line Item Performance\n"

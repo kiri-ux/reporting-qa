@@ -1255,18 +1255,18 @@ def check_client_data(ctx) -> list[dict]:
     # "Jiffy Lube Johnstown - AI Video" that came out as 100% of the
     # impressions belonging to somebody else. A misspelled order is a
     # misspelled order; it is not a report pulled on the wrong client.
-    def same(a: str, b: str) -> bool:
-        if a == b or (len(a) >= 6 and len(b) >= 6 and (a in b or b in a)):
-            return True
-        return near(a, b)
-
+    same = _same_client
     mine = sum(v for k, v in hits.items() if same(k, named))
     if mine / total >= 0.5:
         # Right client, spelled two ways. Not a report problem, but somebody
         # has to fix the order before it turns up on an invoice.
+        # A NAME WITH A PIECE TAKEN OUT OF THE MIDDLE IS NOT A MISSPELLING.
+        # Collective Heads' line items name the station and the order names the
+        # group that owns it. Nobody typed anything wrong and there is nothing
+        # to fix on the order.
         typo = [k for k, v in sorted(hits.items(), key=lambda kv: -kv[1])
                 if same(k, named) and k != named and k not in named
-                and named not in k]
+                and named not in k and not _dropped_middle(k, named)]
         if typo:
             return [_f("client_name_typo", "info",
                        "The order spells this client's name differently",
@@ -1310,13 +1310,39 @@ def _flat_name(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", AMPERSAND.sub(" and ", (s or "")).lower())
 
 
+def _dropped_middle(a: str, b: str) -> bool:
+    """The same name with a chunk left out of the middle of one of them.
+
+    Collective Heads runs as "Collective Heads Cumulus Media Dallas Fort Worth
+    WBAP News Talk" on the order and "Collective Heads Fort Worth WBAP News
+    Talk" on two of its three line items - the station without the group that
+    owns it. Same opening, same ending, "Cumulus Media Dallas" missing from the
+    middle, and far enough apart on a character ratio that the report was called
+    a different client's, which is the loudest finding this tool has.
+
+    Both ends have to be substantial, so this is a name with a piece taken out
+    of it rather than two names that happen to start and end alike.
+    """
+    short, long = sorted((a, b), key=len)
+    if len(short) < 12 or short == long:
+        return False
+    pre = 0
+    while pre < len(short) and short[pre] == long[pre]:
+        pre += 1
+    suf = 0
+    while (suf < len(short) - pre
+           and short[len(short) - 1 - suf] == long[len(long) - 1 - suf]):
+        suf += 1
+    return pre >= 6 and suf >= 6 and pre + suf >= len(short)
+
+
 def _same_client(a: str, b: str) -> bool:
     """One client written two ways, or misspelled once."""
     if not a or not b:
         return False
     if a == b or (len(a) >= 6 and len(b) >= 6 and (a in b or b in a)):
         return True
-    return near(a, b)
+    return near(a, b) or _dropped_middle(a, b)
 
 
 def _mostly_this_client(ctx, filed: str) -> bool:

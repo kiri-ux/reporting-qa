@@ -3926,3 +3926,20 @@ def test_the_amazon_premium_video_rows_are_part_of_the_ctv_tile():
 
     # 71.73% sits inside 37.80% to 99.31%, so nothing is said about it.
     assert check_ctv_tile({"text": text, "page_of": lambda _o: 1}) == []
+
+
+# ------------------------------------ a name with a piece out of the middle
+def test_a_name_missing_its_middle_is_the_same_client():
+    """Collective Heads: the order names the group that owns the station and
+    two of the three line items name only the station."""
+    from app.checks.rules import _dropped_middle, _same_client
+    a = "collectiveheadsfortworthwbapnewstalk"
+    b = "collectiveheadscumulusmediadallasfortworthwbapnewstalk"
+    assert _dropped_middle(a, b) and _same_client(a, b)
+
+
+def test_two_names_that_merely_start_and_end_alike_are_not():
+    from app.checks.rules import _dropped_middle
+    assert not _dropped_middle("hondaofstatecollege", "hondaofpittsburgh")
+    assert not _dropped_middle("smithford", "smithchevrolet")
+    assert not _dropped_middle("abcdefgh", "abcdefghijklmnop")
