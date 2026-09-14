@@ -1,31 +1,29 @@
-build 2026.09.14-256
+build 2026.09.14-257
 Changed files only. Everything since 130 - install this one.
 38 checks.
 
-YOUR ORDERS ARE CURRENT NOW. The yellow "these rows were written by older
-import code" box is gone from the order lines panel on 1623, which is the
-thing that had check_products switched off. That part is fixed.
+CHECK THE "21 OFF" CHIP ON THAT REPORT. I think the product check is switched
+off, and if it is, nothing else in this whole chain was ever going to matter.
 
-WHAT IS LEFT IS THE STORED ANSWER. Susquehanna's report was last judged on 3
-September and findings are stored, so it is still showing what it said then.
-Press "Check this file again" on that report and the geo-framing finding will
-be there.
+A check somebody switched off is stored as "off" and counted in the "n off"
+chip - NOT the "n skipped" one. It does not run. Re-checking the file does
+nothing, re-reading the orders does nothing, and every build I shipped at this
+was aimed at the wrong thing, because "skipped" and "off" are two different
+states and I only ever looked at one of them.
 
-AND THE TWO THINGS THAT WERE SUPPOSED TO HAVE DONE THAT FOR YOU BOTH MISSED IT
-FOR THE SAME REASON. Each matched on the sentence the tool writes when a check
-stands down - and that sentence only exists on reports judged since the
-sentence did. A 3 September answer has a skipped product check with no reason
-recorded on it, so:
+The page says it now, without being asked:
 
-  - the re-read did not queue it
-  - the report page did not say the product check had not run
+  The product check is switched off.
+  "Ordered but not on the report" cannot fire while it is off, on this report
+  or any other. Turn it on under "What the client bought" on the Reporting
+  flags page, then check this file again.
 
-Both key off the check being skipped now, whatever the reason. Which means the
-one report the whole thing was written for was the one both filters hid.
+Read off the switch as it is NOW rather than the stored answer, because the
+switch is the thing to change.
 
-So on this build the page says it without being asked:
+TO CHECK WITHOUT INSTALLING THIS: open 1623, expand "21 off", and look for
+"A product on the report that is not on the live orders". If it is in that
+list, switch it on from the Reporting flags page and check the file again -
+the finding will be there on the build you already have.
 
-  The product check did not run.
-  This answer was stored before the reason was recorded. Check the file again.
-
-1023 tests pass.
+1024 tests pass.

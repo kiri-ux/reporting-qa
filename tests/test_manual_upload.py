@@ -1405,3 +1405,32 @@ def test_an_upload_only_replaces_a_report_on_its_own_market(client):
         "the upload opened another market's report"
     db.expire_all()
     assert db.query(dbm.Report).count() == 2
+
+
+def test_a_switched_off_product_check_says_so_on_the_report(client):
+    """SWITCHED OFF IS NOT SKIPPED, AND IT LOOKS THE SAME FROM HERE.
+
+    A check somebody turned off is stored as "off" and counted in the "n off"
+    chip, not the "n skipped" one - so it never runs, re-checking does nothing,
+    and the page said nothing either. Susquehanna River Valley was re-checked,
+    re-read and re-deployed against a check that was switched off the whole
+    time.
+    """
+    c, (db, dbm, imod) = client
+    from app.checkctl import set_check
+
+    rep_id = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0].id
+    html = c.get(f"/report/{rep_id}/view").text
+    assert "The product check is switched off" not in html
+
+    set_check(db, "check_products", False)
+    db.commit()
+    html = c.get(f"/report/{rep_id}/view").text
+    assert "The product check is switched off" in html
+    assert "cannot fire while it is off" in html
+
+    # Back on, and the page stops saying it.
+    set_check(db, "check_products", True)
+    db.commit()
+    assert "The product check is switched off" not in \
+        c.get(f"/report/{rep_id}/view").text

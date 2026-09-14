@@ -127,7 +127,20 @@
        is only stored on reports judged since skip_reason existed, and
        Susquehanna River Valley's answer is from 3 September - so the one
        report this was written for was the one the condition hid. #}
-    {% if stood %}
+    {# SWITCHED OFF IS NOT SKIPPED, AND IT LOOKS THE SAME FROM HERE.
+       A check somebody turned off is stored as "off" and counted in the "n
+       off" chip, not the "n skipped" one - so it never runs, re-checking does
+       nothing, and the page said nothing either. Susquehanna River Valley was
+       re-checked, re-read and re-deployed against a check that was switched
+       off the whole time. Read off the switch as it is NOW, not the stored
+       answer, because that is the thing to change. #}
+    {% if 'check_products' in checks_off %}
+      <p class="allclear" style="background:var(--warn-bg);color:var(--ink)">
+        <b>The product check is switched off.</b><br>
+        "Ordered but not on the report" cannot fire while it is off, on this
+        report or any other. Turn it on under "What the client bought" on the
+        <a href="/rules#flags">Reporting flags</a> page, then check this file again.</p>
+    {% elif stood %}
       <p class="allclear" style="background:var(--warn-bg);color:var(--ink)">
         <b>The product check did not run.</b><br>
         {%- if stood[0].why %} {{ stood[0].why|capitalize }}.
