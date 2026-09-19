@@ -1,0 +1,10 @@
+# Nothing here is source. It is what running the tool and the tests leaves
+# behind, and the repo had no ignore file at all - so a test run made two
+# hundred untracked files and the next person to type `git status` could not
+# see their own work in it.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# Stored PDFs and whatever else DATA_DIR collects on a local run.
+data/
+.env
