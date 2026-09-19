@@ -118,6 +118,15 @@ def code_owners() -> dict[str, frozenset[str]]:
     sites inside each check function are all it takes - and if the shape ever
     stops being a literal, that code simply has no owner and its findings are
     never hidden, which is the safe direction.
+
+    THE ANSWER IS THE CHECK SOMEBODY CAN SWITCH, not whichever function holds
+    the `_f` call. `check_pacing_off` is one check on the page and one row on
+    every report's checklist, and it is written as two - impressions and
+    dollars - so the codes it writes were owned by two functions nobody has
+    ever heard of. That cost twice: switching the check off left its old
+    findings counting, because the names did not match, and nothing could say
+    whose desk those findings were on, because the catalog is keyed on the
+    check. A helper is replaced by whoever calls it.
     """
     global _OWNERS
     if _OWNERS is not None:
@@ -127,6 +136,8 @@ def code_owners() -> dict[str, frozenset[str]]:
     from pathlib import Path
 
     found: dict[str, set[str]] = defaultdict(set)
+    # check_x -> the other check_ functions it calls
+    calls: dict[str, set[str]] = defaultdict(set)
     here = Path(__file__).resolve().parent / "checks"
     try:
         names = sorted(p for p in here.glob("*.py"))
@@ -143,14 +154,41 @@ def code_owners() -> dict[str, frozenset[str]]:
                 continue
             for call in ast.walk(node):
                 if not (isinstance(call, ast.Call)
-                        and isinstance(call.func, ast.Name)
-                        and call.func.id == "_f" and call.args):
+                        and isinstance(call.func, ast.Name) and call.args):
+                    continue
+                if call.func.id.startswith("check_"):
+                    calls[node.name].add(call.func.id)
+                    continue
+                if call.func.id != "_f":
                     continue
                 first = call.args[0]
                 if isinstance(first, ast.Constant) and isinstance(first.value, str):
                     found[first.value].add(node.name)
-    _OWNERS = {k: frozenset(v) for k, v in found.items()}
+    _OWNERS = {k: frozenset(_roots(v, calls)) for k, v in found.items()}
     return _OWNERS
+
+
+def _roots(names: set[str], calls: dict[str, set[str]]) -> set[str]:
+    """Each name swapped for the checks that reach it, itself if nothing does.
+
+    A check called by another one is a half of it, not a check: it is on no
+    page, in no catalog and behind no switch. Two hops is all this walks -
+    deeper than that and the answer is kept as it stands, because a wrong
+    owner here hides a live finding.
+    """
+    callers: dict[str, set[str]] = {}
+    for caller, callees in calls.items():
+        for callee in callees:
+            callers.setdefault(callee, set()).add(caller)
+    out: set[str] = set()
+    for name in names:
+        up = callers.get(name)
+        if not up:
+            out.add(name)
+            continue
+        for one in up:
+            out.update(callers.get(one) or {one})
+    return out
 
 
 # --------------------------------------------------------------- writing it

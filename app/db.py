@@ -242,10 +242,11 @@ class Report(Base):
         return i in (self.acked or [])
 
     @property
-    def open_findings(self) -> list:
-        """Findings nobody has accepted yet, from checks that are switched on.
+    def live_findings(self) -> list:
+        """Everything still standing on this report, whosever desk it is on.
 
-        A check turned off has to stop counting IMMEDIATELY - on the board, in
+        Findings nobody has accepted yet, from checks that are switched on. A
+        check turned off has to stop counting IMMEDIATELY - on the board, in
         the status, in the filters - and a stored finding is what the board
         reads. Waiting for a re-check to reach seven hundred reports would mean
         the switch did nothing for an afternoon, which is not a switch.
@@ -256,6 +257,37 @@ class Report(Base):
                 if not self.is_acked(i)
                 and (f.get("severity") in ("fail", "warn"))
                 and not finding_is_off(f)]
+
+    @property
+    def open_findings(self) -> list:
+        """What the reporting team is holding this report for.
+
+        THE BUYER'S FLAGS ARE NOT ON THIS LIST, and everything that decides
+        whether a report can ship reads this one: the severity, the board
+        state, the ready flag, the findings column, the checkbox that picks
+        the reports that passed.
+
+        A geo-fence with no business name on it or a strategy line missing its
+        product name is a message to the person who built the order. It is not
+        something whoever reads reports can fix, it was never going to be
+        fixed by holding the PDF, and sitting in the same red list as a broken
+        widget it taught people that the red list is half things to ignore.
+        """
+        from .flag_catalog import is_buyer
+
+        return [f for f in self.live_findings if not is_buyer(f)]
+
+    @property
+    def buyer_findings(self) -> list:
+        """The ones for whoever set the campaign up.
+
+        Counted nowhere and holding nothing up. They ride along with the
+        report - on its own panel, and as a tag on the board row - until
+        somebody accepts them.
+        """
+        from .flag_catalog import is_buyer
+
+        return [f for f in self.live_findings if is_buyer(f)]
 
     @property
     def findings_off(self) -> set:
@@ -272,13 +304,17 @@ class Report(Base):
 
     @property
     def effective_severity(self) -> str:
-        """Severity counting only findings nobody has accepted.
+        """Severity over the findings that hold this report up.
 
         A report can carry a finding that is true, understood and not worth
         acting on - CTV excluded from the CTR base, a creative type that never
         renders a preview. Ticking it off has to clear the flag without
         deleting the note, or the next person to open the report re-discovers
         it from scratch.
+
+        Buyer flags are not in `open_findings` and so not in this either. They
+        are a message to the person who built the order, and a report was
+        never going to stop being wrong by being held.
         """
         # No findings recorded at all: trust the stored verdict. A report that
         # could not be parsed has severity "fail" and nothing itemized, and

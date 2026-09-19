@@ -420,7 +420,16 @@
             signed off</span>
         </div>
 
+        {# THE BUYER'S OWN LINK, ON THE PARTNER IT IS FOR. One per partner,
+           signed, and good until the secret changes - so it can go in a
+           standing message rather than being asked for every month. #}
+        {% set bflag = buyer_flagged.get(g.group, 0) %}
         <div class="gtags">
+          <button type="button" class="copy buyerlink"
+                  data-copy="{{ buyer_links.get(g.group, '') }}"
+                  data-tip="{{ buyer_links.get(g.group, '') }}"
+                  aria-label="Copy the buyer link for {{ g.group }}"
+            ><span>Buyer link{% if bflag %} · {{ bflag }} to review{% endif %}</span></button>
           {% for s in ['missing','errors','needs_fix','in','warnings','ready'] %}
             {% if g.counts[s] %}
               <a class="pill p-{{ s }}"
@@ -764,6 +773,23 @@
             {% elif e.report.acked %}
               <span class="empty">{{ e.report.acked|length }} accepted, nothing open</span><br>
             {% else %}<span class="empty">All checks passed</span><br>{% endif %}
+            {# THE BUYER'S ITEMS, AS A TAG AND NOT AS A LINE OF THE LIST ABOVE.
+               That list is what whoever reads reports has to act on, and four
+               lines about strategy names in the middle of it is how a column
+               of real problems stopped being read. Which flags they are is on
+               hover, because the answer to "is this mine" is the tag and the
+               answer to "which one" is one report deep. #}
+            {% set bflags = e.report.buyer_findings %}
+            {% if bflags %}
+              {# One per line. The tooltip is pre-line, and four flags run
+                 together on one line is the thing it was meant to replace. #}
+              {% set btips = [] %}
+              {% for f in bflags %}
+                {% set _ = btips.append((f.title or f.code)
+                                        ~ (' · ' ~ f.where if f.where else '')) %}
+              {% endfor %}
+              <span class="buyertag" data-tip="{{ btips|join('\n') }}">Buyer review needed</span>
+            {% endif %}
             {% if e.report.review_note %}
               <span class="notetag" title="{{ e.report.review_note }}">note</span>
             {% endif %}
@@ -1174,6 +1200,16 @@
 .pendtag{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;
  border-radius:9px;background:var(--warn-bg,var(--atlas-10));color:var(--warn);
  white-space:nowrap;margin-top:3px}
+/* THE BUYER'S, IN THE BUYER'S COLOR - the same one the flags page puts on the
+   owner tag and the report page puts down the side of their panel. Not amber:
+   amber on this board means something is being held, and this is not. */
+.buyerlink{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
+ border-color:var(--atlas-10);background:var(--atlas-10);color:var(--atlas)}
+.buyerlink:hover{border-color:var(--atlas);background:var(--atlas);color:#fff}
+.buyertag{display:inline-block;font-family:'GT Walsheim Pro',sans-serif;
+ font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:9px;
+ background:var(--atlas-10);color:var(--atlas);white-space:nowrap;
+ margin-top:3px;cursor:help}
 .cards .eta{cursor:help;margin:2px 0 0;font-family:'GT Walsheim Pro',sans-serif;
  font-size:15px;font-weight:700;color:var(--ink)}
 /* Not a failure - a statement about what is left, which is hand-pulled. */

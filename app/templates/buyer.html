@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ group }} · Buyer review · Report QA{% endblock %}
+{% block bodyclass %}norail{% endblock %}
+{# NO RAIL AND NO TOP BAR LINKS. Every one of them goes behind the site
+   password, and this page is sent to somebody who does not have it. #}
+{% block chrome %}
+<header class="topbar">
+  <h1>Report QA</h1>
+  <span class="where">Buyer review · {{ group }}</span>
+</header>
+{% endblock %}
+{% block body %}
+
+<div class="pagehead">
+  <h1>{{ group }}</h1>
+  <span class="meta">{{ cycle.label }}
+    {%- if buyer %} · {{ buyer }}{% endif %}</span>
+  {# EVERY REPORT, AND THE FLAGGED ONES ON THEIR OWN. All is what this page
+     opens on: a report the reporting team has already signed off still has
+     whatever the order gave it. #}
+  <span class="tabs">
+    <a class="{% if only != 'flagged' %}on{% endif %}"
+       href="/buyer/{{ token }}?period={{ period }}">All {{ total }}</a>
+    <a class="{% if only == 'flagged' %}on{% endif %}"
+       href="/buyer/{{ token }}?period={{ period }}&amp;only=flagged">To review {{ flagged }}</a>
+  </span>
+  <form method="get" action="/buyer/{{ token }}">
+    {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
+    <select name="period" onchange="this.form.submit()" aria-label="Cycle"
+            style="font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--line);
+                   border-radius:20px;background:var(--surface);color:var(--ink)">
+      {% for p in periods %}
+        <option value="{{ p }}" {% if p == period %}selected{% endif %}>{{ p|month }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if rows %}
+  <div class="tw">
+    <table class="buyergrid">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Products</th>
+          <th>Kind</th>
+          <th>To review</th>
+          <th>Report</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in rows %}
+          <tr>
+            <td><b>{{ e.client }}</b>
+              {% if e.account_ids %}<br><span class="oids">
+                {%- set _oids = e.account_ids.replace(',', ' ').split() %}
+                {%- for oid in _oids[:5] %}
+                  <a class="oidp" href="{{ io_order_url }}{{ oid }}"
+                     target="_blank" rel="noopener">{{ oid }}</a>
+                {%- endfor %}
+                {%- if _oids|length > 5 %}<span class="idmore"
+                  data-tip="{{ _oids[5:]|join(', ') }}">+{{ _oids|length - 5 }}</span>{% endif %}</span>
+              {% endif %}</td>
+            <td><span class="chips">{% for p in chips.get(e.ident, []) %}
+              <span class="chip" data-name="{{ p.name }}" tabindex="0"
+                    style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
+            {% endfor %}</span></td>
+            <td class="nw">{% if e.kind == 'lifetime' %}
+                <span class="pill p-info">lifetime</span>
+              {% elif e.kind == 'seo' %}<span class="pill p-info">SEO</span>
+              {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
+            <td class="bflags">
+              {% set bflags = e.report.buyer_findings if e.report else [] %}
+              {% if bflags %}
+                <ul>
+                  {% for f in bflags %}
+                    <li><b>{{ f.title or f.code }}</b>
+                      {%- if f.where %} <span class="wpill">{{ f.where }}</span>{% endif %}
+                      {% if f.detail and f.detail != f.title %}
+                        <span class="fdetail">{{ f.detail }}</span>{% endif %}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}<span class="empty">&mdash;</span>{% endif %}
+            </td>
+            <td class="nw">
+              {% if e.report %}
+                <a class="mini" style="display:inline-block;text-decoration:none"
+                   href="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
+                   target="_blank" rel="noopener">View PDF</a>
+              {% else %}<span class="empty">Not received</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="allclear">Nothing on this cycle.</p>
+{% endif %}
+
+<style>
+.pagehead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.pagehead h1{font-size:26px;line-height:1.1}
+.pagehead .meta{font-size:13px;color:var(--muted)}
+.pagehead .tabs{margin-left:auto;align-self:center}
+.pagehead form{margin:0;align-self:center}
+.buyergrid .oidp{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:10.5px;padding:1px 6px;margin-right:4px;border-radius:9px;
+ background:var(--atlas-10);color:var(--ink-2);text-decoration:none}
+.buyergrid .oidp:hover{background:var(--atlas);color:#fff}
+.wpill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:10px;padding:1px 6px;border-radius:9px;background:var(--atlas-10);
+ color:var(--ink-2);white-space:nowrap}
+/* THE FLAGS IN FULL, NOT ON HOVER. The board hides them behind a tag because
+   the board is a thousand rows of somebody else's work; this page is the one
+   they are written for. */
+.bflags ul{list-style:none;margin:0;padding:0;display:flex;
+ flex-direction:column;gap:8px}
+.bflags li{font-size:13px;line-height:1.45;border-left:2px solid var(--atlas);
+ padding-left:10px}
+.bflags .fdetail{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
+.allclear{margin:0;font-size:13.5px;color:var(--ok);background:var(--ok-bg);
+ padding:9px 13px;border-radius:8px}
+</style>
+{% endblock %}

@@ -43,6 +43,43 @@ names carry the product as a suffix (`... Geo-Retargeting Mobile`,
 rejoins them before testing. Change the exclusion list with
 `DEVICE_EXCLUDED_PRODUCTS`.
 
+## Whose desk a finding is on
+
+Every check names an owner - **reporter**, **buyer** or **admin** - and the
+buyer's nine are a different kind of finding to the other thirty-one. A
+geo-fence with no business name on it, a strategy line that does not name its
+product, a missing product, a Social Mirror creative that is really a display
+banner: none of those is something whoever reads reports can fix, and none of
+them was going to be fixed by holding the PDF.
+
+So they are split out:
+
+- **They do not hold a report up.** The severity, the board state and the
+  sign-off read `open_findings`, and the buyer's are not in it. Nothing has to
+  be ticked off before a report with one on it can be signed off.
+- **On the report** they get their own panel, `Buyer review`, under the one
+  that names what is actually being held for.
+- **On the board** they are a `Buyer review needed` tag on the row, with the
+  flags themselves on hover. The findings column stays what the reporting team
+  has to act on.
+- They are still in the Findings filter, so "every report with a fence missing
+  its business name" is one pick.
+
+### The buyer's own link
+
+Each partner card carries a **Buyer link**: a read-only page of that partner's
+reports, for the person who built the orders. It opens on EVERY report rather
+than the pending ones - a report this team has already signed off still has
+whatever the order gave it - with a `To review` tab for the flagged ones, the
+flags in full, and that partner's PDFs.
+
+The link is the partner's name and a signature over it, so nothing is stored
+and nothing expires. **Set `BUYER_LINK_SECRET`**: it is the only thing standing
+between the link and that partner's list, and with it blank the inbound secret
+signs them instead. Changing it invalidates every link already sent, which is
+also how you revoke them. Buyer links are in `OPEN_PATHS`, so they open without
+the site password.
+
 ## Completeness
 
 The order list is the second half of the tool. Point it at your S3 object and

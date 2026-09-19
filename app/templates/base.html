@@ -257,6 +257,8 @@ tr:hover .copyname,.copyname:focus-visible{opacity:1}
    thousand rows; a reading measure would only push half of it off screen. The
    prose that DOES need a measure caps itself with .sub instead. */
 main{margin-left:var(--rail);padding:26px 28px 40px;display:flex;flex-direction:column;gap:28px}
+/* A page with the chrome block left out has nothing sitting in that gutter. */
+body.norail{--rail:0px}
 
 /* ---- type ---- */
 h1{font-family:Agdasima,sans-serif;font-size:38px;font-weight:700;margin:0;
@@ -846,6 +848,11 @@ body.fit .pdfwrap object{height:100%}
   </symbol>
 </svg>
 
+{# THE TOOL'S OWN CHROME, IN A BLOCK, so a page written for somebody outside
+   the reporting team can leave it out. Every link in the rail and the top bar
+   goes somewhere behind the site password, and a page sent to a buyer that is
+   ringed by doors they cannot open reads as a page that is broken. #}
+{% block chrome %}
 <nav class="rail" aria-label="Sections">
   <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
     <path d="M18 15h18l10 10v24a2 2 0 0 1-2 2H18a2 2 0 0 1-2-2V17a2 2 0 0 1 2-2z" fill="#FDFBF7"/>
@@ -985,6 +992,7 @@ body.fit .pdfwrap object{height:100%}
     <ul>{% for line in _stale %}<li>{{ line }}</li>{% endfor %}</ul>
   </div>
 {% endif %}
+{% endblock %}
 
 <main>{% block body %}{% endblock %}</main>
 

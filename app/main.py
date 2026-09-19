@@ -428,6 +428,16 @@ def _finding_kind(code: str) -> str:
 
 
 templates.env.filters["finding_kind"] = _finding_kind
+
+
+def _flag_owner(finding) -> str:
+    """Whose desk a finding is on, for a template that has to split a list."""
+    from .flag_catalog import owner_of
+    return owner_of(finding or {})
+
+
+templates.env.globals["flag_owner"] = _flag_owner
+templates.env.filters["flag_owner"] = _flag_owner
 # Chrome that every page needs and no view should have to remember to pass.
 # ---------------------------------------------------------------- who is here
 #
@@ -1400,13 +1410,19 @@ def _finding_codes(e) -> set:
     The KIND, not the code. A row's CTR, a tile's CTR and the top-line CTR are
     three codes and one question, and splitting them across three filter
     entries made somebody pick three to see one list.
+
+    BOTH LISTS. A buyer flag does not hold the report up and is not printed in
+    the findings column, but "show me every report with a geo-fence missing
+    its business name" is the question this filter exists to answer - and it
+    is the question the buyer's own link is built out of.
     """
     from .flag_catalog import kind_of
 
     r = getattr(e, "report", None)
     if r is None:
         return set()
-    return {kind_of(f.get("code") or "") for f in (r.open_findings or [])} - {""}
+    return {kind_of(f.get("code") or "")
+            for f in ((r.open_findings or []) + (r.buyer_findings or []))} - {""}
 
 
 def _finding_menu(rows) -> tuple[list, dict]:
@@ -1426,7 +1442,7 @@ def _finding_menu(rows) -> tuple[list, dict]:
     counts, label = {}, {}
     for e in rows:
         r = getattr(e, "report", None)
-        for f in ((r.open_findings if r else []) or []):
+        for f in (((r.open_findings + r.buyer_findings) if r else []) or []):
             code = f.get("code") or ""
             if not code:
                 continue
@@ -1557,6 +1573,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
+    from .buyer_link import url_for as buyer_url
     from .checks.products import every_product
     from .cycle import current_period, cycle_for, recent_periods
     from .delivery import (delivery_jobs, latest_deliveries, out_of_sync,
@@ -1823,6 +1840,16 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # not go with it - the file is every row the filter leaves.
         "csv_href": _csv_href(request),
         "views": _saved_views(db),
+        # THE BUYER'S LINK, PER PARTNER. Signed rather than stored, so there is
+        # nothing to create, hand out or clean up - the card just has it.
+        "buyer_links": {g.group: buyer_url(str(request.base_url), g.group)
+                        for g in shown_groups},
+        # And how many of that partner's reports have something on them for
+        # the buyer, so the link says whether it is worth sending.
+        "buyer_flagged": {
+            g.group: sum(1 for e in g.expected
+                         if e.report and e.report.buyer_findings)
+            for g in shown_groups},
         "not_owed": sorted(not_owed, key=lambda r: (r["market"] or "",
                                                     r["client"] or "")),
         # WHAT THE ADD-A-ROW FORM OFFERS. Typed-in partner names were the
@@ -1880,6 +1907,87 @@ def _card_options(groups) -> dict:
 def _saved_views(db: Session) -> list:
     from .db import SavedView
     return list(db.scalars(select(SavedView).order_by(SavedView.name)).all())
+
+
+# ------------------------------------------------------------- the buyer's own
+# A LINK PER PARTNER, FOR THE PERSON WHO BUILT THE ORDERS.
+#
+# Their flags now sit on their own panel on the report and their own tag on
+# the board, which fixed the reporting team's half of it. The buyer's half was
+# still a screenshot pasted into a message, one partner at a time, because
+# /cycle is the reporting team's screen: filtered to what is open, laid out
+# around a sign-off they do not make, and behind the site password.
+#
+# EVERY REPORT, NOT THE PENDING ONES. That is the whole difference in what
+# this page defaults to. "Pending" means nobody here has signed it off yet,
+# which is a fact about this team's queue; the buyer's question is about the
+# campaign, and a signed-off report with a strategy line missing its product
+# name still has a strategy line missing its product name.
+def _buyer_rows(db: Session, group: str, period: str):
+    """(the partner's rows this cycle, the group card) - every one of them."""
+    from .board import by_group, expected_for
+
+    exp = expected_for(db, period)
+    groups = [g for g in by_group(db, period, exp) if g.group == group]
+    rows = [e for g in groups for e in g.expected]
+    # Flagged first, then by client. A buyer opening this wants the ones with
+    # something on them, and they were scattered through ninety rows in
+    # alphabetical order.
+    rows.sort(key=lambda e: (0 if (e.report and e.report.buyer_findings) else 1,
+                             (e.client or "").lower()))
+    return rows, (groups[0] if groups else None)
+
+
+@app.get("/buyer/{token}", response_class=HTMLResponse)
+def buyer_board(token: str, request: Request, period: str = Query(""),
+                only: str = Query(""), db: Session = Depends(get_db)):
+    from .buyer_link import group_of
+    from .cycle import current_period, cycle_for, recent_periods
+    from .product_codes import pill
+
+    group = group_of(token)
+    if not group:
+        raise HTTPException(404)
+    period = period or settings.default_period or current_period()
+    rows, card = _buyer_rows(db, group, period)
+    total = len(rows)
+    flagged = sum(1 for e in rows if e.report and e.report.buyer_findings)
+    if only == "flagged":
+        rows = [e for e in rows if e.report and e.report.buyer_findings]
+    periods = recent_periods()
+    if period not in periods:
+        periods = sorted(set(periods) | {period}, reverse=True)
+    return templates.TemplateResponse(request, "buyer.html", {
+        "nav": "", "token": token, "group": group, "period": period,
+        "periods": periods, "cycle": cycle_for(period), "rows": rows,
+        "chips": {e.ident: [pill(p) for p in e.products] for e in rows},
+        "total": total, "flagged": flagged, "only": only,
+        "buyer": card.buyer if card else "",
+        "io_order_url": settings.io_order_url,
+    })
+
+
+@app.get("/buyer/{token}/report/{report_id}/file")
+def buyer_report_file(token: str, report_id: int, period: str = Query(""),
+                      db: Session = Depends(get_db)):
+    """That partner's PDFs, and no others.
+
+    Checked against the board rather than against the report's own market: a
+    group covers several markets, and the board is the thing that decides
+    which. The report id being on this cycle's rows for this partner IS the
+    permission - nothing is taken from the URL but the id.
+    """
+    from .buyer_link import group_of
+    from .cycle import current_period
+
+    group = group_of(token)
+    if not group:
+        raise HTTPException(404)
+    period = period or settings.default_period or current_period()
+    rows, _card = _buyer_rows(db, group, period)
+    if report_id not in {e.report.id for e in rows if e.report}:
+        raise HTTPException(404)
+    return report_file(report_id, db)
 
 
 @app.post("/views")

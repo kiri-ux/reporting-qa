@@ -791,7 +791,7 @@ def test_the_site_can_be_put_behind_one_shared_password(tmp_path, monkeypatch):
     import importlib, os
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'g.db'}")
     monkeypatch.setenv("SITE_PASSWORD", "hunter2")
-    import app.config, app.db, app.main
+    import app.buyer_link, app.config, app.db, app.main
     for m in (app.config, app.db, app.main):
         importlib.reload(m)
     from fastapi.testclient import TestClient
@@ -850,9 +850,16 @@ def _render_every_page(tmp_path, monkeypatch):
     db.commit()
     db.close()
     c = TestClient(app.main.app)
+    # The buyer's page is drawn from the same chrome with the rail and the top
+    # bar left out, which is exactly the kind of change that loses a closing
+    # tag and shows up nowhere until somebody outside the team opens it.
+    from app.buyer_link import token_for
+    token = token_for("P")
     pages = ["/", "/cycle?period=2026-07", "/cycle?period=2026-07&done=all",
              "/cycle/links?period=2026-07", "/orders", "/partners", "/people",
-             "/rules", "/lifetimes", "/cycle/audit?period=2026-07"]
+             "/rules", "/lifetimes", "/cycle/audit?period=2026-07",
+             f"/buyer/{token}?period=2026-07",
+             f"/buyer/{token}?period=2026-07&only=flagged"]
     return c, pages
 
 
@@ -4313,6 +4320,11 @@ def test_the_reports_can_be_filtered_by_which_finding():
         def open_findings(self):
             return self._f
 
+        # The buyer's flags are their own list and the filter reaches both -
+        # "show me every report with a geo-fence missing its business name" is
+        # the question it exists to answer, and none of those hold a report up.
+        buyer_findings: list = []
+
     class E:
         def __init__(self, report=None):
             self.report = report
@@ -4414,6 +4426,8 @@ def test_a_finding_name_is_a_kind_not_one_reports_answer():
     class R:
         def __init__(self, f):
             self.open_findings = f
+            # The buyer's list, which the menu counts too.
+            self.buyer_findings = []
 
     class E:
         def __init__(self, f):
@@ -4491,6 +4505,8 @@ def test_the_same_problem_is_one_line_in_the_filter():
         @property
         def open_findings(self):
             return self.findings
+
+        buyer_findings: list = []
 
     class E:
         def __init__(self, r):

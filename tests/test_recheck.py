@@ -799,14 +799,19 @@ def test_a_check_can_be_switched_off_without_re_reading_the_board(tmp_path,
                  "state": "failed", "count": 1}], acked=[])
     db.add(rep)
     db.commit()
-    assert rep.open_findings
-    assert rep.effective_severity == "fail"
+    # LIVE, NOT OPEN. This one is a buyer flag, and the buyer's flags are not
+    # in open_findings - that list is what the reporting team is holding a
+    # report for. What the switch decides is whether the finding counts at
+    # all, which is this list.
+    assert rep.live_findings
+    assert rep.buyer_findings
 
     # OFF. The finding stops counting immediately, and nothing is left behind.
     checkctl.set_check(db, "check_social_mirror_sizes", False, who="kiri")
     db.expire_all()
     rep = db.get(db_mod.Report, rep.id)
-    assert not rep.open_findings
+    assert not rep.live_findings
+    assert not rep.buyer_findings
     assert rep.effective_severity == "pass"
     now = rules_version()
     assert now != was, "the rules did change - one of them is not running"
@@ -837,7 +842,7 @@ def test_a_check_can_be_switched_off_without_re_reading_the_board(tmp_path,
     checkctl.set_check(db, "check_social_mirror_sizes", True, who="kiri")
     db.expire_all()
     rep = db.get(db_mod.Report, rep.id)
-    assert rep.open_findings
+    assert rep.live_findings
     assert rep.rules_version != rules_version()
     db.close()
 

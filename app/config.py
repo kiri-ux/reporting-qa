@@ -101,8 +101,21 @@ class Settings(BaseSettings):
     # a link nobody outside has, and the thing worth stopping is a link that
     # got forwarded, not a colleague.
     site_password: str = ""
-    # Anything Render or a health checker needs to reach without it.
-    open_paths: str = "/healthz,/inbound,/static"
+    # Anything Render or a health checker needs to reach without it - and the
+    # buyer links, which are sent to people who do not have the password and
+    # carry a signature of their own instead.
+    open_paths: str = "/healthz,/inbound,/static,/buyer"
+
+    # WHAT SIGNS A BUYER LINK.
+    #
+    # A buyer link is a partner name and a signature over it, and the
+    # signature is the only thing standing between the link and that partner's
+    # list. Set this. Left blank the inbound secret signs them, and an inbound
+    # secret still at its default makes every buyer link guessable.
+    #
+    # Changing it invalidates every link already sent, which is also how you
+    # revoke them.
+    buyer_link_secret: str = ""
 
     # ONLY THE ORDER-DATABASE EXPORTS. The bucket holds more than the orders
     # now, and "every CSV under the prefix" would merge whatever else lands

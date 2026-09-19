@@ -5,6 +5,59 @@
   / {{ rep.client }}{% endblock %}
 {% block bodyclass %}fit{% endblock %}
 {% block body %}
+{# ONE FINDING, DRAWN ONCE. It appears in two lists now - what the report is
+   held for, and what the buyer is being told - and two copies of this markup
+   drift the week either one is touched. `rep` and `offs` are passed in: a
+   macro does not reliably see template variables. #}
+{% macro flagitem(rep, offs, i, f) %}
+  {% set acked = rep.is_acked(i) %}
+  {% set isoff = i in offs %}
+  <li class="{{ 'acked' if acked or isoff }}">
+    <form method="post" action="/report/{{ rep.id }}/ack" class="ackform">
+      <input type="hidden" name="index" value="{{ i }}">
+      <input type="hidden" name="on" value="{{ '' if acked else '1' }}">
+      <button type="submit" class="tick {{ 'on' if acked }}"
+              title="{{ 'Reopen this' if acked else 'Accept this - keeps the note, clears the flag' }}"
+              aria-label="{{ 'Reopen' if acked else 'Accept' }} {{ f.title or f.code }}">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3.5 8.5l3 3 6-6" fill="none" stroke="currentColor"
+                stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <span class="fbody">
+        <span class="pill p-{{ 'fail' if f.severity == 'fail' else 'warn' }}">{{ f.severity }}</span>
+        {# Where to look. "1 site clicking above 5%" is true and
+           unhelpful until you know which of forty-one pages. #}
+        {# TWO PILLS, NOT ONE STRING. The page number and the widget
+           are different facts - one tells you where to look, the other
+           what to look at - and a report with no page reference should
+           still say which widget it means. #}
+        {% for bit in (f.where or '').split(' · ') %}
+          {% if bit %}<span class="wpill{% if bit[0] == 'p' and bit[1:].isdigit() %} pg{% endif %}"
+            title="{{ 'Page' if bit[0] == 'p' and bit[1:].isdigit() else 'Widget' }}">{{ bit }}</span>{% endif %}
+        {% endfor %}
+        <b>{{ f.title or f.code }}</b>
+        {% if isoff %}<span class="wpill">check switched off</span>{% endif %}
+        {% if f.detail and f.detail != f.title %}
+          <span class="fdetail">{{ f.detail }}</span>{% endif %}
+      </span>
+    </form>
+    {% if f.trace %}
+      {# The question a disputed finding always raises is "where did
+         that number come from". This is the answer, in the rule's own
+         figures, without anyone having to read the code. #}
+      <details class="probe">
+        <summary>Investigate</summary>
+        <dl>
+          {% for row in f.trace %}
+            <dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>
+          {% endfor %}
+        </dl>
+      </details>
+    {% endif %}
+  </li>
+{% endmacro %}
+
 {# One row, not a stacked title block. Every pixel here comes out of the PDF. #}
 <div class="pagehead">
   <h1>{{ rep.client }}</h1>
@@ -30,7 +83,6 @@
    this page exists to avoid. #}
 <div class="split">
   <aside class="checks">
-    <h2>Needs a look</h2>
 {# Only what needs attention. An "everything is fine" line is noise in a list
    whose entire job is naming problems, and it got read as one. #}
     {% set problems = [] %}
@@ -42,57 +94,25 @@
        and saying so, and stops counting. Deleting it would be rewriting what
        the tool said at the time, and the check can be switched back on. #}
     {% set offs = rep.findings_off %}
-    {% set live = problems|rejectattr('0','in',offs)|list %}
+    {# TWO LISTS, BY WHOSE DESK IT IS ON.
+       The buyer's flags are not work for whoever reads reports - a geo-fence
+       with no business name is a message to the person who built the order,
+       and it was never going to be fixed by holding the PDF. In one list with
+       the broken widgets they taught people that half of a red list is
+       nothing, which is the expensive half of the lesson. #}
+    {% set look = [] %}
+    {% set buyers = [] %}
+    {% for i, f in problems %}
+      {% if flag_owner(f) == 'buyer' %}{% set _ = buyers.append((i, f)) %}
+      {% else %}{% set _ = look.append((i, f)) %}{% endif %}
+    {% endfor %}
+    {% set live = look|rejectattr('0','in',offs)|list %}
+    <h2>Needs a look</h2>
 
-    {% if problems %}
+    {% if look %}
       <ul class="flist">
-        {% for i, f in problems %}
-          {% set acked = rep.is_acked(i) %}
-          {% set isoff = i in offs %}
-          <li class="{{ 'acked' if acked or isoff }}">
-            <form method="post" action="/report/{{ rep.id }}/ack" class="ackform">
-              <input type="hidden" name="index" value="{{ i }}">
-              <input type="hidden" name="on" value="{{ '' if acked else '1' }}">
-              <button type="submit" class="tick {{ 'on' if acked }}"
-                      title="{{ 'Reopen this' if acked else 'Accept this - keeps the note, clears the flag' }}"
-                      aria-label="{{ 'Reopen' if acked else 'Accept' }} {{ f.title or f.code }}">
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="M3.5 8.5l3 3 6-6" fill="none" stroke="currentColor"
-                        stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <span class="fbody">
-                <span class="pill p-{{ 'fail' if f.severity == 'fail' else 'warn' }}">{{ f.severity }}</span>
-                {# Where to look. "1 site clicking above 5%" is true and
-                   unhelpful until you know which of forty-one pages. #}
-                {# TWO PILLS, NOT ONE STRING. The page number and the widget
-                   are different facts - one tells you where to look, the other
-                   what to look at - and a report with no page reference should
-                   still say which widget it means. #}
-                {% for bit in (f.where or '').split(' · ') %}
-                  {% if bit %}<span class="wpill{% if bit[0] == 'p' and bit[1:].isdigit() %} pg{% endif %}"
-                    title="{{ 'Page' if bit[0] == 'p' and bit[1:].isdigit() else 'Widget' }}">{{ bit }}</span>{% endif %}
-                {% endfor %}
-                <b>{{ f.title or f.code }}</b>
-                {% if isoff %}<span class="wpill">check switched off</span>{% endif %}
-                {% if f.detail and f.detail != f.title %}
-                  <span class="fdetail">{{ f.detail }}</span>{% endif %}
-              </span>
-            </form>
-            {% if f.trace %}
-              {# The question a disputed finding always raises is "where did
-                 that number come from". This is the answer, in the rule's own
-                 figures, without anyone having to read the code. #}
-              <details class="probe">
-                <summary>Investigate</summary>
-                <dl>
-                  {% for row in f.trace %}
-                    <dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>
-                  {% endfor %}
-                </dl>
-              </details>
-            {% endif %}
-          </li>
+        {% for i, f in look %}
+          {{ flagitem(rep, offs, i, f) }}
         {% endfor %}
       </ul>
       {% if rep.acked %}
@@ -146,6 +166,21 @@
         {%- if stood[0].why %} {{ stood[0].why|capitalize }}.
         {%- else %} This answer was stored before the reason was recorded.
         Check the file again.{% endif %}</p>
+    {% endif %}
+
+    {# FOR WHOEVER BUILT THE ORDER, NOT FOR WHOEVER READS REPORTS.
+       These used to sit in the list above with the same red pill as a broken
+       widget, so the answer to "what is holding this report up" included four
+       things nobody at this desk can do anything about. They hold nothing up
+       now - the severity, the board state and the sign-off all read the list
+       above - and they stay on the report until somebody accepts them. #}
+    {% if buyers %}
+      <h2 style="margin-top:22px">Buyer review</h2>
+      <ul class="flist buyerlist">
+        {% for i, f in buyers %}
+          {{ flagitem(rep, offs, i, f) }}
+        {% endfor %}
+      </ul>
     {% endif %}
 
     {% if rep.checks and not rep.checks_skipped %}
@@ -553,6 +588,12 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
 .fdetail{color:var(--ink-2);font-size:12.5px}
 .flist li.acked .fbody b{text-decoration:line-through;text-decoration-thickness:1px}
 .flist li.acked .fbody{opacity:.62}
+/* THE BUYER'S LIST, IN THE BUYER'S COLOR - the same one the flags page puts
+   on the owner tag. The two panels sit one above the other on a narrow
+   column, and a heading alone is not enough separation to stop the second
+   list being read as more of the first. */
+.buyerlist{border-left:2px solid var(--atlas);padding-left:12px}
+.buyerlist li{border-bottom-color:var(--line)}
 
 .pdfwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;
  box-shadow:var(--shadow);background:var(--ink-10)}

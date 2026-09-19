@@ -335,6 +335,52 @@ def flags() -> list[dict]:
     return out
 
 
+# ------------------------------------------------ whose desk a finding is on
+# WHO FIXES IT IS ALREADY WRITTEN DOWN, one column over, and nothing could read
+# it back. The catalog page printed the owner tag and that was the end of it -
+# so a buyer's flag and a reporter's flag arrived in the same list, on the same
+# report, with the same red pill, and the reporting team read both as work
+# waiting on them.
+CHECK_OWNER: dict[str, str] = {key: who for _t, items in FLAG_GROUPS
+                               for key, _w, who, _v, _h in items}
+
+
+def owner_of_check(name: str) -> str:
+    return CHECK_OWNER.get(name or "", "")
+
+
+def owner_of(finding: dict) -> str:
+    """Whose desk this finding is on - reporter, buyer, admin, or "".
+
+    NEW FINDINGS SAY WHICH CHECK WROTE THEM, so this is a dictionary lookup.
+
+    OLD ONES DO NOT, and there are hundreds of thousands of them stored. For
+    those the code is matched back to whichever checks can emit it, and the
+    answer only counts when they all agree: "rule_error" comes from every
+    check in the tool, and a finding that could be any of three desks is not
+    evidence for one of them.
+
+    UNSURE IS "", AND "" STAYS WITH THE REPORTING TEAM. The buyer panel is the
+    one that does not hold up a sign-off, so a wrong guess in that direction
+    ships a report nobody read. A wrong guess the other way costs a glance.
+    """
+    who = owner_of_check(finding.get("check") or "")
+    if who:
+        return who
+    from .checkctl import code_owners
+
+    owners = code_owners().get(finding.get("code") or "")
+    if not owners:
+        return ""
+    agreed = {owner_of_check(name) for name in owners}
+    return agreed.pop() if len(agreed) == 1 else ""
+
+
+def is_buyer(finding: dict) -> bool:
+    """Is this one for the buyer rather than for whoever reads reports?"""
+    return owner_of(finding) == BUYER
+
+
 def unwritten() -> int:
     """How many checks still have nobody's fix written against them.
 
