@@ -76,24 +76,24 @@
    drawing pages. That is a known state with an end, and it looked exactly like
    the tool being broken. It says so now, with a number that comes down. #}
 {% if stale.total > 200 %}
-  <div class="note" style="border-left-color:var(--gold);background:var(--warn-bg);
-       margin:0 0 14px">
+  {# BEHIND AN ICON, NOT ACROSS THE PAGE. It is a state with an end - the
+     sweep is working through them - and a full-width amber bar above the
+     board every day until it finishes teaches people to read past the place
+     warnings appear. The count is on the button; the rest is one click. #}
+  <div id="stalenote" hidden>
     {# WHICH DEPLOY, AND WHAT IT CHANGED. "A deploy changed the checking rules"
        is true of every one of these and answers nothing - the only way to find
        out what was actually different was to ask me. The build's own note is
        right there. #}
-    <div class="msg">
-      {# NOTHING IS RUNNING, AND IT HAS TO SAY SO. "Queued by build ..." was
-         left from when a sweep started itself off the back of this count, and
-         it reads as a re-check somebody did not ask for - which is what it was
-         read as. #}
-      <b>{{ stale.total }} reports were judged by rules that have since
-      changed.</b> Nothing is running. Run all re-checks is on the Reporting
-      flags page, or run one check at a time from there.
-    </div>
-    {# THE BUILD AND THE WAY OUT, ON ONE LINE, at the end of the sentence they
-       belong to.
-       AND A WAY TO SAY "NOT THIS ONE". Most deploys do not change how a report
+    {# NOTHING IS RUNNING, AND IT HAS TO SAY SO. "Queued by build ..." was
+       left from when a sweep started itself off the back of this count, and
+       it reads as a re-check somebody did not ask for - which is what it was
+       read as. #}
+    <p><b>{{ stale.total }} reports were judged by rules that have since
+    changed.</b> Nothing is running. Run all re-checks is on the
+    <a href="/rules#flags">Reporting flags</a> page, or run one check at a
+    time from there.</p>
+    {# AND A WAY TO SAY "NOT THIS ONE". Most deploys do not change how a report
        is judged, and the fingerprint cannot tell: it is a hash, and it moves
        when the FORMULA changes as readily as when a rule does. One build
        changed the formula itself and queued 872 reports to be read again to
@@ -226,6 +226,20 @@
                     stroke-linecap="round" stroke-linejoin="round"/>
             </svg>{{ stale.total }} checks</button>
         </form>
+      {% endif %}
+      {% if stale.total > 200 %}
+        {# NO COUNT ON IT. The button to its left is the same number and the
+           button that does something about it; two of them side by side
+           reads as two problems. This is the note, and a note is an icon. #}
+        <button type="button" class="sync warn icon" data-sheet-from="#stalenote"
+                data-sheet-title="Judged by older rules"
+                title="{{ stale.total }} reports on this board were judged by checking code that has since changed.">
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
+            <path d="M12 3l9.5 17h-19z" fill="none" stroke="currentColor"
+                  stroke-width="2.2" stroke-linejoin="round"/>
+            <path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round"/>
+          </svg></button>
       {% endif %}
       {# Two different syncs live here now, so each says which it is on hover.
          This one re-reads the ORDER LIST; the one to its left re-reads the
@@ -1161,7 +1175,16 @@
 {% endif %}
 
 <style>
-.glist{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+/* FIVE ACROSS, AND THE PAGE IS FIFTEEN - three full rows, every time.
+   auto-fill decided the count from whatever the window happened to be, so a
+   page of twenty drew six and then two on their own, which reads as a page
+   that lost something. Below the width five will fit in, it steps down
+   rather than squeezing. */
+.glist{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+@media(max-width:1700px){.glist{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1400px){.glist{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1080px){.glist{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.glist{grid-template-columns:1fr}}
 /* WHAT IS BELOW THE FOLD IS NOT LAID OUT UNTIL IT IS SCROLLED TO.
    The reports table was 24,851 of this page's DOM nodes and four seconds of
    browser time, and the answer everybody reaches for is to show less. This
@@ -1210,6 +1233,10 @@
 .sync:hover{background:var(--warn);color:#fff}
 .sync.busy{border-color:var(--velocity);color:var(--velocity);cursor:default}
 .sync.busy:hover{background:var(--surface);color:var(--velocity)}
+/* The one that is not a button to press so much as a state to read. */
+.sync.warn{border-color:var(--gold);color:#8A6212;background:var(--warn-bg)}
+.sync.icon{padding:5px 8px}
+.sync.warn:hover{background:var(--gold);color:var(--atlas);border-color:var(--gold)}
 .secbar .tabs form{margin:0;display:inline-flex}
 .gfoot form{display:inline}
 .upform{margin:0}
@@ -1266,8 +1293,15 @@
 .gfoot .showing{color:var(--velocity);font-weight:700;background:var(--velocity-10);
  padding:2px 9px;border-radius:12px;text-decoration:none}
 .gfoot .showing:hover{background:var(--velocity);color:#fff}
-.gtags{display:flex;flex-wrap:wrap;gap:5px}
-.gtags a{text-decoration:none}
+/* CENTERED, NOT BASELINED. These pills are different heights - a count, a
+   word, a button - and on a shared baseline the text in them steps up and
+   down across the card. Every row of chrome on a card lines up through the
+   middle now. */
+.gtags{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.gtags a,.gtags .pill,.gtags button{display:inline-flex;align-items:center;
+ text-decoration:none}
+.gcard .who{align-items:center}
+.gcard .wtag{align-items:center}
 .pill.pdf{background:var(--velocity-10);color:var(--velocity);text-decoration:none;
  display:inline-block;margin-bottom:5px}
 .pill.pdf:hover{background:var(--velocity);color:#fff;text-decoration:none}

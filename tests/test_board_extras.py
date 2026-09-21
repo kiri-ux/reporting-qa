@@ -760,9 +760,16 @@ def test_the_board_says_when_the_automatic_pull_has_stopped():
 def test_the_partner_cards_page_and_the_search_reaches_past_the_page():
     """A hundred and fifty cards is four screens of scrolling before the
     reports table, which is where the work happens. A search that only looked
-    at the twenty on screen would be worse than no search at all."""
+    at the fifteen on screen would be worse than no search at all.
+
+    FIFTEEN IS THREE ROWS OF FIVE, and the grid says five - the two have to
+    agree or the last row comes up short, which is a page that looks like it
+    lost something.
+    """
     src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
-    assert "CARD_PAGE = 20" in src
+    assert "CARD_PAGE = 15" in src
+    grid = (TPL / "cycle.html").read_text()
+    assert ".glist{display:grid;grid-template-columns:repeat(5," in grid
     assert "shown_groups = groups[(cards - 1) * CARD_PAGE:cards * CARD_PAGE]" in src
     # The query narrows the partners FIRST, then the page applies to what is left.
     i, j = src.index("hit = [g for g in groups"), src.index("card_total = len(groups)")

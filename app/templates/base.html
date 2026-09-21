@@ -1856,12 +1856,36 @@ body.fit .pdfwrap object{height:100%}
     if (open) open.removeAttribute('open');
   });
 
+  // THE SAME PANEL, FILLED FROM THE PAGE. Some of what belongs behind an icon
+  // is already rendered - a banner whose whole problem is that it is a banner
+  // - and a fetch to go and get markup the browser is holding is a round trip
+  // for nothing.
+  function openFrom(sel, title) {
+    var src = document.querySelector(sel);
+    if (!src) return;
+    closeSheet();
+    sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    sheet.innerHTML = '<div class="sheet-scrim"></div><div class="sheet-panel" role="dialog"'
+      + ' aria-modal="true"><div class="sheet-head"><h2></h2>'
+      + '<button type="button" class="sheet-x" aria-label="Close">&times;</button></div>'
+      + '<div class="sheet-body"></div></div>';
+    sheet.querySelector('.sheet-head h2').textContent = title || '';
+    sheet.querySelector('.sheet-body').innerHTML = src.innerHTML;
+    document.body.appendChild(sheet);
+    document.body.classList.add('sheet-open');
+    sheet.querySelector('.sheet-scrim').addEventListener('click', closeSheet);
+    sheet.querySelector('.sheet-x').addEventListener('click', closeSheet);
+  }
+
   document.addEventListener('click', function (e) {
-    var a = e.target.closest && e.target.closest('[data-sheet],[data-pdf]');
+    var a = e.target.closest
+      && e.target.closest('[data-sheet],[data-pdf],[data-sheet-from]');
     if (!a) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
     e.preventDefault();
-    if (a.dataset.pdf) openPdf(a.dataset.pdf, a.dataset.sheetTitle || '');
+    if (a.dataset.sheetFrom) openFrom(a.dataset.sheetFrom, a.dataset.sheetTitle || '');
+    else if (a.dataset.pdf) openPdf(a.dataset.pdf, a.dataset.sheetTitle || '');
     else openSheet(a.dataset.sheet, a.dataset.sheetTitle || '');
   });
   document.addEventListener('keydown', function (e) {

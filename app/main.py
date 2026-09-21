@@ -1308,7 +1308,11 @@ PAGE_SIZE = 50
 # AND TWENTY PARTNER CARDS. A hundred and fifty of them is four screens of
 # scrolling before the reports table, which is the part of the page anybody is
 # actually working in.
-CARD_PAGE = 20
+# FIFTEEN, WHICH IS THREE ROWS OF FIVE. The grid was auto-fill and the page
+# was twenty, so at a normal window it drew six across and left two cards
+# alone on a fourth row - a page that looks like it lost something. Five
+# columns is a decision now (see .glist) and the page size matches it.
+CARD_PAGE = 15
 
 
 def _logo_is_generic(db: Session, rep) -> bool:
