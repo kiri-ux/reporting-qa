@@ -291,10 +291,128 @@ def test_the_board_row_carries_the_tag_and_the_flags_on_it(client):
     column - that column is what the reporting team acts on."""
     c, _app = client
     body = c.get("/cycle?period=2026-08&group=Amazing+Results+LLC&done=all").text
-    assert "Buyer review needed" in body
+    assert ">Buyer review</span>" in body
     assert "4 geo-fence rows have no business name" in body
     # ...and NOT as one of the things holding the report up.
     assert "All checks passed" in body
+
+
+def test_the_board_can_be_cut_to_the_rows_with_buyer_flags():
+    """Not a status and not one of the Findings menu entries - it is the
+    question that cuts across both, and it is the list that gets sent on."""
+    from app.main import cycle_view
+    import inspect
+
+    assert "buyer_review" in inspect.signature(cycle_view).parameters
+
+
+def test_the_buyer_filter_survives_a_page_turn(client):
+    """The chips are links and the pagers are built from one macro - anything
+    not carried by it is a filter that silently drops on page 2. Added by hand
+    was on that list for weeks and No new file never was."""
+    from pathlib import Path
+
+    keep = Path("app/templates/cycle.html").read_text().split("{% endmacro %}")[0]
+    assert "buyerreview" in keep
+    assert "waiting=1" in keep
+    body = c_get(client, "/cycle?period=2026-08&buyerreview=1&done=all")
+    assert "Amazing Results LLC Client" in body
+
+
+def c_get(client, url):
+    c, _app = client
+    r = c.get(url)
+    assert r.status_code == 200, url
+    return r.text
+
+
+# ------------------------------------------------- what the buyer can press
+def test_the_buyer_can_mark_a_flag_off(client):
+    """The same accepted list the report page writes, so a flag dealt with
+    here stops showing on the board row and on the report."""
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rid = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC")).id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    r = c.post(f"{url}/report/{rid}/ack?period=2026-08",
+               data={"index": "0", "on": "1"}, follow_redirects=False)
+    assert r.status_code == 303
+    db = app.db.SessionLocal()
+    rep = db.get(app.db.Report, rid)
+    assert rep.acked == [0]
+    assert rep.buyer_findings == []
+    # AND IT IS NOT A SIGN-OFF. Ticking the last thing holding a report up is
+    # a review; nothing on this page was ever holding one up.
+    assert rep.review_state == "reviewed"    # it already was, from the fixture
+    db.close()
+
+
+def test_the_buyer_cannot_tick_off_the_reporting_teams_work(client):
+    """One page, one list, one thing it can write to. A hand-posted index must
+    not reach into what the report is actually being held for."""
+    import datetime as dt
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rep = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC"))
+    rep.findings = [BUYER_FLAG, REPORTER_FLAG]
+    rep.review_state = "new"
+    db.commit()
+    rid = rep.id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    r = c.post(f"{url}/report/{rid}/ack?period=2026-08",
+               data={"index": "1", "on": "1"}, follow_redirects=False)
+    assert r.status_code == 403
+    db = app.db.SessionLocal()
+    assert db.get(app.db.Report, rid).acked == []
+    db.close()
+
+
+def test_one_partners_link_does_not_tick_another_partners_report(client):
+    c, app = client
+    from sqlalchemy import select
+    db = app.db.SessionLocal()
+    theirs = db.scalar(select(app.db.Report)
+                       .where(app.db.Report.market == "Other Partner")).id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    r = c.post(f"{url}/report/{theirs}/ack?period=2026-08",
+               data={"index": "0", "on": "1"}, follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_the_buyer_can_see_what_the_client_is_paying_for(client):
+    """Every flag on this page is about the order, and the answer to all of
+    them is on the order lines."""
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rid = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC")).id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    body = c.get(f"{url}/report/{rid}/orders?period=2026-08&frag=1").text
+    assert "Mobile Conquesting" in body
+    # The sync button is behind the site password, so it is not on their copy.
+    assert "/orders/sync" not in body
+
+
+def test_the_pdf_opens_over_the_list(client):
+    """A tab per client and a cmd-w between each one was the whole job."""
+    c, app = client
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    body = c.get(f"{url}?period=2026-08").text
+    assert "data-pdf=" in body
+    assert "/orders?period=2026-08&amp;frag=1" in body
+    assert "/report/" in body           # the QA page the reporter works off
 
 
 def test_the_board_card_carries_the_partners_link(client):

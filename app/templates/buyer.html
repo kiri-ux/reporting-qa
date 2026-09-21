@@ -50,7 +50,7 @@
       </thead>
       <tbody>
         {% for e in rows %}
-          <tr>
+          <tr{% if e.report %} id="r{{ e.report.id }}"{% endif %}>
             <td><b>{{ e.client }}</b>
               {% if e.account_ids %}<br><span class="oids">
                 {%- set _oids = e.account_ids.replace(',', ' ').split() %}
@@ -70,25 +70,62 @@
               {% elif e.kind == 'seo' %}<span class="pill p-info">SEO</span>
               {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
             <td class="bflags">
-              {% set bflags = e.report.buyer_findings if e.report else [] %}
+              {% set bflags = e.report.buyer_flags if e.report else [] %}
               {% if bflags %}
+                {# ONE TICK PER FLAG, NOT ONE PER ROW. A client with a fence
+                   missing its name and a product off the report is two jobs,
+                   and one box says nothing about which of them is done. #}
                 <ul>
-                  {% for f in bflags %}
-                    <li><b>{{ f.title or f.code }}</b>
-                      {%- if f.where %} <span class="wpill">{{ f.where }}</span>{% endif %}
-                      {% if f.detail and f.detail != f.title %}
-                        <span class="fdetail">{{ f.detail }}</span>{% endif %}</li>
+                  {% for i, f in bflags %}
+                    <li>
+                      <form method="post"
+                            action="/buyer/{{ token }}/report/{{ e.report.id }}/ack?period={{ period }}"
+                            class="ackform">
+                        <input type="hidden" name="index" value="{{ i }}">
+                        <input type="hidden" name="on" value="1">
+                        {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
+                        <button type="submit" class="tick"
+                                title="Mark this one off"
+                                aria-label="Mark off {{ f.title or f.code }}">
+                          <svg viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M3.5 8.5l3 3 6-6" fill="none" stroke="currentColor"
+                                  stroke-width="2.4" stroke-linecap="round"
+                                  stroke-linejoin="round"/>
+                          </svg>
+                        </button>
+                        <span class="fbody">
+                          <b>{{ f.title or f.code }}</b>
+                          {%- if f.where %} <span class="wpill">{{ f.where }}</span>{% endif %}
+                          {% if f.detail and f.detail != f.title %}
+                            <span class="fdetail">{{ f.detail }}</span>{% endif %}
+                        </span>
+                      </form>
+                    </li>
                   {% endfor %}
                 </ul>
+              {% elif e.report and e.report.acked %}
+                <span class="empty">Marked off</span>
               {% else %}<span class="empty">&mdash;</span>{% endif %}
             </td>
-            <td class="nw">
+            <td class="nw"><div class="ract">
               {% if e.report %}
-                <a class="mini" style="display:inline-block;text-decoration:none"
-                   href="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
+                {# OPENS OVER THE LIST, NOT INSTEAD OF IT. Working down a
+                   partner was a tab per client and a cmd-w between each one.
+                   The href still works - cmd-click, or no JS. #}
+                <a class="mini" href="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
+                   data-pdf="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
+                   data-sheet-title="{{ e.client }}"
                    target="_blank" rel="noopener">View PDF</a>
+                <a class="mini" href="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}"
+                   data-sheet="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}&amp;frag=1"
+                   data-sheet-title="{{ e.client }} · order lines">Order lines</a>
+                {# WHERE THE REPORTING TEAM WORKS. Behind the site password,
+                   and named so nobody is surprised by the door. #}
+                <a class="mini qa" href="/report/{{ e.report.id }}/view"
+                   target="_blank" rel="noopener"
+                   data-tip="The QA page for this report. Vici sign-in.">QA page</a>
               {% else %}<span class="empty">Not received</span>{% endif %}
-            </td>
+            </div></td>
           </tr>
         {% endfor %}
       </tbody>
@@ -104,6 +141,9 @@
 .pagehead .meta{font-size:13px;color:var(--muted)}
 .pagehead .tabs{margin-left:auto;align-self:center}
 .pagehead form{margin:0;align-self:center}
+/* The rows are a screen tall each and there can be a hundred of them. This
+   lets the browser skip the ones nobody has scrolled to yet. */
+.buyergrid tbody tr{content-visibility:auto;contain-intrinsic-size:auto 76px}
 .buyergrid .oidp{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
  font-size:10.5px;padding:1px 6px;margin-right:4px;border-radius:9px;
  background:var(--atlas-10);color:var(--ink-2);text-decoration:none}
@@ -115,10 +155,23 @@
    the board is a thousand rows of somebody else's work; this page is the one
    they are written for. */
 .bflags ul{list-style:none;margin:0;padding:0;display:flex;
- flex-direction:column;gap:8px}
-.bflags li{font-size:13px;line-height:1.45;border-left:2px solid var(--atlas);
- padding-left:10px}
+ flex-direction:column;gap:9px}
+.bflags li{font-size:13px;line-height:1.45}
+.bflags .ackform{display:flex;gap:9px;align-items:flex-start;margin:0;
+ border-left:2px solid var(--atlas);padding-left:10px}
+.bflags .tick{flex:0 0 auto;width:20px;height:20px;margin-top:1px;border-radius:6px;
+ border:1.5px solid var(--atlas-50,var(--line));background:var(--surface);
+ color:transparent;cursor:pointer;display:flex;align-items:center;
+ justify-content:center;padding:0;transition:background .12s,border-color .12s,color .12s}
+.bflags .tick svg{width:13px;height:13px}
+.bflags .tick:hover{border-color:var(--ok);color:var(--ok)}
+.bflags .fbody{display:block}
 .bflags .fdetail{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
+/* Along the row, not down it. Stacked, three buttons made every row three
+   buttons tall - on a page whose whole job is being scanned down. */
+.ract{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.ract .mini{text-decoration:none;white-space:nowrap}
+.ract .mini.qa{border-style:dashed;color:var(--muted)}
 .allclear{margin:0;font-size:13.5px;color:var(--ok);background:var(--ok-bg);
  padding:9px 13px;border-radius:8px}
 </style>

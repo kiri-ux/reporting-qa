@@ -503,6 +503,11 @@ button[data-tip],a[data-tip]{cursor:pointer}
 .sheet-body{padding:16px 18px 26px;overflow:auto}
 body.sheet-open{overflow:hidden}
 @media (max-width:900px){.sheet-panel{width:100vw}}
+/* A SHEET HOLDING A PDF, NOT MARKUP. The file fills the panel and the panel
+   does not scroll - the PDF viewer has its own scrollbar, and two of them one
+   inside the other is the thing that makes an embedded PDF unusable. */
+.sheet-pdf .sheet-body{padding:0;overflow:hidden;flex:1;min-height:0}
+.sheet-pdf object,.sheet-pdf iframe{display:block;width:100%;height:100%;border:0}
 
 /* ---- the page-one logo ---- */
 .logobox{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
@@ -1661,6 +1666,15 @@ body.fit .pdfwrap object{height:100%}
     document.body.classList.remove('sheet-open');
   }
 
+  // THE SAME PAGE WITHOUT THE FRAGMENT FLAG. It arrives as ?frag=1 on a link
+  // with no other parameters and &frag=1 on one that has some, and stripping
+  // only the first shape left a "Full page" link that served the bare
+  // fragment - which reads exactly like the page being broken.
+  function fullPage(url) {
+    return url.replace(/[?&]frag=1\b/, function (m) { return m[0] === '?' ? '?' : ''; })
+              .replace(/\?$/, '');
+  }
+
   function loadSheet(url, body) {
     // WHERE YOU WERE, NOT WHERE THE PAGE OPENS. The sheet re-fetches itself
     // after every button in it, and the fragment has no script of its own to
@@ -1713,7 +1727,7 @@ body.fit .pdfwrap object{height:100%}
       })
       .catch(function () {
         body.innerHTML = '<p class="empty">Could not load this. '
-          + '<a href="' + url.replace('?frag=1', '') + '">Open the full page</a>.</p>';
+          + '<a href="' + fullPage(url) + '">Open the full page</a>.</p>';
       });
   }
 
@@ -1724,7 +1738,7 @@ body.fit .pdfwrap object{height:100%}
     sheet.innerHTML = '<div class="sheet-scrim"></div><div class="sheet-panel" role="dialog"'
       + ' aria-modal="true" aria-label="' + (title || 'Details') + '">'
       + '<div class="sheet-head"><h2>' + (title || '') + '</h2>'
-      + '<a class="sheet-full" href="' + url.replace('?frag=1', '') + '">Full page</a>'
+      + '<a class="sheet-full" href="' + fullPage(url) + '">Full page</a>'
       + '<button type="button" class="sheet-x" aria-label="Close">&times;</button></div>'
       + '<div class="sheet-body"><p class="empty">Loading...</p></div></div>';
     document.body.appendChild(sheet);
@@ -1734,12 +1748,42 @@ body.fit .pdfwrap object{height:100%}
     loadSheet(url, sheet.querySelector('.sheet-body'));
   }
 
+  // THE SAME PANEL WITH THE FILE IN IT. A report opened in a new tab and the
+  // list was behind it, so working down a partner was a tab per client and a
+  // cmd-w between each one. The href is left alone: cmd-click is still a tab
+  // when that is what you want, and with no JS it is the only behavior.
+  function openPdf(url, title) {
+    closeSheet();
+    sheet = document.createElement('div');
+    sheet.className = 'sheet sheet-pdf';
+    sheet.innerHTML = '<div class="sheet-scrim"></div><div class="sheet-panel" role="dialog"'
+      + ' aria-modal="true" aria-label="' + (title || 'Report') + '">'
+      + '<div class="sheet-head"><h2>' + (title || '') + '</h2>'
+      + '<a class="sheet-full" href="' + url + '" target="_blank" rel="noopener">New tab</a>'
+      + '<button type="button" class="sheet-x" aria-label="Close">&times;</button></div>'
+      + '<div class="sheet-body"></div></div>';
+    document.body.appendChild(sheet);
+    document.body.classList.add('sheet-open');
+    // Built rather than concatenated: the url is ours, but a filename is not,
+    // and one apostrophe in an attribute string is a broken panel.
+    var o = document.createElement('object');
+    o.setAttribute('data', url);
+    o.setAttribute('type', 'application/pdf');
+    o.innerHTML = '<p class="empty" style="padding:16px">This browser will not '
+      + 'show the file here. <a href="' + url + '" target="_blank" '
+      + 'rel="noopener">Open it in a tab</a>.</p>';
+    sheet.querySelector('.sheet-body').appendChild(o);
+    sheet.querySelector('.sheet-scrim').addEventListener('click', closeSheet);
+    sheet.querySelector('.sheet-x').addEventListener('click', closeSheet);
+  }
+
   document.addEventListener('click', function (e) {
-    var a = e.target.closest && e.target.closest('[data-sheet]');
+    var a = e.target.closest && e.target.closest('[data-sheet],[data-pdf]');
     if (!a) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
     e.preventDefault();
-    openSheet(a.dataset.sheet, a.dataset.sheetTitle || '');
+    if (a.dataset.pdf) openPdf(a.dataset.pdf, a.dataset.sheetTitle || '');
+    else openSheet(a.dataset.sheet, a.dataset.sheetTitle || '');
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeSheet();

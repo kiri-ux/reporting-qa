@@ -14,6 +14,8 @@
   if q and 'q' not in skip %}&q={{ q|urlencode }}{% endif %}{%
   if bucket != 'pending' and 'done' not in skip %}&done={{ bucket }}{% endif %}{%
   if hand_on and 'hand' not in skip %}&hand=1{% endif %}{%
+  if wait_on and 'waiting' not in skip %}&waiting=1{% endif %}{%
+  if breview_on and 'buyerreview' not in skip %}&buyerreview=1{% endif %}{%
   if show_all and 'rows' not in skip %}&rows=all{% endif %}{%
   for name, picks in (card_filters or {}).items() %}{%
     if picks and name not in skip %}&{{ name }}={{ picks|join('|')|urlencode }}{% endif %}{%
@@ -788,7 +790,7 @@
                 {% set _ = btips.append((f.title or f.code)
                                         ~ (' · ' ~ f.where if f.where else '')) %}
               {% endfor %}
-              <span class="buyertag" data-tip="{{ btips|join('\n') }}">Buyer review needed</span>
+              <span class="buyertag" data-tip="{{ btips|join('\n') }}">Buyer review</span>
             {% endif %}
             {% if e.report.review_note %}
               <span class="notetag" title="{{ e.report.review_note }}">note</span>
@@ -1034,6 +1036,15 @@
          data-tip="{% if hand_on %}Showing only the rows somebody put on this cycle by hand. Click to show the rest again.{% else %}Only the rows somebody put on this cycle by hand - approved from the list check, or added here. They are marked BY HAND beside the client.{% endif %}"
         >Added by hand <b>{{ hand_total }}</b></a>
     {% endif %}
+    {# THE ROWS WITH SOMETHING ON THEM FOR THE BUYER. Not a status and not one
+       of the Findings menu entries - it is the question that cuts across both,
+       and it is the list that gets sent on. #}
+    {% if breview_total or breview_on %}
+      <a class="mini toggle breview{{ ' on' if breview_on }}"
+         href="/cycle?{{ keep('buyerreview') }}{% if not breview_on %}&buyerreview=1{% endif %}#reports"
+         data-tip="{% if breview_on %}Showing only the rows with something on them for the buyer. Click to show the rest again.{% else %}Only the rows carrying a buyer flag. None of them is holding a report up.{% endif %}"
+        >Buyer review <b>{{ breview_total }}</b></a>
+    {% endif %}
     {% if q %}
       <a class="chip" href="/cycle?{{ keep('q') }}"
          title="Drop this search">{{ q }} &times;</a>
@@ -1149,6 +1160,17 @@
 
 <style>
 .glist{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+/* WHAT IS BELOW THE FOLD IS NOT LAID OUT UNTIL IT IS SCROLLED TO.
+   The reports table was 24,851 of this page's DOM nodes and four seconds of
+   browser time, and the answer everybody reaches for is to show less. This
+   shows the same rows and lets the browser skip the layout and paint of the
+   ones nobody is looking at. The size hint is what stops the scrollbar
+   jumping as they come in: a row is two lines of client and order id, a card
+   is a header, a bar, its tags and a footer.
+   Find-in-page still reaches inside them - content-visibility:auto is
+   searchable, unlike display:none. */
+.gcard{content-visibility:auto;contain-intrinsic-size:auto 250px}
+#tbl-cycle tbody tr{content-visibility:auto;contain-intrinsic-size:auto 66px}
 .gcard{background:var(--surface);border:1px solid var(--line);border-radius:10px;
  box-shadow:var(--shadow);padding:15px 17px;display:flex;flex-direction:column;gap:11px}
 .gcard.done{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset,var(--shadow)}
@@ -1200,16 +1222,20 @@
 .pendtag{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;
  border-radius:9px;background:var(--warn-bg,var(--atlas-10));color:var(--warn);
  white-space:nowrap;margin-top:3px}
-/* THE BUYER'S, IN THE BUYER'S COLOR - the same one the flags page puts on the
-   owner tag and the report page puts down the side of their panel. Not amber:
-   amber on this board means something is being held, and this is not. */
 .buyerlink{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
  border-color:var(--atlas-10);background:var(--atlas-10);color:var(--atlas)}
 .buyerlink:hover{border-color:var(--atlas);background:var(--atlas);color:#fff}
-.buyertag{display:inline-block;font-family:'GT Walsheim Pro',sans-serif;
- font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:9px;
- background:var(--atlas-10);color:var(--atlas);white-space:nowrap;
- margin-top:3px;cursor:help}
+/* A COLOR NOTHING ELSE ON THIS BOARD USES. Every status pill here is green,
+   amber, red, plum or blue, and a sixth shade of blue read as a sixth status -
+   which is the one thing this must not be. Teal is off that scale entirely,
+   and it is the same mark on the row and on the filter above it. */
+.buyertag{display:inline-block;font-family:Agdasima,sans-serif;font-size:12px;
+ font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 9px;
+ border-radius:9px;background:var(--teal);color:var(--atlas);
+ white-space:nowrap;margin-top:3px;cursor:help}
+.mini.toggle.breview{border-color:var(--teal);color:#0F7A85}
+.mini.toggle.breview.on{background:var(--teal);border-color:var(--teal);
+ color:var(--atlas)}
 .cards .eta{cursor:help;margin:2px 0 0;font-family:'GT Walsheim Pro',sans-serif;
  font-size:15px;font-weight:700;color:var(--ink)}
 /* Not a failure - a statement about what is left, which is hand-pulled. */

@@ -1560,6 +1560,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                # rendered found one of thirteen and said so with a straight
                # face.
                hand: str = Query(""), waiting: str = Query(""),
+               # THE ROWS WITH SOMETHING ON THEM FOR THE BUYER. Read here
+               # rather than in the browser for the same reason as the rest:
+               # the table is fifty rows a page, and a filter that can only
+               # see what is rendered finds a fraction and says so.
+               buyer_review: str = Query("", alias="buyerreview"),
                # THE REPORT TABLE'S OWN COLUMN FILTERS, applied here.
                #
                # They filtered the fifty rows the browser had, which is not
@@ -1659,6 +1664,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # chip can say how many there are while it is on and the rest are hidden.
     wait_total = sum(1 for e in rows
                      if e.report and e.report.waiting_on_file)
+    # Counted before the filter, so the chip can say how many there are while
+    # it is on and the rest are hidden.
+    breview_total = sum(1 for e in rows if e.report and e.report.buyer_findings)
+    if buyer_review:
+        rows = [e for e in rows if e.report and e.report.buyer_findings]
     if waiting:
         rows = [e for e in rows if e.report and e.report.waiting_on_file]
     if hand:
@@ -1864,6 +1874,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # whether it is on.
         "hand_total": hand_total, "hand_on": bool(hand),
         "wait_total": wait_total, "wait_on": bool(waiting),
+        "breview_total": breview_total, "breview_on": bool(buyer_review),
         "min_days": MIN_DAYS_IN_MONTH,
         "orders_stale": _orders_stale(db),
         "orders_failed": _orders_failed(db),
@@ -1967,10 +1978,8 @@ def buyer_board(token: str, request: Request, period: str = Query(""),
     })
 
 
-@app.get("/buyer/{token}/report/{report_id}/file")
-def buyer_report_file(token: str, report_id: int, period: str = Query(""),
-                      db: Session = Depends(get_db)):
-    """That partner's PDFs, and no others.
+def _buyer_report(db: Session, token: str, report_id: int, period: str):
+    """The report, or 404 - the one guard every buyer route goes through.
 
     Checked against the board rather than against the report's own market: a
     group covers several markets, and the board is the thing that decides
@@ -1985,9 +1994,67 @@ def buyer_report_file(token: str, report_id: int, period: str = Query(""),
         raise HTTPException(404)
     period = period or settings.default_period or current_period()
     rows, _card = _buyer_rows(db, group, period)
-    if report_id not in {e.report.id for e in rows if e.report}:
+    rep = next((e.report for e in rows
+                if e.report and e.report.id == report_id), None)
+    if rep is None:
         raise HTTPException(404)
+    return rep
+
+
+@app.get("/buyer/{token}/report/{report_id}/file")
+def buyer_report_file(token: str, report_id: int, period: str = Query(""),
+                      db: Session = Depends(get_db)):
+    """That partner's PDFs, and no others."""
+    _buyer_report(db, token, report_id, period)
     return report_file(report_id, db)
+
+
+@app.get("/buyer/{token}/report/{report_id}/orders", response_class=HTMLResponse)
+def buyer_report_orders(token: str, report_id: int, request: Request,
+                        period: str = Query(""), db: Session = Depends(get_db)):
+    """What this client is paying for, beside what the checks said about it.
+
+    The whole buyer panel is about the order - a product missing, a fence with
+    no name on it, delivery miles off - and the answer to every one of them is
+    on the order lines. Sending somebody to the IO tool one id at a time to
+    read them is the round trip this page was built to remove.
+    """
+    _buyer_report(db, token, report_id, period)
+    return report_orders(report_id, request, db, readonly=True)
+
+
+@app.post("/buyer/{token}/report/{report_id}/ack")
+def buyer_ack(token: str, report_id: int, request: Request,
+              index: int = Form(...), on: str = Form(""),
+              period: str = Query(""), only: str = Form(""),
+              db: Session = Depends(get_db)):
+    """Tick one of the buyer's flags off, from the buyer's own page.
+
+    The same acked list the report page writes, so a flag dealt with here
+    stops showing on the board row and on the report. It does NOT sign the
+    report off: the auto-review on the report page fires when the last thing
+    holding a report up is ticked, and nothing on this page was ever holding
+    one up.
+    """
+    from .flag_catalog import is_buyer
+
+    rep = _buyer_report(db, token, report_id, period)
+    findings = rep.findings or []
+    if not 0 <= index < len(findings):
+        raise HTTPException(400, "no such finding")
+    # THE BUYER'S OWN, AND ONLY THOSE. This page shows one list and can write
+    # to one list; a hand-posted index must not reach into what the reporting
+    # team is holding the report for.
+    if not is_buyer(findings[index]):
+        raise HTTPException(403, "not a buyer flag")
+    acked = set(rep.acked or [])
+    acked.add(index) if on else acked.discard(index)
+    rep.acked = sorted(acked)
+    db.commit()
+    back = f"/buyer/{token}?period={period or rep.period}"
+    if only:
+        back += f"&only={only}"
+    return RedirectResponse(f"{back}#r{report_id}", status_code=303)
 
 
 @app.post("/views")
@@ -4367,7 +4434,8 @@ class _OneFlight:
 
 
 @app.get("/report/{report_id}/orders")
-def report_orders(report_id: int, request: Request, db: Session = Depends(get_db)):
+def report_orders(report_id: int, request: Request, db: Session = Depends(get_db),
+                  readonly: bool = False):
     """Every order line this report is being judged against, as stored.
 
     Not the summary the finding prints - the actual rows, with the product they
@@ -4519,6 +4587,8 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
         "running": running_sync(db),
         "started": request.query_params.get("sync") in ("started", "already"),
         "frag": bool(request.query_params.get("frag")),
+        # Rendered for somebody who cannot press the buttons on it.
+        "readonly": bool(readonly),
     }
     # frag=1 is the same content with no page around it, for the modal on the
     # report. One template, so the two cannot drift apart.

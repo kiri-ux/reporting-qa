@@ -242,21 +242,38 @@ class Report(Base):
         return i in (self.acked or [])
 
     @property
-    def live_findings(self) -> list:
-        """Everything still standing on this report, whosever desk it is on.
+    def live_flags(self) -> list:
+        """[(index, finding)] for everything still standing on this report.
 
         Findings nobody has accepted yet, from checks that are switched on. A
         check turned off has to stop counting IMMEDIATELY - on the board, in
         the status, in the filters - and a stored finding is what the board
         reads. Waiting for a re-check to reach seven hundred reports would mean
         the switch did nothing for an afternoon, which is not a switch.
+
+        THE INDEX TRAVELS WITH IT, because accepting a finding is stored by
+        index: a report can carry the same code twice, and ticking one off
+        must not tick the other.
+
+        NOT MEMOIZED, AND THAT WAS MEASURED. Building one board asks for this
+        about twelve thousand times, which looks exactly like something to
+        cache - but almost every report carries none or one finding, so the
+        walk is a couple of microseconds and a key describing it was slower to
+        build than the answer. The board came out 5% SLOWER with the cache in
+        it. What costs here is the number of calls, not the work in one.
         """
         from .checkctl import finding_is_off
 
-        return [f for i, f in enumerate(self.findings or [])
-                if not self.is_acked(i)
-                and (f.get("severity") in ("fail", "warn"))
+        acked = self.acked or []
+        return [(i, f) for i, f in enumerate(self.findings or [])
+                if i not in acked
+                and f.get("severity") in ("fail", "warn")
                 and not finding_is_off(f)]
+
+    @property
+    def live_findings(self) -> list:
+        """The same list without the indexes."""
+        return [f for _i, f in self.live_flags]
 
     @property
     def open_findings(self) -> list:
@@ -275,19 +292,24 @@ class Report(Base):
         """
         from .flag_catalog import is_buyer
 
-        return [f for f in self.live_findings if not is_buyer(f)]
+        return [f for _i, f in self.live_flags if not is_buyer(f)]
+
+    @property
+    def buyer_flags(self) -> list:
+        """[(index, finding)] for the buyer's, for a page that can tick them."""
+        from .flag_catalog import is_buyer
+
+        return [(i, f) for i, f in self.live_flags if is_buyer(f)]
 
     @property
     def buyer_findings(self) -> list:
         """The ones for whoever set the campaign up.
 
         Counted nowhere and holding nothing up. They ride along with the
-        report - on its own panel, and as a tag on the board row - until
-        somebody accepts them.
+        report - on its own panel, on the buyer's own page, and as a tag on
+        the board row - until somebody marks them off.
         """
-        from .flag_catalog import is_buyer
-
-        return [f for f in self.live_findings if is_buyer(f)]
+        return [f for _i, f in self.buyer_flags]
 
     @property
     def findings_off(self) -> set:
@@ -321,6 +343,8 @@ class Report(Base):
         # computing from an empty list would quietly call it clean.
         if not self.findings:
             return self.severity
+        # The cached pairs, not a fresh list of them: one board asks this
+        # twelve thousand times and none of those needed a list built.
         levels = {f.get("severity") for f in self.open_findings}
         if "fail" in levels:
             return "fail"

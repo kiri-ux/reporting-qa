@@ -37,10 +37,14 @@
       <span class="acct" style="display:block;margin-top:4px">then
         <code>{{ sync.map_version or 'none' }}</code> · now
         <code>{{ map_now }}</code></span></div>
-    <form method="post" action="/orders/sync" style="display:inline">
-      <input type="hidden" name="back" value="/report/{{ rep.id }}/orders">
-      <button class="mini" type="submit">Re-read the orders</button>
-    </form>
+    {# NOT ON THE BUYER'S COPY. The button is behind the site password, so on
+       their page it is a control that does nothing when pressed. #}
+    {% if not readonly %}
+      <form method="post" action="/orders/sync" style="display:inline">
+        <input type="hidden" name="back" value="/report/{{ rep.id }}/orders">
+        <button class="mini" type="submit">Re-read the orders</button>
+      </form>
+    {% endif %}
   </div>
 {% endif %}
 

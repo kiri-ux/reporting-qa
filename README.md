@@ -59,19 +59,29 @@ So they are split out:
   be ticked off before a report with one on it can be signed off.
 - **On the report** they get their own panel, `Buyer review`, under the one
   that names what is actually being held for.
-- **On the board** they are a `Buyer review needed` tag on the row, with the
+- **On the board** they are a teal `BUYER REVIEW` tag on the row, with the
   flags themselves on hover. The findings column stays what the reporting team
-  has to act on.
-- They are still in the Findings filter, so "every report with a fence missing
-  its business name" is one pick.
+  has to act on, and a `Buyer review` chip beside the search cuts the table to
+  the rows carrying one.
+- They are still in the Findings filter too, so "every report with a fence
+  missing its business name" is one pick.
 
 ### The buyer's own link
 
-Each partner card carries a **Buyer link**: a read-only page of that partner's
-reports, for the person who built the orders. It opens on EVERY report rather
-than the pending ones - a report this team has already signed off still has
-whatever the order gave it - with a `To review` tab for the flagged ones, the
-flags in full, and that partner's PDFs.
+Each partner card carries a **Buyer link**: a page of that partner's reports
+for the person who built the orders. It opens on EVERY report rather than the
+pending ones - a report this team has already signed off still has whatever
+the order gave it - with a `To review` tab for the flagged ones and the flags
+written out in full. Per row:
+
+- a tick per flag, which writes the same accepted list the report page does,
+  so a flag dealt with here stops showing on the board and on the report. It
+  never signs a report off: nothing on this page was holding one up.
+- **View PDF**, which opens over the list rather than in a tab.
+- **Order lines**, the same panel the reporting team reads, minus the buttons
+  that are behind the password.
+- **QA page**, the report as the reporter works on it. That one is behind the
+  password, and the link says so.
 
 The link is the partner's name and a signature over it, so nothing is stored
 and nothing expires. **Set `BUYER_LINK_SECRET`**: it is the only thing standing
