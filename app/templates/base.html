@@ -1337,6 +1337,48 @@ body.fit .pdfwrap object{height:100%}
     }
   });
 
+  // THE PAGE DOES NOT MOVE WHEN YOU FILTER.
+  //
+  // These filters run on the server - they narrow the whole cycle, not the
+  // fifteen cards the browser happens to have - so picking one is a page load,
+  // and a page load starts at the top. Twelve cards back up from wherever you
+  // were reading, every time you change your mind about a buyer. The offset
+  // goes away on the way out and comes back on the way in.
+  var PLACE = 'filterscroll';
+  function goKeepingPlace(url) {
+    try {
+      sessionStorage.setItem(PLACE, JSON.stringify(
+        { path: location.pathname, y: window.scrollY, at: Date.now() }));
+    } catch (e) { /* no storage: it starts at the top, as it always did */ }
+    window.location.assign(url);
+  }
+  (function () {
+    var raw = null;
+    try {
+      raw = sessionStorage.getItem(PLACE);
+      sessionStorage.removeItem(PLACE);
+    } catch (e) { return; }
+    if (!raw) return;
+    var s;
+    try { s = JSON.parse(raw); } catch (e) { return; }
+    // Same page, and put away moments ago - not a tab opened over lunch.
+    if (!s || s.path !== location.pathname || Date.now() - s.at > 20000) return;
+    // Manual only while this one restore happens. Left on, Back and Forward
+    // stop remembering where they were, which is not this to fix.
+    var was = ('scrollRestoration' in history) ? history.scrollRestoration : null;
+    if (was) history.scrollRestoration = 'manual';
+    var put = function () { window.scrollTo(0, s.y); };
+    put();
+    // AGAIN ONCE IT IS ALL THERE. The cards are content-visibility:auto, so
+    // the first scroll lands against estimated heights and the real ones
+    // arrive a frame later.
+    requestAnimationFrame(put);
+    window.addEventListener('load', function () {
+      put();
+      if (was) history.scrollRestoration = was;
+    });
+  })();
+
   // Filter: a free-text box plus per-column dropdowns, both narrowing the same
   // rows. The dropdowns exist because free text cannot tell one column from
   // another - there is a Katie who is a trainer and a Katie who is a buyer, and
@@ -1631,7 +1673,7 @@ body.fit .pdfwrap object{height:100%}
           var u = new URL(window.location.href);
           u.searchParams.delete('cards');
           u.searchParams.delete('page');
-          window.location.assign(u.toString());
+          goKeepingPlace(u.toString());
         });
         f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
         selects.push({ key: key, el: sel });
@@ -1774,7 +1816,7 @@ body.fit .pdfwrap object{height:100%}
             else u.searchParams.delete('col_' + key);
             u.searchParams.delete('page');       // a narrower board starts at one
             u.hash = 'reports';
-            window.location.assign(u.toString());
+            goKeepingPlace(u.toString());
           } : run, shown, served);
         // What the address already asked for, ticked - or the control denies
         // the filter it is currently applying.

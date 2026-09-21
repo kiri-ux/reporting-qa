@@ -3102,6 +3102,36 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     db.close()
 
 
+def test_every_partner_card_carries_its_checkbox():
+    """It was left off the cards with nothing signed off to send, and the name
+    on those started where the others' checkbox did - so the row read as a card
+    with a box missing rather than one with nothing to package. It is on every
+    card and off only where it would package nothing."""
+    page = (TPL / "cycle.html").read_text()
+    head = page.split('class="ghead"')[1][:1400]
+    assert '{% if not g.counts.ready %}disabled' in head
+    assert "{% if g.counts.ready and not packing" not in page
+    assert ".ghead .gpick:disabled{" in page
+
+
+def test_picking_a_filter_does_not_move_the_page():
+    """These filters run on the server - they narrow the whole cycle, not the
+    fifteen cards the browser has - so picking one is a page load, and a page
+    load starts at the top. Twelve cards back up from wherever you were
+    reading, every time you change your mind about a buyer."""
+    base = (TPL / "base.html").read_text()
+    assert "function goKeepingPlace(url)" in base
+    # Both of them: the cards above and the reports table below.
+    assert base.count("goKeepingPlace(u.toString())") == 2
+    assert "window.location.assign(u.toString())" not in base
+    # Put away on the way out, used on the way in, and thrown away after.
+    assert "sessionStorage.setItem(PLACE" in base
+    assert "sessionStorage.removeItem(PLACE)" in base
+    # Not a tab opened over lunch, and Back keeps its own memory.
+    assert "Date.now() - s.at > 20000" in base
+    assert "history.scrollRestoration = was" in base
+
+
 def test_the_report_table_can_be_cut_to_one_buyer(tmp_path, monkeypatch):
     """The table prints the reporter and not the buyer, so "everything of
     Dana's" could be asked of the partner cards and not of the reports - which

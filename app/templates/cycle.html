@@ -425,9 +425,17 @@
              for. Only on the cards with something signed off to send - a tick
              that packages nothing is a tick that teaches you to distrust the
              count on the bar. #}
-          {% if g.counts.ready and not packing.get(g.group) %}
+          {# ON EVERY CARD, ENABLED ON THE ONES THERE IS SOMETHING TO SEND
+             FROM. Left off the rest, the names on those cards started a
+             checkbox further left than the others and the row read as a card
+             with a box missing rather than one with nothing to package. #}
+          {% if packing.get(g.group) %}
+            <span class="gpick pad"></span>
+          {% else %}
             <input type="checkbox" class="gpick" form="packmany" name="groups"
                    value="{{ g.group }}" data-ready="{{ g.counts.ready }}"
+                   {% if not g.counts.ready %}disabled
+                     title="Nothing signed off to package"{% endif %}
                    aria-label="Package {{ g.group }}">
           {% endif %}
           <div>
@@ -1282,6 +1290,8 @@
    them, and two copies drift the week either is touched. */
 .gcard[hidden]{display:none}
 .ghead .gpick{margin:3px 2px 0 0;width:16px;height:16px;flex:0 0 auto;cursor:pointer}
+.ghead .gpick:disabled{cursor:default;opacity:.35}
+.ghead .gpick.pad{display:block}
 /* BUYER REVIEWED, AND EVERYTHING IN. Beside the name, because the name is
    what anybody scanning this page is reading. */
 .brparty{font-size:15px;margin-left:5px;vertical-align:baseline;cursor:default}
