@@ -322,6 +322,24 @@ class Report(Base):
         return [(i, f) for i, f in self.live_flags if is_buyer(f)]
 
     @property
+    def buyer_flags_all(self) -> list:
+        """[(index, finding, ticked)] - the ticked ones too.
+
+        live_flags drops whatever has been ticked off, which is what every
+        caller that decides whether a report can ship wants. On the buyer's own
+        page it meant a flag ticked by accident left the list with nothing to
+        press to put it back.
+        """
+        from .checkctl import finding_is_off
+        from .flag_catalog import is_buyer
+
+        acked = set(self.acked or [])
+        return [(i, f, i in acked)
+                for i, f in enumerate(self.findings or [])
+                if f.get("severity") in ("fail", "warn")
+                and not finding_is_off(f) and is_buyer(f)]
+
+    @property
     def buyer_findings(self) -> list:
         """The ones for whoever set the campaign up.
 

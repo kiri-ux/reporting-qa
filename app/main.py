@@ -2117,6 +2117,7 @@ def buyer_flag_note(token: str, report_id: int, request: Request,
 def buyer_ack(token: str, report_id: int, request: Request,
               index: int = Form(...), on: str = Form(""),
               period: str = Query(""), only: str = Form(""),
+              inline: str = Form(""),
               db: Session = Depends(get_db)):
     """Tick one of the buyer's flags off, from the buyer's own page.
 
@@ -2141,6 +2142,12 @@ def buyer_ack(token: str, report_id: int, request: Request,
     acked.add(index) if on else acked.discard(index)
     rep.acked = sorted(acked)
     db.commit()
+    # TICKED WHERE IT STANDS. The post and the redirect rebuilt the whole page
+    # and reopened the report panel, which is a second and a half and a jump
+    # back to the top for one box on a list of twenty. The browser paints the
+    # box and this says whether it stuck.
+    if inline:
+        return Response(status_code=204)
     back = f"/buyer/{token}?period={period or rep.period}"
     if only:
         back += f"&only={only}"

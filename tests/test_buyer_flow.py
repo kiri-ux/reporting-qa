@@ -350,6 +350,61 @@ def test_the_buyer_can_mark_a_flag_off(client):
     db.close()
 
 
+def test_a_flag_ticked_off_can_be_ticked_back_on(client):
+    """It used to leave the list the moment it was ticked - live_flags drops
+    what has been acked - so a box pressed by accident had nothing on screen
+    to press to put it back."""
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rid = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC")).id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    c.post(f"{url}/report/{rid}/ack?period=2026-08",
+           data={"index": "0", "on": "1"}, follow_redirects=False)
+
+    body = c.get(f"{url}?period=2026-08").text
+    assert "4 geo-fence rows have no business name" in body, "still on the list"
+    assert 'aria-pressed="true"' in body, "and the box is ticked"
+    # The form is primed to clear it rather than to set it again.
+    assert 'name="on" value=""' in body
+
+    c.post(f"{url}/report/{rid}/ack?period=2026-08",
+           data={"index": "0", "on": ""}, follow_redirects=False)
+    db = app.db.SessionLocal()
+    assert db.get(app.db.Report, rid).acked == []
+    db.close()
+
+
+def test_ticking_a_flag_off_does_not_reload_the_page(client):
+    """The post and its redirect rebuilt the page and reopened the report
+    panel: a second and a half and a jump back to the top, for one box on a
+    list of twenty."""
+    from pathlib import Path
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rid = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC")).id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    r = c.post(f"{url}/report/{rid}/ack?period=2026-08",
+               data={"index": "0", "on": "1", "inline": "1"},
+               follow_redirects=False)
+    assert r.status_code == 204 and not r.content
+    db = app.db.SessionLocal()
+    assert db.get(app.db.Report, rid).acked == [0]
+    db.close()
+
+    # And the page posts it that way rather than submitting the form.
+    page = Path("app/templates/buyer.html").read_text()
+    assert "data.set('inline', '1')" in page
+    assert "paint(!on)" in page, "a post that failed puts the box back"
+
+
 def test_a_note_belongs_to_the_flag_it_is_typed_under(client):
     """The report already carries a note and it is one note for the whole
     report, which is the wrong shape for four flags on four different

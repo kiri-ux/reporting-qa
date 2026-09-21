@@ -15,7 +15,7 @@
     <a class="{% if only != 'flagged' %}on{% endif %}"
        href="/buyer/{{ token }}?period={{ period }}">All {{ total }}</a>
     <a class="{% if only == 'flagged' %}on{% endif %}"
-       href="/buyer/{{ token }}?period={{ period }}&amp;only=flagged">To review {{ flagged }}</a>
+       href="/buyer/{{ token }}?period={{ period }}&amp;only=flagged">To review <b id="breview">{{ flagged }}</b></a>
   </span>
   <form method="get" action="/buyer/{{ token }}">
     {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
@@ -39,7 +39,10 @@
       <table class="buyergrid">
         <tbody>
           {% for e in rows %}
-            {% set bflags = e.report.buyer_flags if e.report else [] %}
+            {# THE TICKED ONES TOO. They used to leave the list the moment they
+               were ticked, so a box pressed by accident had nothing to press
+               to put it back. #}
+            {% set bflags = e.report.buyer_flags_all if e.report else [] %}
             <tr{% if e.report %} id="r{{ e.report.id }}"{% endif %}>
               <td>
                 <div class="bwho">
@@ -80,15 +83,16 @@
                      missing its name and a product off the report is two jobs,
                      and one box says nothing about which of them is done. #}
                   <ul class="bflags">
-                    {% for i, f in bflags %}
-                      <li>
+                    {% for i, f, done in bflags %}
+                      <li{% if done %} class="done"{% endif %}>
                         <form method="post"
                               action="/buyer/{{ token }}/report/{{ e.report.id }}/ack?period={{ period }}"
                               class="ackform">
                           <input type="hidden" name="index" value="{{ i }}">
-                          <input type="hidden" name="on" value="1">
+                          <input type="hidden" name="on" value="{{ '' if done else '1' }}">
                           {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
-                          <button type="submit" class="tick" title="Mark this one off"
+                          <button type="submit" class="tick" aria-pressed="{{ 'true' if done else 'false' }}"
+                                  title="{{ 'Marked off' if done else 'Mark this one off' }}"
                                   aria-label="Mark off {{ f.title or f.code }}">
                             <svg viewBox="0 0 16 16" aria-hidden="true">
                               <path d="M3.5 8.5l3 3 6-6" fill="none" stroke="currentColor"
@@ -125,8 +129,6 @@
                       </li>
                     {% endfor %}
                   </ul>
-                {% elif e.report and e.report.acked %}
-                  <p class="bnone">Marked off</p>
                 {% endif %}
 
                 <div class="ract">
@@ -242,6 +244,56 @@
     if (a.classList.contains('on')) return;
     show(a.dataset.open, a.dataset.name || '', a.closest('tr'));
   });
+
+  // ---- ticking a flag off, where it stands ------------------------------
+  // The post and its redirect rebuilt the page and reopened the report panel:
+  // a second and a half and a jump back to the top for one box on a list of
+  // twenty. The box paints at once and the post rides along behind it; the
+  // same box pressed again clears it.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.ackform .tick');
+    if (!b || !b.form) return;
+    e.preventDefault();
+    var form = b.form, li = form.closest('li');
+    if (!li || li.classList.contains('busy')) return;
+    var on = li.classList.contains('done') ? '' : '1';
+    var paint = function (done) {
+      li.classList.toggle('done', done);
+      b.setAttribute('aria-pressed', done ? 'true' : 'false');
+      b.title = done ? 'Marked off' : 'Mark this one off';
+      form.elements.on.value = done ? '' : '1';
+      count();
+    };
+    paint(!!on);
+    li.classList.add('busy');
+    var data = new URLSearchParams();
+    data.set('index', form.elements.index.value);
+    data.set('on', on);
+    data.set('inline', '1');
+    fetch(form.action, {
+      method: 'POST', credentials: 'same-origin', body: data,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    }).then(function (r) {
+      li.classList.remove('busy');
+      // IT DID NOT STICK, so the box goes back to what the server still has.
+      // A tick that silently did nothing is worse than one that refuses.
+      if (!r.ok) paint(!on);
+    }).catch(function () {
+      li.classList.remove('busy');
+      paint(!on);
+    });
+  });
+
+  // The tab beside "All" counts the reports with something still on them.
+  function count() {
+    var tab = document.getElementById('breview');
+    if (!tab) return;
+    var n = 0;
+    document.querySelectorAll('.buyergrid > tbody > tr').forEach(function (tr) {
+      if (tr.querySelector('.bflags li:not(.done)')) n++;
+    });
+    tab.textContent = n;
+  }
 
   // ---- notes on a flag -------------------------------------------------
   // Saves when you click away, because a Save button per flag on a page of
@@ -375,6 +427,13 @@
  justify-content:center;padding:0;transition:background .12s,border-color .12s,color .12s}
 .bflags .tick svg{width:13px;height:13px}
 .bflags .tick:hover{border-color:var(--ok);color:var(--ok)}
+/* TICKED, AND STILL THERE TO UNTICK. */
+.bflags li.done .tick{background:var(--ok);border-color:var(--ok);color:#fff}
+.bflags li.done .ackform{border-left-color:var(--line)}
+.bflags li.done .fbody{color:var(--muted)}
+.bflags li.done .fbody b{font-weight:500}
+.bflags li.done .fdetail{color:var(--muted)}
+.bflags li.busy{opacity:.55}
 .bflags .fbody{display:block}
 .bflags .fdetail{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
 /* THE NOTE SITS UNDER THE FLAG IT IS ABOUT, indented past the tick so the
@@ -390,7 +449,6 @@
  color:var(--muted)}
 .flagnote button{display:none}
 .flagnote.dirty button{display:inline-block}
-.bnone{margin:8px 0 0;font-size:12.5px;color:var(--muted);font-style:italic}
 .ract{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:9px}
 .ract .mini{text-decoration:none;white-space:nowrap}
 .ract .mini.open{border-color:var(--velocity);color:var(--velocity);font-weight:700}
