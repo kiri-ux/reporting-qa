@@ -754,9 +754,11 @@
             data-v="{{ (e.report.open_findings if e.report else [])
                        |map(attribute='code')|select|map('finding_kind')
                        |unique|join(',') }}">
-          {% if e.report and e.report.renamed_from %}
-            <span class="wpill" title="Arrived as {{ e.report.renamed_from }} - the order id was missing or wrong, so it was renamed.">renamed</span>
-          {% endif %}
+          {# NO "renamed" TAG HERE. This column is what to do about a report,
+             and a file having been filed under the right name is not one of
+             them - it was on a third of the board, above the findings, in the
+             one place somebody is scanning for work. The fact is kept on the
+             report page with the rest of the facts about the file. #}
           {% if e.report %}
             {# Problems only. A confirmation in this column reads as another
                thing wrong, which is the opposite of what it means. #}

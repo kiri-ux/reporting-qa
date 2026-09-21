@@ -419,6 +419,42 @@ def test_the_report_opens_beside_the_list_not_over_it(client):
     assert "/report/" in body               # the QA page the reporter works off
 
 
+def test_pacing_and_order_lines_open_in_the_row(client):
+    """A sheet covers the report you opened to read them against, which is the
+    one thing this layout exists to keep on screen."""
+    c, app = client
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    body = c.get(f"{url}?period=2026-08").text
+    assert "data-drawer=" in body
+    assert 'class="rowdrawer"' in body
+    # ...and NOT as the sheet that covers the panel. The rules link in the top
+    # bar is the tool's own and keeps its sheet.
+    assert "data-sheet=\"/buyer/" not in body
+
+
+def test_the_buyer_page_does_not_print_page_tags(client):
+    """The report is open beside the list, and "p1 · cover page" against a
+    campaign that finished under its goal points at nothing to go and look
+    at - the finding is about the order, not a place on the page."""
+    c, app = client
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    body = c.get(f"{url}?period=2026-08").text
+    assert "4 geo-fence rows have no business name" in body
+    assert "p12 · Geo-Fencing" not in body
+
+
+def test_the_board_does_not_tag_a_report_as_renamed(client):
+    """Filing a report under the right name is not something to do about it,
+    and the tag sat on a third of the board above the findings - in the one
+    column somebody is scanning for work. The fact stays on the report page."""
+    from pathlib import Path
+
+    c, _app = client
+    body = c.get("/cycle?period=2026-08&done=all").text
+    assert ">renamed</span>" not in body
+    assert "renamed_from" in Path("app/templates/viewer.html").read_text()
+
+
 def test_the_buyer_can_read_the_pacing(client):
     """Collapsed on the report page, because whoever reads reports does not
     act on it. Here it is the whole question."""

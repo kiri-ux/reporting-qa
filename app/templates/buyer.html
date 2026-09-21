@@ -45,6 +45,19 @@
                 <div class="bwho">
                   <b>{{ e.client }}</b>
                   {% if e.kind == 'lifetime' %}<span class="pill p-info">lifetime</span>
+                    {# THE RANGE IT COVERS, BESIDE THE PILL. A lifetime is the
+                       whole campaign, and every number under it is read
+                       against those two dates - "24% under its goal" means
+                       nothing without them. A monthly's range is the cycle,
+                       which is already at the top of the page. #}
+                    {% if e.starts_on or e.ends_on %}
+                      <span class="lifespan">{{ e.starts_on or '?' }}
+                        &rarr; {{ e.ends_on or 'open' }}</span>
+                    {% endif %}
+                    {% if e.stopped_on %}
+                      <span class="lifespan stopped"
+                            data-tip="This campaign was cancelled or completed early. It last delivered on {{ e.stopped_on }}.">stopped {{ e.stopped_on }}</span>
+                    {% endif %}
                   {% elif e.kind == 'seo' %}<span class="pill p-info">SEO</span>
                   {% else %}<span class="pill p-month">monthly</span>{% endif %}
                   <span class="chips">{% for p in chips.get(e.ident, []) %}
@@ -83,9 +96,13 @@
                                     stroke-linejoin="round"/>
                             </svg>
                           </button>
+                          {# NO PAGE TAG. The report is open beside this
+                             list, and "p1 · cover page" against a campaign
+                             that finished under its goal points at nothing
+                             to go and look at - the finding is about the
+                             order, not about a place on the page. #}
                           <span class="fbody">
                             <b>{{ f.title or f.code }}</b>
-                            {%- if f.where %} <span class="wpill">{{ f.where }}</span>{% endif %}
                             {% if f.detail and f.detail != f.title %}
                               <span class="fdetail">{{ f.detail }}</span>{% endif %}
                           </span>
@@ -106,18 +123,22 @@
                        href="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
                        data-open="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
                        data-name="{{ e.client }}">Open report</a>
+                    {# IN THE ROW, NOT OVER THE PAGE. A sheet covers the
+                       report you opened to read these against, which is the
+                       one thing this layout exists to keep on screen. #}
                     <a class="mini"
                        href="/buyer/{{ token }}/report/{{ e.report.id }}/pacing?period={{ period }}"
-                       data-sheet="/buyer/{{ token }}/report/{{ e.report.id }}/pacing?period={{ period }}"
-                       data-sheet-title="{{ e.client }} · pacing">Pacing</a>
+                       data-drawer="/buyer/{{ token }}/report/{{ e.report.id }}/pacing?period={{ period }}"
+                       >Pacing</a>
                     <a class="mini"
                        href="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}"
-                       data-sheet="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}&amp;frag=1"
-                       data-sheet-title="{{ e.client }} · order lines">Order lines</a>
+                       data-drawer="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}&amp;frag=1"
+                       >Order lines</a>
                     <a class="mini qa" href="/report/{{ e.report.id }}/view"
                        target="_blank" rel="noopener">QA page</a>
                   {% else %}<span class="empty">Not received</span>{% endif %}
                 </div>
+                {% if e.report %}<div class="rowdrawer" hidden></div>{% endif %}
               </td>
             </tr>
           {% endfor %}
@@ -174,7 +195,14 @@
     document.querySelectorAll('.buyergrid tr.on').forEach(function (t) {
       t.classList.remove('on');
     });
-    if (row) row.classList.add('on');
+    document.querySelectorAll('[data-open].on').forEach(function (b) {
+      b.classList.remove('on');
+    });
+    if (row) {
+      row.classList.add('on');
+      var btn = row.querySelector('[data-open]');
+      if (btn) btn.classList.add('on');
+    }
   }
 
   document.addEventListener('click', function (e) {
@@ -182,7 +210,53 @@
     if (!a) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
     e.preventDefault();
+    // ALREADY OPEN IS NOT A CLICK. Pressing it again tore the object out of
+    // the panel and put an identical one back - a second of grey and a
+    // re-download of a file that was already on screen. The button says it is
+    // the one open instead.
+    if (a.classList.contains('on')) return;
     show(a.dataset.open, a.dataset.name || '', a.closest('tr'));
+  });
+
+  // ---- pacing and order lines, in the row ------------------------------
+  // A sheet covers the report you opened to read them against, which is the
+  // one thing this layout exists to keep on screen. These push the rows below
+  // them down instead. Fetched once and kept, so the second look is instant.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('[data-drawer]');
+    if (!a) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+    e.preventDefault();
+    var cell = a.closest('td');
+    var box = cell && cell.querySelector('.rowdrawer');
+    if (!box) return;
+    var url = a.dataset.drawer;
+    var mine = cell.querySelectorAll('[data-drawer]');
+
+    function lit(on) {
+      mine.forEach(function (b) { b.classList.remove('on'); });
+      if (on) a.classList.add('on');
+    }
+    // The same button again closes it; the other one swaps what is in it.
+    if (!box.hidden && box.dataset.src === url) {
+      box.hidden = true;
+      lit(false);
+      return;
+    }
+    lit(true);
+    box.hidden = false;
+    if (box.dataset.src !== url) {
+      box.dataset.src = url;
+      box.innerHTML = '<p class="empty">Loading...</p>';
+      fetch(url, { credentials: 'same-origin' })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          if (box.dataset.src === url) box.innerHTML = html;
+        })
+        .catch(function () {
+          box.innerHTML = '<p class="empty">Could not load this.</p>';
+        });
+    }
   });
 
   // OPEN ON THE ONE YOU WERE JUST ON. Marking a flag off is a post and a
@@ -219,6 +293,11 @@
 .buyergrid tbody tr{content-visibility:auto;contain-intrinsic-size:auto 150px}
 .bwho{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .bwho b{font-size:14.5px}
+/* The campaign's own dates. A lifetime's numbers are read against them, so
+   they sit with the pill that says it is one. */
+.lifespan{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+ white-space:nowrap}
+.lifespan.stopped{color:var(--warn);cursor:help}
 .oids{display:block;margin-top:3px}
 .oidp{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
  font-size:10.5px;padding:1px 6px;margin-right:4px;border-radius:9px;
@@ -247,6 +326,26 @@
 .ract{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:9px}
 .ract .mini{text-decoration:none;white-space:nowrap}
 .ract .mini.open{border-color:var(--velocity);color:var(--velocity);font-weight:700}
+/* THE ONE THAT IS OPEN, SAID ON THE BUTTON. Pressing it again does nothing,
+   so it has to stop looking like something to press. */
+.ract .mini.open.on{background:var(--velocity);border-color:var(--velocity);
+ color:#fff;cursor:default}
+.ract .mini[data-drawer].on{background:var(--atlas);border-color:var(--atlas);
+ color:#fff}
+/* The drawer itself: inside the row, pushing what is under it down. */
+.rowdrawer{margin:10px 0 2px;padding:12px 14px;border:1px solid var(--line);
+ border-left:3px solid var(--atlas);border-radius:8px;background:var(--parchment);
+ font-size:12.5px;overflow-x:auto}
+.rowdrawer[hidden]{display:none}
+.rowdrawer .pacing{margin:0}
+.rowdrawer table{font-size:12px}
+.rowdrawer .sub{max-width:none}
+/* THE COLUMNS KEEP THEIR WIDTH AND THE TABLE SCROLLS. Half a screen is not
+   enough for seven order-line columns, and squeezed into it every cell wraps
+   onto three lines - which is a table you cannot read rather than one you
+   have to push sideways. */
+.rowdrawer .tw{overflow-x:auto}
+.rowdrawer .tw table{min-width:660px}
 .ract .mini.qa{border-style:dashed;color:var(--muted)}
 /* The panel, which is on the page whether or not anything is open in it. */
 .bview{display:flex;flex-direction:column;border:1px solid var(--line);
