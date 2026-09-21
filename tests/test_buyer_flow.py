@@ -432,6 +432,39 @@ def test_pacing_and_order_lines_open_in_the_row(client):
     assert "data-sheet=\"/buyer/" not in body
 
 
+def test_the_reporting_teams_flags_are_there_to_look_at(client):
+    """None of them is the buyer's to fix, and they are the one being asked
+    about the report - "why is page nine blank" reaches them. Behind a button
+    with the count on it, so none of it reads as something for them to do."""
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rep = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC"))
+    rep.findings = [BUYER_FLAG, REPORTER_FLAG]
+    db.commit()
+    rid = rep.id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+
+    body = c.get(f"{url}?period=2026-08").text
+    assert "Reporting flags · 1" in body
+
+    drawer = c.get(f"{url}/report/{rid}/flags?period=2026-08").text
+    assert "Page 9 is blank" in drawer
+    # ...and not the buyer's own, which are already on the row.
+    assert "4 geo-fence rows have no business name" not in drawer
+
+
+def test_a_report_with_nothing_open_says_so_quietly(client):
+    c, app = client
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    body = c.get(f"{url}?period=2026-08").text
+    # No count, and no amber.
+    assert ">Reporting flags</a>" in body
+
+
 def test_the_buyer_page_does_not_print_page_tags(client):
     """The report is open beside the list, and "p1 · cover page" against a
     campaign that finished under its goal points at nothing to go and look

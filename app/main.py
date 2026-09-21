@@ -1811,6 +1811,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     periods = recent_periods()
     if period not in periods:
         periods = sorted(set(periods) | {period}, reverse=True)
+    card_opts, card_opt_counts = _card_options(every_group)
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
         "periods": periods, "groups": shown_groups, "all_groups": groups,
@@ -1819,7 +1820,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # The dropdowns were built from the cards on screen, so with twenty a
         # page the Partner filter offered twenty and called it "All (20)" - a
         # partner on page five could not be picked or even seen to exist.
-        "opts": _card_options(every_group),
+        "opts": card_opts,
+        # AND HOW MANY PARTNERS EACH ONE IS ON, over the whole cycle rather
+        # than the page - see _card_options.
+        "opt_counts": card_opt_counts,
         "card_filters": card_filters,
         "card_page": cards, "card_pages": card_pages, "card_total": card_total,
         "rows": shown, "row_total": total,
@@ -1898,25 +1902,40 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
 SAVED_KEYS = ("q", "only", "partner", "buyer", "reporter", "trainer", "status", "state")
 
 
-def _card_options(groups) -> dict:
-    """Every value each card filter could offer, across the whole cycle."""
-    out = {"partner": set(), "buyer": set(), "reporter": set(),
-           "trainer": set(), "status": set()}
+def _card_options(groups) -> tuple[dict, dict]:
+    """(every value each card filter could offer, how many partners carry it).
+
+    BOTH OVER THE WHOLE CYCLE. The options have been cycle-wide for a while -
+    built from the cards on screen, the Partner filter offered the fifteen
+    this page happens to show. The COUNTS beside them were still the page's,
+    so a reporter carrying sixty partners read "9" and the menu looked like it
+    was describing a different board from the one it filters.
+
+    It is the same walk either way. This function already visits every group
+    once to collect the values; counting them as it goes is a dictionary
+    increment per value and costs nothing measurable on a cycle of 145.
+    """
+    from collections import Counter
+
+    out: dict[str, Counter] = {"partner": Counter(), "buyer": Counter(),
+                               "reporter": Counter(), "trainer": Counter(),
+                               "status": Counter()}
     for g in groups:
         if g.group:
-            out["partner"].add(g.group)
+            out["partner"][g.group] += 1
         for key, val in (("buyer", g.buyer), ("reporter", g.reporter),
                          ("trainer", g.trainer)):
-            for part in (val or "").split(","):
-                part = part.strip()
-                if part:
-                    out[key].add(part)
+            # A group names each person once, however many of its reports they
+            # are on - the card carries one tag, and the filter picks cards.
+            for part in {p.strip() for p in (val or "").split(",") if p.strip()}:
+                out[key][part] += 1
         # THE TWO VALUES A CARD ACTUALLY CARRIES. This offered every report
         # state - Not received, Errors, In review - and a card is labeled
         # "Good to go" or "Open", so picking any of them matched no card at
         # all and the board went empty.
-        out["status"].add("Good to go" if g.ready else "Open")
-    return {k: "|".join(sorted(v)) for k, v in out.items()}
+        out["status"]["Good to go" if g.ready else "Open"] += 1
+    return ({k: "|".join(sorted(v)) for k, v in out.items()},
+            {k: dict(v) for k, v in out.items()})
 
 
 def _saved_views(db: Session) -> list:
@@ -2039,6 +2058,21 @@ def buyer_report_pacing(token: str, report_id: int, request: Request,
     pacing, pacing_why = pacing_for(db, rep)
     return templates.TemplateResponse(request, "buyer_pacing.html", {
         "nav": "", "rep": rep, "pacing": pacing, "pacing_why": pacing_why})
+
+
+@app.get("/buyer/{token}/report/{report_id}/flags", response_class=HTMLResponse)
+def buyer_report_flags(token: str, report_id: int, request: Request,
+                       period: str = Query(""), db: Session = Depends(get_db)):
+    """What the REPORTING team is holding this report for.
+
+    Not the buyer's to fix, and worth being able to see: they are the one
+    being asked about the report, and "why is page nine blank" is a question
+    that reaches them. Behind a button with a count on it, so none of it
+    reads as something for them to do.
+    """
+    rep = _buyer_report(db, token, report_id, period)
+    return templates.TemplateResponse(request, "buyer_flags.html", {
+        "nav": "", "rep": rep, "flags": rep.open_findings})
 
 
 @app.post("/buyer/{token}/report/{report_id}/ack")

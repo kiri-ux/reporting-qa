@@ -144,9 +144,10 @@ def test_the_partner_button_carries_no_count():
     current, and every other button on this page that answers it says sync.
     """
     cycle = (TPL / "cycle.html").read_text()
-    assert ">sync</button>" in cycle
     assert "Re-check</button>" not in cycle
-    assert "{{ stale.by_group[g.group] }} of them" in cycle    # the count, on hover
+    assert ">sync</button>" not in cycle          # the arrow says it; the word competed
+    assert 'data-tip="Re-check reports for updated flags' in cycle
+    assert "{{ stale.by_group[g.group] }} judged by older code" in cycle   # on hover
     assert 'name="scope" value="all"' in cycle
 
 
@@ -988,12 +989,17 @@ def test_the_filter_dropdowns_offer_the_whole_cycle():
     # Built from EVERY group, not from the ones that survived the filter -
     # offering only what is still showing means one pick and the menu can
     # never take you anywhere else.
-    assert '"opts": _card_options(every_group)' in src
+    assert "card_opts, card_opt_counts = _card_options(every_group)" in src
+    assert '"opts": card_opts' in src
     html = (TPL / "cycle.html").read_text()
     for key in ("partner", "buyer", "reporter", "trainer", "status"):
         assert f'data-opts-{key}="{{{{ opts.{key} }}}}"' in html
+    # SINGLE QUOTES. tojson is marked safe, so its own double quotes are
+    # written raw and a double-quoted attribute ends at the first key.
+    assert "data-opt-counts='{{ opt_counts|tojson }}'" in html
     base = (TPL / "base.html").read_text()
     assert "grid.dataset[uk]" in base
+    assert "cycleCounts[key]" in base
     # And a list of 145 needs a way to find one.
     assert "multifind" in base
 
@@ -1010,7 +1016,7 @@ def test_card_options_are_the_whole_cycles_values():
                            kind="monthly")],
                  buyer="Stacy", reporter="Taylor", trainer="Katie"),
     ]
-    opts = _card_options(groups)
+    opts, counts = _card_options(groups)
     assert opts["partner"] == "Alpha|Lockwood Media"
     assert opts["buyer"] == "Bella|Stacy"
     assert opts["trainer"] == "Katie"          # deduplicated
@@ -1018,6 +1024,12 @@ def test_card_options_are_the_whole_cycles_values():
     # Not received, Errors, In review - and a card is labelled "Good to go" or
     # "Open", so picking any of them matched no card and the board went empty.
     assert opts["status"] == "Open"
+    # AND THE COUNTS COME WITH THEM, over the whole cycle. They used to be
+    # counted from the cards rendered, so a reporter carrying sixty partners
+    # read "9" beside her name in a menu that filters all of them.
+    assert counts["trainer"] == {"Katie": 2}
+    assert counts["buyer"] == {"Bella": 1, "Stacy": 1}
+    assert counts["status"] == {"Open": 2}
 
 
 def test_the_not_owed_list_sits_with_the_reports():

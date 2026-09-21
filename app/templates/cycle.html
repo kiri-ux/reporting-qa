@@ -231,9 +231,14 @@
         {# NO COUNT ON IT. The button to its left is the same number and the
            button that does something about it; two of them side by side
            reads as two problems. This is the note, and a note is an icon. #}
+        {# data-tip, NOT title. The browser's own tooltip takes a second and a
+           half to appear, so an icon with only a title on it is an icon that
+           says nothing - and this one is the least guessable thing on the
+           toolbar. #}
         <button type="button" class="sync warn icon" data-sheet-from="#stalenote"
                 data-sheet-title="Judged by older rules"
-                title="{{ stale.total }} reports on this board were judged by checking code that has since changed.">
+                aria-label="{{ stale.total }} reports judged by older rules"
+                data-tip="{{ stale.total }} reports on this board were judged by checking code that has since changed. Nothing is running.">
           <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
             <path d="M12 3l9.5 17h-19z" fill="none" stroke="currentColor"
                   stroke-width="2.2" stroke-linejoin="round"/>
@@ -386,7 +391,15 @@
        data-opts-buyer="{{ opts.buyer }}"
        data-opts-reporter="{{ opts.reporter }}"
        data-opts-trainer="{{ opts.trainer }}"
-       data-opts-status="{{ opts.status }}">
+       data-opts-status="{{ opts.status }}"
+       {# HOW MANY PARTNERS CARRY EACH VALUE, over the whole cycle. The menu
+          used to count the cards on screen, so a reporter on sixty partners
+          read "9" beside her name on a page showing fifteen. #}
+       {# SINGLE QUOTES ROUND IT. tojson is marked safe, so its own double
+          quotes are written raw - inside a double-quoted attribute that ends
+          the attribute at the first key and the rest is loose markup. It
+          escapes apostrophes, so this is the delimiter it is safe in. #}
+       data-opt-counts='{{ opt_counts|tojson }}'>
     {% for g in groups %}
       {% set d = deliveries.get(g.group) %}
       <div class="gcard {% if g.ready %}done{% endif %}"
@@ -467,9 +480,13 @@
              thing on the card and the number is not what the button does -
              it is a fact about the list behind it. Teal, because that is
              what a buyer flag is everywhere else. #}
+          {# THE COUNT AND NOTHING ELSE. The link itself was in the hover and
+             it is a hundred characters of signed token - the one fact it can
+             tell you at a glance was underneath it. What the button does is
+             copy; what it is worth copying for is the number. #}
           <button type="button" class="copy buyerlink{{ ' has' if bflag }}"
                   data-copy="{{ buyer_links.get(g.group, '') }}"
-                  data-tip="{% if bflag %}{{ bflag }} report{{ 's' if bflag != 1 }} with something on {{ 'them' if bflag != 1 else 'it' }} for the buyer. {% endif %}{{ buyer_links.get(g.group, '') }}"
+                  data-tip="{% if bflag %}{{ bflag }} buyer review{{ 's' if bflag != 1 }}{% else %}Nothing for the buyer{% endif %}"
                   aria-label="Copy the buyer link for {{ g.group }}{% if bflag %}, {{ bflag }} to review{% endif %}"
             ><span>Buyer link</span></button>
           {% for s in ['missing','errors','needs_fix','in','warnings','ready'] %}
@@ -516,13 +533,22 @@
               <input type="hidden" name="period" value="{{ period }}">
               <input type="hidden" name="group" value="{{ g.group }}">
               <input type="hidden" name="scope" value="all">
-              <button class="sync{{ ' warn' if stale.by_group.get(g.group) }}" type="submit"
-                      title="Re-read this partner's {{ have }} report{{ 's' if have != 1 }} with today's rules.{% if stale.by_group.get(g.group) %} {{ stale.by_group[g.group] }} of them {{ 'was' if stale.by_group[g.group] == 1 else 'were' }} judged by older code.{% endif %}">
+              {# THE ICON AND NOTHING ELSE. "sync" beside See reports is a
+                 second word competing with the one thing on this card that
+                 gets pressed, and the arrow already says it. #}
+              <button class="sync icon{{ ' warn' if stale.by_group.get(g.group) }}" type="submit"
+                      aria-label="Re-check reports for updated flags"
+                      {# TWO FACTS, NOT ONE FRACTION. `have` counts the
+                          reports this button will act on - the ones NOT
+                          signed off - and the stale count covers every report
+                          on the partner, signed off or not. Printed as "5 of
+                          this partner's 1" they read as a broken number. #}
+                      data-tip="Re-check reports for updated flags{% if stale.by_group.get(g.group) %} · {{ stale.by_group[g.group] }} judged by older code{% endif %}">
                 <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
                   <path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6" fill="none"
                         stroke="currentColor" stroke-width="2.2"
                         stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>sync</button>
+                </svg></button>
             </form>
           {% endif %}
           {% set pack = packing.get(g.group) %}

@@ -1,0 +1,22 @@
+{# What the reporting team is holding this report for, on the buyer's page.
+
+   NOT THEIRS TO FIX, AND WORTH BEING ABLE TO SEE. A blank widget or a CTR
+   that does not match its own numbers is the other desk's work - but the
+   buyer is the one being asked about the report, and "why does page nine
+   have nothing on it" is a question they get. It is behind a button with a
+   count on it, so nothing about it looks like something to do. #}
+{% if flags %}
+  <ul class="rflags">
+    {% for f in flags %}
+      <li>
+        <span class="pill p-{{ 'fail' if f.severity == 'fail' else 'warn' }}">{{ f.severity }}</span>
+        <b>{{ f.title or f.code }}</b>
+        {%- if f.where %} <span class="wpill">{{ f.where }}</span>{% endif %}
+        {% if f.detail and f.detail != f.title %}
+          <span class="fdetail">{{ f.detail }}</span>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="empty">Nothing open on this report.</p>
+{% endif %}

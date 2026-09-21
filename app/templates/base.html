@@ -1404,6 +1404,12 @@ body.fit .pdfwrap object{height:100%}
       };
     });
     var total = cards.length, selects = [], t;
+    // The counts the server sends for the whole cycle. Missing or unreadable
+    // and the menus fall back to counting what is on screen, which is what
+    // they did before - a wrong number is better than no menu.
+    var cycleCounts = null;
+    try { cycleCounts = JSON.parse(grid.dataset.optCounts || 'null'); }
+    catch (e) { cycleCounts = null; }
 
     // Toggles are plain on/off filters that live outside the select row -
     // "only the partners something has arrived for" is one click, not a
@@ -1525,15 +1531,18 @@ body.fit .pdfwrap object{height:100%}
         // THE WHOLE CYCLE, NOT THIS PAGE OF IT.
         //
         // Built from the cards on screen, the Partner filter offered the
-        // twenty this page happens to show and called it "All (20)" - so a
+        // fifteen this page happens to show and called it "All (15)" - so a
         // partner on page five could not be picked, or even seen to exist.
-        // The server sends the full list; the counts still come from the page,
-        // which is what they describe.
         var uk = 'opts' + key.charAt(0).toUpperCase() + key.slice(1);
         (grid.dataset[uk] || '').split('|').forEach(function (v) {
           v = v.trim();
           if (v && !(v in vals)) vals[v] = 0;
         });
+        // AND SO ARE THE NUMBERS. They were the page's, counted from the
+        // cards rendered - so a reporter carrying sixty partners read "9"
+        // beside her name, in a menu that filters the whole cycle. The server
+        // counts them in the walk it already makes to build the list above.
+        if (cycleCounts && cycleCounts[key]) vals = cycleCounts[key];
         var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
         if (names.length < 2) return;     // a filter with one option filters nothing
         var f = document.createElement('div'); f.className = 'colf';

@@ -134,6 +134,16 @@
                        href="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}"
                        data-drawer="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}&amp;frag=1"
                        >Order lines</a>
+                    {# THE OTHER DESK'S LIST, WITH THE COUNT ON THE BUTTON.
+                       None of it is the buyer's to fix, and they are the one
+                       being asked about the report - "why is page nine blank"
+                       reaches them. The number is why it is worth opening;
+                       with nothing open the button says so and stays quiet. #}
+                    {% set rflags = e.report.open_findings %}
+                    <a class="mini rflagbtn{{ ' has' if rflags }}"
+                       href="/buyer/{{ token }}/report/{{ e.report.id }}/flags?period={{ period }}"
+                       data-drawer="/buyer/{{ token }}/report/{{ e.report.id }}/flags?period={{ period }}"
+                       >Reporting flags{% if rflags %} · {{ rflags|length }}{% endif %}</a>
                     <a class="mini qa" href="/report/{{ e.report.id }}/view"
                        target="_blank" rel="noopener">QA page</a>
                   {% else %}<span class="empty">Not received</span>{% endif %}
@@ -297,7 +307,12 @@
 .buyergrid > tbody > tr{content-visibility:auto;contain-intrinsic-size:auto 150px}
 /* And the drawer's own table is a table, not part of this one. */
 .rowdrawer table{background:var(--surface)}
-.rowdrawer tbody tr:hover td{background:var(--velocity-10)}
+/* NO HOVER IN HERE. On the board a row lighting up under the pointer says
+   which one you are about to click; in a drawer there is nothing to click and
+   it just paints whatever the mouse is resting on. */
+.rowdrawer tbody tr:hover td{background:transparent}
+.rowdrawer .pacing tr:hover td,.rowdrawer .olines tr:hover td{background:transparent}
+.rowdrawer .olines tr.tot:hover td{background:var(--velocity-10)}
 .bwho{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .bwho b{font-size:14.5px}
 /* The campaign's own dates. A lifetime's numbers are read against them, so
@@ -354,6 +369,20 @@
 .rowdrawer .tw{overflow-x:auto}
 .rowdrawer .tw table{min-width:660px}
 .ract .mini.qa{border-style:dashed;color:var(--muted)}
+/* SOMEBODY ELSE'S WORK, SAID QUIETLY. Amber is what this board uses for a
+   report being held, and that is exactly what these are - but not by anyone
+   reading this page, so it carries the color and not the weight. */
+.ract .mini.rflagbtn.has{border-color:var(--warn);color:var(--warn)}
+.ract .mini.rflagbtn:not(.has){color:var(--muted)}
+/* Open beats owner: the dark fill is what says which drawer is showing, and
+   amber text on it was the two rules arguing. */
+.ract .mini.rflagbtn.on{color:#fff}
+.rflags{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
+ gap:9px}
+.rflags li{font-size:13px;line-height:1.45;border-left:2px solid var(--warn);
+ padding-left:10px}
+.rflags .pill{margin-right:6px}
+.rflags .fdetail{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
 /* The panel, which is on the page whether or not anything is open in it. */
 .bview{display:flex;flex-direction:column;border:1px solid var(--line);
  border-radius:10px;background:var(--surface);box-shadow:var(--shadow);
