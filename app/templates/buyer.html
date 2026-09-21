@@ -1,14 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ group }} · Buyer review · Report QA{% endblock %}
-{% block bodyclass %}norail{% endblock %}
-{# NO RAIL AND NO TOP BAR LINKS. Every one of them goes behind the site
-   password, and this page is sent to somebody who does not have it. #}
-{% block chrome %}
-<header class="topbar">
-  <h1>Report QA</h1>
-  <span class="where">Buyer review · {{ group }}</span>
-</header>
-{% endblock %}
+{% block where %}Buyer review · {{ group }}{% endblock %}
+{% block bodyclass %}fit{% endblock %}
 {% block body %}
 
 <div class="pagehead">
@@ -36,129 +29,212 @@
   </form>
 </div>
 
-{% if rows %}
-  <div class="tw">
-    <table class="buyergrid">
-      <thead>
-        <tr>
-          <th>Client</th>
-          <th>Products</th>
-          <th>Kind</th>
-          <th>To review</th>
-          <th>Report</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for e in rows %}
-          <tr{% if e.report %} id="r{{ e.report.id }}"{% endif %}>
-            <td><b>{{ e.client }}</b>
-              {% if e.account_ids %}<br><span class="oids">
-                {%- set _oids = e.account_ids.replace(',', ' ').split() %}
-                {%- for oid in _oids[:5] %}
-                  <a class="oidp" href="{{ io_order_url }}{{ oid }}"
-                     target="_blank" rel="noopener">{{ oid }}</a>
-                {%- endfor %}
-                {%- if _oids|length > 5 %}<span class="idmore"
-                  data-tip="{{ _oids[5:]|join(', ') }}">+{{ _oids|length - 5 }}</span>{% endif %}</span>
-              {% endif %}</td>
-            <td><span class="chips">{% for p in chips.get(e.ident, []) %}
-              <span class="chip" data-name="{{ p.name }}" tabindex="0"
-                    style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
-            {% endfor %}</span></td>
-            <td class="nw">{% if e.kind == 'lifetime' %}
-                <span class="pill p-info">lifetime</span>
-              {% elif e.kind == 'seo' %}<span class="pill p-info">SEO</span>
-              {% else %}<span class="pill p-month">monthly</span>{% endif %}</td>
-            <td class="bflags">
-              {% set bflags = e.report.buyer_flags if e.report else [] %}
-              {% if bflags %}
-                {# ONE TICK PER FLAG, NOT ONE PER ROW. A client with a fence
-                   missing its name and a product off the report is two jobs,
-                   and one box says nothing about which of them is done. #}
-                <ul>
-                  {% for i, f in bflags %}
-                    <li>
-                      <form method="post"
-                            action="/buyer/{{ token }}/report/{{ e.report.id }}/ack?period={{ period }}"
-                            class="ackform">
-                        <input type="hidden" name="index" value="{{ i }}">
-                        <input type="hidden" name="on" value="1">
-                        {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
-                        <button type="submit" class="tick"
-                                title="Mark this one off"
-                                aria-label="Mark off {{ f.title or f.code }}">
-                          <svg viewBox="0 0 16 16" aria-hidden="true">
-                            <path d="M3.5 8.5l3 3 6-6" fill="none" stroke="currentColor"
-                                  stroke-width="2.4" stroke-linecap="round"
-                                  stroke-linejoin="round"/>
-                          </svg>
-                        </button>
-                        <span class="fbody">
-                          <b>{{ f.title or f.code }}</b>
-                          {%- if f.where %} <span class="wpill">{{ f.where }}</span>{% endif %}
-                          {% if f.detail and f.detail != f.title %}
-                            <span class="fdetail">{{ f.detail }}</span>{% endif %}
-                        </span>
-                      </form>
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% elif e.report and e.report.acked %}
-                <span class="empty">Marked off</span>
-              {% else %}<span class="empty">&mdash;</span>{% endif %}
-            </td>
-            <td class="nw"><div class="ract">
-              {% if e.report %}
-                {# OPENS OVER THE LIST, NOT INSTEAD OF IT. Working down a
-                   partner was a tab per client and a cmd-w between each one.
-                   The href still works - cmd-click, or no JS. #}
-                <a class="mini" href="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
-                   data-pdf="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
-                   data-sheet-title="{{ e.client }}"
-                   target="_blank" rel="noopener">View PDF</a>
-                <a class="mini" href="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}"
-                   data-sheet="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}&amp;frag=1"
-                   data-sheet-title="{{ e.client }} · order lines">Order lines</a>
-                {# WHERE THE REPORTING TEAM WORKS. Behind the site password,
-                   and named so nobody is surprised by the door. #}
-                <a class="mini qa" href="/report/{{ e.report.id }}/view"
-                   target="_blank" rel="noopener"
-                   data-tip="The QA page for this report. Vici sign-in.">QA page</a>
-              {% else %}<span class="empty">Not received</span>{% endif %}
-            </div></td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{# SIDE BY SIDE, LIKE THE REPORT PAGE. The file used to open OVER the list, so
+   marking a flag off meant closing the report, ticking, and opening it again -
+   which is the round trip this page exists to remove. The list is on the left
+   and the report stays open on the right while it is worked down. #}
+<div class="bsplit">
+  <div class="blist">
+    {% if rows %}
+      <table class="buyergrid">
+        <tbody>
+          {% for e in rows %}
+            {% set bflags = e.report.buyer_flags if e.report else [] %}
+            <tr{% if e.report %} id="r{{ e.report.id }}"{% endif %}>
+              <td>
+                <div class="bwho">
+                  <b>{{ e.client }}</b>
+                  {% if e.kind == 'lifetime' %}<span class="pill p-info">lifetime</span>
+                  {% elif e.kind == 'seo' %}<span class="pill p-info">SEO</span>
+                  {% else %}<span class="pill p-month">monthly</span>{% endif %}
+                  <span class="chips">{% for p in chips.get(e.ident, []) %}
+                    <span class="chip" data-name="{{ p.name }}" tabindex="0"
+                          style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
+                  {% endfor %}</span>
+                </div>
+                {% if e.account_ids %}<span class="oids">
+                  {%- set _oids = e.account_ids.replace(',', ' ').split() %}
+                  {%- for oid in _oids[:5] %}
+                    <a class="oidp" href="{{ io_order_url }}{{ oid }}"
+                       target="_blank" rel="noopener">{{ oid }}</a>
+                  {%- endfor %}
+                  {%- if _oids|length > 5 %}<span class="idmore"
+                    data-tip="{{ _oids[5:]|join(', ') }}">+{{ _oids|length - 5 }}</span>{% endif %}</span>
+                {% endif %}
+
+                {% if bflags %}
+                  {# ONE TICK PER FLAG, NOT ONE PER ROW. A client with a fence
+                     missing its name and a product off the report is two jobs,
+                     and one box says nothing about which of them is done. #}
+                  <ul class="bflags">
+                    {% for i, f in bflags %}
+                      <li>
+                        <form method="post"
+                              action="/buyer/{{ token }}/report/{{ e.report.id }}/ack?period={{ period }}"
+                              class="ackform">
+                          <input type="hidden" name="index" value="{{ i }}">
+                          <input type="hidden" name="on" value="1">
+                          {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
+                          <button type="submit" class="tick" title="Mark this one off"
+                                  aria-label="Mark off {{ f.title or f.code }}">
+                            <svg viewBox="0 0 16 16" aria-hidden="true">
+                              <path d="M3.5 8.5l3 3 6-6" fill="none" stroke="currentColor"
+                                    stroke-width="2.4" stroke-linecap="round"
+                                    stroke-linejoin="round"/>
+                            </svg>
+                          </button>
+                          <span class="fbody">
+                            <b>{{ f.title or f.code }}</b>
+                            {%- if f.where %} <span class="wpill">{{ f.where }}</span>{% endif %}
+                            {% if f.detail and f.detail != f.title %}
+                              <span class="fdetail">{{ f.detail }}</span>{% endif %}
+                          </span>
+                        </form>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% elif e.report and e.report.acked %}
+                  <p class="bnone">Marked off</p>
+                {% endif %}
+
+                <div class="ract">
+                  {% if e.report %}
+                    {# INTO THE PANEL BESIDE IT, not over the top of it. The
+                       href is untouched, so cmd-click is still a tab and with
+                       no JS it is the only behavior. #}
+                    <a class="mini open"
+                       href="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
+                       data-open="/buyer/{{ token }}/report/{{ e.report.id }}/file?period={{ period }}"
+                       data-name="{{ e.client }}">Open report</a>
+                    <a class="mini"
+                       href="/buyer/{{ token }}/report/{{ e.report.id }}/pacing?period={{ period }}"
+                       data-sheet="/buyer/{{ token }}/report/{{ e.report.id }}/pacing?period={{ period }}"
+                       data-sheet-title="{{ e.client }} · pacing">Pacing</a>
+                    <a class="mini"
+                       href="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}"
+                       data-sheet="/buyer/{{ token }}/report/{{ e.report.id }}/orders?period={{ period }}&amp;frag=1"
+                       data-sheet-title="{{ e.client }} · order lines">Order lines</a>
+                    <a class="mini qa" href="/report/{{ e.report.id }}/view"
+                       target="_blank" rel="noopener">QA page</a>
+                  {% else %}<span class="empty">Not received</span>{% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="allclear">Nothing on this cycle.</p>
+    {% endif %}
   </div>
-{% else %}
-  <p class="allclear">Nothing on this cycle.</p>
-{% endif %}
+
+  {# THERE FROM LOAD, not conjured by a click. A panel that appears is a panel
+     that has to be dismissed, and dismissing it is what put the list back out
+     of reach. #}
+  <aside class="bview">
+    <div class="bviewhead">
+      <b id="bviewname">No report open</b>
+      <a id="bviewtab" class="mini" href="#" target="_blank" rel="noopener" hidden>New tab</a>
+    </div>
+    <div class="bviewbody" id="bviewbody">
+      <p class="empty">Open a report from the list and it stays here while you
+        work down it.</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+// The file goes in the panel that is already on the page. Nothing opens, so
+// nothing has to be closed to get back to the row and tick it off.
+(function () {
+  var body = document.getElementById('bviewbody');
+  var name = document.getElementById('bviewname');
+  var tab  = document.getElementById('bviewtab');
+  if (!body) return;
+
+  function show(url, who, row) {
+    body.textContent = '';
+    // Built rather than concatenated: the url is ours, a client name is not,
+    // and one apostrophe in an attribute string is a broken panel.
+    var o = document.createElement('object');
+    o.setAttribute('data', url);
+    o.setAttribute('type', 'application/pdf');
+    var miss = document.createElement('p');
+    miss.className = 'empty';
+    miss.textContent = 'This browser will not show the file here. ';
+    var a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = 'Open it in a tab';
+    miss.appendChild(a);
+    o.appendChild(miss);
+    body.appendChild(o);
+    name.textContent = who;
+    tab.href = url;
+    tab.hidden = false;
+    document.querySelectorAll('.buyergrid tr.on').forEach(function (t) {
+      t.classList.remove('on');
+    });
+    if (row) row.classList.add('on');
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('[data-open]');
+    if (!a) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+    e.preventDefault();
+    show(a.dataset.open, a.dataset.name || '', a.closest('tr'));
+  });
+
+  // OPEN ON THE ONE YOU WERE JUST ON. Marking a flag off is a post and a
+  // redirect, and coming back to an empty panel on a page whose whole point is
+  // that it stays open is the thing this replaced. The row is in the address
+  // bar already; failing that, the first one on the list.
+  var back = (location.hash || '').replace('#', '');
+  var row = back && document.getElementById(back);
+  var first = (row && row.querySelector('[data-open]'))
+    || document.querySelector('[data-open]');
+  if (first) show(first.dataset.open, first.dataset.name || '', first.closest('tr'));
+})();
+</script>
 
 <style>
-.pagehead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.pagehead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;flex:0 0 auto}
 .pagehead h1{font-size:26px;line-height:1.1}
 .pagehead .meta{font-size:13px;color:var(--muted)}
 .pagehead .tabs{margin-left:auto;align-self:center}
 .pagehead form{margin:0;align-self:center}
-/* The rows are a screen tall each and there can be a hundred of them. This
-   lets the browser skip the ones nobody has scrolled to yet. */
-.buyergrid tbody tr{content-visibility:auto;contain-intrinsic-size:auto 76px}
-.buyergrid .oidp{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+.bsplit{display:grid;grid-template-columns:minmax(400px,1fr) minmax(420px,1.1fr);
+ gap:18px;align-items:start;flex:1 1 auto;min-height:0}
+.blist{overflow:auto;height:calc(100vh - 150px);border:1px solid var(--line);
+ border-radius:10px;background:var(--surface);box-shadow:var(--shadow)}
+.buyergrid{border-collapse:collapse;width:100%}
+/* ONE CELL PER ROW. The panel beside it takes half the width, and five columns
+   in what is left is five columns of nothing. */
+.buyergrid td{padding:12px 15px;border-bottom:1px solid var(--line-2)}
+.buyergrid tbody tr:last-child td{border-bottom:0}
+.buyergrid tbody tr.on td{background:var(--velocity-10);
+ box-shadow:inset 3px 0 0 var(--velocity)}
+/* The rows are tall and there can be a hundred of them: this lets the browser
+   skip laying out the ones nobody has scrolled to yet. */
+.buyergrid tbody tr{content-visibility:auto;contain-intrinsic-size:auto 150px}
+.bwho{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bwho b{font-size:14.5px}
+.oids{display:block;margin-top:3px}
+.oidp{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
  font-size:10.5px;padding:1px 6px;margin-right:4px;border-radius:9px;
  background:var(--atlas-10);color:var(--ink-2);text-decoration:none}
-.buyergrid .oidp:hover{background:var(--atlas);color:#fff}
+.oidp:hover{background:var(--atlas);color:#fff}
 .wpill{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
  font-size:10px;padding:1px 6px;border-radius:9px;background:var(--atlas-10);
  color:var(--ink-2);white-space:nowrap}
 /* THE FLAGS IN FULL, NOT ON HOVER. The board hides them behind a tag because
    the board is a thousand rows of somebody else's work; this page is the one
    they are written for. */
-.bflags ul{list-style:none;margin:0;padding:0;display:flex;
+.bflags{list-style:none;margin:9px 0 0;padding:0;display:flex;
  flex-direction:column;gap:9px}
 .bflags li{font-size:13px;line-height:1.45}
 .bflags .ackform{display:flex;gap:9px;align-items:flex-start;margin:0;
- border-left:2px solid var(--atlas);padding-left:10px}
+ border-left:2px solid var(--teal);padding-left:10px}
 .bflags .tick{flex:0 0 auto;width:20px;height:20px;margin-top:1px;border-radius:6px;
  border:1.5px solid var(--atlas-50,var(--line));background:var(--surface);
  color:transparent;cursor:pointer;display:flex;align-items:center;
@@ -167,12 +243,28 @@
 .bflags .tick:hover{border-color:var(--ok);color:var(--ok)}
 .bflags .fbody{display:block}
 .bflags .fdetail{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
-/* Along the row, not down it. Stacked, three buttons made every row three
-   buttons tall - on a page whose whole job is being scanned down. */
-.ract{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.bnone{margin:8px 0 0;font-size:12.5px;color:var(--muted);font-style:italic}
+.ract{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:9px}
 .ract .mini{text-decoration:none;white-space:nowrap}
+.ract .mini.open{border-color:var(--velocity);color:var(--velocity);font-weight:700}
 .ract .mini.qa{border-style:dashed;color:var(--muted)}
+/* The panel, which is on the page whether or not anything is open in it. */
+.bview{display:flex;flex-direction:column;border:1px solid var(--line);
+ border-radius:10px;background:var(--surface);box-shadow:var(--shadow);
+ overflow:hidden;height:calc(100vh - 150px)}
+.bviewhead{display:flex;align-items:center;gap:12px;padding:9px 14px;
+ border-bottom:1px solid var(--line);flex:0 0 auto}
+.bviewhead b{flex:1;font-family:Agdasima,sans-serif;font-size:16px;
+ letter-spacing:.06em;text-transform:uppercase;color:var(--atlas-50)}
+.bviewbody{flex:1 1 auto;min-height:0;background:var(--ink-10)}
+.bviewbody object{display:block;width:100%;height:100%;border:0}
+.bviewbody .empty{padding:18px}
 .allclear{margin:0;font-size:13.5px;color:var(--ok);background:var(--ok-bg);
  padding:9px 13px;border-radius:8px}
+@media(max-width:1100px){
+  .bsplit{grid-template-columns:1fr}
+  .blist{height:auto;max-height:60vh}
+  .bview{height:70vh}
+}
 </style>
 {% endblock %}

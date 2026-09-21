@@ -426,6 +426,25 @@ button[data-tip],a[data-tip]{cursor:pointer}
 .fold p{margin:8px 0 0;max-width:none}
 
 /* ---- pacing: served over ordered ---- */
+/* COLLAPSED, and its heading has to read as one of the panel's headings
+   rather than as a control - it sits in the same column as NEEDS A LOOK,
+   BUYER REVIEW and SIGN-OFF, and a summary styled like a button in that
+   stack reads as a fourth thing to press. In base rather than on the report
+   page because the buyer's drawer draws the same table. */
+.pacefold{margin-top:22px}
+.pacefold > summary{cursor:pointer;list-style:none;display:flex;
+ align-items:center;gap:8px;font-family:Agdasima,sans-serif;font-size:15px;
+ font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+ color:var(--atlas-50);padding-bottom:7px;border-bottom:1px solid var(--line)}
+.pacefold > summary::-webkit-details-marker{display:none}
+.pacefold > summary::before{content:"\25B8";font-size:12px;letter-spacing:0;
+ transition:transform .12s}
+.pacefold[open] > summary::before{transform:rotate(90deg)}
+/* HOW MANY ARE MILES OFF, ON THE SUMMARY. Collapsing a panel must not hide
+   the one thing worth opening it for. */
+.paceoff{margin-left:auto;font-family:'GT Walsheim Pro',sans-serif;
+ font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:none;
+ padding:1px 8px;border-radius:9px;background:var(--crit-bg);color:var(--crit)}
 .pacing{width:100%;border-collapse:collapse;font-size:12.5px}
 .pacing td{padding:5px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .pacing td:nth-child(2){text-align:right;padding-right:12px;font-size:12px}
@@ -686,6 +705,25 @@ input[type=text]:focus{outline:none;border-color:var(--velocity);
  opacity:0;pointer-events:none;transition:opacity .1s;z-index:60}
 .chip:hover::after,.chip:hover::before,.chip:focus::after,.chip:focus::before{opacity:1}
 
+/* ---- the admin drawer on the rail ----
+   The six pages nobody opens in a normal week, behind one button. It flies
+   out beside the rail rather than pushing it, so nothing on the page moves
+   when it opens. */
+.railmore{position:relative;display:flex;justify-content:center}
+.railmore summary{width:40px;height:40px;border-radius:11px;display:flex;
+ align-items:center;justify-content:center;color:#93A9BE;cursor:pointer;
+ list-style:none}
+.railmore summary::-webkit-details-marker{display:none}
+.railmore summary:hover{background:rgba(255,255,255,.09);color:#fff}
+.railmore[open] summary{background:var(--gold);color:var(--atlas)}
+.railmore summary svg{width:20px;height:20px;display:block}
+.railmenu{position:absolute;left:calc(100% + 8px);top:0;z-index:40;
+ display:flex;gap:4px;padding:6px;border-radius:12px;background:var(--atlas);
+ box-shadow:0 10px 30px rgba(11,26,45,.35)}
+@media(max-width:760px){
+  .railmenu{left:auto;right:0;top:calc(100% + 6px)}
+}
+
 /* ---- rail tooltips ---- */
 .rail a{position:relative}
 .rail a::after{content:attr(data-label);position:absolute;left:calc(100% + 10px);top:50%;
@@ -900,49 +938,77 @@ body.fit .pdfwrap object{height:100%}
       <rect x="9" y="3" width="6" height="4" rx="1"/>
       <path d="M8.5 12.5l2 2 4-4"/>
     </svg></a>
-  {# What the server thinks each page cost, and how often it has restarted. #}
-  <a href="/why-slow" class="{% if nav == 'whyslow' %}on{% endif %}"
-     title="Why is it slow" aria-label="Why is it slow"
-     data-label="Why is it slow">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/>
-      <path d="M9 2h6"/>
-    </svg></a>
-  <a href="/batches" class="{% if nav == 'batches' %}on{% endif %}" title="Batches"
-     aria-label="Batches" data-label="Batch history">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
-      <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
-    </svg></a>
-  <a href="/orders" class="{% if nav == 'orders' %}on{% endif %}" title="Order list" aria-label="Order list" data-label="Order list">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.4" fill="currentColor"/>
-      <circle cx="3.5" cy="12" r="1.4" fill="currentColor"/>
-      <circle cx="3.5" cy="18" r="1.4" fill="currentColor"/>
-    </svg></a>
-  <a href="/people" class="{% if nav == 'people' %}on{% endif %}" title="Workload"
-     aria-label="Workload" data-label="Workload by person">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
-    </svg></a>
-  <a href="/inbound" class="{% if nav == 'inbound' %}on{% endif %}" title="Inbound"
-     aria-label="Inbound" data-label="Inbound log">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M3 13h5l1.5 3h5L16 13h5"/>
-      <path d="M4.6 5.7L3 13v5.5A1.5 1.5 0 0 0 4.5 20h15a1.5 1.5 0 0 0 1.5-1.5V13l-1.6-7.3
-               A2 2 0 0 0 17.5 4h-11a2 2 0 0 0-1.9 1.7z"/>
-    </svg></a>
-  <a href="/partners" class="{% if nav == 'partners' %}on{% endif %}" title="Partners" aria-label="Partners" data-label="Partners">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-    </svg></a>
+  {# EVERYTHING THAT IS NOT THE CYCLE, BEHIND ONE BUTTON.
+     Ten icons down the rail is ten things to recognize on the way to the four
+     anybody opens in a normal week, and the six under here are the ones you
+     go looking for when something is wrong - a slow page, a batch that did
+     not land, who is carrying what. They keep their own icons and labels
+     inside; only the rail gets shorter.
+     A DETAILS, so it opens with no JavaScript at all and the open state is
+     the element's own. Closing it on Escape or on a click elsewhere is the
+     one thing details does not do for itself. #}
+  <details class="railmore">
+    <summary title="Admin" aria-label="Admin" data-label="Admin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65
+                 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65
+                 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65
+                 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0
+                 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65
+                 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0
+                 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65
+                 1.65 0 0 0-.33 1.82V10a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65
+                 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </summary>
+    <div class="railmenu">
+    {# What the server thinks each page cost, and how often it has restarted. #}
+    <a href="/why-slow" class="{% if nav == 'whyslow' %}on{% endif %}"
+       title="Why is it slow" aria-label="Why is it slow"
+       data-label="Why is it slow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/>
+        <path d="M9 2h6"/>
+      </svg></a>
+    <a href="/batches" class="{% if nav == 'batches' %}on{% endif %}" title="Batches"
+       aria-label="Batches" data-label="Batch history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/>
+        <rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>
+      </svg></a>
+    <a href="/orders" class="{% if nav == 'orders' %}on{% endif %}" title="Order list" aria-label="Order list" data-label="Order list">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.4" fill="currentColor"/>
+        <circle cx="3.5" cy="12" r="1.4" fill="currentColor"/>
+        <circle cx="3.5" cy="18" r="1.4" fill="currentColor"/>
+      </svg></a>
+    <a href="/people" class="{% if nav == 'people' %}on{% endif %}" title="Workload"
+       aria-label="Workload" data-label="Workload by person">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+      </svg></a>
+    <a href="/inbound" class="{% if nav == 'inbound' %}on{% endif %}" title="Inbound"
+       aria-label="Inbound" data-label="Inbound log">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 13h5l1.5 3h5L16 13h5"/>
+        <path d="M4.6 5.7L3 13v5.5A1.5 1.5 0 0 0 4.5 20h15a1.5 1.5 0 0 0 1.5-1.5V13l-1.6-7.3
+                 A2 2 0 0 0 17.5 4h-11a2 2 0 0 0-1.9 1.7z"/>
+      </svg></a>
+    <a href="/partners" class="{% if nav == 'partners' %}on{% endif %}" title="Partners" aria-label="Partners" data-label="Partners">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg></a>
+    </div>
+  </details>
 </nav>
 
 <header class="topbar">
@@ -1776,6 +1842,19 @@ body.fit .pdfwrap object{height:100%}
     sheet.querySelector('.sheet-scrim').addEventListener('click', closeSheet);
     sheet.querySelector('.sheet-x').addEventListener('click', closeSheet);
   }
+
+  // THE ADMIN DRAWER SHUTS LIKE A MENU. <details> stays open until its own
+  // summary is pressed again, which on a rail flyout means it sits over
+  // whatever you clicked next.
+  document.addEventListener('click', function (e) {
+    var open = document.querySelector('.railmore[open]');
+    if (open && !open.contains(e.target)) open.removeAttribute('open');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var open = document.querySelector('.railmore[open]');
+    if (open) open.removeAttribute('open');
+  });
 
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('[data-sheet],[data-pdf]');

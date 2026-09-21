@@ -1,0 +1,102 @@
+{# SERVED AGAINST ORDERED, drawn once.
+
+   It is on the report page, where whoever reads reports can open it, and
+   on the buyer's page, where it is the thing they came for - delivery
+   against what was sold is a question about the order. Two copies of this
+   markup would drift the week either one is touched. #}
+{# A unit with nothing to compare on any of its rows is not a section.
+   Performance Max with no figures printed a Spend heading and one
+   "-/- no comparison" line.
+
+   AND WHEN NO UNIT SURVIVES THAT, THERE IS NO TABLE. It used to print the
+   header row, nothing under it and the footnote explaining how to read the
+   nothing - which is a panel that looks broken rather than a panel that is
+   empty. Hoisted out of the tbody so the answer is known before the table
+   is opened. #}
+{% set live_units = [] %}
+{% for p in pacing %}
+  {% if p.pace is not none and p.unit not in live_units %}
+    {% set _ = live_units.append(p.unit) %}{% endif %}
+{% endfor %}
+{% if pacing and live_units %}
+  {# SERVED AGAINST ORDERED. Not a check - a number to look at. Impressions
+     for everything bought on a delivery goal, dollars for the three
+     products the report prints spend for. Negative is short of the order,
+     positive is over. #}
+  <table class="pacing">
+    <tbody>
+      {% set ns = namespace(unit='') %}
+      {% for p in pacing if p.unit in live_units %}
+        {% if p.unit != ns.unit %}
+          {% set ns.unit = p.unit %}
+          <tr class="phead"><td colspan="3">{{ 'Spend' if p.unit == 'money' else 'Impressions' }}</td></tr>
+        {% endif %}
+        <tr{% if p.total %} class="tot"{% endif %}>
+          <td>{{ p.product }}
+            {# ON THE ICON, NOT ON THE ROW. Three gray lines under every
+               product name was more of the panel than the numbers were,
+               and the panel is read by scanning the percentages. The fact
+               still has to be somewhere - the figure being divided by is
+               on neither the order nor the report - so it is one hover
+               away instead of in the way. #}
+            {%- if p.month_note %} <span class="dayspan" data-tip="{{ p.month_note }}"
+              ><svg viewBox="0 0 16 16" width="12" height="12" fill="none"
+                stroke="currentColor" stroke-width="1.4" aria-hidden="true"
+                ><rect x="2" y="3" width="12" height="11" rx="1.5"/><path
+                  d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke-linecap="round"
+                /></svg></span>{% endif %}
+            {%- if p.basis %} <span class="dayspan"
+              data-tip="{{ p.basis }}">&#8226;</span>{% endif %}</td>
+          <td class="mono nw">
+            {% if p.unit == 'money' %}
+              {% if p.served is not none %}${{ '{:,.0f}'.format(p.served) }}{% else %}—{% endif %}/{%
+                if p.ordered %}${{ '{:,.0f}'.format(p.ordered) }}{% else %}—{% endif %}
+            {% else %}
+              {% if p.served is not none %}{{ '{:,.0f}'.format(p.served) }}{% else %}—{% endif %}/{%
+                if p.ordered %}{{ '{:,.0f}'.format(p.ordered) }}{% else %}—{% endif %}
+            {% endif %}
+          </td>
+          <td class="nw{% if p.pace is not none and p.pace|abs >= 50 %} off{% endif %}">
+            {% if p.pace is none %}
+              <span class="acct" title="{% if p.ordered %}The report does not print this one{% else %}The order does not carry a figure for this product{% endif %}">no comparison</span>
+            {% else %}
+              {{ '{:+.0f}'.format(p.pace) }}%
+              <span class="acct">{{ 'short' if p.pace < 0 else 'over' }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if p.total and p.unattributed %}
+          <tr class="sub2"><td colspan="3" class="acct">
+            {{ '{:,.0f}'.format(p.unattributed) }} of those impressions are on
+            line items whose name maps to more than one product, so they count
+            in the total but not against a single product.</td></tr>
+        {% endif %}
+        {# "19,463 not paced" IS OFF THE PANEL. A flat product's
+           impressions are not part of any comparison on this panel, so
+           the figure answered a question nobody was asking and sat under
+           the one row people do read. The total above it already counts
+           only what is paced. #}
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="sub" style="font-size:12px;margin:6px 0 0">
+    Served on the report over ordered
+    {%- if rep.is_lifetime %} for the whole campaign{% else %} for the month{% endif %}.
+    Negative is short of the order, positive is over.</p>
+{% elif pacing %}
+  {# The products, not the Total row - "Mobile Conquesting, Social Mirror Ads,
+     Total" reads as a third product nobody sold. #}
+  {% set _named = [] %}
+  {% for p in pacing if p.product and not p.total and p.product not in _named %}
+    {% set _ = _named.append(p.product) %}
+  {% endfor %}
+  <p class="sub" style="font-size:12.5px;margin:0">
+    Nothing to pace against: the order carries no goal for
+    {{ _named|join(', ') }}.</p>
+{% elif pacing_why %}
+  {# THE PANEL USED TO JUST VANISH, which looks exactly like the panel being
+     broken. Four different things stop it and each needs a different thing
+     done about it, so it says which one rather than nothing. #}
+  <p class="sub" style="font-size:12.5px;margin:0">
+    Nothing to pace against: {{ pacing_why }}.</p>
+{% endif %}

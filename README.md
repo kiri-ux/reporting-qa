@@ -72,16 +72,20 @@ Each partner card carries a **Buyer link**: a page of that partner's reports
 for the person who built the orders. It opens on EVERY report rather than the
 pending ones - a report this team has already signed off still has whatever
 the order gave it - with a `To review` tab for the flagged ones and the flags
-written out in full. Per row:
+written out in full.
+
+It is laid out like the report page: the list on the left and **the report
+open beside it**, which stays open while the list is worked down. Per row:
 
 - a tick per flag, which writes the same accepted list the report page does,
   so a flag dealt with here stops showing on the board and on the report. It
   never signs a report off: nothing on this page was holding one up.
-- **View PDF**, which opens over the list rather than in a tab.
+- **Open report**, into the panel beside the list.
+- **Pacing**, which is collapsed on the report page because whoever reads
+  reports does not act on it, and is the whole question here.
 - **Order lines**, the same panel the reporting team reads, minus the buttons
   that are behind the password.
-- **QA page**, the report as the reporter works on it. That one is behind the
-  password, and the link says so.
+- **QA page**, the report as the reporter works on it.
 
 The link is the partner's name and a signature over it, so nothing is stored
 and nothing expires. **Set `BUYER_LINK_SECRET`**: it is the only thing standing

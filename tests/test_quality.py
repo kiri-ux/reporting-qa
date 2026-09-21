@@ -87,6 +87,50 @@ def test_a_longer_sibling_is_not_a_truncation():
     assert q.check_truncated_text({"text": text}) == []
 
 
+def test_a_one_character_product_suffix_is_not_a_truncation():
+    """Vici sells YouTube and YouTube+ as two products, so one report carries
+    both names one character apart, each spelled in full.
+
+    North Bay Trade Introduction Program's August report was reported as
+    having lost the "+" off the end of a cell. It had not: those are two line
+    items, and they say so - 12,273 impressions against 6,535. The length
+    rule cannot tell them apart and the figures can.
+    """
+    text = ("Line Item Performance\n"
+            "Name   Impressions   Clicks   CTR\n"
+            "TIP - 18-34/Women YouTube     12,273   2   0.02%\n"
+            "TIP - 18-34/Women YouTube+     6,535   1   0.02%\n")
+    assert q.check_truncated_text({"text": text}) == []
+
+
+def test_the_same_line_item_printed_short_in_one_widget_is_still_found():
+    """Which is what a clipped cell IS - one line item printed twice, once by
+    a widget whose column was too narrow for it. Same row, same figures."""
+    text = ("Line Item Performance\n"
+            "Name   Impressions   Clicks   CTR\n"
+            "Acme - Behavioral Social Mirror    100   1   1.00%\n"
+            "Native Display Line Item Performance\n"
+            "Name   Impressions   Clicks   CTR\n"
+            "Acme - Behavioral Social Mirro     100   1   1.00%\n")
+    out = q.check_truncated_text({"text": text})
+    assert len(out) == 1
+    assert "Behavioral Social Mirro'" in out[0]["detail"]
+
+
+def test_a_truncation_with_no_figures_to_compare_is_still_reported():
+    """A DOOH grid prints a name and one number, and a row whose figures
+    cannot be read at all should not quietly stop being reported - somebody
+    dismissing a finding costs less than a truncation nobody is shown."""
+    from app.checks.quality import _clipped_cells
+
+    text = ("Line Item Performance\n"
+            "Name   Impressions   Clicks   CTR\n"
+            "Acme - Behavioral Social Mirror    100   1   1.00%\n"
+            "Acme - Behavioral Social Mirro     100   1   1.00%\n")
+    assert _clipped_cells(text)[0] == [
+        ("Acme - Behavioral Social Mirro", "Acme - Behavioral Social Mirror")]
+
+
 def test_a_whole_word_added_is_not_a_truncation():
     text = ("Line Item Performance\n"
             "Name   Impressions   Clicks   CTR\n"

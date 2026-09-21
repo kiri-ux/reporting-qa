@@ -2023,6 +2023,20 @@ def buyer_report_orders(token: str, report_id: int, request: Request,
     return report_orders(report_id, request, db, readonly=True)
 
 
+@app.get("/buyer/{token}/report/{report_id}/pacing", response_class=HTMLResponse)
+def buyer_report_pacing(token: str, report_id: int, request: Request,
+                        period: str = Query(""), db: Session = Depends(get_db)):
+    """Delivery against what was sold, for the person who sold it.
+
+    It is collapsed on the report page now, because whoever reads reports does
+    not act on it. Here it is the whole question.
+    """
+    rep = _buyer_report(db, token, report_id, period)
+    pacing, pacing_why = pacing_for(db, rep)
+    return templates.TemplateResponse(request, "buyer_pacing.html", {
+        "nav": "", "rep": rep, "pacing": pacing, "pacing_why": pacing_why})
+
+
 @app.post("/buyer/{token}/report/{report_id}/ack")
 def buyer_ack(token: str, report_id: int, request: Request,
               index: int = Form(...), on: str = Form(""),
@@ -3867,26 +3881,24 @@ async def replace_report(report_id: int, request: Request,
     return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 
 
-@app.get("/report/{report_id}/view", response_class=HTMLResponse)
-def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db)):
-    rep = db.get(Report, report_id)
-    if not rep:
-        raise HTTPException(404)
-    from .checks.logo import logo_reports
-    from .checks.rules import SKIP_WHY
-    from .version import rules_version
-    peers = logo_reports(db, rep.logo_hash or "", exclude_id=rep.id)
+def pacing_for(db: Session, rep) -> tuple[list, str]:
+    """(rows, why it is empty) - what the month was bought to do against what
+    the report says it did.
 
-    # PACING: what the month was bought to do, against what the report says it
-    # did. Read here rather than stored with the findings because it is a
-    # number to look at, not a verdict - it says nothing at all on most reports
-    # and should not be another row in the checks list.
-    #
-    # AND WHEN IT SAYS NOTHING, IT SAYS WHY. The panel simply vanished when
-    # there was nothing to compare against, which is indistinguishable from
-    # the panel being broken - "where did pacing go" is not a question a page
-    # should leave you holding. There are four ways to have nothing to pace and
-    # they need four different things done about them.
+    Read at display time rather than stored with the findings, because it is a
+    number to look at and not a verdict: it says nothing at all on most
+    reports and should not be another row in the checks list.
+
+    AND WHEN IT SAYS NOTHING, IT SAYS WHY. The panel simply vanished when
+    there was nothing to compare against, which is indistinguishable from the
+    panel being broken - "where did pacing go" is not a question a page should
+    leave you holding. There are four ways to have nothing to pace and they
+    need four different things done about them.
+
+    OUT HERE RATHER THAN INSIDE THE REPORT PAGE, because it is the buyer's
+    number more than anybody's: delivery against what was sold is a question
+    about the order. Two pages ask for it now and there is one answer.
+    """
     pacing, pacing_why = [], ""
     try:
         if not rep.stored_path or not Path(rep.stored_path).exists():
@@ -3962,12 +3974,36 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
                 else:
                     pacing_why = ("the orders carry no monthly budget and no "
                                   "impression goal for this client")
-    except Exception as exc:                # a pacing panel is never worth a 500
+    except Exception as exc:            # a pacing panel is never worth a 500
         import logging
         logging.getLogger("report-qa").exception(
             "pacing panel failed for report %s", rep.id)
         pacing = []
         pacing_why = f"the pacing panel could not be built ({type(exc).__name__})"
+    return pacing, pacing_why
+
+
+@app.get("/report/{report_id}/view", response_class=HTMLResponse)
+def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db)):
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    from .checks.logo import logo_reports
+    from .checks.rules import SKIP_WHY
+    from .version import rules_version
+    peers = logo_reports(db, rep.logo_hash or "", exclude_id=rep.id)
+
+    # PACING: what the month was bought to do, against what the report says it
+    # did. Read here rather than stored with the findings because it is a
+    # number to look at, not a verdict - it says nothing at all on most reports
+    # and should not be another row in the checks list.
+    #
+    # AND WHEN IT SAYS NOTHING, IT SAYS WHY. The panel simply vanished when
+    # there was nothing to compare against, which is indistinguishable from
+    # the panel being broken - "where did pacing go" is not a question a page
+    # should leave you holding. There are four ways to have nothing to pace and
+    # they need four different things done about them.
+    pacing, pacing_why = pacing_for(db, rep)
     try:
         queued = int(request.query_params.get("logo_queued") or 0)
     except ValueError:

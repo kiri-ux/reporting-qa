@@ -405,14 +405,54 @@ def test_the_buyer_can_see_what_the_client_is_paying_for(client):
     assert "/orders/sync" not in body
 
 
-def test_the_pdf_opens_over_the_list(client):
-    """A tab per client and a cmd-w between each one was the whole job."""
+def test_the_report_opens_beside_the_list_not_over_it(client):
+    """A panel that appears is a panel that has to be dismissed, and
+    dismissing it is what put the list - and the ticks on it - back out of
+    reach. It is on the page from load and the file goes into it."""
     c, app = client
     url = app.buyer_link.url_for("", "Amazing Results LLC")
     body = c.get(f"{url}?period=2026-08").text
-    assert "data-pdf=" in body
+    assert 'class="bview"' in body          # there before anything is clicked
+    assert "data-open=" in body
     assert "/orders?period=2026-08&amp;frag=1" in body
-    assert "/report/" in body           # the QA page the reporter works off
+    assert "/pacing?period=2026-08" in body
+    assert "/report/" in body               # the QA page the reporter works off
+
+
+def test_the_buyer_can_read_the_pacing(client):
+    """Collapsed on the report page, because whoever reads reports does not
+    act on it. Here it is the whole question."""
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rid = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC")).id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    r = c.get(f"{url}/report/{rid}/pacing?period=2026-08")
+    assert r.status_code == 200
+
+
+def test_the_pacing_panel_is_drawn_once(client):
+    """It is on the report page and on the buyer's, and two copies of that
+    markup drift the week either one is touched."""
+    from pathlib import Path
+
+    assert Path("app/templates/pacing_body.html").exists()
+    for page in ("viewer.html", "buyer_pacing.html"):
+        assert 'include "pacing_body.html"' in Path(f"app/templates/{page}").read_text()
+
+
+def test_the_buyer_keeps_the_way_back_home(client):
+    """It was drawn with the rail and the top bar left out, on the theory that
+    every link in them is behind the site password. There is no password, so
+    that was a page with no way off it."""
+    c, app = client
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    body = c.get(f"{url}?period=2026-08").text
+    assert 'class="rail"' in body
+    assert "Vici sign-in" not in body
 
 
 def test_the_board_card_carries_the_partners_link(client):

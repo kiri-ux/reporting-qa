@@ -1,0 +1,7 @@
+{# The pacing panel on its own, for the drawer on the buyer's page. Same
+   markup as the report page's - see pacing_body.html. #}
+{% if pacing or pacing_why %}
+  {% include "pacing_body.html" %}
+{% else %}
+  <p class="empty">Nothing to pace against on this report.</p>
+{% endif %}

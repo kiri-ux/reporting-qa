@@ -568,6 +568,17 @@ def check_truncated_text(ctx) -> list[dict]:
     return out
 
 
+def _row_figures(text: str, at: int) -> tuple[float, ...]:
+    """The numbers printed on the row that starts at this offset.
+
+    Read off the line the name opens on, which is where TapClicks puts them:
+    a name tall enough wraps around its own figures, above and below, and the
+    figures stay on the line the row began on.
+    """
+    line = text[at:text.find("\n", at) if text.find("\n", at) > at else len(text)]
+    return tuple(_figures(re.split(r"\s{2,}", line.strip())))
+
+
 def _clipped_cells(text: str) -> tuple[list[tuple[str, str]], int]:
     """Names that are one or two characters short of another name.
 
@@ -575,6 +586,20 @@ def _clipped_cells(text: str) -> tuple[list[tuple[str, str]], int]:
     clipped cell. The tolerance has to stay tight: at four characters
     "Social Mirror" starts matching "Social Mirror CTV", which is a different
     line item, not a truncation of this one.
+
+    AND THE LENGTH RULE IS NOT ENOUGH, which is what "YouTube" against
+    "YouTube+" showed. Vici sells YouTube and YouTube+ as two products, so one
+    report carries "18-34/Women YouTube" at 12,273 impressions and
+    "18-34/Women YouTube+" at 6,535 - one character apart, both spelled in
+    full, and the shorter reported as the longer with its tail eaten.
+
+    A CLIPPED CELL IS ONE LINE ITEM PRINTED TWICE, once by a widget whose
+    column was too narrow for it. So it is the same row either way and its
+    figures are the same in both places. Two line items have their own. Where
+    both rows print numbers and the numbers disagree, these are two names and
+    not one name cut short - and where the numbers cannot be read, it is
+    reported as it always was, because a truncation nobody is shown is worse
+    than one somebody has to dismiss.
     """
     # A name is rebuilt from lines that wrapped, so it does not appear in the
     # text verbatim - the offset has to come from where its row started.
@@ -593,6 +618,9 @@ def _clipped_cells(text: str) -> tuple[list[tuple[str, str]], int]:
             # " AI" is a whole word - a different line item. "r" and " -" are
             # what is left when a cell ran out of room.
             if extra.startswith((" ", "\t")) and re.search(r"[A-Za-z0-9]", extra):
+                continue
+            fa, fb = _row_figures(text, at_of[a]), _row_figures(text, at_of[b])
+            if fa and fb and fa != fb:
                 continue
             hits.append((a, b))
     return hits, (at_of.get(hits[0][0], -1) if hits else -1)
