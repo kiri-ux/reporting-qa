@@ -293,7 +293,43 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .links .lname{font-weight:600;min-width:200px}
 .links.wide li{padding:12px 14px;border:1px solid var(--line);border-radius:10px;
  background:var(--surface)}
-.links.wide .lname{min-width:260px}
+/* TWO ACROSS. A row held a name, a button, a copy, the raw link and a file
+   count on a screen wide enough for three of them, so a hundred and
+   forty-four partners were a hundred and forty-four rows of mostly nothing.
+   Halved, the raw link goes - it was only ever there to be copied, and the
+   button beside it does that. */
+.links.wide ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:10px;align-items:start}
+@media(max-width:1100px){.links.wide ul{grid-template-columns:1fr}}
+.links.wide li{flex-direction:column;align-items:flex-start;gap:7px}
+.links.wide .lname{min-width:0;width:100%;font-size:14.5px}
+/* The buttons and the tags each keep to their own line inside the half. */
+.links.wide .lrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+ width:100%}
+.whopick{gap:14px}
+.wholab{display:flex;align-items:center;gap:7px;margin:0;
+ font-family:Agdasima,sans-serif;font-size:13px;letter-spacing:.09em;
+ text-transform:uppercase;color:var(--muted)}
+.wholab select{font:inherit;font-family:var(--body,inherit);font-size:13.5px;
+ letter-spacing:0;text-transform:none;color:var(--ink);padding:6px 11px;
+ border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+/* FOUR NAMES ON ONE LINE. A group with an SEO manager has four of these and
+   they wrapped, which made that card a row taller than the three beside it -
+   on a grid where the cards are meant to read as one block. Tightened until
+   the fourth fits, and a name long enough to still not fit is cut with its
+   own ellipsis rather than pushing the others down. */
+.who{display:flex;flex-wrap:nowrap;gap:4px;margin-top:7px;min-width:0}
+.wtag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;
+ padding:2px 7px 2px 2px;border-radius:12px;background:var(--atlas-10);color:#3D5468;
+ white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.wtag b{display:inline-flex;align-items:center;justify-content:center;
+ width:15px;height:15px;flex:0 0 auto;border-radius:50%;
+ font-family:Agdasima,sans-serif;font-size:10.5px;font-weight:700;
+ background:var(--atlas);color:#fff}
+.wtag.r b{background:var(--velocity)}
+.wtag.t b{background:var(--plum)}
+.wtag.s b{background:var(--ok)}
+.links .wtag{font-size:11.5px;margin-left:6px;vertical-align:1px}
 /* ---- where a link goes, at a glance ---- */
 .tgt{width:15px;height:15px;vertical-align:-3px;flex:none}
 .tgt.big{width:17px;height:17px}
@@ -363,6 +399,12 @@ button[data-tip],a[data-tip]{cursor:pointer}
 /* ---- what this cycle does not owe ---- */
 .notowed{margin-top:12px;font-size:13px}
 .notowed summary{cursor:pointer;color:var(--muted)}
+/* ADDING A REPORT IS A CONTROL, NOT A FOOTNOTE. It shared its styling with
+   the "not owed" list beside it - small and gray, which is right for a list
+   you read past and wrong for the one thing on that row anybody presses. */
+.added > summary{font-family:'GT Walsheim Pro',sans-serif;font-size:14px;
+ font-weight:700;color:var(--velocity);padding:4px 0}
+.added > summary:hover{color:var(--atlas)}
 .notowed table td{padding:4px 10px 4px 0}
 /* THE MONTH AS A STRIP. Thirty-one small squares says at a glance what a
    sentence has to spell out - and a hole in the middle of it is the thing

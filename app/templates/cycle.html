@@ -559,23 +559,21 @@
             {# THE LINK GETS ITS OWN ROW. Beside "See reports" it made a line
                of two gold-and-navy buttons of different heights, and the one
                you press twenty times a day is the other one. #}
-            <span class="linkrow">
-            <a class="btn gold" href="{{ d.share_url }}" target="_blank" rel="noopener">
+            {# CLICK TO COPY, LIKE THE BUYER LINK BESIDE IT. The link is the
+               thing this button is for - it goes into a message, not into
+               this tab - and it needed a second button to do that. Opening it
+               is the icon that appears once it is copied.
+               AND THE FILE COUNT IS ON THE HOVER. It is the one number about
+               a folder nobody is deciding anything from, and printed beside
+               the button it was the widest thing on the row. #}
+            <button type="button" class="btn gold copy" data-copy="{{ d.share_url }}"
+                    data-tip="{{ d.reports }} file{{ 's' if d.reports != 1 }} in the folder"
+                    aria-label="Copy the client link for {{ g.group }}">
               <svg class="tgt" aria-hidden="true"><use href="#ic-{{ 'dropbox' if d.target == 'dropbox' else 'drive' }}"/></svg>
-              Client link</a>
-            <button type="button" class="copy" data-copy="{{ d.share_url }}"
-                    title="Copy the link">
-              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
-                <rect x="9" y="9" width="11" height="11" rx="2" fill="none"
-                      stroke="currentColor" stroke-width="2"/>
-                <path d="M5 15V6a2 2 0 012-2h9" fill="none" stroke="currentColor"
-                      stroke-width="2" stroke-linecap="round"/>
-              </svg><span>Copy</span>
-            </button>
+              <span>Client link</span></button>
             {% if d.archive_url and d.archive_url != d.share_url %}
               <a href="{{ d.archive_url }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
-            <span class="acct">{{ d.reports }} file{{ 's' if d.reports != 1 }}</span>
             {# THE LINK IS STILL GOOD; WHAT IS BEHIND IT IS NOT. Reports get
                corrected all cycle and the folder only changes when somebody
                presses sync, so this partner can be handing out a link to last
@@ -585,11 +583,14 @@
               {# IT STARTS THE SYNC. Sending you to the links page to find the
                  row and press a second button is asking you to do the work
                  twice - the answer to "this needs a sync" is a sync. #}
+              {# STAYS ON THIS PAGE. It used to start the sync and then take
+                 you to the links page to watch it, which is the board you
+                 were not on - the card here shows the same progress. #}
               <form method="post" action="/cycle/{{ period }}/deliver"
                     style="display:inline">
                 <input type="hidden" name="group" value="{{ g.group }}">
                 <input type="hidden" name="force" value="1">
-                <input type="hidden" name="back_to" value="links">
+                <input type="hidden" name="back_to" value="here">
                 <button class="pendtag" type="submit"
                         {# WHY, BEFORE WHICH. "26 reports changed" on a partner
                            whose 26 reports were signed off days ago reads as
@@ -672,7 +673,10 @@
      down there. They are tagged on their own row now, with a filter beside the
      search. #}
   <details class="added notowed">
-    <summary>Add a row to this cycle</summary>
+    {# A ROW IS WHAT THE CODE CALLS IT; A REPORT IS WHAT IS BEING ADDED. And
+       it was set in the same small gray print as the "not owed" list beside
+       it, which is a list to read past - this is a control. #}
+    <summary>Add a report to this cycle</summary>
     <form method="post" action="/cycle/done" class="addrow">
       <input type="hidden" name="period" value="{{ period }}">
       <input type="hidden" name="action" value="needed">
@@ -818,8 +822,11 @@
                   data-tip="{{ e.covered_by_lifetime|capitalize }}. This monthly was pulled before the board could say it was not owed; the row is still here because the file is.">lifetime covers this</span>
           {% endif %}{% endif %}</td>
         <td class="nw" data-v="{{ e.state }}"><span class="pill p-{{ e.state }}">{{ state_label[e.state] }}</span>
-          {%- if e.report and e.report.waiting_on_file %}<span class="waitfile"
-            data-tip="Asked for again on {{ e.report.asked_at|et }}. The file here still arrived {{ e.report.file_at|et }} - nothing new has reached the tool since.">no new file</span>{% endif %}{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
+          {#- NO "no new file" TAG. It sat beside REPORT REVIEW on nearly every row
+             carrying that status - which is what the status already means: a
+             failure appeared after the partner had the file. A tag that is on
+             almost every row of a status is a second copy of the status. The
+             fact is still on the report page, where the dates are. -#}{% if e.also %}<span class="idmore" data-tip="{{ e.also }} other file{{ '' if e.also == 1 else 's' }} on the board name this client this cycle. The row is about the one that is signed off, or the newest.">+{{ e.also }} file{{ '' if e.also == 1 else 's' }}</span>{% endif %}</td>
         <td style="font-size:13px;color:var(--ink-2);max-width:40ch"
             data-v="{{ (e.report.open_findings if e.report else [])
                        |map(attribute='code')|select|map('finding_kind')
@@ -1268,22 +1275,8 @@
 .s-ready{background:var(--ok)} .s-warnings{background:var(--gold)}
 .s-in{background:var(--velocity-50)} .s-needs_fix{background:var(--plum)}
 .s-errors{background:var(--cardinal)} .s-missing{background:var(--atlas-10)}
-/* FOUR NAMES ON ONE LINE. A group with an SEO manager has four of these and
-   they wrapped, which made that card a row taller than the three beside it -
-   on a grid where the cards are meant to read as one block. Tightened until
-   the fourth fits, and a name long enough to still not fit is cut with its
-   own ellipsis rather than pushing the others down. */
-.who{display:flex;flex-wrap:nowrap;gap:4px;margin-top:7px;min-width:0}
-.wtag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;
- padding:2px 7px 2px 2px;border-radius:12px;background:var(--atlas-10);color:#3D5468;
- white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.wtag b{display:inline-flex;align-items:center;justify-content:center;
- width:15px;height:15px;flex:0 0 auto;border-radius:50%;
- font-family:Agdasima,sans-serif;font-size:10.5px;font-weight:700;
- background:var(--atlas);color:#fff}
-.wtag.r b{background:var(--velocity)}
-.wtag.t b{background:var(--plum)}
-.wtag.s b{background:var(--ok)}
+/* The people tags are in base now - this page and the links page both draw
+   them, and two copies drift the week either is touched. */
 .gcard[hidden]{display:none}
 .ghead .gpick{margin:3px 2px 0 0;width:16px;height:16px;flex:0 0 auto;cursor:pointer}
 /* The bar only exists while something is ticked, and it follows the page down
@@ -1433,8 +1426,13 @@
 /* "See reports" is the thing you press on this card ten times an hour. */
 /* Both are buttons on the same line and they were different heights. */
 .seereports,.gcard .btn.gold{padding:7px 15px;font-size:13px;line-height:1.25}
-.linkrow{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
- margin-top:2px}
+/* ON THE SAME LINE AS SEE REPORTS. It took a row of its own because it asked
+   for one, and with the second copy button and the file count gone there is
+   nothing left that needs the width. */
+.linkrow{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gcard .btn.gold.copy{display:inline-flex;align-items:center;gap:6px;
+ border:0;cursor:pointer}
+.gcard .btn.gold.copy.done{background:var(--ok);color:#fff}
 .gcard .pendtag{border:0;cursor:pointer;font:inherit}
 .pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px}
 .pager .mini.here{background:var(--atlas);color:#fff;border-color:var(--atlas)}

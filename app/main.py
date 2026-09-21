@@ -2655,6 +2655,12 @@ def deliver_group(request: Request, period: str, group: str = Form(...),
     start_delivery(db, period, group, force=bool(force), tag=tag,
                    ready_only=bool(ready_only))
     # PACKAGING LIVES ON THE LINKS PAGE NOW, so that is where it goes back to.
+    # WHERE IT WAS PRESSED. The sync button on a partner card started the job
+    # and then moved you to the links page to watch it - a different board
+    # from the one you were reading, when the card you pressed shows the same
+    # progress in place.
+    if back_to == "here":
+        return RedirectResponse(f"/cycle?period={period}", status_code=303)
     if back_to == "links":
         # STRAIGHT TO THE ROW, ALREADY RUNNING. The sync is started above, so
         # what is wanted here is to watch it, not to find the button again.
@@ -3059,6 +3065,7 @@ def lifetimes_view(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/cycle/links")
 def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
+                buyer: str = Query(""), reporter: str = Query(""),
                 db: Session = Depends(get_db)):
     """Every finished partner's client link for this cycle, on its own page."""
     from .board import by_group
@@ -3078,10 +3085,35 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
     # delivery target means Drive, so a Dropbox partner whose roster row had
     # lost its target was packaged to Drive and the link looked perfectly fine.
     want = {g.group: (g.target or settings.delivery_target) for g in groups}
+    # WHOSE PARTNER IT IS. A hundred and forty-four rows is everybody's work
+    # in one list, and the question anybody opens this page with is about
+    # theirs - so the same two names the board filters on are on these rows.
+    who = {g.group: (g.buyer or "", g.reporter or "") for g in groups}
     for l in delivered["links"]:
         should = want.get(l["group"], "")
         l["should"] = should
         l["mismatch"] = bool(should and l["target"] and should != l["target"])
+        l["buyer"], l["reporter"] = who.get(l["group"], ("", ""))
+    # THE MENUS ARE BUILT BEFORE THE FILTER RUNS. Offering only what survives
+    # means one pick and the menu can never take you anywhere else.
+    who_opts = {
+        key: "|".join(sorted({p.strip() for l in delivered["links"]
+                              for p in (l[key] or "").split(",") if p.strip()}))
+        for key in ("buyer", "reporter")}
+    # CUT TO ONE PERSON'S PARTNERS. A hundred and forty-four rows is
+    # everybody's work in one list, and the question anybody opens this page
+    # with is about theirs. Server side, because the page is the whole cycle
+    # and a filter that only saw what is rendered would be a different answer
+    # from the one the menu promises.
+    def _has(val: str, want: str) -> bool:
+        return want in {p.strip() for p in (val or "").split(",") if p.strip()}
+
+    if buyer:
+        delivered["links"] = [l for l in delivered["links"]
+                              if _has(l["buyer"], buyer)]
+    if reporter:
+        delivered["links"] = [l for l in delivered["links"]
+                              if _has(l["reporter"], reporter)]
     # PACKAGING MOVED HERE FROM THE CARD. The card is where you judge reports;
     # this is where you hand links over, and re-packaging belongs beside the
     # link it replaces rather than three screens away from it.
@@ -3176,6 +3208,9 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
         "waiting": waiting, "running": running,
         "behind": behind(db, period), "all_job": all_job,
         "configured": settings.delivery_configured,
+        "picked": {"buyer": buyer, "reporter": reporter},
+        # Every packaged partner's people, not whatever the filter left.
+        "who_opts": who_opts,
     })
 
 

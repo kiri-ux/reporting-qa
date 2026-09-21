@@ -40,6 +40,31 @@
   <span class="count" id="linkcount"></span>
 </form>
 
+{# WHOSE PARTNERS. A hundred and forty-four rows is everybody's work in one
+   list. Server side, like the board's - the page is the whole cycle, and a
+   filter that only saw what is rendered would be a different answer from the
+   one the menu promises. #}
+<form method="get" action="/cycle/links" class="tools whopick"
+      style="margin:0 0 12px">
+  <input type="hidden" name="period" value="{{ period }}">
+  {% for key, label in (('buyer', 'Buyer'), ('reporter', 'Reporter')) %}
+    {% set opts = (who_opts[key] or '').split('|')|reject('equalto','')|list %}
+    {% if opts %}
+      <label class="wholab">{{ label }}
+        <select name="{{ key }}" onchange="this.form.submit()">
+          <option value="">All ({{ opts|length }})</option>
+          {% for o in opts %}
+            <option value="{{ o }}" {% if picked[key] == o %}selected{% endif %}>{{ o }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
+  {% endfor %}
+  {% if picked.buyer or picked.reporter %}
+    <a class="mini" href="/cycle/links?period={{ period }}">Clear</a>
+  {% endif %}
+</form>
+
 {# EVERY FOLDER AT ONCE. A corrected report keeps its name, so for a long time
    nothing noticed the file underneath had changed and the folder went on
    holding the old one. #}
@@ -63,10 +88,18 @@
              script at the foot of this page for when the mark comes off. #}
           <li id="g-{{ anchor(l.group) }}"{% if new and l.group == new %} class="fresh" data-fresh{% endif %}>
             <span class="lname">{{ l.group }}
-              {% if new and l.group == new %}<em>just packaged</em>{% endif %}</span>
+              {% if new and l.group == new %}<em>just packaged</em>{% endif %}
+              {# WHOSE IT IS, so the two menus above have something to read and
+                 so a row says it without one being picked. #}
+              {% if l.buyer %}<span class="wtag b" data-tip="Buyer: {{ l.buyer }}"><b>B</b>{{ l.buyer }}</span>{% endif %}
+              {% if l.reporter %}<span class="wtag r" data-tip="Reporter: {{ l.reporter }}"><b>R</b>{{ l.reporter }}</span>{% endif %}
+            </span>
+            <span class="lrow">
             {% if l.url %}
               <a class="btn gold" href="{{ l.url }}" target="_blank" rel="noopener"
-                 data-used><svg class="tgt" aria-hidden="true"><use href="#ic-{{ 'dropbox' if l.target == 'dropbox' else 'drive' }}"/></svg>
+                 data-used
+                 data-tip="{{ l.reports }} file{{ 's' if l.reports != 1 }} in the folder"
+                 ><svg class="tgt" aria-hidden="true"><use href="#ic-{{ 'dropbox' if l.target == 'dropbox' else 'drive' }}"/></svg>
                  Open</a>
               <button type="button" class="copy" data-copy="{{ l.url }}" data-used
                       title="Copy the link">
@@ -77,7 +110,6 @@
                         stroke-width="2" stroke-linecap="round"/>
                 </svg><span>Copy</span>
               </button>
-              <code class="rawlink">{{ l.url }}</code>
             {% else %}
               <a class="btn gold" href="{{ l.download }}" data-used>Download zip</a>
               <span class="acct">kept here - Drive and Dropbox are not set up yet</span>
@@ -85,7 +117,7 @@
             {% if l.archive %}
               <a href="{{ l.archive }}" target="_blank" rel="noopener">In Drive</a>
             {% endif %}
-            <span class="acct">{{ l.reports }} file{{ 's' if l.reports != 1 }}</span>
+
             {# Where it went, and whether that is where this partner takes
                delivery. A blank target on the roster means Drive, so a Dropbox
                partner with no target packaged to Drive and looked fine. #}
@@ -99,6 +131,8 @@
                    ><use href="#ic-{{ 'dropbox' if l.target == 'dropbox' else 'drive' }}"/></svg>
               <span class="acct" style="margin-left:-4px">{{ l.target|capitalize }}</span>
             {% endif %}
+
+            </span>
 
             {# PACKAGING LIVES HERE NOW, beside the link it replaces. It used
                to be on the partner card, which is where you judge reports -

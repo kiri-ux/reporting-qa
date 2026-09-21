@@ -3056,7 +3056,8 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     c = TestClient(mmod.app)
 
     page = c.get("/cycle?period=2026-08").text
-    assert "Add a row to this cycle" in page
+    # A ROW IS WHAT THE CODE CALLS IT; A REPORT IS WHAT IS BEING ADDED.
+    assert "Add a report to this cycle" in page
     # The partner is picked, not typed: the board is keyed on the partner's
     # real name, and one spelled a hair differently groups with nothing.
     assert '<select name="market" required>' in page
@@ -4711,12 +4712,16 @@ def test_a_report_asked_for_again_says_no_file_has_come(tmp_path, monkeypatch):
     assert rep(client="Unknown", resend_at=asked).waiting_on_file is False
 
     cycle = (TPL / "cycle.html").read_text()
-    assert "waiting_on_file" in cycle
     # THE CHIP CAME OFF THE PARTNER SEARCH ROW - it filtered REPORTS from the
-    # row that narrows partners. The row's own tag still carries the fact, and
-    # the URL still filters, so a saved view keeps working.
+    # row that narrows partners - and then the tag came off the row too. It
+    # sat beside REPORT REVIEW on nearly every row carrying that status, which
+    # is what the status already says: a tag on almost every row of a status
+    # is a second copy of the status.
     assert "No new file <b>{{ wait_total }}</b>" not in cycle
-    assert 'class="waitfile"' in cycle
+    assert 'class="waitfile"' not in cycle
+    # The fact is still kept and still filtered on, and it is on the report
+    # page where the two dates that make sense of it are.
+    assert "waiting_on_file" in (TPL / "viewer.html").read_text()
     src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
     assert "if waiting:" in src
     main_src = (Path(__file__).resolve().parent.parent / "app"

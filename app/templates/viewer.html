@@ -75,6 +75,16 @@
   {% if rep.is_lifetime %}<span class="pill p-info">lifetime</span>
   {% else %}<span class="pill p-month">monthly</span>{% endif %}
   <span class="pill p-{{ rep.board_state }}">{{ rep.board_state|replace('_',' ')|title }}</span>
+  {# ASKED FOR AGAIN, AND NOTHING HAS COME. 64 reports were flagged, all 64
+     were asked for again, 10 came back and 54 did not, and nothing anywhere
+     said which was which - the finding was still true of the file each one
+     still had. It was a tag on every board row carrying REPORT REVIEW, which
+     is a second copy of that status; here it is on the one page that has the
+     two dates it is about. #}
+  {% if rep.waiting_on_file %}
+    <span class="waitfile"
+          data-tip="Asked for again on {{ rep.asked_at|et }}. The file here still arrived {{ rep.file_at|et }} - nothing new has reached the tool since.">no new file</span>
+  {% endif %}
   <a class="btn" href="/report/{{ rep.id }}/file?v={{ file_v }}" download="{{ rep.filename }}">Download</a>
 </div>
 
