@@ -1367,16 +1367,27 @@ body.fit .pdfwrap object{height:100%}
     // stop remembering where they were, which is not this to fix.
     var was = ('scrollRestoration' in history) ? history.scrollRestoration : null;
     if (was) history.scrollRestoration = 'manual';
-    var put = function () { window.scrollTo(0, s.y); };
-    put();
-    // AGAIN ONCE IT IS ALL THERE. The cards are content-visibility:auto, so
-    // the first scroll lands against estimated heights and the real ones
-    // arrive a frame later.
-    requestAnimationFrame(put);
-    window.addEventListener('load', function () {
-      put();
-      if (was) history.scrollRestoration = was;
+    // UNTIL IT GETS THERE, NOT ONCE. The cards are content-visibility:auto, so
+    // the page is shorter than it will be: an early scrollTo is clamped to a
+    // height that is still an estimate, and scrolling into that estimate is
+    // what makes the rest of it real. Half a second of trying, and it stops
+    // the moment the offset is reached or somebody scrolls for themselves.
+    var tries = 0, mine = true;
+    var put = function () {
+      if (!mine) return;
+      window.scrollTo(0, s.y);
+      if (window.scrollY < s.y - 1 && tries++ < 25) setTimeout(put, 20);
+      else if (was) history.scrollRestoration = was;
+    };
+    ['wheel', 'touchstart', 'keydown'].forEach(function (ev) {
+      window.addEventListener(ev, function () {
+        mine = false;
+        if (was) history.scrollRestoration = was;
+      }, { once: true, passive: true });
     });
+    put();
+    requestAnimationFrame(put);
+    window.addEventListener('load', put);
   })();
 
   // Filter: a free-text box plus per-column dropdowns, both narrowing the same
@@ -1602,8 +1613,7 @@ body.fit .pdfwrap object{height:100%}
     // with errors" could not be bookmarked, sent to somebody, or survive a
     // reload. replaceState rather than pushState: filtering is not navigation,
     // and forty entries of Back to undo one search is not a history.
-    var remember = function (q, picks, ons) {
-      if (!window.history || !history.replaceState) return;
+    var viewUrl = function (q, picks, ons) {
       var u = new URL(window.location.href);
       ['q', 'only'].concat(selects.map(function (s) { return s.key; }))
         .forEach(function (k) { u.searchParams.delete(k); });
@@ -1612,7 +1622,11 @@ body.fit .pdfwrap object{height:100%}
       if (ons.length) u.searchParams.set('only', ons.map(function (t) {
         return t.dataset.key;
       }).join('|'));
-      history.replaceState(null, '', u.toString());
+      return u;
+    };
+    var remember = function (q, picks, ons) {
+      if (!window.history || !history.replaceState) return;
+      history.replaceState(null, '', viewUrl(q, picks, ons).toString());
     };
 
     var restore = function () {
@@ -1666,13 +1680,24 @@ body.fit .pdfwrap object{height:100%}
         // trip - and the page goes back to card one, because the page you
         // were on is a page of the list you just replaced.
         var sel = buildMulti(names, vals, 'cardf-' + key, lb, function () {
-          run();
+          // BUILT HERE, AND THE ADDRESS IS NOT TOUCHED FIRST.
+          //
+          // This called remember() - which rewrites the address to the picks -
+          // and then navigated to the address it had just written. A browser
+          // asked to go to the page it is already on, with a fragment on the
+          // end, scrolls to the fragment and does not load anything: the
+          // dropdown read Anna, the address read Anna, and the board stayed
+          // on the sixteen partners the server had filtered to Jacob, with
+          // every card hidden because none of them was hers.
+          //
+          // Nothing is left pointing at a fragment either, for the same
+          // reason and because the page keeps its own place now.
           var picks = selects.filter(function (s) { return s.el.chosen.length; });
-          remember(box.value.trim(), picks,
-                   toggles.filter(function (t) { return t.classList.contains('on'); }));
-          var u = new URL(window.location.href);
+          var u = viewUrl(box.value.trim(), picks,
+                          toggles.filter(function (t) { return t.classList.contains('on'); }));
           u.searchParams.delete('cards');
           u.searchParams.delete('page');
+          u.hash = '';
           goKeepingPlace(u.toString());
         });
         f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
@@ -1815,7 +1840,10 @@ body.fit .pdfwrap object{height:100%}
             if (sel.chosen.length) u.searchParams.set('col_' + key, sel.chosen.join('|'));
             else u.searchParams.delete('col_' + key);
             u.searchParams.delete('page');       // a narrower board starts at one
-            u.hash = 'reports';
+            // NO FRAGMENT. It was here to land you on the table; the page
+            // keeps its own place now, and a fragment on a url that is
+            // otherwise the one showing is a scroll and not a page load.
+            u.hash = '';
             goKeepingPlace(u.toString());
           } : run, shown, served);
         // What the address already asked for, ticked - or the control denies

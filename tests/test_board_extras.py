@@ -3130,6 +3130,30 @@ def test_picking_a_filter_does_not_move_the_page():
     # Not a tab opened over lunch, and Back keeps its own memory.
     assert "Date.now() - s.at > 20000" in base
     assert "history.scrollRestoration = was" in base
+    # UNTIL IT GETS THERE, NOT ONCE. The cards are content-visibility:auto, so
+    # an early scrollTo is clamped to a height that is still an estimate.
+    assert "tries++ < 25" in base
+    assert "'wheel', 'touchstart', 'keydown'" in base
+
+
+def test_a_filter_pick_is_a_page_load_and_not_a_jump_to_a_fragment():
+    """It rewrote the address to the picks and then navigated to the address it
+    had just written. A browser asked to go to the page it is already on, with
+    a fragment on the end, scrolls to the fragment and loads nothing: the
+    dropdown read Anna, the address read Anna, and the board stayed on the
+    sixteen partners the server had filtered to Jacob - every card hidden,
+    because none of them was hers."""
+    base = (TPL / "base.html").read_text()
+    # The url is built from the picks, not read back off an address that a
+    # replaceState has already changed.
+    assert "var viewUrl = function (q, picks, ons)" in base
+    pick = base.split("'cardf-' + key, lb, function () {")[1][:1400]
+    code = "\n".join(l for l in pick.split("\n") if "//" not in l)
+    assert "remember(" not in code, "the navigation writes the address"
+    assert "var u = viewUrl(" in code
+    assert "u.hash = '';" in pick
+    # And neither filter row leaves a fragment behind.
+    assert "u.hash = 'reports'" not in base
 
 
 def test_the_report_table_can_be_cut_to_one_buyer(tmp_path, monkeypatch):
