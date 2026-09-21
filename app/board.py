@@ -331,7 +331,7 @@ def days_in_cycle(cyc, starts_on, ends_on) -> int:
 
 
 STATES = ["missing", "in", "warnings", "errors", "review", "needs_fix", "ready"]
-STATE_LABEL = {"missing": "Not received", "in": "In, unreviewed",
+STATE_LABEL = {"missing": "Missing", "in": "Unreviewed",
                "warnings": "Warnings", "errors": "Errors",
                # NOT "Errors". The partner already has this file: a failure
                # that appeared after it went out is a resend, not a read.

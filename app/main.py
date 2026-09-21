@@ -2075,6 +2075,43 @@ def buyer_report_flags(token: str, report_id: int, request: Request,
         "nav": "", "rep": rep, "flags": rep.open_findings})
 
 
+@app.post("/buyer/{token}/report/{report_id}/note")
+def buyer_flag_note(token: str, report_id: int, request: Request,
+                    index: int = Form(...), note: str = Form(""),
+                    period: str = Query(""), only: str = Form(""),
+                    db: Session = Depends(get_db)):
+    """Write a note against one of the buyer's flags.
+
+    The report already carries a note and it is one note for the whole report,
+    which is the wrong shape for four flags on four different orders. This one
+    belongs to the finding it is typed under.
+    """
+    from .flag_catalog import is_buyer
+
+    rep = _buyer_report(db, token, report_id, period)
+    findings = rep.findings or []
+    if not 0 <= index < len(findings):
+        raise HTTPException(400, "no such finding")
+    # THE BUYER'S OWN, AND ONLY THOSE - the same guard the tick goes through.
+    if not is_buyer(findings[index]):
+        raise HTTPException(403, "not a buyer flag")
+    notes = dict(rep.flag_notes or {})
+    text = (note or "").strip()[:500]
+    if text:
+        notes[str(index)] = text
+    else:
+        notes.pop(str(index), None)
+    # REASSIGNED, NOT EDITED. SQLAlchemy does not see a JSON column mutated in
+    # place, so the note went nowhere until something else on the report
+    # happened to be written.
+    rep.flag_notes = notes
+    db.commit()
+    back = f"/buyer/{token}?period={period or rep.period}"
+    if only:
+        back += f"&only={only}"
+    return RedirectResponse(f"{back}#r{report_id}", status_code=303)
+
+
 @app.post("/buyer/{token}/report/{report_id}/ack")
 def buyer_ack(token: str, report_id: int, request: Request,
               index: int = Form(...), on: str = Form(""),

@@ -75,11 +75,12 @@
    and eight hundred PDFs through pdftotext is a box with no attention left for
    drawing pages. That is a known state with an end, and it looked exactly like
    the tool being broken. It says so now, with a number that comes down. #}
-{% if stale.total > 200 %}
+{% if stale.total %}
   {# BEHIND AN ICON, NOT ACROSS THE PAGE. It is a state with an end - the
      sweep is working through them - and a full-width amber bar above the
      board every day until it finishes teaches people to read past the place
-     warnings appear. The count is on the button; the rest is one click. #}
+     warnings appear. Everything about it is in here, including the button
+     that does them now. #}
   <div id="stalenote" hidden>
     {# WHICH DEPLOY, AND WHAT IT CHANGED. "A deploy changed the checking rules"
        is true of every one of these and answers nothing - the only way to find
@@ -89,10 +90,17 @@
        left from when a sweep started itself off the back of this count, and
        it reads as a re-check somebody did not ask for - which is what it was
        read as. #}
-    <p><b>{{ stale.total }} reports were judged by rules that have since
-    changed.</b> Nothing is running. Run all re-checks is on the
-    <a href="/rules#flags">Reporting flags</a> page, or run one check at a
-    time from there.</p>
+    <p><b>{{ stale.total }} report{{ 's' if stale.total != 1 }} on this board
+    {{ 'was' if stale.total == 1 else 'were' }} judged by rules that have since
+    changed.</b> Nothing is running.</p>
+    {# THE BUTTON THAT WAS ON THE TOOLBAR. It was the same number as the icon
+       beside it; here it is under the sentence that says what it would do. #}
+    <form method="post" action="/cycle/recheck" class="staleact">
+      <input type="hidden" name="period" value="{{ period }}">
+      <button class="btn" type="submit">Re-check all {{ stale.total }}</button>
+      <span class="acct">Or one check at a time on the
+        <a href="/rules#flags">Reporting flags</a> page.</span>
+    </form>
     {# AND A WAY TO SAY "NOT THIS ONE". Most deploys do not change how a report
        is judged, and the fingerprint cannot tell: it is a hash, and it moves
        when the FORMULA changes as readily as when a rule does. One build
@@ -171,14 +179,14 @@
             <circle cx="8" cy="8" r="4" fill="currentColor"/>
           </svg></span>
       {% endif %}
-      </span></span><span>Not received</span>
+      </span></span><span>Missing</span>
       {# Shown instead of the projection once a filter is on. The rate is the
          whole cycle's arrival rate; applying it to a subset would be a number
          with no meaning behind it. #}
       <p class="pacenote" data-tile-filtered hidden>of {{ summary.missing }} on the
         whole board</p>
     </div>
-    <div><b data-tile="review">{{ summary['in'] + summary.warnings }}</b><span>In, awaiting review</span></div>
+    <div><b data-tile="review">{{ summary['in'] + summary.warnings }}</b><span>Unreviewed</span></div>
     <div class="c-fail"><b data-tile="fail">{{ summary.errors + summary.needs_fix }}</b><span>Errors or needs fix</span></div>
     <div class="c-ok"><b data-tile="ready">{{ summary.ready }}</b><span>Good to go</span></div>
     {# Reports, reports, reports - and then the question the cycle is actually
@@ -212,25 +220,20 @@
       {# The sweep gets to everything on its own. This is for when eventually is
          not soon enough - a fix has gone out and somebody wants the board right
          before they hand a link over. #}
+      {# THE COUNT AND THE BUTTON WERE THE SAME NUMBER, TWICE OVER. "1416
+         checks" beside a warning triangle carrying the same 1416 read as two
+         problems, and the triangle's panel is where the whole thing is
+         explained - so the action lives in there with it. While a run is
+         going the toolbar still says so, because that is a state and not a
+         button. #}
       {% if jobs.all %}
         <span class="sync busy" data-job="*"><span class="spin"></span><b
           >{{ jobs.all.done }} of {{ jobs.all.total or '?' }}</b> checks</span>
-      {% elif stale.total %}
-        <form method="post" action="/cycle/recheck" style="display:inline">
-          <input type="hidden" name="period" value="{{ period }}">
-          <button class="sync" type="submit"
-                  title="{{ stale.total }} report{{ 's' if stale.total != 1 }} on this board {{ 'was' if stale.total == 1 else 'were' }} judged by older checking code. They are queued for an automatic re-check - this does them now.">
-            <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
-              <path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6" fill="none"
-                    stroke="currentColor" stroke-width="2.2"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>{{ stale.total }} checks</button>
-        </form>
       {% endif %}
-      {% if stale.total > 200 %}
-        {# NO COUNT ON IT. The button to its left is the same number and the
-           button that does something about it; two of them side by side
-           reads as two problems. This is the note, and a note is an icon. #}
+      {% if stale.total and not jobs.all %}
+        {# NO COUNT ON IT. The number is inside, where the sentence that makes
+           sense of it is - on the toolbar it was the same figure as the button
+           beside it and read as a second problem. #}
         {# data-tip, NOT title. The browser's own tooltip takes a second and a
            half to appear, so an icon with only a title on it is an icon that
            says nothing - and this one is the least guessable thing on the
@@ -290,19 +293,12 @@
     <input type="search" name="q" value="{{ q }}"
            data-cards="glist" data-count="cnt-groups"
            placeholder="Search partners... (Enter to search all {{ card_total }})">
-    {# 1,209 of 1,244 reports have not arrived yet, so most of this board is
-       partners nothing has happened to. One click hides them. #}
-    <button type="button" class="mini toggle" data-cardtoggle="glist"
-            data-key="arrived" aria-pressed="false"
-            title="Hide the partners nothing has arrived for yet">
-      Only started</button>
     <span class="count" id="cnt-groups"></span>
-    {% if wait_total or wait_on %}
-      <a class="mini toggle{{ ' on' if wait_on }}"
-         href="/cycle?{{ keep('waiting') }}{% if not wait_on %}&waiting=1{% endif %}#reports"
-         data-tip="Reports somebody asked for again - marked Needs fix, or failed after the partner already had them - where no new file has reached the tool since. The finding on them is still about the file that was wrong."
-        >No new file <b>{{ wait_total }}</b></a>
-    {% endif %}
+    {# TWO TOGGLES CAME OFF THIS ROW. "Only started" hid the partners nothing
+       had arrived for, and "No new file" was a REPORTS filter sitting on the
+       partner search - two different things to narrow, one row to do it on.
+       Both of their URLs still work, so a saved view or a bookmark carrying
+       ?waiting=1 filters exactly as it did. #}
     {% if q %}
       <a class="chip" href="/cycle?{{ keep('q') }}"
          title="Drop this search">{{ q }} &times;</a>
@@ -892,12 +888,12 @@
             {% if e.done_note %}<br>
               <span class="notetag" title="{{ e.done_note }}">note</span>{% endif %}
           {% elif e.forced_by %}
-            {# ONCE, NOT TWICE. This said "kept on by hand" under Not received,
+            {# ONCE, NOT TWICE. This said "kept on by hand" under Missing,
                and the client cell now carries a BY HAND tag with the same fact
                and the same note in it - on every row, not only the ones with
                no report yet. Two tags saying one thing read as two things. #}
-            <span class="empty">Not received</span>
-          {% else %}<span class="empty">Not received</span>{% endif %}
+            <span class="empty">Missing</span>
+          {% else %}<span class="empty">Missing</span>{% endif %}
         </td>
         <td class="nw" data-v="{{ e.reporter }}">{{ e.reporter }}
           {# Only a sign-off that still stands. The name outlives a re-check
@@ -917,7 +913,7 @@
            <div class="rowacts">
             {# Some reports never come through the feed - pulled by hand, sent
                to the wrong address, rebuilt after a fix. Without this the row
-               sat at "Not received" while the PDF was on somebody's desktop. #}
+               sat at "Missing" while the PDF was on somebody's desktop. #}
             <form method="post" action="/cycle/upload" enctype="multipart/form-data"
                   class="upform">
               <input type="hidden" name="period" value="{{ period }}">
@@ -954,7 +950,7 @@
               </label>
             </form>
             {# SEO is pulled outside TapClicks, so there is nothing to upload
-               and the row would sit at "Not received" all month holding its
+               and the row would sit at "Missing" all month holding its
                partner off ready. This cycle only. #}
             <form method="post" action="/cycle/done" class="signoff">
               <input type="hidden" name="period" value="{{ period }}">

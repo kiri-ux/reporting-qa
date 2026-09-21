@@ -12,7 +12,7 @@
   <div class="c-fail"><b>{{ latest.failed }}</b><span>Failed in the latest batch</span></div>
   <div class="c-warn"><b>{{ latest.warned }}</b><span>Warnings</span></div>
   <div class="c-ok"><b>{{ latest.clean }}</b><span>Clean</span></div>
-  <div class="c-fail"><b>{{ comp.missing|length if comp else 0 }}</b><span>Expected, not received</span></div>
+  <div class="c-fail"><b>{{ comp.missing|length if comp else 0 }}</b><span>Missing</span></div>
   <div class="c-warn"><b>{{ comp.lifetime_due|length if comp else 0 }}</b><span>Lifetime reports due</span></div>
 </div>
 {% endif %}

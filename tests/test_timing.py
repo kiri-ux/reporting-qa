@@ -1367,7 +1367,8 @@ def test_the_recheck_banner_names_the_build_and_stops():
     from pathlib import Path
     page = (Path(__file__).resolve().parents[1] / "app" / "templates"
             / "cycle.html").read_text()
-    i = page.index("were judged by rules that have since")
+    # The sentence pluralizes itself now, so "were" is a template expression.
+    i = page.index("judged by rules that have since")
     banner = page[i:i + 1600]
     assert "{{ build_label }}" in banner
     assert "{{ build_notes }}" not in banner

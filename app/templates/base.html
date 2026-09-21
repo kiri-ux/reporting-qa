@@ -491,6 +491,11 @@ button[data-tip],a[data-tip]{cursor:pointer}
  background:var(--surface);color:var(--ink-2)}
 .copy:hover{border-color:var(--atlas);color:var(--atlas)}
 .copy.done{border-color:var(--ok);color:var(--ok)}
+/* Appears once something has been copied, beside the button that copied it. */
+.openafter{display:inline-flex;align-items:center;justify-content:center;
+ width:26px;height:26px;margin-left:4px;border-radius:50%;flex:0 0 auto;
+ color:var(--velocity);text-decoration:none}
+.openafter:hover{background:var(--velocity-10)}
 
 /* ---- the recommended pull ---- */
 .plan{background:var(--velocity-10);border:1px solid var(--velocity-50);
@@ -1229,11 +1234,35 @@ body.fit .pdfwrap object{height:100%}
     var text = ('copyUrl' in b.dataset) ? window.location.href : (b.dataset.copy || '');
     var label = b.querySelector('span');
     var was = label ? label.textContent : '';
+    // AND A WAY INTO WHAT WAS JUST COPIED. The link is on the clipboard and
+    // the next thing anybody does with it is look at it, which meant pasting
+    // it into the address bar of a new tab by hand. Added once, beside the
+    // button, and it stays - it is the same link the button copies.
+    var openable = function () {
+      if (!/^https?:\/\//.test(text) && text.charAt(0) !== '/') return;
+      if (b.nextElementSibling && b.nextElementSibling.classList.contains('openafter')) return;
+      var a = document.createElement('a');
+      a.className = 'openafter';
+      a.href = text;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.setAttribute('aria-label', 'Open the copied link in a new tab');
+      a.setAttribute('data-tip', 'Open it in a new tab');
+      a.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">'
+        + '<path d="M14 4h6v6M20 4l-8.5 8.5" fill="none" stroke="currentColor" '
+        + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        + '<path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" '
+        + 'fill="none" stroke="currentColor" stroke-width="2" '
+        + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      b.insertAdjacentElement('afterend', a);
+    };
+
     var done = function (msg, ok) {
       // AN ICON BUTTON HAS NO WORDS TO CHANGE. It said nothing at all when it
       // worked, which reads as a button that does nothing - so the class goes
       // on either way and the tick is the answer.
       b.classList.toggle('done', !!ok);
+      if (ok) openable();
       if (!label) {
         setTimeout(function () { b.classList.remove('done'); }, 1600);
         return;

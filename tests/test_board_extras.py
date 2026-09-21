@@ -95,16 +95,21 @@ def test_site_ctr_findings_are_absent_from_every_real_fixture():
 
 
 def test_the_recheck_control_is_a_button_not_a_banner():
-    """A count beside a refresh arrow needs no sentence, and a banner across
-    the top of the board pushed the partners down for something that is not
-    news."""
+    """A banner across the top of the board pushed the partners down for
+    something that is not news.
+
+    AND THEN THE COUNT WENT TOO. "1416 checks" beside a warning triangle
+    carrying the same 1416 read as two problems, so the toolbar keeps the
+    icon and the run lives in the panel behind it, under the sentence that
+    says what it would do.
+    """
     cycle = (TPL / "cycle.html").read_text()
     assert "Nothing is emailed" not in cycle
     assert 'class="note stale"' not in cycle
     assert "on this board were judged by older checking code" not in cycle
-    # it lives with Download CSV, and it says how many
-    assert 'class="sync"' in cycle and "{{ stale.total }} checks</button>" in cycle
-    assert cycle.index('class="sync"') < cycle.index("Download CSV")
+    assert "{{ stale.total }} checks</button>" not in cycle
+    assert 'data-sheet-from="#stalenote"' in cycle
+    assert cycle.index("#stalenote") < cycle.index("Download CSV")
     # And the orders re-read is a button beside it rather than a yellow bar
     # across the width of the board.
     assert 'class="stalebar"' not in cycle
@@ -2884,9 +2889,15 @@ def test_a_long_recheck_queue_says_what_it_is_and_where_to_act():
     button is, and the button is on the flags page with the rest of it.
     """
     cycle = (TPL / "cycle.html").read_text()
-    assert "{% if stale.total > 200 %}" in cycle
-    assert "were judged by rules that have since" in cycle
-    assert "Run all re-checks" in cycle
+    # BEHIND AN ICON, AND FOR ANY NUMBER OF THEM. A full-width amber bar above
+    # the board every day until the sweep finishes teaches people to read past
+    # the place warnings appear - and with the toolbar's count button gone,
+    # this panel is the only way to start the run, so it cannot wait for 200.
+    assert "{% if stale.total %}" in cycle
+    assert 'id="stalenote"' in cycle
+    assert 'data-sheet-from="#stalenote"' in cycle
+    assert "judged by rules that have since" in cycle
+    assert "Re-check all {{ stale.total }}" in cycle
     # AND NOTHING ELSE. It also said the number comes down on its own, that
     # nothing is wrong and nothing needs pressing, and how many were signed
     # off - three sentences of reassurance above the two facts.
@@ -4701,7 +4712,13 @@ def test_a_report_asked_for_again_says_no_file_has_come(tmp_path, monkeypatch):
 
     cycle = (TPL / "cycle.html").read_text()
     assert "waiting_on_file" in cycle
-    assert "No new file <b>{{ wait_total }}</b>" in cycle
+    # THE CHIP CAME OFF THE PARTNER SEARCH ROW - it filtered REPORTS from the
+    # row that narrows partners. The row's own tag still carries the fact, and
+    # the URL still filters, so a saved view keeps working.
+    assert "No new file <b>{{ wait_total }}</b>" not in cycle
+    assert 'class="waitfile"' in cycle
+    src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+    assert "if waiting:" in src
     main_src = (Path(__file__).resolve().parent.parent / "app"
                 / "main.py").read_text()
     assert 'waiting: str = Query("")' in main_src
@@ -4721,7 +4738,7 @@ def test_the_stale_banner_does_not_read_as_a_running_recheck():
     cycle = (TPL / "cycle.html").read_text()
     # The comments explain what the words used to be, so they are not the words.
     cycle = _re.sub(r"\{#.*?#\}", "", cycle, flags=_re.S)
-    at = cycle.index("were judged by rules that have since")
+    at = cycle.index("judged by rules that have since")
     banner = cycle[at - 400:at + 1800]
     assert "Nothing is running" in banner
     assert "Rules last changed in" in banner

@@ -107,6 +107,21 @@
                               <span class="fdetail">{{ f.detail }}</span>{% endif %}
                           </span>
                         </form>
+                        {# A NOTE PER FLAG, NOT PER REPORT. The report already
+                           carries one note, and four flags on four different
+                           orders written into it read as being about all of
+                           them. Saves on blur, so nothing has to be pressed. #}
+                        {% set note = e.report.note_on(i) %}
+                        <form method="post"
+                              action="/buyer/{{ token }}/report/{{ e.report.id }}/note?period={{ period }}"
+                              class="flagnote">
+                          <input type="hidden" name="index" value="{{ i }}">
+                          {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
+                          <input type="text" name="note" value="{{ note }}"
+                                 maxlength="500" placeholder="Add a note"
+                                 aria-label="Note on {{ f.title or f.code }}">
+                          <button type="submit" class="mini">Save</button>
+                        </form>
                       </li>
                     {% endfor %}
                   </ul>
@@ -146,7 +161,7 @@
                        >Reporting flags{% if rflags %} · {{ rflags|length }}{% endif %}</a>
                     <a class="mini qa" href="/report/{{ e.report.id }}/view"
                        target="_blank" rel="noopener">QA page</a>
-                  {% else %}<span class="empty">Not received</span>{% endif %}
+                  {% else %}<span class="empty">Missing</span>{% endif %}
                 </div>
                 {% if e.report %}<div class="rowdrawer" hidden></div>{% endif %}
               </td>
@@ -227,6 +242,24 @@
     if (a.classList.contains('on')) return;
     show(a.dataset.open, a.dataset.name || '', a.closest('tr'));
   });
+
+  // ---- notes on a flag -------------------------------------------------
+  // Saves when you click away, because a Save button per flag on a page of
+  // twenty is twenty buttons to press and one to forget. The button is still
+  // there while the box is dirty, for anyone who would rather press it.
+  document.addEventListener('input', function (e) {
+    var i = e.target;
+    if (!i.form || !i.form.classList.contains('flagnote')) return;
+    i.form.classList.add('dirty');
+    i.dataset.dirty = '1';
+  });
+  document.addEventListener('blur', function (e) {
+    var i = e.target;
+    if (!i.form || !i.form.classList.contains('flagnote')) return;
+    if (!i.dataset.dirty) return;
+    i.dataset.dirty = '';
+    i.form.submit();
+  }, true);
 
   // ---- pacing and order lines, in the row ------------------------------
   // A sheet covers the report you opened to read them against, which is the
@@ -344,6 +377,19 @@
 .bflags .tick:hover{border-color:var(--ok);color:var(--ok)}
 .bflags .fbody{display:block}
 .bflags .fdetail{display:block;color:var(--ink-2);font-size:12.5px;margin-top:2px}
+/* THE NOTE SITS UNDER THE FLAG IT IS ABOUT, indented past the tick so the
+   column of boxes stays a column of boxes. The Save button only shows once
+   there is something to save. */
+.flagnote{display:flex;gap:6px;align-items:center;margin:5px 0 0 29px}
+.flagnote input[type=text]{flex:1;min-width:0;font:inherit;font-size:12.5px;
+ padding:4px 10px;border:1px solid var(--line);border-radius:14px;
+ background:var(--surface);color:var(--ink)}
+.flagnote input[type=text]:focus{outline:none;border-color:var(--velocity);
+ box-shadow:0 0 0 3px var(--velocity-10)}
+.flagnote input[type=text]:placeholder-shown{border-style:dashed;
+ color:var(--muted)}
+.flagnote button{display:none}
+.flagnote.dirty button{display:inline-block}
 .bnone{margin:8px 0 0;font-size:12.5px;color:var(--muted);font-style:italic}
 .ract{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:9px}
 .ract .mini{text-decoration:none;white-space:nowrap}

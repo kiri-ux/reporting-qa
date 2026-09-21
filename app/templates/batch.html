@@ -13,7 +13,7 @@
   <div class="c-fail"><b>{{ batch.failed }}</b><span>Failed</span></div>
   <div class="c-warn"><b>{{ batch.warned }}</b><span>Warnings</span></div>
   <div class="c-ok"><b>{{ batch.clean }}</b><span>Clean</span></div>
-  <div class="c-fail"><b>{{ comp.missing|length }}</b><span>Expected, not received</span></div>
+  <div class="c-fail"><b>{{ comp.missing|length }}</b><span>Missing</span></div>
   <div class="c-warn"><b>{{ comp.lifetime_due|length }}</b><span>Lifetime reports due</span></div>
 </div>
 
@@ -50,7 +50,7 @@
 
 {% if comp.missing %}
 <section>
-  <h2>Expected but not received ({{ comp.missing|length }})</h2>
+  <h2>Missing ({{ comp.missing|length }})</h2>
   <div class="tw"><table>
     <thead><tr><th>Client</th><th>Order</th><th>Partner</th><th>Buyer</th><th>Reporter</th></tr></thead>
     <tbody>{% for m in comp.missing %}

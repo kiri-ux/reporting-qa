@@ -138,6 +138,17 @@ class Report(Base):
     # stays on the report - it is a note about a known quirk, not a mistake -
     # but it stops counting against the severity.
     acked: Mapped[list] = mapped_column(JSON, default=list)
+    # WHAT SOMEBODY SAID ABOUT ONE FLAG, keyed by its index in `findings`.
+    #
+    # The report already carries a note, and it is one note for the whole
+    # report - which is the wrong shape for a list of four things on four
+    # different orders. "Checked with the station, they are renaming it" is
+    # about the fence with no business name and nothing else, and written in
+    # the report's note it reads as being about all of them.
+    #
+    # By INDEX, like `acked`, because a report can carry the same code twice
+    # and a note on one is not a note on the other.
+    flag_notes: Mapped[dict] = mapped_column(JSON, default=dict)
     # The fingerprint of the checking code that produced these findings. A
     # report stamped with an older one is re-checked in the background, because
     # findings are written once and a fixed rule does not reach back on its own.
@@ -240,6 +251,15 @@ class Report(Base):
 
     def is_acked(self, i: int) -> bool:
         return i in (self.acked or [])
+
+    def note_on(self, i: int) -> str:
+        """What somebody wrote about this one finding, or "".
+
+        JSON object keys are strings whatever they were written as, so the
+        lookup has to be too - the note went in under 3 and came back out
+        under "3", which read as no note at all.
+        """
+        return (self.flag_notes or {}).get(str(i), "")
 
     @property
     def live_flags(self) -> list:
@@ -1055,6 +1075,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("partners", "delivery_target", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("deliveries", "archive_url", "TEXT"),
     ("reports", "acked", "JSON"),
+    ("reports", "flag_notes", "JSON"),
     ("reports", "rules_version", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("reports", "source", "VARCHAR(16) DEFAULT '' NOT NULL"),
     ("reports", "pending_path", "VARCHAR(1024) DEFAULT '' NOT NULL"),

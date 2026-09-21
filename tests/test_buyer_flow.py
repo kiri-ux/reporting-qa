@@ -351,6 +351,73 @@ def test_the_buyer_can_mark_a_flag_off(client):
     db.close()
 
 
+def test_a_note_belongs_to_the_flag_it_is_typed_under(client):
+    """The report already carries a note and it is one note for the whole
+    report, which is the wrong shape for four flags on four different
+    orders."""
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rep = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC"))
+    rep.findings = [BUYER_FLAG, BUYER_FAIL]
+    db.commit()
+    rid = rep.id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+
+    r = c.post(f"{url}/report/{rid}/note?period=2026-08",
+               data={"index": "1", "note": "Station is renaming it"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    db = app.db.SessionLocal()
+    rep = db.get(app.db.Report, rid)
+    # KEYED BY STRING. JSON object keys are strings whatever they went in as,
+    # so the note came back out under "1" and read as no note at all.
+    assert rep.note_on(1) == "Station is renaming it"
+    assert rep.note_on(0) == ""
+    db.close()
+    assert "Station is renaming it" in c.get(f"{url}?period=2026-08").text
+
+
+def test_an_emptied_note_is_gone_rather_than_blank(client):
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rep = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC"))
+    rep.findings = [BUYER_FLAG]
+    rep.flag_notes = {"0": "was something"}
+    db.commit()
+    rid = rep.id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    c.post(f"{url}/report/{rid}/note?period=2026-08",
+           data={"index": "0", "note": "   "}, follow_redirects=False)
+    db = app.db.SessionLocal()
+    assert db.get(app.db.Report, rid).flag_notes == {}
+    db.close()
+
+
+def test_a_note_cannot_be_written_on_the_reporting_teams_flag(client):
+    from sqlalchemy import select
+
+    c, app = client
+    db = app.db.SessionLocal()
+    rep = db.scalar(select(app.db.Report)
+                    .where(app.db.Report.market == "Amazing Results LLC"))
+    rep.findings = [BUYER_FLAG, REPORTER_FLAG]
+    db.commit()
+    rid = rep.id
+    db.close()
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+    r = c.post(f"{url}/report/{rid}/note?period=2026-08",
+               data={"index": "1", "note": "nope"}, follow_redirects=False)
+    assert r.status_code == 403
+
+
 def test_the_buyer_cannot_tick_off_the_reporting_teams_work(client):
     """One page, one list, one thing it can write to. A hand-posted index must
     not reach into what the report is actually being held for."""

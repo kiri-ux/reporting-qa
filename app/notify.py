@@ -67,7 +67,7 @@ def _html(batch, comp) -> str:
             f"<ul style='margin:0;padding-left:18px'>{items or '<li>No issues</li>'}</ul></td></tr>")
     extra = ""
     if comp and comp["missing"]:
-        extra += "<h3>Expected but not received</h3><ul>" + "".join(
+        extra += "<h3>Missing</h3><ul>" + "".join(
             f"<li>{m['client']} <span style='color:#888'>{m['accounts']}</span>"
             f" — {m['buyer'] or ''} {m['team'] or ''}</li>" for m in comp["missing"]) + "</ul>"
     if comp and comp["lifetime_due"]:
