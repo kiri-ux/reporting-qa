@@ -17,6 +17,12 @@ services:
         value: /data
       - key: INBOUND_SECRET
         generateValue: true
+      # WHAT SIGNS A BUYER LINK. Generated here, not typed: it is the only
+      # thing between a link and that partner's list. Changing it in the Render
+      # dashboard invalidates every buyer link already sent, which is also how
+      # you revoke them.
+      - key: BUYER_LINK_SECRET
+        generateValue: true
       - key: SLACK_WEBHOOK_URL
         sync: false
       - key: SMTP_HOST
