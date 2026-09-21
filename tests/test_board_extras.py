@@ -137,10 +137,16 @@ def test_the_progress_updates_without_a_reload():
 def test_the_partner_button_carries_no_count():
     """"Re-check 2" under a heading that says "14 reports" reads as a bug, even
     when 2 is the true number of stale ones. The numbers go in the hover and
-    the button does the whole partner."""
+    the button does the whole partner.
+
+    AND IT IS CALLED SYNC. "Re-check" is what the code calls it and not what
+    anybody asks for - the question is whether this partner's answers are
+    current, and every other button on this page that answers it says sync.
+    """
     cycle = (TPL / "cycle.html").read_text()
-    assert ">\n                Re-check</button>" in cycle
-    assert "Re-check {{ stale.by_group[g.group] }}" not in cycle
+    assert ">sync</button>" in cycle
+    assert "Re-check</button>" not in cycle
+    assert "{{ stale.by_group[g.group] }} of them" in cycle    # the count, on hover
     assert 'name="scope" value="all"' in cycle
 
 

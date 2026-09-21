@@ -706,3 +706,55 @@ def test_a_hyphen_wrapped_line_item_is_put_back_together():
     assert [f["title"] for f in ok["findings"] if f["code"] == "product_missing"] == []
     assert [f["title"] for f in bad["findings"] if f["code"] == "product_missing"] == \
         ["Ordered but not on the report: Geo-Framing Display"]
+
+
+# --------------------------------------------------------------------------
+# A CANCELLED LINE ITEM'S FLIGHT IS NOT THE PRODUCT RUNNING.
+#
+# USD - MS Applied Artificial Intelligence bought DOOH twice: one line
+# cancelled, covering August, and one live nowhere near it. One OrderLine row
+# is one client and one product across every order carrying it, so rolled up
+# that reads live, not cancelled, and flying over August - and the August
+# report was failed for not carrying a product whose only August line item had
+# been called off. The order lines drawer said CANCELED about the very same
+# row, one click away.
+def _two_line_product(db, product, live, dead):
+    """One rolled-up row with two line items behind it - one of them dead."""
+    from app.db import OrderLine
+    D = dt.date.fromisoformat
+    db.add(OrderLine(
+        market="Conquest Digital Solutions", client=CLIENT, account_ids="8485",
+        line_ids="132267,132270", campaign=product, product=product,
+        # The merge takes the widest span and stays live while ANY line is,
+        # which is what makes this look like a product that ran all year.
+        starts_on=D(min(live[0], dead[0])), ends_on=D(max(live[1], dead[1])),
+        live=True, canceled=False,
+        flights=[[live[0], live[1]], [dead[0], dead[1]]],
+        detail=[{"starts": live[0], "ends": live[1], "canceled": False},
+                {"starts": dead[0], "ends": dead[1], "canceled": True}]))
+
+
+def test_a_product_whose_only_line_this_month_was_cancelled_is_not_expected(db):
+    _two_line_product(db, "DOOH",
+                      live=("2026-01-01", "2026-03-31"),      # nowhere near August
+                      dead=("2026-07-01", "2026-09-30"))      # covers it, called off
+    db.commit()
+    assert _exp(db, period="2026-08") == set()
+
+
+def test_a_live_line_this_month_still_expects_the_product(db):
+    """The other half of it - one cancelled line does not take the product off
+    a month something else on it actually ran in."""
+    _two_line_product(db, "DOOH",
+                      live=("2026-07-01", "2026-09-30"),
+                      dead=("2026-01-01", "2026-03-31"))
+    db.commit()
+    assert _exp(db, period="2026-08") == {"DOOH"}
+
+
+def test_a_row_with_no_line_items_kept_answers_as_it_always_did(db):
+    """Rows loaded before line items were kept have nothing to read, and the
+    rolled-up answer is all there is."""
+    _line(db, "Social Mirror Ads", "2026-01-01", "2026-12-31")
+    db.commit()
+    assert _exp(db, period="2026-08") == {"Social Mirror Ads"}

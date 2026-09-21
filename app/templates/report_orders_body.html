@@ -5,13 +5,6 @@
    one answer per client and product, merged across every order that sells it,
    because that is the question the checks ask. Read by a person it hides the
    thing they came here for: which order those dates belong to. #}
-<p class="sub">
-  Every line item {{ rep.client }}'s {{ rep.period|month }} report is judged against -
-  one row each, with its own order and its own dates. The checks see these
-  merged into one row per product, which is why a date here can look narrower
-  than the finding does.
-</p>
-
 {% if running %}
   {# The button used to redirect back to a page that looked exactly the same,
      because the sync takes minutes. This says it started, and the page keeps
@@ -71,8 +64,16 @@
                the one thing the column is for: half the rows did not say what
                product they were. Repeats are just set lighter. #}
             <b{% if not r.first %} class="dup"{% endif %}>{{ r.product }}</b>
-            {% if r.raw and r.raw != r.product %}
-              <br><span class="acct">{{ r.raw }}</span>{% endif %}
+            {# THE RAW NAME ONLY WHEN IT SAYS SOMETHING ELSE. "Meta" over
+               "Meta Display & Video Ads" is the same word twice and two lines
+               of a column that is read down. It is worth printing when it does
+               NOT open with the product - "Connected TV Ads" against CTV is
+               how a mapping is checked. #}
+            {% set _raw = (r.raw or '')|trim %}
+            {% set _a = _raw|lower|replace('-', ' ') %}
+            {% set _b = (r.product or '')|lower|replace('-', ' ')|trim %}
+            {% if _raw and (not _b or not _a.startswith(_b)) %}
+              <br><span class="acct">{{ _raw }}</span>{% endif %}
             {% if r.would_be %}
               <br><span class="warnline"
                 data-tip="The stored product was written by an older import. Today's code reads this line item's raw name as something else, so any product finding on it is being judged against a stale answer until the orders are re-read.">stored as {{ r.product }}, reads as {{ r.would_be }} today</span>
@@ -160,12 +161,6 @@
      row nothing is being decided from. #}
   <details class="offmonth">
     <summary>{{ dead|length }} cancelled line item{{ 's' if dead|length != 1 }}</summary>
-    <p class="sub" style="margin:10px 0 0">
-      Out of every goal on this report. A cancelled buy is not owed here and is
-      not part of what the campaign was asked to deliver, so its impressions and
-      its money are out of the pacing figures - and it is not an error if the
-      report still shows what it ran before it was stopped.
-    </p>
     {{ olines(dead) }}
   </details>
 {% endif %}
@@ -178,12 +173,6 @@
   <details class="offmonth">
     <summary>{{ other|length }} more line item{{ 's' if other|length != 1 }}
       that did not run in {{ rep.period|month }}</summary>
-    <p class="sub" style="margin:10px 0 0">
-      Nothing on this report is judged against these - their flights end before
-      the month or start after it. They are here because they are the same
-      client and often the same product, so a missing section is worth checking
-      against them before deciding the order list is wrong.
-    </p>
     {{ olines(other) }}
   </details>
 {% endif %}

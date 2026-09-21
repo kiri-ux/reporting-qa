@@ -284,13 +284,20 @@
 .buyergrid{border-collapse:collapse;width:100%}
 /* ONE CELL PER ROW. The panel beside it takes half the width, and five columns
    in what is left is five columns of nothing. */
-.buyergrid td{padding:12px 15px;border-bottom:1px solid var(--line-2)}
-.buyergrid tbody tr:last-child td{border-bottom:0}
-.buyergrid tbody tr.on td{background:var(--velocity-10);
+/* DIRECT CHILDREN, EVERY ONE OF THEM. The order lines open in a table INSIDE
+   one of these cells, and ".buyergrid td" reaches it - so every cell of that
+   table took this row's blue fill and a 3px blue bar down its left edge. The
+   drawer came out striped. */
+.buyergrid > tbody > tr > td{padding:12px 15px;border-bottom:1px solid var(--line-2)}
+.buyergrid > tbody > tr:last-child > td{border-bottom:0}
+.buyergrid > tbody > tr.on > td{background:var(--velocity-10);
  box-shadow:inset 3px 0 0 var(--velocity)}
 /* The rows are tall and there can be a hundred of them: this lets the browser
    skip laying out the ones nobody has scrolled to yet. */
-.buyergrid tbody tr{content-visibility:auto;contain-intrinsic-size:auto 150px}
+.buyergrid > tbody > tr{content-visibility:auto;contain-intrinsic-size:auto 150px}
+/* And the drawer's own table is a table, not part of this one. */
+.rowdrawer table{background:var(--surface)}
+.rowdrawer tbody tr:hover td{background:var(--velocity-10)}
 .bwho{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .bwho b{font-size:14.5px}
 /* The campaign's own dates. A lifetime's numbers are read against them, so

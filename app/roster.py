@@ -320,7 +320,10 @@ def expected_products(db: Session, client: str, account_ids: str,
         # of a client's products stopped before the period, the honest answer
         # is "nothing was owed" - an empty set, which the check reads as a
         # pass - not None, which it reads as "we cannot say".
-        hit = [l for l in hit if _ran_during(l, period)]
+        # AND A CANCELLED LINE ITEM'S FLIGHT IS NOT THIS PRODUCT RUNNING.
+        # See _ran_live_during: rolled up, a cancelled August line beside a
+        # live one from another month reads as a product that flew all year.
+        hit = [l for l in hit if _ran_live_during(l, period)]
     # A paused buy is not delivering, so it is not owed on the report. Nor is a
     # canceled one - which live=False already covers, but says so out loud.
     return {l.product for l in hit if is_mapped(l.product)
@@ -974,6 +977,54 @@ def _ran_during(line, period: str) -> bool:
     # Nothing recorded - an order line loaded before the windows were kept.
     # Fall back to the merged span, which is what this used to do.
     return touches(line.starts_on, line.ends_on)
+
+
+class _OneFlight:
+    """One line item's own window, shaped like an order line.
+
+    So the "did it run in this month" test is the same code for a single line
+    item as for the merged row - a second copy of that rule is a second answer
+    waiting to disagree with the board.
+    """
+
+    def __init__(self, starts, ends):
+        self.flights = [[starts, ends]]
+        self.starts_on, self.ends_on = starts, ends
+
+
+def _ran_live_during(line, period: str) -> bool:
+    """Did a line item that was NOT called off run in the report's month?
+
+    THE FLIGHTS DO NOT SAY WHICH WERE CANCELLED. `_ran_during` asks each
+    order's own window rather than the merged span, which is right about
+    dates and blind to this: a cancelled line item's flight is in that list
+    like any other.
+
+    USD - MS Applied Artificial Intelligence bought DOOH twice. One line was
+    cancelled and covers August; the other is live and ran nowhere near it.
+    Rolled up that is one row reading live, not cancelled, and flying over
+    August - so the August report was failed for not carrying a product whose
+    only August line item had been called off. The drawer said CANCELED about
+    the very same row, one click away.
+
+    Per line item, then: a product is owed this month when something that is
+    still being asked for ran in it. No detail recorded - a row loaded before
+    line items were kept - and the rolled-up answer is all there is, which is
+    where this started.
+    """
+    detail = getattr(line, "detail", None)
+    if not detail:
+        return _ran_during(line, period)
+    seen = False
+    for d in detail:
+        if not isinstance(d, dict):
+            continue
+        seen = True
+        if d.get("canceled"):
+            continue
+        if _ran_during(_OneFlight(d.get("starts"), d.get("ends")), period):
+            return True
+    return False if seen else _ran_during(line, period)
 
 
 def completeness(db: Session, market: str, period: str) -> dict:

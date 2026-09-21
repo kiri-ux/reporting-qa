@@ -2596,6 +2596,30 @@ def deliver_group(request: Request, period: str, group: str = Form(...),
     return RedirectResponse(back, status_code=303)
 
 
+@app.post("/cycle/{period}/deliver-many")
+def deliver_many(request: Request, period: str, groups: list[str] = Form([]),
+                 ready_only: str = Form("1"), db: Session = Depends(get_db)):
+    """Package several partners in one press.
+
+    Eleven partners finished on the same morning is eleven trips down the
+    board to find eleven gold buttons, and the one you miss is the one nobody
+    gets a link for. Each still packages on its own in the background - this
+    only saves the walk - so a partner that fails does not take the rest with
+    it, and the cards say where each one is exactly as they did before.
+
+    READY ONLY, because that is what the button on a card does. A partner is
+    not all or nothing: two thirds of it can be signed off while somebody
+    works through the last dozen, and holding the first thirty back is a week
+    of nobody having anything.
+    """
+    from .delivery import start_delivery
+
+    picked = [g.strip() for g in groups if g.strip()][:200]
+    for group in picked:
+        start_delivery(db, period, group, ready_only=bool(ready_only))
+    return RedirectResponse(f"/cycle?period={period}", status_code=303)
+
+
 @app.post("/cycle/{period}/sync-all")
 def sync_all_groups(period: str, db: Session = Depends(get_db)):
     """Bring every packaged partner's folder up to the current reports."""
@@ -4460,18 +4484,10 @@ def pull_range_why(db: Session, market: str, today: dt.date | None = None) -> li
     return out
 
 
-class _OneFlight:
-    """One line item's own window, shaped like an order line.
-
-    So the "did it run in this month" test is the same code for a single line
-    item as for the merged row - a second copy of that rule is a second answer
-    waiting to disagree with the board.
-    """
-
-    def __init__(self, starts, ends):
-        self.flights = [[starts, ends]]
-        self.starts_on, self.ends_on = starts, ends
-
+# Moved to roster, beside the rule it feeds - expected_products asks the same
+# question of one line item now, and two copies of this shape are two answers
+# waiting to disagree.
+from .roster import _OneFlight                                   # noqa: E402
 
 @app.get("/report/{report_id}/orders")
 def report_orders(report_id: int, request: Request, db: Session = Depends(get_db),

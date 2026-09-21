@@ -367,6 +367,17 @@
     </button>
   </div>
 
+  {# THE FORM THE TICKS POST TO. Outside the grid, because a card is not
+     inside it - the boxes name it with form="packmany" instead, so the cards
+     stay what they were. #}
+  <form method="post" action="/cycle/{{ period }}/deliver-many" id="packmany"
+        class="packbar" hidden>
+    <span><b data-packcount>0</b> selected</span>
+    <button class="btn gold" type="submit">Package &amp; share</button>
+    <button type="button" class="mini" data-packclear>Clear</button>
+    <span class="acct">Signed-off reports only.</span>
+  </form>
+
   {# The filter options are the WHOLE cycle's, not this page's - see
      _card_options. The counts beside them still come from the page, which is
      what they describe. #}
@@ -396,6 +407,17 @@
            data-n-sent="{{ 1 if d and d.ok else 0 }}"
            data-search="{{ g.group }} {{ g.markets|join(' ') }}">
         <div class="ghead">
+          {# PICK SEVERAL AND SEND THEM AT ONCE. Eleven partners finishing on
+             the same morning is eleven trips down the board to find eleven
+             gold buttons, and the one you miss is the one nobody gets a link
+             for. Only on the cards with something signed off to send - a tick
+             that packages nothing is a tick that teaches you to distrust the
+             count on the bar. #}
+          {% if g.counts.ready and not packing.get(g.group) %}
+            <input type="checkbox" class="gpick" form="packmany" name="groups"
+                   value="{{ g.group }}" data-ready="{{ g.counts.ready }}"
+                   aria-label="Package {{ g.group }}">
+          {% endif %}
           <div>
             <h3 style="margin:0">{{ g.group }}</h3>
             <p class="sub" style="margin:2px 0 0;font-size:12.5px">
@@ -441,11 +463,15 @@
            standing message rather than being asked for every month. #}
         {% set bflag = buyer_flagged.get(g.group, 0) %}
         <div class="gtags">
-          <button type="button" class="copy buyerlink"
+          {# THE COUNT GOES ON HOVER. "Buyer link · 5 to review" is the widest
+             thing on the card and the number is not what the button does -
+             it is a fact about the list behind it. Teal, because that is
+             what a buyer flag is everywhere else. #}
+          <button type="button" class="copy buyerlink{{ ' has' if bflag }}"
                   data-copy="{{ buyer_links.get(g.group, '') }}"
-                  data-tip="{{ buyer_links.get(g.group, '') }}"
-                  aria-label="Copy the buyer link for {{ g.group }}"
-            ><span>Buyer link{% if bflag %} · {{ bflag }} to review{% endif %}</span></button>
+                  data-tip="{% if bflag %}{{ bflag }} report{{ 's' if bflag != 1 }} with something on {{ 'them' if bflag != 1 else 'it' }} for the buyer. {% endif %}{{ buyer_links.get(g.group, '') }}"
+                  aria-label="Copy the buyer link for {{ g.group }}{% if bflag %}, {{ bflag }} to review{% endif %}"
+            ><span>Buyer link</span></button>
           {% for s in ['missing','errors','needs_fix','in','warnings','ready'] %}
             {% if g.counts[s] %}
               <a class="pill p-{{ s }}"
@@ -466,19 +492,6 @@
                so without this the button looked untouched after being pressed. #}
             <span class="mini busy" data-job="{{ g.group }}"><span class="spin"></span><b
               >{{ job.done }} of {{ job.total or '?' }}</b></span>
-          {% elif have %}
-            {# No count on the label. "Re-check 2" under a heading that says
-               "14 reports" reads as a bug, even when 2 is the true number of
-               stale ones - so the button does the whole partner and the
-               numbers go in the hover. #}
-            <form method="post" action="/cycle/recheck" style="display:inline">
-              <input type="hidden" name="period" value="{{ period }}">
-              <input type="hidden" name="group" value="{{ g.group }}">
-              <input type="hidden" name="scope" value="all">
-              <button class="mini{{ ' warn' if stale.by_group.get(g.group) }}"
-                      title="Re-read this partner's {{ have }} report{{ 's' if have != 1 }} with today's rules.{% if stale.by_group.get(g.group) %} {{ stale.by_group[g.group] }} of them {{ 'was' if stale.by_group[g.group] == 1 else 'were' }} judged by older code.{% endif %}">
-                Re-check</button>
-            </form>
           {% endif %}
           {% if filter_group == g.group %}
             <a href="/cycle?period={{ period }}" class="showing"
@@ -490,6 +503,27 @@
                looking at, so the table arrived with its heading off screen. #}
             <a class="btn seereports"
                href="/cycle?period={{ period }}&group={{ g.group|urlencode }}">See reports</a>
+          {% endif %}
+          {# RE-CHECK IS A SYNC NOW, AND IT SITS WITH THE THING IT BELONGS TO.
+             "Re-check" is what the code calls it and not what anybody asks
+             for: the question is whether this partner's answers are current,
+             and the word for that everywhere else on this page - the two
+             buttons on the toolbar, the one on the link row - is sync. Beside
+             See reports rather than in front of it, because See reports is
+             what gets pressed. #}
+          {% if have and not job %}
+            <form method="post" action="/cycle/recheck" style="display:inline">
+              <input type="hidden" name="period" value="{{ period }}">
+              <input type="hidden" name="group" value="{{ g.group }}">
+              <input type="hidden" name="scope" value="all">
+              <button class="sync{{ ' warn' if stale.by_group.get(g.group) }}" type="submit"
+                      title="Re-read this partner's {{ have }} report{{ 's' if have != 1 }} with today's rules.{% if stale.by_group.get(g.group) %} {{ stale.by_group[g.group] }} of them {{ 'was' if stale.by_group[g.group] == 1 else 'were' }} judged by older code.{% endif %}">
+                <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
+                  <path d="M20 11a8 8 0 10-2.3 5.7M20 5v6h-6" fill="none"
+                        stroke="currentColor" stroke-width="2.2"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>sync</button>
+            </form>
           {% endif %}
           {% set pack = packing.get(g.group) %}
           {% if pack %}
@@ -1212,17 +1246,33 @@
 .s-ready{background:var(--ok)} .s-warnings{background:var(--gold)}
 .s-in{background:var(--velocity-50)} .s-needs_fix{background:var(--plum)}
 .s-errors{background:var(--cardinal)} .s-missing{background:var(--atlas-10)}
-.who{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
-.wtag{display:inline-flex;align-items:center;gap:5px;font-size:12px;
- padding:2px 9px 2px 3px;border-radius:12px;background:var(--atlas-10);color:#3D5468;
- white-space:nowrap}
+/* FOUR NAMES ON ONE LINE. A group with an SEO manager has four of these and
+   they wrapped, which made that card a row taller than the three beside it -
+   on a grid where the cards are meant to read as one block. Tightened until
+   the fourth fits, and a name long enough to still not fit is cut with its
+   own ellipsis rather than pushing the others down. */
+.who{display:flex;flex-wrap:nowrap;gap:4px;margin-top:7px;min-width:0}
+.wtag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;
+ padding:2px 7px 2px 2px;border-radius:12px;background:var(--atlas-10);color:#3D5468;
+ white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .wtag b{display:inline-flex;align-items:center;justify-content:center;
- width:16px;height:16px;border-radius:50%;font-family:Agdasima,sans-serif;
- font-size:11px;font-weight:700;background:var(--atlas);color:#fff}
+ width:15px;height:15px;flex:0 0 auto;border-radius:50%;
+ font-family:Agdasima,sans-serif;font-size:10.5px;font-weight:700;
+ background:var(--atlas);color:#fff}
 .wtag.r b{background:var(--velocity)}
 .wtag.t b{background:var(--plum)}
 .wtag.s b{background:var(--ok)}
 .gcard[hidden]{display:none}
+.ghead .gpick{margin:3px 2px 0 0;width:16px;height:16px;flex:0 0 auto;cursor:pointer}
+/* The bar only exists while something is ticked, and it follows the page down
+   - the ticks are three rows apart and the button cannot be at the top of a
+   scroll the last of them is off the bottom of. */
+.packbar{position:sticky;top:64px;z-index:12;display:flex;align-items:center;
+ gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:9px 14px;border-radius:10px;
+ border:1px solid var(--gold);background:var(--warn-bg);
+ box-shadow:var(--shadow)}
+.packbar[hidden]{display:none}
+.packbar b{font-family:Agdasima,sans-serif;font-size:18px;color:var(--atlas)}
 /* Sits with Download CSV rather than in a banner of its own. The count is the
    whole message - a number beside a refresh arrow needs no sentence. */
 .sync{display:inline-flex;align-items:center;gap:6px;font-family:Agdasima,sans-serif;
@@ -1252,8 +1302,12 @@
  border-radius:9px;background:var(--warn-bg,var(--atlas-10));color:var(--warn);
  white-space:nowrap;margin-top:3px}
 .buyerlink{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
- border-color:var(--atlas-10);background:var(--atlas-10);color:var(--atlas)}
+ border-color:var(--teal);background:var(--teal);color:var(--atlas)}
 .buyerlink:hover{border-color:var(--atlas);background:var(--atlas);color:#fff}
+/* Nothing waiting on the buyer: the link is still there, just not shouting. */
+.buyerlink:not(.has){background:transparent;color:#0F7A85}
+.buyerlink:not(.has):hover{background:var(--teal);color:var(--atlas);
+ border-color:var(--teal)}
 /* A COLOR NOTHING ELSE ON THIS BOARD USES. Every status pill here is green,
    amber, red, plum or blue, and a sixth shade of blue read as a sixth status -
    which is the one thing this must not be. Teal is off that scale entirely,
@@ -1497,6 +1551,47 @@
     document.addEventListener('DOMContentLoaded', land);
   } else { land(); }
   setTimeout(land, 120);
+})();
+
+// ---- picking several partners to package -----------------------------
+// The bar appears when something is ticked and says how many, because a
+// button that packages "whatever is selected" on a board three rows tall is
+// a button nobody presses twice.
+(function () {
+  var bar = document.getElementById('packmany');
+  if (!bar) return;
+  var count = bar.querySelector('[data-packcount]');
+  var clear = bar.querySelector('[data-packclear]');
+
+  function picked() {
+    return [].slice.call(document.querySelectorAll('.gpick:checked'));
+  }
+  function refresh() {
+    var n = picked().length;
+    count.textContent = n;
+    bar.hidden = n === 0;
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('gpick')) refresh();
+  });
+  clear.addEventListener('click', function () {
+    picked().forEach(function (b) { b.checked = false; });
+    refresh();
+  });
+  // SAYING WHAT IT IS ABOUT TO DO. Packaging uploads every signed-off PDF in
+  // every partner ticked, which is not a thing to find out afterwards.
+  bar.addEventListener('submit', function (e) {
+    var n = picked().length;
+    var reports = picked().reduce(function (t, b) {
+      return t + (parseInt(b.dataset.ready, 10) || 0);
+    }, 0);
+    if (!n) { e.preventDefault(); return; }
+    if (!confirm('Package ' + n + ' partner' + (n === 1 ? '' : 's') + ' and '
+        + reports + ' signed-off report' + (reports === 1 ? '' : 's') + '?')) {
+      e.preventDefault();
+    }
+  });
+  refresh();
 })();
 </script>
 {% endblock %}
