@@ -3089,12 +3089,11 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
 
     page = c.get("/cycle?period=2026-08").text
     assert 'class="byhand"' in page, "the row has to say it was put there by hand"
-    assert 'data-hand="1"' in page, "and the filter has to be able to find it"
-    assert "Added by hand <b>1</b>" in page
-    # NOT A SECOND BOARD. The first cut listed every hand-added row in a panel
-    # of its own, which is another table to read for rows that are already on
-    # the one below it.
+    # NOT A SECOND BOARD, and not a filter either. The first cut listed every
+    # hand-added row in a panel of its own, the second gave them a chip beside
+    # the search; the tag on the row is the whole of it now.
     assert "added by hand this cycle" not in page
+    assert "Added by hand <b>" not in page
 
     c.post("/cycle/done", data={"period": "2026-08", "market": "MOXII",
                                 "client": "C & W Roofing", "kind": "lifetime",
@@ -3103,45 +3102,41 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     db.close()
 
 
-def test_the_added_by_hand_filter_counts_the_whole_cycle(tmp_path, monkeypatch):
-    """The table is fifty rows a page.
-
-    The first cut filtered in the browser, over the rows that had been
-    rendered, so a cycle with thirteen hand-added rows on it found the one on
-    page one and said "Added by hand 1" with a straight face. The same trap the
-    search box was in - and the same answer: it is a filter the server applies,
-    over the whole cycle.
+def test_the_report_table_can_be_cut_to_one_buyer(tmp_path, monkeypatch):
+    """The table prints the reporter and not the buyer, so "everything of
+    Dana's" could be asked of the partner cards and not of the reports - which
+    is where the flags are. The menu has no column under it: its options and
+    its counts are the server's, off the whole cycle rather than the fifty rows
+    the browser happens to have.
     """
     import importlib
-    import re as _re
     from fastapi.testclient import TestClient
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'hf.db'}")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'bf.db'}")
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AUTO_RECHECK", "false")
     monkeypatch.setenv("DEFAULT_PERIOD", "2026-08")
     from app import config as cfg; importlib.reload(cfg)
     from app import db as dbm; importlib.reload(dbm); dbm.init_db()
     from app import main as mmod; importlib.reload(mmod)
-    c = TestClient(mmod.app)
+    import inspect
+    assert "col_buyer" in inspect.signature(mmod.cycle_view).parameters
 
-    for i in range(3):
-        c.post("/cycle/done", data={
-            "period": "2026-08", "market": "MOXII", "client": f"Client {i}",
-            "kind": "lifetime", "action": "needed", "ref": f"5300{i}",
-            "products": ["Display", "Meta"], "who": "k"},
-            follow_redirects=False)
+    c = TestClient(mmod.app)
+    # A row, so the reports table is on the page at all.
+    c.post("/cycle/done", data={
+        "period": "2026-08", "market": "MOXII", "client": "C & W Roofing",
+        "kind": "lifetime", "action": "needed", "ref": "53206",
+        "products": ["Display"], "who": "k"}, follow_redirects=False)
 
     page = c.get("/cycle?period=2026-08").text
-    assert _re.search(r"Added by hand <b>3</b>", page), "the count is off the cycle"
-    assert "&hand=1" in page, "the chip has to be a link, not browser state"
+    assert 'data-col="Buyer" data-key="buyer"' in page
+    assert "Added by hand <b>" not in page, "the hand-added chip is gone"
+    assert "&hand=1" not in page
 
-    on = c.get("/cycle?period=2026-08&hand=1").text
-    assert on.count('data-hand="1"') == 3
-    assert "mini toggle on" in on, "the chip has to look pressed"
-
-    # And no client-side row-flag machinery left behind pretending to do this.
+    # And no client-side row-flag machinery left behind pretending to filter.
     assert "data-rowflag" not in (TPL / "cycle.html").read_text()
     assert "data-rowflag" not in (TPL / "base.html").read_text()
+    assert 'data-hand="1"' not in (TPL / "cycle.html").read_text()
 
 
 def test_the_product_picker_is_chips_not_a_multi_select():
@@ -4197,6 +4192,47 @@ def test_a_long_list_of_ids_shows_five_and_hides_the_rest():
     assert ".idmore{" in (TPL / "base.html").read_text()
 
 
+def test_the_line_item_ids_sit_on_the_product_that_runs_them():
+    """They were one run-on list under the chips - a second line of small gray
+    digits on every row of the board - and reading one back meant opening the
+    order to find out which product it belonged to."""
+    import datetime as _dt
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db import Base, OrderLine
+    from app.board import expected_for
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    D = _dt.date.fromisoformat
+    for prod, lids in (("Display", "134715, 134718"),
+                       ("Mobile Conquesting", "135020, 135021")):
+        db.add(OrderLine(market="Vici Media", client="Gravenstein Apple Fair",
+                         account_ids="55081", line_ids=lids, product=prod,
+                         status="IO Live", starts_on=D("2026-07-01"),
+                         ends_on=D("2027-12-31"), order_starts_on=D("2026-07-01"),
+                         order_ends_on=D("2027-12-31"), live=True))
+    db.commit()
+    e = expected_for(db, "2026-07")[0]
+    assert e.line_ids_of == {"Display": ["134715", "134718"],
+                             "Mobile Conquesting": ["135020", "135021"]}
+    # The flat list stays: it is what the CSV and the search read.
+    assert e.line_ids == "134715, 134718, 135020, 135021"
+    db.close()
+
+    # KEYED ON THE PRODUCT AS THE EXPORT SPELLS IT. pill() answers with the
+    # canonical name - "Social Mirror" comes back "Social Mirror Ads" - so the
+    # ids have to be attached before the pill, not looked up off it.
+    import inspect
+    from app import main
+    src = inspect.getsource(main.cycle_view)
+    assert "lids=(e.line_ids_of or {}).get(p)" in src
+    cycle = (TPL / "cycle.html").read_text()
+    assert "p.lids|join(', ')" in cycle
+    assert 'class="oid lid"' not in cycle, "no second line of digits under the chips"
+
+
 def test_a_row_shows_the_copy_that_was_signed_off():
     """A row takes the first report that matches it and the query had no order,
     so where a client ended up with two files - which is easier than it should
@@ -4445,7 +4481,8 @@ def test_a_filter_counts_every_row_it_would_act_on():
     # A 1 is worth printing when it is a real one.
     assert "if (always || counts[n] > 1)" in base
     cycle = (TPL / "cycle.html").read_text()
-    assert cycle.count("data-counts=") == 5, "every filterable column"
+    # Five columns, and the Buyer menu that has no column under it.
+    assert cycle.count("data-counts=") == 6, "every filterable column"
 
 
 def test_a_finding_name_is_a_kind_not_one_reports_answer():

@@ -71,6 +71,9 @@ class Expected:
     kind: str                      # "monthly" | "lifetime"
     account_ids: str = ""
     line_ids: str = ""
+    # The same ids again, split by the product that runs them, so a chip can
+    # carry its own. The flat string above is what the CSV and the search read.
+    line_ids_of: dict = field(default_factory=dict)
     products: list = field(default_factory=list)
     # How many OTHER reports this cycle name the same client. A row shows one
     # of them; the rest sit in the database saying something else, and nothing
@@ -803,6 +806,13 @@ def expected_for(db: Session, period: str,
                 lid = lid.strip()
                 if lid and lid not in e.line_ids:
                     e.line_ids = (e.line_ids + ", " + lid).strip(", ")
+                # WHICH PRODUCT THIS ONE BELONGS TO. A row's ids were one run-on
+                # list under the chips, so "which of these is the Mobile
+                # Conquesting line?" meant opening the order.
+                if lid and l.product:
+                    got = e.line_ids_of.setdefault(l.product, [])
+                    if lid not in got:
+                        got.append(lid)
             # AND SO ARE ITS ORDER IDS.
             #
             # River Valley Builders' lifetime row read "31050" while the report
@@ -889,7 +899,8 @@ def expected_for(db: Session, period: str,
         rows[(mk, ck, "monthly")] = Expected(
             market=seo_row.market, group=seo_row.group, client=seo_row.client,
             kind="monthly", account_ids=seo_row.account_ids,
-            line_ids=seo_row.line_ids, buyer=seo_row.buyer,
+            line_ids=seo_row.line_ids, line_ids_of=dict(seo_row.line_ids_of),
+            buyer=seo_row.buyer,
             reporter=seo_row.reporter, products=sorted(products),
             starts_on=seo_row.starts_on, ends_on=seo_row.ends_on,
             statuses=list(seo_row.statuses),

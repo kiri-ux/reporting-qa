@@ -308,8 +308,7 @@ def test_the_board_can_be_cut_to_the_rows_with_buyer_flags():
 
 def test_the_buyer_filter_survives_a_page_turn(client):
     """The chips are links and the pagers are built from one macro - anything
-    not carried by it is a filter that silently drops on page 2. Added by hand
-    was on that list for weeks and No new file never was."""
+    not carried by it is a filter that silently drops on page 2."""
     from pathlib import Path
 
     keep = Path("app/templates/cycle.html").read_text().split("{% endmacro %}")[0]

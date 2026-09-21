@@ -1558,12 +1558,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                partner: str = Query(""), buyer: str = Query(""),
                reporter: str = Query(""), trainer: str = Query(""),
                status: str = Query(""), only: str = Query(""),
-               # ROWS SOMEBODY PUT ON THIS CYCLE THEMSELVES. Read HERE and not
-               # in the browser, for the same reason the search is: the table
-               # is fifty rows a page, so a filter that only sees what is
-               # rendered found one of thirteen and said so with a straight
-               # face.
-               hand: str = Query(""), waiting: str = Query(""),
+               waiting: str = Query(""),
                # THE ROWS WITH SOMETHING ON THEM FOR THE BUYER. Read here
                # rather than in the browser for the same reason as the rest:
                # the table is fifty rows a page, and a filter that can only
@@ -1578,7 +1573,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                # for a while and these never caught up.
                col_partner: str = Query(""), col_kind: str = Query(""),
                col_status: str = Query(""), col_reporter: str = Query(""),
-               col_finding: str = Query(""),
+               col_buyer: str = Query(""), col_finding: str = Query(""),
                db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
@@ -1661,9 +1656,6 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # other 613 are.
     if q.strip():
         rows = [e for e in rows if _matches(e, q)]
-    # Counted before the filter, so the chip can say how many there are even
-    # while it is on and the rest are hidden.
-    hand_total = sum(1 for e in rows if e.forced_by)
     # ASKED FOR AGAIN AND NOTHING HAS COME. Counted before the filter, so the
     # chip can say how many there are while it is on and the rest are hidden.
     wait_total = sum(1 for e in rows
@@ -1675,8 +1667,6 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         rows = [e for e in rows if e.report and e.report.buyer_findings]
     if waiting:
         rows = [e for e in rows if e.report and e.report.waiting_on_file]
-    if hand:
-        rows = [e for e in rows if e.forced_by]
     # Each column filters on the row's own value rather than on whatever its
     # cell prints - a Kind cell also carries the flight dates, and a filter
     # built out of the printed text offers "lifetime 2026-01-01 to ..." as a
@@ -1686,6 +1676,12 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     # answering it meant opening rows until you found the right kind.
     cols = {"partner": _picked(col_partner), "kind": _picked(col_kind),
             "status": _picked(col_status), "reporter": _picked(col_reporter),
+            # THE BUYER IS NOT A COLUMN AND IS STILL A QUESTION. The table
+            # prints the reporter, so "everything of Dana's" could be asked of
+            # the cards above and not of the reports below - and the reports
+            # are where the flags are. Its menu is built from the server's
+            # counts alone, there being no cell to read it off.
+            "buyer": _picked(col_buyer),
             "finding": _picked(col_finding)}
     # A row carries several findings and any one of them counts, so that one
     # answers with a set where the rest answer with a value.
@@ -1693,6 +1689,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                "kind": lambda e: {e.kind or ""},
                "status": lambda e: {e.state or ""},
                "reporter": lambda e: {e.reporter or ""},
+               # A client can be split between two buyers, so this one answers
+               # with a set like the findings do.
+               "buyer": lambda e: {b.strip() for b in (e.buyer or "").split(",")},
                "finding": _finding_codes}
 
     def _narrow(rows_, skip=""):
@@ -1805,7 +1804,12 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     page = max(1, min(page, pages))
     shown = rows if show_all else rows[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
     from .product_codes import pill
-    chips = {e.ident: [pill(p) for p in e.products] for e in shown}
+    # THE LINE IDS RIDE ON THE CHIP THAT RUNS THEM. Keyed on the product as the
+    # order export spells it, which is what e.products holds - pill() answers
+    # with the canonical name ("Social Mirror" comes back "Social Mirror Ads"),
+    # so the lookup cannot be done off the pill.
+    chips = {e.ident: [dict(pill(p), lids=(e.line_ids_of or {}).get(p) or [])
+                       for p in e.products] for e in shown}
     # A pinned period outside the last thirteen months would not be in the
     # dropdown, and the board would show a cycle you could not switch back to.
     periods = recent_periods()
@@ -1878,9 +1882,6 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                               | {g.group for g in groups if g.group}),
         "all_products": every_product(),
         "cols": cols,
-        # The hand-added chip beside the search: how many there are, and
-        # whether it is on.
-        "hand_total": hand_total, "hand_on": bool(hand),
         "wait_total": wait_total, "wait_on": bool(waiting),
         "breview_total": breview_total, "breview_on": bool(buyer_review),
         "min_days": MIN_DAYS_IN_MONTH,

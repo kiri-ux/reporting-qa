@@ -520,6 +520,11 @@ def check_strategy_categorized(ctx) -> list[dict]:
 # somewhere else in the report at full length.
 ELLIPSIS = re.compile(r"[A-Za-z0-9)\]](?:\.\.\.|…)")
 
+# A grid keyed on the ad rather than the line item: "Display Creative
+# Performance", "YouTube+ Video Completion Performance by Creative". Its first
+# column is the ad's own copy.
+CREATIVE_GRID = re.compile(r"\bcreatives?\b", re.I)
+
 
 def check_truncated_text(ctx) -> list[dict]:
     """Nothing on the report should be cut off for want of space."""
@@ -527,9 +532,13 @@ def check_truncated_text(ctx) -> list[dict]:
     out = []
 
     cut, cut_at = [], -1
-    at = 0
+    at, widget = 0, ""
     for line in text.split("\n"):
         here, at = at, at + len(line) + 1
+        # widget_at's rule, carried along the scan instead of re-derived from
+        # the top of the document at every hit.
+        if NEXT_WIDGET.match(line) and not _looks_like_row(line.strip()):
+            widget = line.strip()
         if _is_chrome(line):
             continue
         for m in ELLIPSIS.finditer(line):
@@ -543,6 +552,16 @@ def check_truncated_text(ctx) -> list[dict]:
             # decide, not emptiness.
             tail = re.split(r"\s{2,}", line[m.end():], 1)[0]
             if re.search(r"[A-Za-z]", tail):
+                continue
+            # AD COPY IS WRITTEN LONGER THAN THE CELL ON PURPOSE.
+            #
+            # Gravenstein Apple Fair's TikTok ads run four lines of social copy
+            # in the Ad Name column and the last one ends "Who's coming? 👇
+            # #Graven...". Nobody is going to widen that column to fit a post,
+            # so the cut is the design and not a defect. Only where the line
+            # ends there: a donut label under the same title still prints its
+            # figure after the ellipsis, and that one is a real one.
+            if not tail.strip() and CREATIVE_GRID.search(widget):
                 continue
             frag = line[max(0, m.start() - 40):m.end() + 8].strip()
             if frag not in cut:

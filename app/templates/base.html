@@ -1700,8 +1700,11 @@ body.fit .pdfwrap object{height:100%}
     // A dropdown per column marked filterable, built from the values actually
     // present, so it never offers a choice that matches nothing.
     if (wrap && table.tHead) {
-      Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th, i) {
-        if (!th.hasAttribute('data-col')) return;
+      // Collected before any menu is appended, so the loop below does not walk
+      // into what it just built.
+      var loose = Array.prototype.slice.call(
+        wrap.querySelectorAll('[data-col][data-key]'));
+      var addMenu = function (th, i) {
         // A COLUMN THAT NARROWS THE WHOLE CYCLE, NOT THE PAGE.
         //
         // These filtered the fifty rows the browser had, which is not what the
@@ -1717,14 +1720,19 @@ body.fit .pdfwrap object{height:100%}
         // so a Kind cell that also carries dates still filters on "monthly".
         var key = th.dataset.key || '';
         var vals = {};
-        rows.forEach(function (r) {
-          var raw = key && r.tr.cells[i] && r.tr.cells[i].dataset.v !== undefined
-            ? r.tr.cells[i].dataset.v : (r.cells[i] || '');
-          (raw || '').split(/\s*,\s*/).forEach(function (v) {
-            v = v.trim();
-            if (v && v !== '\u2014' && v !== '-') vals[v] = (vals[v] || 0) + 1;
+        // A MENU WITH NO COLUMN UNDER IT (i < 0) has no cells to tally. Buyer
+        // is a fact about the row the table does not print, and its whole list
+        // arrives in data-always with the server's counts beside it.
+        if (i >= 0) {
+          rows.forEach(function (r) {
+            var raw = key && r.tr.cells[i] && r.tr.cells[i].dataset.v !== undefined
+              ? r.tr.cells[i].dataset.v : (r.cells[i] || '');
+            (raw || '').split(/\s*,\s*/).forEach(function (v) {
+              v = v.trim();
+              if (v && v !== '\u2014' && v !== '-') vals[v] = (vals[v] || 0) + 1;
+            });
           });
-        });
+        }
         // A CHOICE THAT IS NOT ON THIS PAGE IS STILL A CHOICE. These filter
         // on the SERVER, so "no row here has it" is exactly when you want to
         // pick it - Report review could not be selected until a report already
@@ -1759,7 +1767,7 @@ body.fit .pdfwrap object{height:100%}
           }
         } catch (e) { /* the page's own tally stands */ }
         var sel = buildMulti(names, vals,
-          'colf-' + box.dataset.filter + '-' + i, lb,
+          'colf-' + box.dataset.filter + '-' + (i >= 0 ? i : key), lb,
           key ? function () {
             var u = new URL(window.location.href);
             if (sel.chosen.length) u.searchParams.set('col_' + key, sel.chosen.join('|'));
@@ -1777,7 +1785,11 @@ body.fit .pdfwrap object{height:100%}
         }
         f.appendChild(lb); f.appendChild(sel); wrap.appendChild(f);
         if (!key) selects.push({ i: i, el: sel });
+      };
+      Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th, i) {
+        if (th.hasAttribute('data-col')) addMenu(th, i);
       });
+      loose.forEach(function (el) { addMenu(el, -1); });
       if (selects.length) {
         var clear = document.createElement('button');
         clear.type = 'button'; clear.className = 'mini'; clear.textContent = 'Clear';

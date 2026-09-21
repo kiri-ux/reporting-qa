@@ -13,7 +13,6 @@
   if filter_state and 'state' not in skip %}&state={{ filter_state }}{% endif %}{%
   if q and 'q' not in skip %}&q={{ q|urlencode }}{% endif %}{%
   if bucket != 'pending' and 'done' not in skip %}&done={{ bucket }}{% endif %}{%
-  if hand_on and 'hand' not in skip %}&hand=1{% endif %}{%
   if wait_on and 'waiting' not in skip %}&waiting=1{% endif %}{%
   if breview_on and 'buyerreview' not in skip %}&buyerreview=1{% endif %}{%
   if show_all and 'rows' not in skip %}&rows=all{% endif %}{%
@@ -730,11 +729,9 @@
    reliably see template variables, and a silently-undefined name here
    means the box comes back on every one of a thousand rows. #}
 {% macro reportrows(items, me) %}{% for e in items %}
-      {# data-hand is what the "Added by hand" filter beside the search reads.
-         The tag beside the client is the same fact for the eye. #}
       {# WHERE YOU WERE. Signing a report off sent you back to the top of the
          board and you scrolled down to the row again, every time. #}
-      <tr{% if e.report %} id="r{{ e.report.id }}"{% endif %}{% if e.forced_by %} data-hand="1"{% endif %}>
+      <tr{% if e.report %} id="r{{ e.report.id }}"{% endif %}>
         {# The row's own checkbox. data-clear says this report has nothing
            open, which is what "Select the ones that passed" acts on. #}
         <td class="pick">{% if e.report %}
@@ -781,15 +778,17 @@
             {%- endfor %}
             {%- if _oids|length > 5 %}<span class="idmore"
               data-tip="{{ _oids[5:]|join(', ') }}">+{{ _oids|length - 5 }}</span>{% endif %}</span>{% endif %}</td>
+        {# THE LINE ITEM IDS SIT ON THE PRODUCT THAT RUNS THEM. They were one
+           run-on list under the chips, a second line of small gray digits on
+           every row of the board, and reading one back to a buyer meant
+           opening the order to find out which product it was. #}
         <td><span class="chips">{% for p in chips.get(e.ident, []) %}
-          <span class="chip" data-name="{{ p.name }}" tabindex="0"
+          <span class="chip" tabindex="0"
+                data-name="{{ p.name }}{% if p.lids %} &middot; {{ p.lids|join(', ') }}{% endif %}"
                 style="background:{{ p.bg }};color:{{ p.fg }}">{{ p.code }}</span>
         {% endfor %}</span>
-          {# Line item ids sit with the products they belong to, not with the
-             client - one client can run several, and the order id above is
-             what identifies the client. #}
-          {% if e.line_ids %}<span class="oid lid" title="Line item ids">{% set _i = e.line_ids|first_ids %}{{ _i.shown }}{% if _i.more %}<span class="idmore" data-tip="{{ _i.rest }}">+{{ _i.more }}</span>{% endif %}</span>{% endif %}
-          <span class="sr">{% for p in chips.get(e.ident, []) %}{{ p.name }} {% endfor %}</span></td>
+          <span class="sr">{% for p in chips.get(e.ident, []) %}{{ p.name }} {% endfor %}
+            {{ e.line_ids }}</span></td>
         <td class="nw" data-v="{{ e.kind }}">{% if e.kind == 'lifetime' %}
           <span class="pill p-info"
                 {% if e.life_note %}title="{{ e.life_note }}. A lifetime is owed when a campaign finishes, whatever else this client still has running."{% endif %}>lifetime</span>
@@ -1103,18 +1102,6 @@
            data-filter="tbl-cycle" data-count="cnt-cycle"
            placeholder="Search everything... (Enter to search all {{ row_total }})">
     <span class="count" id="cnt-cycle"></span>
-    {# ROWS SOMEBODY PUT ON THIS CYCLE THEMSELVES. They are ordinary rows and
-       belong in the table with the rest; this is how you look at just yours.
-
-       A LINK, NOT A BROWSER TOGGLE. The table is fifty rows a page, so a
-       filter that could only see what is rendered found one of thirteen and
-       said so with a straight face - the same trap the search box was in. #}
-    {% if hand_total or hand_on %}
-      <a class="mini toggle{{ ' on' if hand_on }}"
-         href="/cycle?{{ keep('hand') }}{% if not hand_on %}&hand=1{% endif %}#reports"
-         data-tip="{% if hand_on %}Showing only the rows somebody put on this cycle by hand. Click to show the rest again.{% else %}Only the rows somebody put on this cycle by hand - approved from the list check, or added here. They are marked BY HAND beside the client.{% endif %}"
-        >Added by hand <b>{{ hand_total }}</b></a>
-    {% endif %}
     {# THE ROWS WITH SOMETHING ON THEM FOR THE BUYER. Not a status and not one
        of the Findings menu entries - it is the question that cuts across both,
        and it is the list that gets sent on. #}
@@ -1139,7 +1126,14 @@
       >{{ label }} <b>{{ n }}</b></a>
     {% endfor %}
   </div>
-  <div class="colfilters" data-filters-for="tbl-cycle"><span class="frow">Reports</span></div>
+  {# A MENU WITH NO COLUMN UNDER IT. The buyer is a fact about the row that
+     the table does not print, so its options and counts come whole from the
+     server instead of being read off the cells. #}
+  <div class="colfilters" data-filters-for="tbl-cycle"><span class="frow">Reports</span>
+    <span hidden data-col="Buyer" data-key="buyer"
+          data-always="{{ col_counts.get('buyer', {}).keys()|join('|') }}"
+          data-counts="{{ col_counts.get('buyer', {})|tojson|forceescape }}"></span>
+  </div>
 
   {# Bulk sign-off. Most of a cycle is reports where everything passed, and
      ticking those one at a time is the longest single job on this board. #}

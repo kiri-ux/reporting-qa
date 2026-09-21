@@ -1899,3 +1899,50 @@ def test_a_real_report_with_a_story_creative_is_quiet():
         pytest.skip("fixture missing")
     assert (400, 1061) in page_images(pdf).get(5, [])
     assert check_creative_shape(_shape_ctx(pdf)) == []
+
+
+# ------------------------------------------ build 263: ad copy cut to fit
+def test_ad_copy_cut_off_in_a_creative_grid_is_not_a_finding():
+    """Gravenstein Apple Fair's TikTok ads carry a whole social post in the Ad
+    Name column and TapClicks cuts it to fit. Nobody widens a column to fit a
+    post, so the report was failed for the one thing on it working."""
+    text = ("TikTok Creative Performance\n"
+            " Ad Name   Impressions   Clicks   CTR\n"
+            "🍎 Sonoma County's sweetest weekend is almost here!"
+            "   39,601   344   0.87%\n"
+            "Who's coming? 👇 #Graven...\n")
+    assert q.check_truncated_text({"text": text}) == []
+
+
+def test_a_label_cut_off_outside_a_creative_grid_is_still_found():
+    """The skip is the creative grid's, not every grid's."""
+    text = ("Site and App Performance\n"
+            " Site   Impressions   Clicks   CTR\n"
+            "Acme - Display   100   1   1.00%\n"
+            "sonomacountyfarmtrails.o...\n")
+    out = q.check_truncated_text({"text": text})
+    assert any("sonomacountyfarmtrails.o..." in f["detail"] for f in out)
+
+
+def test_a_donut_label_under_a_creative_title_is_still_found():
+    """A figure after the ellipsis means a label that ran out of room, not ad
+    copy - the widget title does not excuse it."""
+    text = ("Display Creative Performance\n"
+            " Creative   Impressions\n"
+            "Category Tar...: 77.78%\n")
+    out = q.check_truncated_text({"text": text})
+    assert any("Category Tar..." in f["detail"] for f in out)
+
+
+def test_the_real_tiktok_report_is_quiet():
+    from pathlib import Path
+
+    from app.checks.rules import pdf_text
+
+    pdf = Path(__file__).resolve().parent / "fixtures" / "gravenstein_ad_copy.pdf"
+    if not pdf.exists():
+        pytest.skip("fixture missing")
+    got = pdf_text(pdf)
+    text = got if isinstance(got, str) else got[0]
+    assert "#Graven..." in text
+    assert q.check_truncated_text({"text": text}) == []
