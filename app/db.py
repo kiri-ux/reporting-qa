@@ -900,6 +900,31 @@ class SavedView(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
+class BuyerReview(Base):
+    """One partner's cycle, signed off by the buyer.
+
+    The buyer's page is a list of things to look at, and the reporting team
+    had no way of telling a partner nobody had opened yet from one the buyer
+    had been through and was happy with. It was asked by hand, per partner,
+    every month.
+
+    ONE CYCLE ONLY, and it is not a sign-off on any report: nothing on the
+    buyer's page was ever holding a report up. It says the buyer has been
+    through this partner's list, and no more.
+    """
+    __tablename__ = "buyer_reviews"
+    __table_args__ = (UniqueConstraint("period", "group_name",
+                                       name="uq_buyer_review"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(16), index=True)
+    # The partner, not the market - the buyer's link is per partner.
+    group_name: Mapped[str] = mapped_column(String(255), index=True)
+    who: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime,
+                                                    default=dt.datetime.utcnow)
+
+
 class CheckSetting(Base):
     """A check somebody has switched off, and anything else set by hand.
 

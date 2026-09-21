@@ -27,6 +27,20 @@
       {% endfor %}
     </select>
   </form>
+  {# THE WHOLE PARTNER, DONE. The list says what is left to look at and said
+     nothing about a partner the buyer had already been through, so it was
+     asked by hand, per partner, every month. It signs no report off. #}
+  <form method="post" action="/buyer/{{ token }}/reviewed?period={{ period }}"
+        class="brdone{{ ' on' if reviewed }}">
+    {% if only %}<input type="hidden" name="only" value="{{ only }}">{% endif %}
+    <input type="hidden" name="on" value="{{ '' if reviewed else '1' }}">
+    <button type="submit" aria-pressed="{{ 'true' if reviewed else 'false' }}">
+      <span class="brico" aria-hidden="true">&#127881;</span>
+      <span class="brtext">{{ 'BUYER REVIEWED' if reviewed else 'MARK BUYER REVIEWED' }}</span>
+    </button>
+    <span class="brwho">{% if reviewed %}{{ reviewed.who or 'marked' }} ·
+      {{ reviewed.created_at.strftime('%b %-d') }}{% endif %}</span>
+  </form>
 </div>
 
 {# SIDE BY SIDE, LIKE THE REPORT PAGE. The file used to open OVER the list, so
@@ -245,6 +259,42 @@
     show(a.dataset.open, a.dataset.name || '', a.closest('tr'));
   });
 
+  // ---- the whole partner, done -----------------------------------------
+  // Posted where it stands like the ticks are, because the list underneath it
+  // is the thing somebody has just finished reading.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.brdone button');
+    if (!b || !b.form) return;
+    e.preventDefault();
+    var form = b.form;
+    if (form.classList.contains('busy')) return;
+    var on = form.classList.contains('on') ? '' : '1';
+    var paint = function (done) {
+      form.classList.toggle('on', done);
+      b.setAttribute('aria-pressed', done ? 'true' : 'false');
+      form.querySelector('.brtext').textContent =
+        done ? 'BUYER REVIEWED' : 'MARK BUYER REVIEWED';
+      form.elements.on.value = done ? '' : '1';
+      var who = form.querySelector('.brwho');
+      if (who && !done) who.textContent = '';
+    };
+    paint(!!on);
+    form.classList.add('busy');
+    var data = new URLSearchParams();
+    data.set('on', on);
+    data.set('inline', '1');
+    fetch(form.action, {
+      method: 'POST', credentials: 'same-origin', body: data,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    }).then(function (r) {
+      form.classList.remove('busy');
+      if (!r.ok) paint(!on);
+    }).catch(function () {
+      form.classList.remove('busy');
+      paint(!on);
+    });
+  });
+
   // ---- ticking a flag off, where it stands ------------------------------
   // The post and its redirect rebuilt the page and reopened the report panel:
   // a second and a half and a jump back to the top for one box on a list of
@@ -370,6 +420,22 @@
 .pagehead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;flex:0 0 auto}
 .pagehead h1{font-size:26px;line-height:1.1}
 .pagehead .meta{font-size:13px;color:var(--muted)}
+/* THE ONE BIG THING ON THIS PAGE. Everything else here is a list to work
+   down; this is the end of it. */
+.brdone{margin-left:auto;display:flex;align-items:center;gap:9px}
+.brdone button{display:inline-flex;align-items:center;gap:9px;font:inherit;
+ font-size:14px;font-weight:700;letter-spacing:.04em;padding:11px 20px;
+ border-radius:24px;cursor:pointer;border:1.5px solid var(--teal,var(--velocity));
+ background:var(--surface);color:var(--teal,var(--velocity));
+ transition:background .12s,color .12s,border-color .12s}
+.brdone button:hover{background:var(--teal,var(--velocity));color:#fff}
+.brdone .brico{font-size:16px;filter:grayscale(1);opacity:.7}
+.brdone button:hover .brico{filter:none;opacity:1}
+.brdone.on button{background:var(--ok);border-color:var(--ok);color:#fff}
+.brdone.on button:hover{background:var(--ok);border-color:var(--ok)}
+.brdone.on .brico{filter:none;opacity:1}
+.brdone .brwho{font-size:12px;color:var(--muted);white-space:nowrap}
+.brdone.busy{opacity:.55}
 .pagehead .tabs{margin-left:auto;align-self:center}
 .pagehead form{margin:0;align-self:center}
 .bsplit{display:grid;grid-template-columns:minmax(400px,1fr) minmax(420px,1.1fr);

@@ -350,6 +350,80 @@ def test_the_buyer_can_mark_a_flag_off(client):
     db.close()
 
 
+def test_the_buyer_can_say_the_whole_partner_is_reviewed(client):
+    """The list says what is left to look at and said nothing about a partner
+    the buyer had already been through, so it was asked by hand, per partner,
+    every month. It signs no report off."""
+    import app.buyer_link                      # noqa: F401  (attribute access below)
+
+    c, app = client
+    url = app.buyer_link.url_for("", "Amazing Results LLC")
+
+    body = c.get(f"{url}?period=2026-08").text
+    assert "MARK BUYER REVIEWED" in body.split("<script>")[0]
+
+    r = c.post(f"{url}/reviewed?period=2026-08",
+               data={"on": "1", "inline": "1"}, follow_redirects=False)
+    assert r.status_code == 204
+
+    db = app.db.SessionLocal()
+    mark = db.query(app.db.BuyerReview).one()
+    assert (mark.period, mark.group_name) == ("2026-08", "Amazing Results LLC")
+    # AND IT IS NOT A SIGN-OFF. Nothing on this page was holding a report up.
+    rep = db.query(app.db.Report).filter(
+        app.db.Report.market == "Amazing Results LLC").one()
+    assert rep.acked == [] and rep.buyer_findings
+    db.close()
+
+    body = c.get(f"{url}?period=2026-08").text
+    head = body.split("<script>")[0]
+    assert "MARK BUYER REVIEWED" not in head
+    assert "BUYER REVIEWED" in head and 'aria-pressed="true"' in head
+
+    # Pressed again it comes off - a partner marked by mistake is not stuck.
+    c.post(f"{url}/reviewed?period=2026-08", data={"on": ""},
+           follow_redirects=False)
+    db = app.db.SessionLocal()
+    assert db.query(app.db.BuyerReview).count() == 0
+    db.close()
+
+
+def test_the_mark_is_one_partner_and_one_cycle():
+    """It is not a rule about the partner, and next month the question is open
+    again - which is the point of asking it per cycle."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.exc import IntegrityError
+    from app.db import Base, BuyerReview
+
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(BuyerReview(period="2026-08", group_name="P", who="k"))
+    db.add(BuyerReview(period="2026-09", group_name="P", who="k"))
+    db.add(BuyerReview(period="2026-08", group_name="Q", who="k"))
+    db.commit()
+    assert db.query(BuyerReview).count() == 3
+    db.add(BuyerReview(period="2026-08", group_name="P", who="someone else"))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.close()
+
+
+def test_the_party_icon_needs_the_reports_in_as_well(client):
+    """"Ready to send" beside a partner with three reports still missing is the
+    icon saying something that is not true."""
+    from pathlib import Path
+
+    page = Path("app/templates/cycle.html").read_text()
+    assert "buyer_reviewed.get(g.group) and not g.counts.missing" in page
+    assert ("This partner has been buyer reviewed and all reports are in. "
+            "Ready to send!") in page
+    # The whole card is outlined too, for the scan down the page.
+    assert "{% if brdone %} party{% endif %}" in page
+    assert ".gcard.party{" in page
+
+
 def test_a_flag_ticked_off_can_be_ticked_back_on(client):
     """It used to leave the list the moment it was ticked - live_flags drops
     what has been acked - so a box pressed by accident had nothing on screen

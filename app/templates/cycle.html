@@ -397,7 +397,11 @@
        data-opt-counts='{{ opt_counts|tojson }}'>
     {% for g in groups %}
       {% set d = deliveries.get(g.group) %}
-      <div class="gcard {% if g.ready %}done{% endif %}"
+      {# THE BUYER HAS BEEN THROUGH IT AND EVERY REPORT IS IN. Both, or the
+         card says a partner is ready to send while three of its reports have
+         not arrived. #}
+      {% set brdone = buyer_reviewed.get(g.group) and not g.counts.missing %}
+      <div class="gcard {% if g.ready %}done{% endif %}{% if brdone %} party{% endif %}"
            data-partner="{{ g.group }}" data-buyer="{{ g.buyer }}"
            data-reporter="{{ g.reporter }}" data-trainer="{{ g.trainer }}"
            data-status="{{ 'Good to go' if g.ready else 'Open' }}"
@@ -427,7 +431,8 @@
                    aria-label="Package {{ g.group }}">
           {% endif %}
           <div>
-            <h3 style="margin:0">{{ g.group }}</h3>
+            <h3 style="margin:0">{{ g.group }}{% if brdone %}
+              <span class="brparty" data-tip="This partner has been buyer reviewed and all reports are in. Ready to send!">&#127881;</span>{% endif %}</h3>
             <p class="sub" style="margin:2px 0 0;font-size:12.5px">
               {{ g.expected|length }} report{{ 's' if g.expected|length != 1 }}
               {# Where this partner's link comes from, always - not only when it
@@ -1256,6 +1261,10 @@
 .gcard{background:var(--surface);border:1px solid var(--line);border-radius:10px;
  box-shadow:var(--shadow);padding:15px 17px;display:flex;flex-direction:column;gap:11px}
 .gcard.done{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset,var(--shadow)}
+/* BUYER REVIEWED AND EVERY REPORT IN. Read off the card at arm's length, so
+   the ones left to chase are the ones without it. */
+.gcard.party{border-color:var(--teal);
+ box-shadow:0 0 0 2px var(--teal) inset,var(--shadow)}
 .ghead{display:flex;align-items:flex-start;gap:12px}
 .pct{margin-left:auto;font-family:Agdasima,sans-serif;font-size:26px;font-weight:700;
  color:var(--atlas-50);font-variant-numeric:tabular-nums;line-height:1}
@@ -1273,6 +1282,9 @@
    them, and two copies drift the week either is touched. */
 .gcard[hidden]{display:none}
 .ghead .gpick{margin:3px 2px 0 0;width:16px;height:16px;flex:0 0 auto;cursor:pointer}
+/* BUYER REVIEWED, AND EVERYTHING IN. Beside the name, because the name is
+   what anybody scanning this page is reading. */
+.brparty{font-size:15px;margin-left:5px;vertical-align:baseline;cursor:default}
 /* The bar only exists while something is ticked, and it follows the page down
    - the ticks are three rows apart and the button cannot be at the top of a
    scroll the last of them is off the bottom of. */

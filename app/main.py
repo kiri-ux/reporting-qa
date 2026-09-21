@@ -1862,6 +1862,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # not go with it - the file is every row the filter leaves.
         "csv_href": _csv_href(request),
         "views": _saved_views(db),
+        # WHICH PARTNERS THE BUYER HAS BEEN THROUGH. One query for the board,
+        # not one per card.
+        "buyer_reviewed": _buyer_reviewed(db, period),
         # THE BUYER'S LINK, PER PARTNER. Signed rather than stored, so there is
         # nothing to create, hand out or clean up - the card just has it.
         "buyer_links": {g.group: buyer_url(str(request.base_url), g.group)
@@ -1998,8 +2001,53 @@ def buyer_board(token: str, request: Request, period: str = Query(""),
         "chips": {e.ident: [pill(p) for p in e.products] for e in rows},
         "total": total, "flagged": flagged, "only": only,
         "buyer": card.buyer if card else "",
+        "reviewed": _buyer_reviewed(db, period).get(group),
         "io_order_url": settings.io_order_url,
     })
+
+
+def _buyer_reviewed(db: Session, period: str) -> dict:
+    """group -> the mark, for one cycle. One query, because the board asks for
+    every partner on it at once."""
+    from .db import BuyerReview
+
+    return {r.group_name: r for r in db.query(BuyerReview)
+            .filter(BuyerReview.period == period).all()}
+
+
+@app.post("/buyer/{token}/reviewed")
+def buyer_reviewed(token: str, request: Request, on: str = Form(""),
+                   period: str = Query(""), only: str = Form(""),
+                   inline: str = Form(""), db: Session = Depends(get_db)):
+    """The buyer has been through this partner's list for this cycle.
+
+    NOT A SIGN-OFF ON ANY REPORT. Nothing on this page was ever holding one
+    up; this says the buyer has looked, which is the question the reporting
+    team was asking by hand, per partner, every month.
+    """
+    from .buyer_link import group_of
+    from .cycle import current_period
+    from .db import BuyerReview
+
+    group = group_of(token)
+    if not group:
+        raise HTTPException(404)
+    period = period or settings.default_period or current_period()
+    mark = (db.query(BuyerReview)
+            .filter(BuyerReview.period == period,
+                    BuyerReview.group_name == group).one_or_none())
+    if on and mark is None:
+        db.add(BuyerReview(period=period, group_name=group,
+                           who=whoami(request)))
+    elif not on and mark is not None:
+        db.delete(mark)
+    db.commit()
+    if inline:
+        return Response(status_code=204)
+    back = f"/buyer/{token}?period={period}"
+    if only:
+        back += f"&only={only}"
+    return RedirectResponse(back, status_code=303)
 
 
 def _buyer_report(db: Session, token: str, report_id: int, period: str):
