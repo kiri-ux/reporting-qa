@@ -1084,9 +1084,9 @@ def orders_view(request: Request, view: str = Query("clients"),
     # whole-board export.
     # What the serving file says about the cycle being worked, if one is loaded.
     from .board import MIN_DAYS_IN_MONTH
-    from .cycle import current_period
+    from .cycle import working_period
     from .serving import served_days
-    _p = settings.default_period or current_period()
+    _p = working_period()
     # A PARTNER WITH NO ORDERS IS NOT EVIDENCE OF ANYTHING. 125 of 158 came
     # back on the first look, and most of them simply have nothing running -
     # so the panel was crying wolf at a number nobody could act on.
@@ -1579,13 +1579,13 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                         summary)
     from .buyer_link import url_for as buyer_url
     from .checks.products import every_product
-    from .cycle import current_period, cycle_for, recent_periods
+    from .cycle import working_period, cycle_for, recent_periods
     from .delivery import (delivery_jobs, latest_deliveries, out_of_sync,
                            out_of_sync_why)
     from .pace import pace
 
     show_all = rows_ == "all"
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     prune_old_pdfs(db)          # cheap, and keeps the disk from filling silently
     cyc = cycle_for(period)
     # Rows this cycle does NOT owe, and why. A report that quietly stops being
@@ -1818,6 +1818,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     card_opts, card_opt_counts = _card_options(every_group)
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
+        "pinned": working_period(),
         "periods": periods, "groups": shown_groups, "all_groups": groups,
         # THE WHOLE CYCLE'S FILTER OPTIONS, not this page's.
         #
@@ -1980,13 +1981,13 @@ def _buyer_rows(db: Session, group: str, period: str):
 def buyer_board(token: str, request: Request, period: str = Query(""),
                 only: str = Query(""), db: Session = Depends(get_db)):
     from .buyer_link import group_of
-    from .cycle import current_period, cycle_for, recent_periods
+    from .cycle import working_period, cycle_for, recent_periods
     from .product_codes import pill
 
     group = group_of(token)
     if not group:
         raise HTTPException(404)
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     rows, card = _buyer_rows(db, group, period)
     total = len(rows)
     flagged = sum(1 for e in rows if e.report and e.report.buyer_findings)
@@ -2026,13 +2027,13 @@ def buyer_reviewed(token: str, request: Request, on: str = Form(""),
     team was asking by hand, per partner, every month.
     """
     from .buyer_link import group_of
-    from .cycle import current_period
+    from .cycle import working_period
     from .db import BuyerReview
 
     group = group_of(token)
     if not group:
         raise HTTPException(404)
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     mark = (db.query(BuyerReview)
             .filter(BuyerReview.period == period,
                     BuyerReview.group_name == group).one_or_none())
@@ -2059,12 +2060,12 @@ def _buyer_report(db: Session, token: str, report_id: int, period: str):
     permission - nothing is taken from the URL but the id.
     """
     from .buyer_link import group_of
-    from .cycle import current_period
+    from .cycle import working_period
 
     group = group_of(token)
     if not group:
         raise HTTPException(404)
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     rows, _card = _buyer_rows(db, group, period)
     rep = next((e.report for e in rows
                 if e.report and e.report.id == report_id), None)
@@ -2493,14 +2494,14 @@ def checks_set(request: Request, pick: list[str] = Form(default=[]),
         # row's switch and the two bulk buttons do not get in each other's way.
         _start_check_run(db, run, period)
     elif runall:
-        from .cycle import current_period
+        from .cycle import working_period
         from .recheck import ALL_KEY, start_job
-        at = period or settings.default_period or current_period()
+        at = period or working_period()
         start_job(db, f"{ALL_KEY}:{at}", period=at, stale_only=True)
     elif stop:
-        from .cycle import current_period
+        from .cycle import working_period
         from .recheck import stop_job
-        at = period or settings.default_period or current_period()
+        at = period or working_period()
         stop_job(db, stop if ":" in stop else f"{stop}:{at}")
     elif one:
         key, _sep, want = one.partition("|")
@@ -2552,13 +2553,13 @@ def checks_run(request: Request, name: str = Form(""), period: str = Form(""),
 
 def _start_check_run(db: Session, name: str, period: str = "") -> None:
     from .checks.rules import CHECKS, CHECK_PRODUCTS
-    from .cycle import current_period
+    from .cycle import working_period
     from .recheck import start_job
 
     known = {fn.__name__: label for fn, label in CHECKS}
     if name not in known:
         return
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     start_job(db, f"check:{name}:{period}", period=period, stale_only=False,
               products=CHECK_PRODUCTS.get(name), note=known[name][:255],
               count_for=name)
@@ -2573,10 +2574,10 @@ def checks_run_everything(request: Request, period: str = Form(""),
     board in a queue that ran for hours on its own schedule, while the person
     who needed an answer this morning watched a number that was not moving.
     """
-    from .cycle import current_period
+    from .cycle import working_period
     from .recheck import ALL_KEY, start_job
 
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     start_job(db, f"{ALL_KEY}:{period}", period=period, stale_only=True)
     return RedirectResponse(_back_to_rules(request, back), status_code=303)
 
@@ -2585,12 +2586,26 @@ def checks_run_everything(request: Request, period: str = Form(""),
 def checks_stop(request: Request, stop: str = Form(""), period: str = Form(""),
                 back: str = Form(""), db: Session = Depends(get_db)):
     """Stop a run. It stops at the end of the batch it is on."""
-    from .cycle import current_period
+    from .cycle import working_period
     from .recheck import stop_job
 
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     stop_job(db, stop if ":" in stop else f"{stop}:{period}")
     return RedirectResponse(_back_to_rules(request, back), status_code=303)
+
+
+@app.post("/cycle/pin")
+def cycle_pin(request: Request, period: str = Form(""), who: str = Form(""),
+              db: Session = Depends(get_db)):
+    """Make `period` the cycle every page opens on. Blank follows the calendar."""
+    from .cycle import set_working_period
+    try:
+        set_working_period(db, period.strip(),
+                           who=who.strip() or whoami(request) or "")
+    except ValueError:
+        raise HTTPException(400, "Not a cycle.")
+    return RedirectResponse(f"/cycle?period={period.strip()}" if period.strip()
+                            else "/cycle", status_code=303)
 
 
 @app.post("/cycle/recheck/skip")
@@ -2816,11 +2831,11 @@ def cycle_audit(request: Request, period: str = Form(""), group: str = Form(""),
     """
     from .audit import audit
     from .board import STATE_LABEL
-    from .cycle import current_period
+    from .cycle import working_period
 
     from .db import AuditList
 
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     saved = db.scalars(select(AuditList)
                        .where(AuditList.period == period)).first()
 
@@ -2884,7 +2899,7 @@ def cycle_audit_call(request: Request, period: str = Form(""),
     from scratch every time somebody opens the page.
     """
     from .db import AuditCall, CycleDone
-    from .cycle import current_period
+    from .cycle import working_period
 
     # ANSWERED IN PLACE, NOT BY REDRAWING THE PAGE.
     #
@@ -2906,7 +2921,7 @@ def cycle_audit_call(request: Request, period: str = Form(""),
                                  "at": _eastern(dt.datetime.utcnow(), "%b %-d")})
         return RedirectResponse("/cycle/audit", status_code=303)
 
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     ref = (ref or "").strip()[:255]
     name = (who or "").strip() or whoami(request)
     if not ref or call not in ("approved", "rejected", "clear"):
@@ -3043,14 +3058,14 @@ def rules_view(request: Request, db: Session = Depends(get_db)):
     # only ever shows what went wrong on that report, so "what does this thing
     # actually look for" could only be answered by having seen enough reports.
     from .board import flag_counts
-    from .cycle import current_period, month_label
+    from .cycle import working_period, month_label
     from .flag_catalog import (PACKS_MEANS, VERIFY_MEANS, WHO_MEANS,
                                flags, kinds_for_check, unwritten)
     # HOW MANY REPORTS EACH ONE IS FLAGGING RIGHT NOW. The catalog listed all
     # 38 with equal weight, so a check firing on sixty reports this month read
     # exactly like one that has never fired - on the page somebody uses to
     # decide what to look at first.
-    period = settings.default_period or current_period()
+    period = working_period()
     counts = flag_counts(db, period)
     groups = flags()
     # AND WHICH ARE SWITCHED OFF. The page that lists every check is the page
@@ -3125,9 +3140,9 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
                 db: Session = Depends(get_db)):
     """Every finished partner's client link for this cycle, on its own page."""
     from .board import by_group
-    from .cycle import current_period, cycle_for, recent_periods
+    from .cycle import working_period, cycle_for, recent_periods
 
-    period = period or settings.default_period or current_period()
+    period = period or working_period()
     groups = by_group(db, period)
     delivered = _delivered(db, period, groups)
     periods = recent_periods()
@@ -3341,8 +3356,9 @@ def cycle_recheck(period: str = Form(""), group: str = Form(""),
     "eventually" is not soon enough - a fix has just gone out and somebody
     wants that partner's board right before they hand a link over.
     """
+    from .cycle import pinned_period
     from .recheck import start_job
-    period = period or settings.default_period or ""
+    period = period or pinned_period()
     key = f"{period}:{group}" if group else f"{period}:*"
     # A partner button means "make this partner right", which is every report
     # it has - "Re-check 2" on a card headed "14 reports" reads as a bug even
@@ -3584,12 +3600,13 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                      budgets_for)
     from .version import rules_version as _rv
 
+    from .cycle import pinned_period
     from .filekind import PPTX, extension, kind_of_blob, slide_count
     blob = await file.read()
     filekind = kind_of_blob(blob, file.filename or "")
     if not filekind:
         raise HTTPException(400, "That is not a PDF or a PowerPoint.")
-    period = period or settings.default_period or ""
+    period = period or pinned_period()
     is_lifetime = kind == "lifetime"
     # A REPORT THE CHECKS CANNOT JUDGE.
     #
@@ -4284,8 +4301,9 @@ def cycle_recheck_status(period: str = Query(""), db: Session = Depends(get_db))
     Without this the count only moved when somebody reloaded, so a job that had
     stopped and a job that was working looked exactly the same.
     """
+    from .cycle import pinned_period
     from .recheck import running_jobs, stale_count
-    period = period or settings.default_period or ""
+    period = period or pinned_period()
     jobs = running_jobs(db)
     if period:
         jobs = {k: v for k, v in jobs.items() if not v["period"] or v["period"] == period}

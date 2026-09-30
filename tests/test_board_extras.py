@@ -1963,9 +1963,24 @@ def test_a_count_loaded_before_the_days_were_kept_is_a_floor():
     db.close(); eng.dispose()
 
 
-def test_the_cycle_is_august():
+def test_the_cycle_is_september():
     from app.config import Settings
-    assert Settings.model_fields["default_period"].default == "2026-08"
+    assert Settings.model_fields["default_period"].default == "2026-09"
+
+
+def test_the_cycle_can_be_set_from_the_board(client_orders_db):
+    from app.cycle import pinned_period, working_period
+    c, db, dbm = client_orders_db
+    assert working_period() == "2026-07"
+    r = c.get("/cycle?period=2026-09")
+    assert "Make default" in r.text
+    r = c.post("/cycle/pin", data={"period": "2026-09"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert working_period() == "2026-09"
+    assert "Make default" not in c.get("/cycle").text
+    assert c.post("/cycle/pin", data={"period": "Sept"}).status_code == 400
+    c.post("/cycle/pin", data={"period": ""}, follow_redirects=False)
+    assert pinned_period() == ""
 
 
 ROSTER_CSV = ("Partner,Buyer,Email,SEO,Email,Manager,Reporting Team,To:,"

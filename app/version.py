@@ -219,8 +219,8 @@ def map_stamp() -> str:
     Anything comparing an OrderSync.map_version compares it to THIS.
     """
     from .config import settings
-    from .cycle import current_period
-    return f"{product_map_version()}:{settings.default_period or current_period()}"
+    from .cycle import working_period
+    return f"{product_map_version()}:{working_period()}"
 
 
 _FINGERPRINT: str | None = None

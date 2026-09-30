@@ -67,6 +67,16 @@
       {% endfor %}
     </select>
   </form>
+  {# The cycle every page opens on. Stored in app_settings so the person
+     running the month can roll it without a deploy - see cycle.working_period. #}
+  {% if period == pinned %}
+    <span style="font-size:12px;color:var(--muted)">Default</span>
+  {% else %}
+    <form method="post" action="/cycle/pin" style="margin:0">
+      <input type="hidden" name="period" value="{{ period }}">
+      <button type="submit" class="btn">Make default</button>
+    </form>
+  {% endif %}
 </div>
 
 {# WHY THE BOX IS SLOW, WHEN IT IS SLOW.

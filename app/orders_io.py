@@ -330,8 +330,8 @@ def import_io_export(db: Session, sources, period: str | None = None,
     # a month behind the board.
     if not period:
         from .config import settings
-        from .cycle import current_period
-        period = settings.default_period or current_period()
+        from .cycle import working_period
+        period = working_period()
     p_start, p_end = period_bounds(period)
 
     # AND A MONTH OF HEADROOM PAST IT.
