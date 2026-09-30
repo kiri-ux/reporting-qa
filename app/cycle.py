@@ -180,3 +180,77 @@ def recent_periods(n: int = 13, today: dt.date | None = None) -> list[str]:
         if m == 0:
             y, m = y - 1, 12
     return out
+
+
+# ----------------------------------------------------------- the pinned cycle
+# THE PIN IS SET FROM THE BOARD, not the config file. The person who knows the
+# month has rolled is not the person who can deploy, and a deploy to move one
+# string left the board on last month for days. The config value is only the
+# fallback for a database with no pin in it; blank there means follow the
+# calendar.
+#
+# Cached for fifteen seconds for the same reason the check switches are: it is
+# read on every page, and the other gunicorn worker catching up within fifteen
+# seconds is the lag the board already has on everything a person changes.
+# A database that cannot be read falls back to the config value rather than
+# failing the page.
+PIN_KEY = "default_period"
+_PIN_TTL = 15.0
+_pin_cache: dict = {"at": -_PIN_TTL, "value": None, "db": None}
+
+
+def _read_pin() -> str | None:
+    import time
+
+    from .config import settings
+    # Keyed on the database too, so a cached answer never outlives the
+    # database it was read from (the tests swap one in per fixture).
+    if (_pin_cache["db"] == settings.database_url
+            and time.monotonic() - _pin_cache["at"] < _PIN_TTL):
+        return _pin_cache["value"]
+    value = None
+    try:
+        from sqlalchemy import select
+
+        from .db import AppSetting, SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.scalar(select(AppSetting).where(AppSetting.key == PIN_KEY))
+            value = row.value if row else None
+        finally:
+            db.close()
+    except Exception:                                            # noqa: BLE001
+        value = None
+    _pin_cache.update(at=time.monotonic(), value=value, db=settings.database_url)
+    return value
+
+
+def pinned_period() -> str:
+    """The pinned cycle, or "" when the board follows the calendar."""
+    from .config import settings
+    pin = _read_pin()
+    return settings.default_period if pin is None else pin
+
+
+def working_period(today: dt.date | None = None) -> str:
+    """The cycle the board lands on when no period is asked for."""
+    return pinned_period() or current_period(today)
+
+
+def set_working_period(db, period: str, who: str = "") -> None:
+    """Pin the board to `period`; "" goes back to following the calendar."""
+    from sqlalchemy import select
+
+    from .db import AppSetting
+    import re
+    if period and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", period):
+        raise ValueError(period)
+    row = db.scalar(select(AppSetting).where(AppSetting.key == PIN_KEY))
+    if row is None:
+        row = AppSetting(key=PIN_KEY)
+        db.add(row)
+    row.value = period
+    row.changed_by = who[:128]
+    row.changed_at = dt.datetime.utcnow()
+    db.commit()
+    _pin_cache["at"] = -_PIN_TTL

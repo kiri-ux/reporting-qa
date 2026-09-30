@@ -438,10 +438,12 @@ def recent_periods(n: int) -> list[str]:
     cycle that shipped in March is not in anybody's way, and re-reading four
     years of PDFs every time a rule changes is work nobody asked for.
     """
+    from .cycle import pinned_period
     from .cycle import recent_periods as _recent
     out = _recent(max(n, 1))
-    if settings.default_period and settings.default_period not in out:
-        out.append(settings.default_period)
+    pin = pinned_period()
+    if pin and pin not in out:
+        out.append(pin)
     return out
 
 

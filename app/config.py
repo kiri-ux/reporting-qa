@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Pin the board to one cycle while a month is being re-run. The dropdown
     # still switches freely; this only decides where /cycle lands with no
     # period in the URL. Set it to "" to go back to following the calendar.
-    default_period: str = "2026-08"
+    default_period: str = "2026-09"
 
     # Re-check reports in the background when the checking code changes. Off
     # only if a deploy needs to stop the sweep for some reason - a stale report
