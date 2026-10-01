@@ -4913,3 +4913,36 @@ def test_a_failed_order_sync_is_named_on_the_board():
     assert mmod._orders_stale(s) is False
     s.close()
     eng.dispose()
+
+
+def test_a_report_can_be_removed_back_to_missing_or_not_needed(client_orders_db, tmp_path):
+    c, db, dbm = client_orders_db
+    b = dbm.Batch(market="Mkt", period="2026-07"); db.add(b); db.flush()
+
+    def report(name):
+        f = tmp_path / f"{name}.pdf"
+        f.write_bytes(b"%PDF")
+        r = dbm.Report(batch_id=b.id, client=name, market="Mkt", period="2026-07",
+                       severity="pass", filename=f.name, stored_path=str(f),
+                       findings=[], acked=[])
+        db.add(r); db.commit()
+        return r.id, f
+
+    page = c.get(f"/report/{report('Acme')[0]}/view").text
+    assert "Back to missing" in page and "Not needed" in page
+
+    rid, f = report("Bloom")
+    r = c.post(f"/report/{rid}/remove", data={"mode": "missing"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    db.expire_all()
+    assert db.get(dbm.Report, rid) is None and not f.exists()
+
+    rid, f = report("Crane")
+    c.post(f"/report/{rid}/remove", data={"mode": "none"}, follow_redirects=False)
+    db.expire_all()
+    assert db.get(dbm.Report, rid) is None and not f.exists()
+    mark = db.query(dbm.CycleDone).one()
+    assert mark.reason == "none" and mark.ident == "mkt|crane|monthly"
+
+    assert c.post(f"/report/{rid}/remove", data={"mode": "x"}).status_code in (400, 404)

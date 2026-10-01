@@ -2374,6 +2374,58 @@ def review_many(request: Request, ids: list[int] = Form([]), state: str = Form("
     return resp
 
 
+@app.post("/report/{report_id}/remove")
+def remove_report(report_id: int, request: Request, mode: str = Form(...),
+                  who: str = Form(""), db: Session = Depends(get_db)):
+    """Take a report's file off its row.
+
+    missing: the file and the report go, and the row asks for a report again.
+    none:    the same, and the row is marked Not needed for this cycle.
+
+    THE MARK GOES ON THE BOARD ROW, NOT ON THE REPORT'S OWN NAME. A report is
+    matched to its row loosely - the file says "KLOS 95.5" where the order
+    says "(KLOS 95.5) ROCK" - and a mark keyed on the file's spelling would sit
+    on a row that does not exist. The row is found before the report goes.
+    """
+    from .board import _key as board_key
+    from .board import expected_for
+    from .db import CycleDone
+    if mode not in {"missing", "none"}:
+        raise HTTPException(400, "unknown mode")
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    period = rep.period
+    kind = "lifetime" if rep.is_lifetime else ("seo" if getattr(rep, "is_seo", False)
+                                               else "monthly")
+    market, client = rep.market, rep.client
+    if mode == "none" and period:
+        for e in expected_for(db, period):
+            if e.report is not None and e.report.id == rep.id:
+                market, client, kind = e.market, e.client, e.kind
+                break
+    for path in (rep.stored_path, getattr(rep, "pending_path", "")):
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+    db.delete(rep)
+    if mode == "none" and period and board_key(market) and board_key(client):
+        ident = f"{board_key(market)}|{board_key(client)}|{kind}"
+        row = db.scalar(select(CycleDone).where(CycleDone.period == period,
+                                                CycleDone.ident == ident))
+        if row is None:
+            row = CycleDone(period=period, ident=ident)
+            db.add(row)
+        row.market, row.client, row.kind = market, client, kind
+        row.reason = "none"
+        row.marked_by = who.strip() or whoami(request) or "checked off"
+    db.commit()
+    to = _back_cookie(request) or (f"/cycle?period={period}" if period else "/cycle")
+    return RedirectResponse(to.split("#")[0], status_code=303)
+
+
 @app.post("/report/{report_id}/review")
 def review_report(report_id: int, request: Request, state: str = Form(...),
                   who: str = Form(""), back: str = Form(""),

@@ -314,6 +314,17 @@
       </div>
     </form>
 
+    <details class="removebox">
+      <summary>Remove file</summary>
+      <form method="post" action="/report/{{ rep.id }}/remove" class="verdicts"
+            onsubmit="return confirm('Delete this file? This cannot be undone.')">
+        <button class="mini" name="mode" value="missing"
+                data-tip="Delete the file. The row asks for a report again.">Back to missing</button>
+        <button class="mini" name="mode" value="none"
+                data-tip="Delete the file and mark the row Not needed this cycle.">Not needed</button>
+      </form>
+    </details>
+
     {% if rep.reviewed_at %}
       <p class="sub" style="font-size:12.5px;margin-top:8px">
         {{ rep.review_state|replace('_', ' ')|title }} by
@@ -561,6 +572,9 @@ details[open] > .cksum::before{content:'▾ '}
  margin-left:6px;vertical-align:1px}
 .ckbad{background:var(--crit-bg);color:var(--crit)}
 .ckskip{background:var(--atlas-10);color:#3D5468}
+.removebox{margin-top:10px;font-size:12.5px}
+.removebox summary{cursor:pointer;color:var(--ink-2)}
+.removebox form{margin-top:6px}
 .ckbuyer{display:inline-block;font-family:'GT Walsheim Pro',sans-serif;font-size:12px;
  font-weight:700;letter-spacing:0;padding:1px 8px;border-radius:20px;margin-left:6px;
  vertical-align:1px;background:var(--teal);color:var(--atlas)}
