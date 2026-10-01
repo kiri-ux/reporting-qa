@@ -184,6 +184,48 @@ def normalize_period(period: str | None) -> str | None:
     return s
 
 
+def _dates(period: str, mask: int) -> list[dt.date]:
+    """The days set in a month's bitmask, in order."""
+    y, m = (int(x) for x in period.split("-"))
+    return [dt.date(y, m, i + 1) for i in range(31) if mask >> i & 1]
+
+
+def _merge_month(db: Session, period: str, keys: list, days: dict,
+                 names: dict) -> int:
+    """Union one month of a file into what is stored. Returns rows added."""
+    existing = {(r.market_key, r.client_key): r
+                for r in db.scalars(select(ServedDays).where(
+                    ServedDays.period == period)).all()}
+    added = 0
+    for k in keys:
+        _p, mk, ck = k
+        market, client = names[k]
+        dates = _dates(period, days[k])
+        iso = {d.isoformat() for d in dates}
+        row = existing.get((mk, ck))
+        if row is None:
+            db.add(ServedDays(period=period, market_key=mk, client_key=ck,
+                              market=market[:255], client=client[:255],
+                              days=len(iso), day_list=sorted(iso),
+                              first_day=dates[0], last_day=dates[-1]))
+            added += 1
+            continue
+        was = set(getattr(row, "day_list", None) or [])
+        now = sorted(was | iso)
+        row.day_list = now
+        # A row loaded before the days were kept has a count and no dates.
+        # Its count is real, so it is a floor rather than something to
+        # overwrite with a smaller number.
+        row.days = max(len(now), row.days or 0)
+        row.market = market[:255] or row.market
+        row.client = client[:255] or row.client
+        lo, hi = dates[0], dates[-1]
+        row.first_day = min(row.first_day or lo, lo)
+        row.last_day = max(row.last_day or hi, hi)
+        row.loaded_at = dt.datetime.utcnow()
+    return added
+
+
 def import_serving(db: Session, rows, *, period: str | None = None,
                    replace: bool = True, merge: bool = False) -> dict:
     """Count the days each client delivered on, per period.
@@ -220,7 +262,11 @@ def import_serving(db: Session, rows, *, period: str | None = None,
     money = [f for f in ("impressions", "spend", "clicks") if f in cols]
 
     period = normalize_period(period)
-    days: dict[tuple[str, str, str], set] = {}
+    # ONE INT PER CLIENT PER MONTH, a bit for each day served. It was a set of
+    # dates, and a two-year backfill of every client is millions of date
+    # objects - measured at 120 MB for 500 clients, which put the box over
+    # 512 MB and got it restarted mid-sync.
+    days: dict[tuple[str, str, str], int] = {}
     names: dict[tuple[str, str, str], tuple[str, str]] = {}
     found_months: set[str] = set()
     read = 0
@@ -246,7 +292,7 @@ def import_serving(db: Session, rows, *, period: str | None = None,
         if period and p != period:
             continue
         k = (p, _key(market), _key(client))
-        days.setdefault(k, set()).add(when)
+        days[k] = days.get(k, 0) | (1 << (when.day - 1))
         names.setdefault(k, (market, client))
 
     # A PERIOD THAT MATCHES NOTHING IS A TYPO, NOT AN EMPTY FILE.
@@ -277,38 +323,18 @@ def import_serving(db: Session, rows, *, period: str | None = None,
     # served twenty days would read as one. The days themselves are kept, so
     # this is a union rather than a guess about which count to believe.
     if merge:
-        existing = {(r.period, r.market_key, r.client_key): r
-                    for r in db.scalars(select(ServedDays).where(
-                        ServedDays.period.in_(sorted({k[0] for k in days})))).all()}
         added = 0
-        for k, dates in days.items():
-            p_, mk, ck = k
-            market, client = names[k]
-            iso = {d.isoformat() for d in dates}
-            row = existing.get(k)
-            if row is None:
-                db.add(ServedDays(period=p_, market_key=mk, client_key=ck,
-                                  market=market[:255], client=client[:255],
-                                  days=len(iso), day_list=sorted(iso),
-                                  first_day=min(dates), last_day=max(dates)))
-                added += 1
-                continue
-            was = set(getattr(row, "day_list", None) or [])
-            now = sorted(was | iso)
-            row.day_list = now
-            # A row loaded before the days were kept has a count and no dates.
-            # Its count is real, so it is a floor rather than something to
-            # overwrite with a smaller number.
-            row.days = max(len(now), row.days or 0)
-            row.market = market[:255] or row.market
-            row.client = client[:255] or row.client
-            lo, hi = min(dates), max(dates)
-            row.first_day = min(row.first_day or lo, lo)
-            row.last_day = max(row.last_day or hi, hi)
-            row.loaded_at = dt.datetime.utcnow()
-        db.commit()
+        # A MONTH AT A TIME, let go of after each, so the rows already stored
+        # for two years of months are never all held at once.
+        by_period: dict[str, list] = {}
+        for k in days:
+            by_period.setdefault(k[0], []).append(k)
+        for p_now in sorted(by_period):
+            added += _merge_month(db, p_now, by_period[p_now], days, names)
+            db.commit()
+            db.expunge_all()
         return {"rows_read": read, "clients": len(days), "new_clients": added,
-                "periods": sorted({k[0] for k in days}), "merged": True,
+                "periods": sorted(by_period), "merged": True,
                 "counted_on": ", ".join(money) or "a row per day, no figures in the file",
                 "columns": {f: str(header[i]) for f, i in sorted(cols.items())}}
 
@@ -327,9 +353,10 @@ def import_serving(db: Session, rows, *, period: str | None = None,
                     synchronize_session=False)
             db.flush()
 
-    for k, dates in days.items():
+    for k, mask in days.items():
         p, mk, ck = k
         market, client = names[k]
+        dates = _dates(p, mask)
         db.add(ServedDays(period=p, market_key=mk, client_key=ck,
                           market=market[:255], client=client[:255],
                           days=len(dates),
