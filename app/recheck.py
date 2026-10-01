@@ -141,7 +141,9 @@ def _orders_current(db: Session) -> bool:
     """
     from .db import OrderSync
     from .version import map_stamp
-    row = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+    from .orders_s3 import is_order_sync
+    row = db.scalars(select(OrderSync).where(OrderSync.state != "running",
+                                             is_order_sync(OrderSync))
                      .order_by(OrderSync.id.desc()).limit(1)).first()
     if row is None or not row.ok:
         return True                    # nothing loaded: a different problem
@@ -604,7 +606,9 @@ def _remap_orders_if_stale() -> None:
 
     db = SessionLocal()
     try:
-        prev = db.scalars(select(OrderSync).where(OrderSync.state != "running")
+        from .orders_s3 import is_order_sync
+        prev = db.scalars(select(OrderSync).where(OrderSync.state != "running",
+                                                  is_order_sync(OrderSync))
                           .order_by(OrderSync.id.desc()).limit(1)).first()
         if prev is None or not prev.ok:
             return                        # nothing loaded, so nothing is stale

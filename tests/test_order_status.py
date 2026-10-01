@@ -561,3 +561,20 @@ def test_a_cancelled_order_does_not_set_the_lifetime_end(monkeypatch):
     # Every line cancelled: still a flight.
     row.detail = [li("55157", "133733", "2027-01-31", True)]
     assert ingest.client_flight(None, "x", "")[1] == dt.date(2027, 1, 31)
+
+
+def test_a_serve_or_sheet_sync_after_the_orders_does_not_make_them_stale(db):
+    """The serve files and the breakout sheet run after the orders on every
+    sync, and their rows carry no import stamp."""
+    from sqlalchemy import select
+    from app.db import OrderSync
+    from app.orders_s3 import is_order_sync
+    from app.version import map_stamp
+    db.add(OrderSync(source="s3://b/o/", ok=True, state="done",
+                     map_version=map_stamp()))
+    db.add(OrderSync(source="serving upload: s3 o/client-serve_1.csv", ok=True))
+    db.add(OrderSync(source="roster sheet: abc", ok=True))
+    db.commit()
+    row = db.scalars(select(OrderSync).where(is_order_sync(OrderSync))
+                     .order_by(OrderSync.id.desc()).limit(1)).first()
+    assert row.map_version == map_stamp()

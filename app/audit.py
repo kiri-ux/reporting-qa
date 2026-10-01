@@ -254,8 +254,9 @@ def _dropped_reason(db, names: set, ids=()) -> str:
         try:
             from sqlalchemy import desc, select
             from .db import OrderSync
+            from .orders_s3 import is_order_sync
             sync = db.scalars(select(OrderSync)
-                              .where(OrderSync.ok.is_(True))
+                              .where(OrderSync.ok.is_(True), is_order_sync(OrderSync))
                               .order_by(desc(OrderSync.id)).limit(1)).first()
             for pair, why in (getattr(sync, "dropped", None) or {}).items():
                 _market, _, client = pair.partition("|")
@@ -393,7 +394,9 @@ def _sync_statuses(db) -> dict:
     try:
         from sqlalchemy import desc, select
         from .db import OrderSync
-        sync = db.scalars(select(OrderSync).where(OrderSync.ok.is_(True))
+        from .orders_s3 import is_order_sync
+        sync = db.scalars(select(OrderSync).where(OrderSync.ok.is_(True),
+                                                  is_order_sync(OrderSync))
                           .order_by(desc(OrderSync.id)).limit(1)).first()
         out = dict(getattr(sync, "order_statuses", None) or {})
     except Exception:                                        # noqa: BLE001
