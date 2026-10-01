@@ -1343,10 +1343,10 @@ def _orders_stale(db: Session) -> bool:
     """
     from .db import OrderSync
     from .version import map_stamp
-    from .orders_s3 import NOT_A_SYNC
+    from .orders_s3 import is_order_sync
     row = db.scalars(select(OrderSync)
                      .where(OrderSync.state != "running",
-                            ~OrderSync.source.like(NOT_A_SYNC))
+                            is_order_sync(OrderSync))
                      .order_by(desc(OrderSync.id)).limit(1)).first()
     return bool(row and row.ok and (row.map_version or "") != map_stamp())
 
@@ -1361,10 +1361,10 @@ def _orders_failed(db: Session) -> str:
     nowhere near the board.
     """
     from .db import OrderSync
-    from .orders_s3 import NOT_A_SYNC
+    from .orders_s3 import is_order_sync
     row = db.scalars(select(OrderSync)
                      .where(OrderSync.state != "running",
-                            ~OrderSync.source.like(NOT_A_SYNC))
+                            is_order_sync(OrderSync))
                      .order_by(desc(OrderSync.id)).limit(1)).first()
     if row is None or row.ok:
         return ""
@@ -4680,7 +4680,7 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
     stored rows being older than the code, and there was no way to look at them
     without me guessing from a screenshot.
     """
-    from .checks.products import map_order_products
+    from .checks.products import NOT_ON_A_REPORT, map_order_products
     from .roster import _ran_during, client_lines
     from .version import map_stamp
 
@@ -4767,13 +4767,13 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
                 "total_impressions": getattr(l, "total_impressions", None),
                 "ran": _ran_during(l, rep.period) if rep.period else None,
             })
-    # ADDITIONAL BILLING IS NOT A PRODUCT ON ANY REPORT, and it was most of the
-    # table. And ONE ROW PER LINE ITEM: the same line item came back twice
+    # ADDITIONAL BILLING AND WEBSITE VISITOR ID ARE ON NO REPORT, and they
+    # were most of the table. And ONE ROW PER LINE ITEM: the same line item came back twice
     # when it reached this client by two stored rows.
     seen_rows: set = set()
     kept_rows = []
     for r in rows:
-        if r["product"] == "Additional Billing":
+        if r["product"] in NOT_ON_A_REPORT:
             continue
         key = (r["product"], str(r.get("order") or ""), str(r.get("line") or ""),
                str(r.get("starts") or ""), str(r.get("ends") or ""), r["status"])
@@ -4820,10 +4820,10 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
     # was called off is exactly what somebody opens this panel to find out.
     dead = regroup([r for r in rows if r["canceled"]])
     rows = regroup([r for r in rows if not r["canceled"]])
-    from .orders_s3 import NOT_A_SYNC, running_sync
+    from .orders_s3 import is_order_sync, running_sync
     sync = db.scalars(select(OrderSync)
                       .where(OrderSync.state != "running",
-                             ~OrderSync.source.like(NOT_A_SYNC))
+                             is_order_sync(OrderSync))
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     ctx = {
         "nav": "cycle", "rep": rep, "rows": rows, "other": other,
@@ -4903,10 +4903,10 @@ def order_lines(oid: str, request: Request, db: Session = Depends(get_db)):
                          "impressions": getattr(l, "impressions", None)})
     rows.sort(key=lambda r: (str(r.get("starts") or ""), r["product"]))
 
-    from .orders_s3 import NOT_A_SYNC
+    from .orders_s3 import is_order_sync
     sync = db.scalars(select(OrderSync)
                       .where(OrderSync.state != "running",
-                             ~OrderSync.source.like(NOT_A_SYNC))
+                             is_order_sync(OrderSync))
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     # AND WHY IT IS NOT HERE, when it is not. An empty table reads as an empty
     # feed, and the import already wrote down what it did with the rows.
@@ -5020,8 +5020,10 @@ async def orders_import(file: UploadFile = File(...), period: str = Form(""),
         if res.get("header_overruled"):
             msg += (f", {res['header_overruled']:,} line item(s) kept on their "
                     f"own status against an order header that disagreed")
+        from .version import map_stamp
         db.add(OrderSync(source=f"upload: {file.filename}", rows=n, ok=True,
-                         message=msg + ".", guidance=res.get("guidance") or {}))
+                         message=msg + ".", guidance=res.get("guidance") or {},
+                         map_version=map_stamp()))
         db.commit()
     return RedirectResponse(f"/orders?imported={n}", status_code=303)
 

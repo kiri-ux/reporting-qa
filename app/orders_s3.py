@@ -57,11 +57,25 @@ def _client():
 # about a sync nobody ran - and worse, its blank ETag became the one the next
 # real sync compared against.
 NOT_A_SYNC = "serving upload:%"
+# EVERY OTHER SOURCE THAT SHARES THIS LOG. The serve files and the breakout
+# sheet run after the orders on every sync, so the newest row is almost never
+# an order sync - and everything asking "were the orders read by the current
+# code" read the serve file's blank stamp, said no, and switched the product
+# check off on every report, half an hour after every re-read.
+NOT_ORDER_SOURCES = (NOT_A_SYNC, "roster sheet%", "budgets:%")
+
+
+def is_order_sync(model=None):
+    """SQL condition: this OrderSync row is a read of the order list. Pass the
+    OrderSync the query selects from."""
+    from sqlalchemy import and_
+    model = model or OrderSync
+    return and_(*[~model.source.like(p) for p in NOT_ORDER_SOURCES])
 
 
 def last_sync(db: Session) -> OrderSync | None:
     return db.scalars(select(OrderSync)
-                      .where(~OrderSync.source.like(NOT_A_SYNC))
+                      .where(is_order_sync())
                       .order_by(desc(OrderSync.id)).limit(1)).first()
 
 
@@ -479,7 +493,7 @@ def sync(db: Session, *, force: bool = False, claim_id: int | None = None,
     source = f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}"
     prev = db.scalars(select(OrderSync)
                       .where(OrderSync.state != "running",
-                             ~OrderSync.source.like(NOT_A_SYNC))
+                             is_order_sync())
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     try:
         freed = sweep_leftovers()
