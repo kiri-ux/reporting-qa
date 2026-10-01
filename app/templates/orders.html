@@ -530,7 +530,7 @@
       </p>
       <div class="daystrip">
         {% for d in m.cal.days %}
-          <span class="{{ 'on' if d.clients else 'off' }}{{ ' wk' if d.weekend }}"
+          <span class="{{ 'on' if d.clients else 'off' }}"
                 data-tip="{{ d.iso }} · {% if d.clients %}{{ '{:,}'.format(d.clients) }} client{{ 's' if d.clients != 1 }} delivered{% else %}nothing in the file for this day{% endif %}">{{ d.day }}</span>
         {% endfor %}
       </div>
@@ -538,15 +538,13 @@
     {% endfor %}
     {% if serve_months %}
       {# THE COLORS HAD TO BE ASKED ABOUT, WHICH MEANS THEY WERE NOT SAYING
-         ANYTHING. Three of them and no key. #}
+         ANYTHING. Two now: the Saturday/Sunday shade said nothing about the
+         file. #}
       <p class="sub daykey" style="margin:0 0 12px;font-size:12px">
         <span class="daystrip" style="display:inline-flex;margin:0 6px 0 0;
               vertical-align:-4px"><span class="on">1</span></span>in the file ·
         <span class="daystrip" style="display:inline-flex;margin:0 6px 0 8px;
-              vertical-align:-4px"><span class="on wk">2</span></span>weekend, in
-        the file ·
-        <span class="daystrip" style="display:inline-flex;margin:0 6px 0 8px;
-              vertical-align:-4px"><span class="off">3</span></span>nothing for
+              vertical-align:-4px"><span class="off">2</span></span>nothing for
         that day. Hover any of them for how many clients delivered.</p>
     {% endif %}
     {% if serving_prefix %}
