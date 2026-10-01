@@ -252,7 +252,7 @@
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
     e.preventDefault();
     // ALREADY OPEN IS NOT A CLICK. Pressing it again tore the object out of
-    // the panel and put an identical one back - a second of grey and a
+    // the panel and put an identical one back - a second of gray and a
     // re-download of a file that was already on screen. The button says it is
     // the one open instead.
     if (a.classList.contains('on')) return;
