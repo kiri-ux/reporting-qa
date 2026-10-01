@@ -184,13 +184,16 @@
        things nobody at this desk can do anything about. They hold nothing up
        now - the severity, the board state and the sign-off all read the list
        above - and they stay on the report until somebody accepts them. #}
+    {# Collapsed: none of it is this desk's to act on. #}
     {% if buyers %}
-      <h2 style="margin-top:22px">Buyer review</h2>
-      <ul class="flist buyerlist">
-        {% for i, f in buyers %}
-          {{ flagitem(rep, offs, i, f) }}
-        {% endfor %}
-      </ul>
+      <details class="buyerbox" style="margin-top:20px">
+        <summary class="cksum">Buyer review<span class="ckbuyer">{{ buyers|length }}</span></summary>
+        <ul class="flist buyerlist">
+          {% for i, f in buyers %}
+            {{ flagitem(rep, offs, i, f) }}
+          {% endfor %}
+        </ul>
+      </details>
     {% endif %}
 
     {% if rep.checks and not rep.checks_skipped %}
@@ -535,11 +538,11 @@ partner, why this one is fine as is...">{{ rep.review_note }}</textarea>
 .fdetail{color:var(--ink-2);font-size:12.5px}
 .flist li.acked .fbody b{text-decoration:line-through;text-decoration-thickness:1px}
 .flist li.acked .fbody{opacity:.62}
-/* THE BUYER'S LIST, IN THE BUYER'S COLOR - the same one the flags page puts
-   on the owner tag. The two panels sit one above the other on a narrow
+/* THE BUYER'S LIST, IN THE BUYER'S COLOR - the teal the board puts on BUYER
+   REVIEW. The two panels sit one above the other on a narrow
    column, and a heading alone is not enough separation to stop the second
    list being read as more of the first. */
-.buyerlist{border-left:2px solid var(--atlas);padding-left:12px}
+.buyerlist{border-left:3px solid var(--teal);padding-left:12px;margin-top:11px}
 .buyerlist li{border-bottom-color:var(--line)}
 
 .pdfwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;
@@ -557,6 +560,9 @@ details[open] > .cksum::before{content:'▾ '}
  margin-left:6px;vertical-align:1px}
 .ckbad{background:var(--crit-bg);color:var(--crit)}
 .ckskip{background:var(--atlas-10);color:#3D5468}
+.ckbuyer{display:inline-block;font-family:'GT Walsheim Pro',sans-serif;font-size:12px;
+ font-weight:700;letter-spacing:0;padding:1px 8px;border-radius:20px;margin-left:6px;
+ vertical-align:1px;background:var(--teal);color:var(--atlas)}
 .cklist{list-style:none;margin:11px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .cklist li{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--ink-2)}
 .ckmark{flex:0 0 auto;width:16px;height:16px;display:flex;align-items:center;
