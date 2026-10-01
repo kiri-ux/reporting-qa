@@ -498,3 +498,24 @@ def test_only_new_serve_files_are_read(db, monkeypatch):
     s3.sync_serving(db)
     assert fake.gets == ["o/client-serve_20261005_1200_0.csv"]
     assert db.query(ServedDays).one().days == 4
+
+
+def test_a_sync_killed_by_a_restart_stops_saying_running(db):
+    import os
+    import socket
+    from app import orders_s3 as s3
+    from app.db import OrderSync
+    now = dt.datetime.utcnow()
+
+    def claim(runner):
+        db.query(OrderSync).delete()
+        db.add(OrderSync(state="running", started_at=now, synced_at=now,
+                         runner=runner))
+        db.commit()
+        return s3.running_sync(db)
+
+    host = socket.gethostname()
+    assert claim(f"{host}:{os.getpid()}") is not None
+    assert claim(f"{host}:999999") is None
+    assert claim("an-old-container:7") is None
+    assert claim("") is not None

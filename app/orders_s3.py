@@ -70,13 +70,43 @@ def last_sync(db: Session) -> OrderSync | None:
 STALE_RUN_MINUTES = 30
 
 
+def _me() -> str:
+    import socket
+    return f"{socket.gethostname()}:{os.getpid()}"[:128]
+
+
+def _runner_gone(runner: str) -> bool:
+    """Is the worker that claimed this sync no longer there?
+
+    A restart - a deploy, or the memory limit - kills the sync with the
+    worker, and the claim sat "running" for half an hour after. Same host:
+    the pid is checked. Another host: a deploy replaced the container, and the
+    old one is gone. A claim with no runner is left to the clock.
+    """
+    host, _, pid = runner.rpartition(":")
+    if not host or not pid.isdigit():
+        return False
+    import socket
+    if host != socket.gethostname():
+        return True
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 def running_sync(db: Session) -> OrderSync | None:
     rec = db.scalars(select(OrderSync).where(OrderSync.state == "running")
                      .order_by(desc(OrderSync.id)).limit(1)).first()
     if rec is None:
         return None
     started = rec.started_at or rec.synced_at
-    if (dt.datetime.utcnow() - started).total_seconds() > STALE_RUN_MINUTES * 60:
+    if (_runner_gone(rec.runner or "")
+            or (dt.datetime.utcnow() - started).total_seconds()
+            > STALE_RUN_MINUTES * 60):
         rec.state = "done"
         rec.ok = False
         rec.message = ("Interrupted - the service restarted while this sync was "
@@ -110,7 +140,7 @@ def begin_sync(db: Session, trigger: str = "") -> OrderSync | None:
     now = dt.datetime.utcnow()
     rec = OrderSync(source=f"s3://{settings.orders_s3_bucket}/{settings.orders_s3_key}",
                     state="running", started_at=now, synced_at=now, ok=True,
-                    trigger=trigger,
+                    trigger=trigger, runner=_me(),
                     message="Downloading and parsing the export...")
     db.add(rec)
     db.commit()
