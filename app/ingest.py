@@ -250,29 +250,89 @@ def _last_served_day(db: Session, client: str, period: str):
 
 
 def flight_lines(db: Session, client: str, accounts: str) -> list[dict]:
-    """Every line item behind that flight, so a wrong date can be traced.
+    """Every order behind that flight, so a wrong date can be traced.
 
     "This is telling me the wrong lifetime end date" is not answerable from a
     pair of dates. It is answerable from the row that supplied them - which
     order, which line item, and whether it is still live - and that took a
     screenshot of the IO tool and a guess every time.
+
+    ONE ENTRY PER ORDER, FROM ITS LINE ITEMS, AND A CANCELLED ORDER IS NOT ONE.
+    The stored row is merged per client and product across every order, so its
+    dates are the widest of all of them. Collective Heads - Meruelo Media's
+    lifetime was failed for stopping at 16 September against 31 January 2027:
+    order 51012 ran to 16 September, and 55157, every line of it cancelled,
+    was dated to January. A cancelled line item is left out. Only when every
+    line item the client has is cancelled are they used, so a cancelled
+    campaign still has a flight.
     """
     from .roster import client_lines
 
+    lines = client_lines(db, client, accounts) or []
     out = []
-    for l in client_lines(db, client, accounts) or []:
-        # The order's window when the export carried it - that is what a
-        # lifetime has to cover - and the line item's when it did not.
-        out.append({"order": l.account_ids or "", "lines": l.line_ids or "",
-                    "product": l.product or "",
-                    "starts": getattr(l, "order_starts_on", None) or l.starts_on,
-                    "ends": getattr(l, "order_ends_on", None) or l.ends_on,
-                    "line_starts": l.starts_on, "line_ends": l.ends_on,
-                    "live": bool(getattr(l, "live", True)),
-                    "stopped": bool(getattr(l, "canceled", False)
-                                    or getattr(l, "complete", False))})
+    for skip_canceled in (True, False):
+        for l in lines:
+            detail = getattr(l, "detail", None) or []
+            if not detail:
+                # A row loaded before line items were kept. The order's window
+                # when the export carried it, and the line item's when not.
+                if skip_canceled and getattr(l, "canceled", False):
+                    continue
+                out.append({"order": l.account_ids or "", "lines": l.line_ids or "",
+                            "product": l.product or "",
+                            "starts": getattr(l, "order_starts_on", None) or l.starts_on,
+                            "ends": getattr(l, "order_ends_on", None) or l.ends_on,
+                            "line_starts": l.starts_on, "line_ends": l.ends_on,
+                            "live": bool(getattr(l, "live", True)),
+                            "stopped": bool(getattr(l, "canceled", False)
+                                            or getattr(l, "complete", False))})
+                continue
+            use_os = bool(getattr(l, "order_starts_on", None))
+            use_oe = bool(getattr(l, "order_ends_on", None))
+            by_order: dict[str, list[dict]] = {}
+            for d in detail:
+                if skip_canceled and d.get("canceled"):
+                    continue
+                by_order.setdefault(str(d.get("order") or ""), []).append(d)
+            for order, ds in by_order.items():
+                def first(k):
+                    v = [x.get(k) for x in ds if x.get(k)]
+                    return min(v) if v else None
+
+                def last(k):
+                    v = [x.get(k) for x in ds if x.get(k)]
+                    return max(v) if v else None
+
+                out.append({"order": order,
+                            "lines": " ".join(sorted({str(x.get("line") or "")
+                                                      for x in ds} - {""})),
+                            "product": l.product or "",
+                            # The order's own dates only where the row kept
+                            # them: when the export's order dates are a window
+                            # the import clears them on the row and not here.
+                            "starts": _as_date((first("order_starts") if use_os else None)
+                                               or first("starts")),
+                            "ends": _as_date((last("order_ends") if use_oe else None)
+                                             or last("ends")),
+                            "line_starts": _as_date(first("starts")),
+                            "line_ends": _as_date(last("ends")),
+                            "live": any(x.get("live") for x in ds),
+                            "stopped": all(x.get("canceled") or x.get("complete")
+                                           for x in ds)})
+        if out:
+            break
     out.sort(key=lambda r: (r["ends"] or dt.date.min), reverse=True)
     return out
+
+
+def _as_date(v):
+    """Line item dates are stored as ISO strings in the JSON detail."""
+    if v is None or isinstance(v, dt.date):
+        return v
+    try:
+        return dt.date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
 
 
 def market_from_orders(db: Session, filenames: list[str]) -> str:

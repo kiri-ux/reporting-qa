@@ -534,3 +534,30 @@ def test_the_serve_merge_leaves_the_callers_records_alone(db):
                    merge=True)
     assert rec.message == "kept"
     assert db.query(ServedDays).count() == 2
+
+
+def test_a_cancelled_order_does_not_set_the_lifetime_end(monkeypatch):
+    """Collective Heads - Meruelo Media: 51012 ran to 16 September, 55157 was
+    cancelled whole and dated to January."""
+    from types import SimpleNamespace
+    from app import ingest, roster
+
+    def li(order, line, ends, canceled):
+        return {"order": order, "line": line, "starts": "2026-01-01",
+                "ends": ends, "order_starts": "2026-01-01", "order_ends": ends,
+                "canceled": canceled, "complete": not canceled, "live": False}
+
+    row = SimpleNamespace(
+        account_ids="51012 55157", line_ids="", product="Meta",
+        starts_on=dt.date(2026, 1, 1), ends_on=dt.date(2027, 1, 31),
+        order_starts_on=dt.date(2026, 1, 1), order_ends_on=dt.date(2027, 1, 31),
+        live=False, canceled=False, complete=True,
+        detail=[li("51012", "119900", "2026-09-16", False),
+                li("55157", "133733", "2027-01-31", True)])
+    monkeypatch.setattr(roster, "client_lines", lambda *a, **k: [row])
+    assert ingest.client_flight(None, "x", "") == (dt.date(2026, 1, 1),
+                                                   dt.date(2026, 9, 16))
+
+    # Every line cancelled: still a flight.
+    row.detail = [li("55157", "133733", "2027-01-31", True)]
+    assert ingest.client_flight(None, "x", "")[1] == dt.date(2027, 1, 31)

@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.09.14-262"
+BUILD = "2026.10.01-263"
 BUILD_NOTES = ("")
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,25 @@ def rules_fingerprint(off: frozenset[str] | set[str] | None = None) -> str:
     # between them and picking by name is how the recheck.py hash was too
     # narrow by exactly the bug it was written for, twice.
     h.update(_roster_source())
+    # AND THE LIFETIME FLIGHT, which is what check_date_range judges a lifetime
+    # against. It lives in ingest.py, so a fix to it - a cancelled order's end
+    # date being used - reached no report already checked. Those two functions
+    # only; the rest of ingest.py does not change an answer.
+    h.update(_flight_source().encode())
     return h.hexdigest()[:16]
+
+
+def _flight_source() -> str:
+    import ast
+    from pathlib import Path
+    want = {"client_flight", "flight_lines", "_as_date", "_last_served_day"}
+    try:
+        src = (Path(__file__).resolve().parent / "ingest.py").read_text()
+        tree = ast.parse(src)
+    except (OSError, SyntaxError):
+        return ""
+    return "\n".join(ast.get_source_segment(src, n) or "" for n in tree.body
+                     if isinstance(n, ast.FunctionDef) and n.name in want)
 
 
 def _check_source(path, off) -> bytes:
