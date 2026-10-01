@@ -717,7 +717,7 @@ def sync_serving(db: Session, *, force: bool = False) -> OrderSync | None:
     until it changes. Every file was re-read whenever any one of them changed,
     which after the two backfills was over three gigabytes every morning. Each
     file read leaves a record with its own key and ETag, and a file whose
-    key and ETag are already on an ok record is skipped. force re-reads all.
+    key and ETag are already on an ok record is skipped.
 
     One record per file, committed as it goes, so a worker killed halfway
     through a backlog picks up at the next file rather than starting over.
@@ -745,7 +745,10 @@ def sync_serving(db: Session, *, force: bool = False) -> OrderSync | None:
         return rec
     if not found:
         return latest()
-    done = set() if force else {
+    # FORCE DOES NOT MEAN EVERY FILE AGAIN. The days are a union, so a file
+    # already read has nothing to add, and the button forces every sync - with
+    # the backfills that was three and a half gigabytes per press.
+    done = {
         (src, etag) for src, etag in db.execute(
             select(OrderSync.source, OrderSync.etag).where(
                 OrderSync.source.like(SERVING_SOURCE + " %"),

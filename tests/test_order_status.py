@@ -491,6 +491,7 @@ def test_only_new_serve_files_are_read(db, monkeypatch):
 
     fake.gets.clear()
     s3.sync_serving(db)
+    s3.sync_serving(db, force=True)
     assert fake.gets == []
 
     fake.objects["o/client-serve_20261005_1200_0.csv"] = (
