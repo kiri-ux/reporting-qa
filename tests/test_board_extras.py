@@ -3639,7 +3639,7 @@ def test_the_day_strip_says_what_its_colours_mean(tmp_path, monkeypatch):
     assert "Newest day in the file" in page
     assert "{% for m in serve_months %}" in page
     assert "nothing for\n        that day" in page or "nothing for" in page
-    assert "weekend, in" in page, "the paler squares have to be explained"
+    assert "weekend" not in page and " wk" not in page
 
 
 def test_the_catalogue_counts_what_is_flagging_right_now(tmp_path, monkeypatch):

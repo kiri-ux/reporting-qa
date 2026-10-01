@@ -332,7 +332,12 @@ def import_serving(db: Session, rows, *, period: str | None = None,
         for p_now in sorted(by_period):
             added += _merge_month(db, p_now, by_period[p_now], days, names)
             db.commit()
-            db.expunge_all()
+            # Only this table's rows. expunge_all() also let go of the order
+            # sync's own record, which the caller still holds, and the sync
+            # crashed on DetachedInstanceError the next time it was read.
+            for obj in [o for o in db.identity_map.values()
+                        if isinstance(o, ServedDays)]:
+                db.expunge(obj)
         return {"rows_read": read, "clients": len(days), "new_clients": added,
                 "periods": sorted(by_period), "merged": True,
                 "counted_on": ", ".join(money) or "a row per day, no figures in the file",

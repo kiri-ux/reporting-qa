@@ -520,3 +520,17 @@ def test_a_sync_killed_by_a_restart_stops_saying_running(db):
     assert claim(f"{host}:999999") is None
     assert claim("an-old-container:7") is None
     assert claim("") is not None
+
+
+def test_the_serve_merge_leaves_the_callers_records_alone(db):
+    """The sync holds its own record across the serve import."""
+    from app.db import OrderSync, ServedDays
+    from app.serving import import_serving
+    rec = OrderSync(source="s3://b/o/", ok=True, state="done", message="kept")
+    db.add(rec); db.commit()
+    import_serving(db, [["Business Unit", "Client", "Impressions", "Date"],
+                        ["Acme Media", "Bloom Heating", "5", "2026-08-03"],
+                        ["Acme Media", "Bloom Heating", "5", "2026-09-03"]],
+                   merge=True)
+    assert rec.message == "kept"
+    assert db.query(ServedDays).count() == 2
