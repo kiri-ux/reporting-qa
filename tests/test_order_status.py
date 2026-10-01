@@ -280,8 +280,14 @@ def test_an_abandoned_order_download_is_swept(tmp_path, monkeypatch):
     live.mkdir()
     (live / "000-export.csv").write_bytes(b"y" * 100)
 
-    assert s3.sweep_leftovers() == 5000
+    serve = tmp_path / "serve-abandoned"
+    serve.mkdir()
+    (serve / "000-client-serve.csv").write_bytes(b"z" * 300)
+    os.utime(serve, (long_ago, long_ago))
+
+    assert s3.sweep_leftovers() == 5300
     assert not old.exists()
+    assert not serve.exists()
     assert live.exists(), "a download in progress is not somebody else's mess"
 
 
@@ -411,3 +417,84 @@ def test_the_orders_reach_comes_from_its_own_line_items():
     # Order 301 has one line item and does not inherit anybody's 2018.
     assert by["Social Mirror"].order_starts_on.isoformat() == "2026-06-29"
     db.close(); eng.dispose()
+
+
+# ------------------------------------------- read where it sits, nothing saved
+class _Body(io.BytesIO):
+    pass
+
+
+class _FakeS3:
+    """Enough of boto3's S3 client for the syncs: list, head, get."""
+
+    def __init__(self, objects):
+        self.objects = objects          # key -> (bytes, etag, timestamp)
+        self.gets: list[str] = []
+
+    def list_objects_v2(self, Bucket, Prefix, **_kw):
+        return {"Contents": [
+            {"Key": k, "Size": len(b), "ETag": f'"{e}"',
+             "LastModified": dt.datetime.fromtimestamp(t, dt.timezone.utc)}
+            for k, (b, e, t) in sorted(self.objects.items())
+            if k.startswith(Prefix)]}
+
+    def head_object(self, Bucket, Key):
+        b, e, t = self.objects[Key]
+        return {"ContentLength": len(b), "ETag": f'"{e}"',
+                "LastModified": dt.datetime.fromtimestamp(t, dt.timezone.utc)}
+
+    def get_object(self, Bucket, Key):
+        self.gets.append(Key)
+        return {"Body": _Body(self.objects[Key][0])}
+
+
+def test_an_export_is_read_from_s3_without_touching_the_disk(db, tmp_path,
+                                                             monkeypatch):
+    import gzip
+    from app import orders_s3 as s3
+    from app.roster import import_orders
+    monkeypatch.setattr(s3.settings, "data_dir", tmp_path)
+    blob = _csv(_row("IO Live", "IO Live"))
+    fake = _FakeS3({"o/orders-db-all-1_20261001_0704_0.csv.gz":
+                    (gzip.compress(blob), "e1", 1788000000.0)})
+    f = s3.S3File(fake, "o/orders-db-all-1_20261001_0704_0.csv.gz")
+    res = import_orders(db, [f], period="2026-07")
+    assert res["kept"] == 1
+    assert [x.name for x in tmp_path.iterdir()] == ["t.db"]
+
+
+def test_only_new_serve_files_are_read(db, monkeypatch):
+    """The days are a union, so a file once read has nothing more to add."""
+    from app import orders_s3 as s3
+    from app.db import ServedDays
+
+    def serve(*days):
+        out = "Business Unit,Client,Impressions,Date\n"
+        out += "".join(f"Acme Media,Bloom Heating,100,{d}\n" for d in days)
+        return out.encode()
+
+    fake = _FakeS3({
+        "o/client-serve_20260921_1202_0.csv": (serve("2026-09-15", "2026-09-16"),
+                                               "a", 1788000000.0),
+        "o/client-serve_20260928_1248_0.csv": (serve("2026-09-16", "2026-09-22"),
+                                               "b", 1788600000.0),
+    })
+    monkeypatch.setattr(s3, "_client", lambda: fake)
+    monkeypatch.setattr(s3.settings, "orders_s3_bucket", "b")
+    monkeypatch.setattr(s3.settings, "orders_s3_key", "o/")
+    monkeypatch.setattr(s3.settings, "serving_file_prefix", "clientserve")
+
+    s3.sync_serving(db)
+    assert sorted(fake.gets) == ["o/client-serve_20260921_1202_0.csv",
+                                 "o/client-serve_20260928_1248_0.csv"]
+    assert db.query(ServedDays).one().days == 3
+
+    fake.gets.clear()
+    s3.sync_serving(db)
+    assert fake.gets == []
+
+    fake.objects["o/client-serve_20261005_1200_0.csv"] = (
+        serve("2026-09-29"), "c", 1789200000.0)
+    s3.sync_serving(db)
+    assert fake.gets == ["o/client-serve_20261005_1200_0.csv"]
+    assert db.query(ServedDays).one().days == 4

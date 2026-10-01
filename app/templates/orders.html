@@ -22,7 +22,7 @@
           {{ (running.started_at or running.synced_at)|et('%-I:%M %p') }}{%
             if triggers.get(running.trigger) %}, because
             {{ triggers[running.trigger] }}{% endif %}.
-          It downloads the whole export and parses a couple of million rows, so
+          It reads the export and parses a couple of million rows, so
           give it a minute or two. This page refreshes itself - you can leave it
           or close the tab, the sync keeps going either way.</p>
       {% elif sync %}
@@ -66,15 +66,13 @@
             {% endfor %}
           </ul>
           <p class="sub" style="font-size:12.5px;margin:6px 0 0">
-            Read newest first. Where two exports carry the same line item the
-            newer one wins, so an old file left in the folder cannot beat the
-            one that arrived this morning - but it can still add clients that
-            have since been removed.</p>
+            The newest run of each export. Where two carry the same line item
+            the newer one wins.</p>
         </details>
       {% endif %}
       <p class="sub" style="font-size:13px;margin-top:12px">
         Every incoming batch refreshes this first, so a campaign added or ended since the
-        last run is already reflected. Files are only re-downloaded when something changes,
+        last run is already reflected. Files are only re-read when something changes,
         and at most once an hour unless you force it here.<br>
         <b>Overlapping exports are fine.</b> Set <code>ORDERS_S3_KEY</code> to a comma separated
         list, or to a folder path ending in <code>/</code>, and every file is merged and
@@ -715,8 +713,8 @@
       free of {{ '%.0f'|format(disk.total / 1073741824) }} GB. Past about 90% the sync
       starts failing with "no space left on device", on whatever happens to be writing at
       the time rather than on whatever filled it. Deleting files in the S3 bucket does not
-      help - that is a different disk. This one holds the report PDFs, the packaged zips
-      and the order downloads.
+      help - that is a different disk. This one holds the report PDFs and the packaged
+      zips.
     </div>
   {% endif %}
 
