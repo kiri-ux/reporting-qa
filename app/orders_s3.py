@@ -6,12 +6,15 @@ changed, so a monthly batch does not re-import an unchanged file.
 """
 from __future__ import annotations
 
+import csv
 import datetime as dt
+import gzip
 import hashlib
+import io
+import re
 import logging
 import os
 import shutil
-import tempfile
 from pathlib import Path
 
 from sqlalchemy import desc, select
@@ -114,7 +117,80 @@ def begin_sync(db: Session, trigger: str = "") -> OrderSync | None:
     return rec
 
 
-DATA_EXTS = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls")
+DATA_EXTS = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls",
+             ".csv.gz", ".tsv.gz", ".txt.gz")
+
+
+class _BodyReader(io.RawIOBase):
+    """A botocore StreamingBody as a raw stream TextIOWrapper can sit on."""
+
+    def __init__(self, body):
+        self._body = body
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b) -> int:
+        chunk = self._body.read(len(b))
+        n = len(chunk)
+        b[:n] = chunk
+        return n
+
+    def close(self) -> None:
+        try:
+            self._body.close()
+        finally:
+            super().close()
+
+
+class S3File:
+    """One object in the bucket, read where it sits.
+
+    NOTHING IS DOWNLOADED. Both syncs used to copy every file to the data disk
+    and read it from there, and the order export alone is over a gigabyte a
+    morning. A worker killed halfway left its copy behind, the serve sync's
+    copies were never swept at all, and the 10 GB disk filled - after which no
+    sync could start, because the first thing each did was ask for room.
+    Reading the response body as it arrives needs no disk and the same memory
+    the file path did, since the importers already read row by row.
+
+    .gz is decompressed on the way through, so the exports can be written
+    compressed and the transfer is a tenth of the size.
+    """
+
+    def __init__(self, client, key: str, size: int = 0):
+        self.client, self.key, self.size = client, key, size
+        self.name = Path(key).name
+
+    def __str__(self) -> str:
+        return self.key
+
+    def open_binary(self):
+        body = self.client.get_object(Bucket=settings.orders_s3_bucket,
+                                      Key=self.key)["Body"]
+        raw = io.BufferedReader(_BodyReader(body), buffer_size=1 << 20)
+        if self.key.lower().endswith(".gz"):
+            return gzip.GzipFile(fileobj=raw, mode="rb")
+        return raw
+
+    def open_text(self):
+        return io.TextIOWrapper(self.open_binary(), encoding="utf-8-sig",
+                                errors="replace", newline="")
+
+    def read_bytes(self) -> bytes:
+        with self.open_binary() as fh:
+            return fh.read()
+
+    def rows(self):
+        """Every row as a list of strings, streamed."""
+        if self.key.lower().endswith((".xlsx", ".xlsm", ".xls")):
+            from .roster import _rows_from_xlsx
+            yield from _rows_from_xlsx(self.read_bytes(),
+                                       settings.orders_s3_sheet or None)
+            return
+        with self.open_text() as fh:
+            for r in csv.reader(fh):
+                yield [(c or "") for c in r]
 
 
 class NothingToImport(RuntimeError):
@@ -165,22 +241,31 @@ def _name_matches(key: str) -> bool:
 
 
 def sweep_leftovers(older_than_minutes: int = 30) -> int:
-    """Delete order downloads a previous sync abandoned. Returns bytes freed.
+    """Delete downloads a previous sync abandoned. Returns bytes freed.
 
-    Only ones older than half an hour, so a sync running right now in the other
-    worker keeps its own files.
+    Neither sync downloads anything now, but every worker killed mid-sync
+    before that left its copy behind: orders-* from the order export, serve-*
+    from the daily serve files (which this never swept, and which ran to
+    gigabytes once the backfills landed), and tmp*.csv from a large upload.
+    Only ones older than half an hour, so a sync running right now in the
+    other worker keeps its own files.
     """
     import time
     root = Path(settings.data_dir)
     cutoff = time.time() - older_than_minutes * 60
     freed = 0
     try:
-        candidates = list(root.glob("orders-*"))
+        candidates = [*root.glob("orders-*"), *root.glob("serve-*"),
+                      *root.glob("tmp*.csv")]
     except OSError:
         return 0
     for d in candidates:
         try:
-            if not d.is_dir() or d.stat().st_mtime > cutoff:
+            if d.stat().st_mtime > cutoff:
+                continue
+            if d.is_file():
+                freed += d.stat().st_size
+                d.unlink()
                 continue
             for f in d.rglob("*"):
                 if f.is_file():
@@ -258,44 +343,55 @@ def _resolve_keys(client) -> list[str]:
             + "; ".join(seen[:8]) + (" ..." if len(seen) > 8 else ""))
     # Newest first, then by name so the order is stable when two files carry
     # the same timestamp.
-    return [k for _when, k in _this_mornings_run(sorted(set(out)))]
+    return [k for _when, k in _latest_of_each(sorted(set(out)))]
 
 
-# HOW FAR BACK A FILE CAN BE AND STILL BE PART OF THE SAME EXPORT.
+# THE NEWEST OF EACH EXPORT, NOT THE NEWEST HOURS.
 #
-# One run writes several files minutes apart - 07:32 and 07:34 on 1 September,
-# 227 MB and 830 MB - so this cannot just take the newest file. But nothing
-# ever deleted the older days either, and "every CSV under the prefix" meant
-# every export ever dropped in that folder was downloaded and merged on every
-# sync. Gigabytes an hour on a box that is already slow, and worse than slow: a
-# run from three weeks ago is a picture of the orders as they were three weeks
-# ago, and the merge keeps whatever line item the newest file did not happen to
-# carry. Half an answer from today and half from a fortnight back, with nothing
-# on screen to say which half was which.
-STALE_HOURS = 12
+# Each export is its own file name with the run stamped on the end -
+# orders-db-all-1_20261001_0704_0.csv, orders-db-anne_20261001_0700_0.csv - and
+# every run of every export stays in the folder. Only the newest run of each
+# one is the order list as it stands; the older runs are pictures of a
+# different day, and merging them keeps whatever line item the newest run did
+# not carry.
+#
+# It was a twelve-hour window around the newest file, which dropped an export
+# that simply had not been re-run that morning (whitfield's newest is 21
+# September) and, on a morning with two runs, read both. The trailing _0 is
+# the part number: a run split across _0, _1 is read whole.
+_RUN = re.compile(r"^(?P<name>.+?)_(?P<run>\d{8}_\d{4,6})(?:_(?P<part>\d+))?"
+                  r"(?P<ext>\.[A-Za-z]+(?:\.gz)?)$")
 
-# How many older exports the last resolve walked past, so the sync record can
-# say so on screen rather than only in a log nobody reads.
+# How many older runs the last resolve walked past, for the sync record.
 _LAST_SKIPPED = [0]
 
 
-def _this_mornings_run(ordered: list) -> list:
-    """Keep the newest export and anything alongside it. Drop older runs.
+def export_name(key: str) -> tuple[str, str]:
+    """(which export, which run) for a key. A key with no run stamp is its own
+    export with one run."""
+    folder, _, base = key.rpartition("/")
+    m = _RUN.match(base)
+    if not m:
+        return key, ""
+    return f"{folder}/{m['name']}{m['ext'].lower()}", m["run"]
 
-    Entries are (-timestamp, key), newest first. A key named explicitly rather
-    than found under a prefix carries no timestamp and is always kept -
-    somebody asked for that file by name.
+
+def _latest_of_each(ordered: list) -> list:
+    """Keep every part of the newest run of each export. Drop older runs.
+
+    Entries are (-timestamp, key), newest first, and stay in that order. A key
+    named outright carries no timestamp and is always kept.
     """
-    dated = [t for t in ordered if t[0] < 0]
-    if not dated:
-        _LAST_SKIPPED[0] = 0
-        return ordered
-    cutoff = -dated[0][0] - STALE_HOURS * 3600
-    kept = [t for t in ordered if t[0] >= 0 or -t[0] >= cutoff]
+    newest: dict[str, str] = {}
+    for when, key in ordered:
+        name, run = export_name(key)
+        if when < 0 and name not in newest:
+            newest[name] = run
+    kept = [t for t in ordered
+            if t[0] >= 0 or export_name(t[1])[1] == newest[export_name(t[1])[0]]]
     _LAST_SKIPPED[0] = len(ordered) - len(kept)
     if _LAST_SKIPPED[0]:
-        log.info("skipped %d order export(s) more than %d hours older than the "
-                 "newest one", _LAST_SKIPPED[0], STALE_HOURS)
+        log.info("skipped %d older run(s) of the order exports", _LAST_SKIPPED[0])
     return kept
 
 
@@ -356,22 +452,27 @@ def sync(db: Session, *, force: bool = False, claim_id: int | None = None,
                              ~OrderSync.source.like(NOT_A_SYNC))
                       .order_by(desc(OrderSync.id)).limit(1)).first()
     try:
-        # THE DAILY SERVE FILE COMES IN ON THE SAME TRIGGERS, and on its own
-        # ETag - it changes every morning and the order export does not, so
-        # tying them together would re-download several hundred megabytes to
-        # notice a small file had moved. It cannot fail the order sync.
+        freed = sweep_leftovers()
+        if freed:
+            log.info("cleared %.0f MB of abandoned downloads", freed / 1048576)
+    except Exception:                                        # noqa: BLE001
+        pass
+    try:
+        # THE ORDERS FIRST. The serve files and the breakout sheet come in on
+        # the same triggers with their own fingerprints, and neither can fail
+        # the order sync - or hold it up: the first serve sync after a backfill
+        # lands is gigabytes of reading.
+        result = _sync(db, source, prev, force=force, trigger=trigger)
         try:
             sync_serving(db, force=force)
         except Exception:                                    # noqa: BLE001
-            log.exception("daily serve sync failed, carrying on with orders")
-        # AND THE BREAKOUT SHEET, on the same triggers and its own checksum.
-        # Same rule: it cannot fail the order sync.
+            log.exception("daily serve sync failed")
         try:
             from .roster_sheet import sync_roster
             sync_roster(db, force=force)
         except Exception:                                    # noqa: BLE001
-            log.exception("roster sheet sync failed, carrying on with orders")
-        return _sync(db, source, prev, force=force, trigger=trigger)
+            log.exception("roster sheet sync failed")
+        return result
     finally:
         _close(db, claim_id)
 
@@ -417,73 +518,26 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
         db.commit()
         return prev
 
-    # ANY DOWNLOAD A PREVIOUS SYNC LEFT BEHIND.
-    #
-    # The tempdir is removed on both the success and the failure path, and
-    # neither runs if the process is killed - a deploy, a restart, the OOM
-    # killer - which is exactly when a sync is most likely to be halfway
-    # through. Every one of those leaves the whole export on the disk forever.
-    #
-    # It filled a 20 GB disk to 85.9%, and a full disk does not announce
-    # itself: it comes back as "Downloaded but could not import: OSError
-    # [Errno 28]" on the one thing that was still trying to write.
-    freed = sweep_leftovers()
-    if freed:
-        log.info("cleared %.0f MB of abandoned order downloads", freed / 1048576)
-
-    tmpdir = None
     try:
         client = _client()
         keys = _resolve_keys(client)
-        # These exports run to hundreds of megabytes, so stream each one to disk
-        # and parse it row by row rather than holding it in memory.
-        # WILL IT FIT, BEFORE ANY OF IT IS DOWNLOADED.
-        #
-        # One run is over a gigabyte now - 830 MB and 228 MB two minutes apart
-        # on 1 September - and a download that runs out of disk halfway through
-        # comes back as "OSError [Errno 28]" on whichever file was unlucky.
-        # That reads as a broken export and sends somebody to look at the file,
-        # which is fine. Asking first costs one HEAD per object.
-        need = 0
+        files = []
+        read_note = []
         for k in keys:
             try:
-                need += client.head_object(
+                size = client.head_object(
                     Bucket=settings.orders_s3_bucket, Key=k).get("ContentLength", 0)
             except Exception:                                # noqa: BLE001
-                pass
-        free, _total = disk_free()
-        # Twice the download, because the files land on the same disk they are
-        # read from and nothing here is deleted until the import is finished.
-        if need and free and free < need * 1.2:
-            return _fail(db, source,
-                         f"Not enough room to download the export: it is "
-                         f"{need / 1048576:.0f} MB across {len(keys)} file(s) "
-                         f"and the disk has {disk_note()}. Nothing was "
-                         f"downloaded and the orders already loaded are "
-                         f"untouched.", prev, etag, lm)
-        tmpdir = tempfile.mkdtemp(prefix="orders-", dir=str(settings.data_dir))
-        paths = []
-        read_note = []
-        for i, k in enumerate(keys):
-            dest = Path(tmpdir) / f"{i:03d}-{Path(k).name}"
-            with open(dest, "wb") as fh:
-                client.download_fileobj(settings.orders_s3_bucket, k, fh)
-            paths.append(dest)
-            read_note.append(f"{Path(k).name} "
-                             f"({dest.stat().st_size / 1048576:.0f} MB)")
-        result = import_orders(db, paths, filename=keys[0] if keys else "orders.csv",
+                size = 0
+            f = S3File(client, k, size)
+            # A spreadsheet has to be whole to be opened, and they are small.
+            files.append(f.read_bytes() if k.lower().endswith((".xlsx", ".xlsm", ".xls"))
+                         else f)
+            read_note.append(f"{f.name} ({size / 1048576:.0f} MB)")
+        result = import_orders(db, files, filename=keys[0] if keys else "orders.csv",
                                sheet=settings.orders_s3_sheet or None, replace=True)
     except Exception as exc:
-        if tmpdir:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-        # SAY IT IS THE DISK, when it is the disk. "Could not import" sends
-        # somebody to look at the file, and the file is fine.
-        extra = ""
-        if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
-            extra = (f" The disk is full - {disk_note()}. Nothing here can be "
-                     f"read or written until there is room.")
-        return _fail(db, source, f"Downloaded but could not import: "
-                                 f"{type(exc).__name__}: {exc}.{extra}",
+        return _fail(db, source, f"Could not import: {type(exc).__name__}: {exc}.",
                      prev, etag, lm)
 
     n = result["kept"] if isinstance(result, dict) else result
@@ -533,9 +587,7 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
             if len(read_note) > 6:
                 msg += f" and {len(read_note) - 6} more"
         if _LAST_SKIPPED[0]:
-            msg += (f". {_LAST_SKIPPED[0]} older export(s) in that folder were "
-                    f"not read - anything more than {STALE_HOURS} hours behind "
-                    f"the newest file is a picture of a different day")
+            msg += f". {_LAST_SKIPPED[0]} older run(s) not read"
         if result.get("months_disagree"):
             # ONE OF TWO FIELDS IS WRONG ON THAT LINE. months_running says the
             # campaign runs one length and the budgets say another, and the
@@ -573,8 +625,6 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
                     order_statuses=(result.get("order_statuses") or {})
                     if isinstance(result, dict) else {})
     db.add(rec); db.commit()
-    if tmpdir:
-        shutil.rmtree(tmpdir, ignore_errors=True)
     return rec
 
 
@@ -594,14 +644,20 @@ def _sync(db: Session, source: str, prev: OrderSync | None, *,
 SERVING_SOURCE = "serving upload: s3"
 
 
-def serving_keys(client) -> list[str]:
-    """Every daily serve export under the configured prefix."""
-    out: list[str] = []
+def serving_keys(client) -> list[tuple[str, str, int]]:
+    """Every daily serve export under the configured prefix, oldest first, as
+    (key, etag, size)."""
+    out: list[tuple[float, str, str, int]] = []
     for k in settings.orders_s3_keys:
         k = k.lstrip("/")
         if k and not k.endswith("/"):
             if is_serving_file(k):
-                out.append(k)
+                try:
+                    resp = client.head_object(Bucket=settings.orders_s3_bucket, Key=k)
+                except Exception:                            # noqa: BLE001
+                    continue
+                out.append((0.0, k, (resp.get("ETag") or "").strip('"'),
+                            resp.get("ContentLength", 0)))
             continue
         token = None
         while True:
@@ -614,86 +670,83 @@ def serving_keys(client) -> list[str]:
                 if (not key.endswith("/") and size > 0
                         and key.lower().endswith(DATA_EXTS)
                         and is_serving_file(key)):
-                    out.append(key)
+                    when = obj.get("LastModified")
+                    out.append((when.timestamp() if when else 0.0, key,
+                                (obj.get("ETag") or "").strip('"'), size))
             if not page.get("IsTruncated"):
                 break
             token = page.get("NextContinuationToken")
-    return sorted(set(out))
-
-
-def _serving_etag(client, keys: list[str]) -> str:
-    h = hashlib.sha256()
-    for k in keys:
-        try:
-            resp = client.head_object(Bucket=settings.orders_s3_bucket, Key=k)
-        except Exception:                                    # noqa: BLE001
-            return ""
-        h.update(k.encode())
-        h.update((resp.get("ETag") or "").strip('"').encode())
-    return h.hexdigest()[:32]
+    return [(k, e, n) for _w, k, e, n in sorted(set(out))]
 
 
 def sync_serving(db: Session, *, force: bool = False) -> OrderSync | None:
-    """Read the daily serve export from S3. Returns the record, or None.
+    """Read the daily serve files from S3. Returns the latest record, or None.
 
-    NEVER RAISES INTO THE ORDER SYNC. This runs alongside it, and a serve file
-    that will not parse is not a reason for the order list to fail to load -
-    the two answer different questions and one is not worth losing for the
-    other.
+    ONLY THE FILES NOT READ YET. Each file is a week or so of days, and the
+    days are merged as a union, so a file once read has nothing more to add
+    until it changes. Every file was re-read whenever any one of them changed,
+    which after the two backfills was over three gigabytes every morning. Each
+    file read leaves a record with its own key and ETag, and a file whose
+    key and ETag are already on an ok record is skipped. force re-reads all.
+
+    One record per file, committed as it goes, so a worker killed halfway
+    through a backlog picks up at the next file rather than starting over.
+
+    NEVER RAISES INTO THE ORDER SYNC.
     """
     if not settings.s3_configured or not (settings.serving_file_prefix or "").strip():
         return None
-    prev = db.scalars(select(OrderSync).where(
-        OrderSync.source.like(SERVING_SOURCE + "%"))
-        .order_by(desc(OrderSync.id)).limit(1)).first()
-    tmpdir = None
+
+    def latest():
+        return db.scalars(select(OrderSync).where(
+            OrderSync.source.like(SERVING_SOURCE + "%"))
+            .order_by(desc(OrderSync.id)).limit(1)).first()
+
     try:
         client = _client()
-        keys = serving_keys(client)
-        if not keys:
-            return prev
-        etag = _serving_etag(client, keys)
-        if not force and prev and prev.ok and etag and prev.etag == etag:
-            return prev                       # this morning's file is already in
-        tmpdir = tempfile.mkdtemp(prefix="serve-", dir=str(settings.data_dir))
-        rows = []
-        from .roster import _rows_from_csv, _rows_from_xlsx
-        for i, k in enumerate(keys):
-            dest = Path(tmpdir) / f"{i:03d}-{Path(k).name}"
-            with open(dest, "wb") as fh:
-                client.download_fileobj(settings.orders_s3_bucket, k, fh)
-            raw = dest.read_bytes()
-            part = (_rows_from_xlsx(raw, settings.orders_s3_sheet or None)
-                    if k.lower().endswith((".xlsx", ".xlsm"))
-                    else _rows_from_csv(raw))
-            if not part:
-                continue
-            # One header, not one per file.
-            rows.extend(part if not rows else part[1:])
-        from .serving import import_serving
-        # MERGED, NOT REPLACED. This file carries whatever range it carries,
-        # and replacing on it would throw away every day it does not happen to
-        # mention.
-        res = import_serving(db, rows, period=None, merge=True)
-        msg = (f"Read {res['rows_read']:,} rows from {len(keys)} daily serve "
-               f"file(s), {res['clients']} client(s) across "
-               f"{', '.join(res['periods'])}. Days counted on "
-               f"{res['counted_on']}, and merged with what was already loaded "
-               f"rather than replacing it.")
-        rec = OrderSync(source=f"{SERVING_SOURCE} {Path(keys[0]).name}"[:512],
-                        etag=(etag or "")[:255], rows=res["clients"], ok=True,
-                        message=msg, trigger="s3")
-        db.add(rec); db.commit()
-        log.info("daily serve: %s", msg)
-        return rec
+        found = serving_keys(client)
     except Exception as exc:                                 # noqa: BLE001
         db.rollback()
         rec = OrderSync(source=SERVING_SOURCE, rows=0, ok=False,
                         message=f"Daily serve file: {type(exc).__name__}: {exc}",
                         trigger="s3")
         db.add(rec); db.commit()
-        log.exception("daily serve import failed")
+        log.exception("daily serve listing failed")
         return rec
-    finally:
-        if tmpdir:
-            shutil.rmtree(tmpdir, ignore_errors=True)
+    if not found:
+        return latest()
+    done = set() if force else {
+        (src, etag) for src, etag in db.execute(
+            select(OrderSync.source, OrderSync.etag).where(
+                OrderSync.source.like(SERVING_SOURCE + " %"),
+                OrderSync.ok.is_(True)))}
+
+    from .serving import import_serving
+    rec = None
+    for key, etag, size in found:
+        source = f"{SERVING_SOURCE} {key}"[:512]
+        if (source, etag[:255]) in done:
+            continue
+        try:
+            # MERGED, NOT REPLACED. This file carries whatever range it
+            # carries, and replacing on it would throw away every day it does
+            # not happen to mention.
+            res = import_serving(db, S3File(client, key, size).rows(),
+                                 period=None, merge=True)
+            msg = (f"Read {res['rows_read']:,} rows from {Path(key).name}, "
+                   f"{res['clients']} client(s) across "
+                   f"{', '.join(res['periods'])}. Days counted on "
+                   f"{res['counted_on']}.")
+            rec = OrderSync(source=source, etag=etag[:255], rows=res["clients"],
+                            ok=True, message=msg, trigger="s3")
+            db.add(rec); db.commit()
+            log.info("daily serve: %s", msg)
+        except Exception as exc:                             # noqa: BLE001
+            db.rollback()
+            rec = OrderSync(source=source, rows=0, ok=False,
+                            message=f"Daily serve file {Path(key).name}: "
+                                    f"{type(exc).__name__}: {exc}",
+                            trigger="s3")
+            db.add(rec); db.commit()
+            log.exception("daily serve import failed: %s", key)
+    return rec or latest()

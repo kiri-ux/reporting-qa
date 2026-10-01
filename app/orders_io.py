@@ -232,14 +232,16 @@ TOTAL_SPEND_FIELD = {
 def _open_source(src):
     """Yield (getter, row) pairs from a path or blob, streaming rather than
     loading. A single export can be 400 MB."""
-    if isinstance(src, (str, Path)):
+    if hasattr(src, "open_text"):                    # read where it sits in S3
+        fh = src.open_text()
+        close = True
+    elif isinstance(src, (str, Path)):
         fh = open(src, "r", encoding="utf-8-sig", errors="replace", newline="")
         close = True
     else:
         # A BLOB THIS SIZE IS THREE COPIES BY THE TIME IT IS READABLE.
         #
-        # The S3 sync writes the export to a temp file and hands over the path,
-        # which streams: 92 MB of memory to read the real 148 MB export. The
+        # A path streams: 92 MB of memory to read the real 148 MB export. The
         # same file uploaded through the page arrives as bytes, and decoding it
         # to text and wrapping that in a StringIO makes a second and a third
         # copy - measured at 1,046 MB of peak memory on a box that has 512.

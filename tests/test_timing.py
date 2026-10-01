@@ -454,24 +454,53 @@ def test_the_market_code_survives_parsing():
     assert rows[1]["prefix"] == ""
 
 
-def test_one_export_run_is_several_files_and_yesterday_is_not_one_of_them():
-    """07:32 and 07:34 on the same morning, 227 MB then 830 MB, are one export.
-    A file from last week is a picture of a different day, and merging it keeps
-    whatever line item today's file did not happen to carry."""
-    from app.orders_s3 import _this_mornings_run, _LAST_SKIPPED
+def test_only_the_newest_run_of_each_export_is_read():
+    """Every run of every export stays in the folder. The newest of each one is
+    the order list; an export not re-run this morning is still its newest."""
+    from app.orders_s3 import _latest_of_each, _LAST_SKIPPED
     now = 1788000000.0
-    run = sorted([(-now, "a_0734.csv"), (-(now - 120), "a_0732.csv"),
-                  (-(now - 400), "stephens.csv"), (-(now - 86400), "yesterday.csv"),
-                  (-(now - 8 * 86400), "lastweek.csv")])
-    assert [k for _w, k in _this_mornings_run(run)] == [
-        "a_0734.csv", "a_0732.csv", "stephens.csv"]
-    assert _LAST_SKIPPED[0] == 2
+    keys = {
+        "orders/orders-db-all-1_20261001_0704_0.csv": now,
+        "orders/orders-db-all-1_20260921_1857_0.csv": now - 10 * 86400,
+        "orders/orders-db-all-1_20260901_0734_0.csv": now - 30 * 86400,
+        "orders/orders-db-all-1_20260901_0732_0.csv": now - 30 * 86400 - 120,
+        "orders/orders-db-all-2026_20261001_0703_0.csv": now - 60,
+        "orders/orders-db-all-2026_20260921_1856_0.csv": now - 10 * 86400,
+        "orders/orders-db-anne_20261001_0700_0.csv": now - 240,
+        "orders/orders-db-whitfield_20260921_1853_0.csv": now - 10 * 86400 - 300,
+        "orders/orders-db-whitfield_20260901_1200_0.csv": now - 30 * 86400,
+    }
+    ordered = sorted((-t, k) for k, t in keys.items())
+    assert [k for _w, k in _latest_of_each(ordered)] == [
+        "orders/orders-db-all-1_20261001_0704_0.csv",
+        "orders/orders-db-all-2026_20261001_0703_0.csv",
+        "orders/orders-db-anne_20261001_0700_0.csv",
+        "orders/orders-db-whitfield_20260921_1853_0.csv",
+    ]
+    assert _LAST_SKIPPED[0] == 5
+
+
+def test_every_part_of_the_newest_run_is_read():
+    from app.orders_s3 import _latest_of_each
+    now = 1788000000.0
+    ordered = sorted([(-now, "o/orders-db-all-1_20261001_0704_1.csv"),
+                      (-(now - 30), "o/orders-db-all-1_20261001_0704_0.csv"),
+                      (-(now - 86400), "o/orders-db-all-1_20260930_0704_0.csv")])
+    assert sorted(k for _w, k in _latest_of_each(ordered)) == [
+        "o/orders-db-all-1_20261001_0704_0.csv",
+        "o/orders-db-all-1_20261001_0704_1.csv"]
+
+
+def test_a_compressed_export_is_the_same_export():
+    from app.orders_s3 import export_name
+    assert (export_name("o/orders-db-anne_20261001_0700_0.csv.gz")[0]
+            == export_name("o/orders-db-anne_20260921_1853_0.csv.gz")[0])
 
 
 def test_a_file_named_outright_is_never_skipped_for_being_old():
     """Somebody asked for that file by name."""
-    from app.orders_s3 import _this_mornings_run
-    assert [k for _w, k in _this_mornings_run([(0.0, "named.csv")])] == ["named.csv"]
+    from app.orders_s3 import _latest_of_each
+    assert [k for _w, k in _latest_of_each([(0.0, "named.csv")])] == ["named.csv"]
 
 
 def test_a_paused_line_out_of_window_is_not_called_canceled(live):

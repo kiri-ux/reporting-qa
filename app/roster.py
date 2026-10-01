@@ -104,6 +104,9 @@ def import_orders(db: Session, raw, filename: str = "orders.csv",
 
     def header_of(b) -> list[str]:
         """First row, without reading the rest. An export can be 400 MB."""
+        if hasattr(b, "open_text"):                 # read where it sits in S3
+            with b.open_text() as fh:
+                return next(csv.reader(fh), [])
         if isinstance(b, (str, _P)):
             with open(b, "r", encoding="utf-8-sig", errors="replace", newline="") as fh:
                 return next(csv.reader(fh), [])
@@ -126,7 +129,7 @@ def import_orders(db: Session, raw, filename: str = "orders.csv",
         try:
             (io_exports if looks_like_io_export(header_of(b)) else others).append(b)
         except Exception as exc:  # noqa: BLE001 - a bad file names itself
-            name = b if isinstance(b, (str, _P)) else filename
+            name = b if isinstance(b, (str, _P)) or hasattr(b, "open_text") else filename
             raise ValueError(f"Could not read {Path(str(name)).name}: "
                              f"{type(exc).__name__}: {exc}") from exc
 
@@ -134,12 +137,15 @@ def import_orders(db: Session, raw, filename: str = "orders.csv",
         res = import_io_export(db, io_exports, period=period, replace=replace)
         if isinstance(res, dict) and others:
             res["ignored_files"] = [Path(str(o)).name if isinstance(o, (str, _P))
+                                    or hasattr(o, "open_text")
                                     else filename for o in others]
         return res
 
     # No IO export among them, so treat what is left as a plain list. Read
     # each one as bytes regardless of whether it arrived as a path.
     def as_rows(b) -> list[list[str]]:
+        if hasattr(b, "rows"):
+            return list(b.rows())
         if isinstance(b, (str, _P)):
             return _rows_from_csv(Path(b).read_bytes())
         if filename.lower().endswith((".xlsx", ".xlsm")):

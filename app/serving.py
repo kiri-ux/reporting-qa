@@ -24,6 +24,7 @@ the wrong column.
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import re
 
 from sqlalchemy import func, select
@@ -192,21 +193,26 @@ def import_serving(db: Session, rows, *, period: str | None = None,
     flight and put zeros in it, and counting those back is the same guess the
     dates were already making.
     """
-    rows = list(rows)
-    if not rows:
+    # STREAMED. The S3 sync hands over rows as they arrive, and a backfill file
+    # is over half a gigabyte - the box has 512 MB. Only the first ten rows
+    # are held, to find the header.
+    it = iter(rows)
+    first = list(itertools.islice(it, 10))
+    if not first:
         raise ValueError("The serving file is empty.")
     head = 0
-    for i, r in enumerate(rows[:10]):
+    for i, r in enumerate(first):
         if all(f in map_columns(r) for f in REQUIRED):
             head = i
             break
-    cols = map_columns(rows[head])
+    header = first[head]
+    cols = map_columns(header)
     missing = [f for f in REQUIRED if f not in cols]
     if missing:
         raise ValueError(
             "The serving file needs a client, a business unit and a date "
             "column. Could not find: " + ", ".join(missing) + ". Header reads: "
-            + ", ".join(str(h) for h in rows[head][:12]))
+            + ", ".join(str(h) for h in header[:12]))
 
     # Whether the file carries a figure at all. With none, every row present
     # counts as a day - which is the best the file can support and is said out
@@ -218,7 +224,7 @@ def import_serving(db: Session, rows, *, period: str | None = None,
     names: dict[tuple[str, str, str], tuple[str, str]] = {}
     found_months: set[str] = set()
     read = 0
-    for r in rows[head + 1:]:
+    for r in itertools.chain(first[head + 1:], it):
         if not any(str(c).strip() for c in r):
             continue
 
@@ -304,7 +310,7 @@ def import_serving(db: Session, rows, *, period: str | None = None,
         return {"rows_read": read, "clients": len(days), "new_clients": added,
                 "periods": sorted({k[0] for k in days}), "merged": True,
                 "counted_on": ", ".join(money) or "a row per day, no figures in the file",
-                "columns": {f: str(rows[head][i]) for f, i in sorted(cols.items())}}
+                "columns": {f: str(header[i]) for f, i in sorted(cols.items())}}
 
     if replace:
         # DELETED AND *FLUSHED* BEFORE ANYTHING IS INSERTED.
@@ -333,7 +339,7 @@ def import_serving(db: Session, rows, *, period: str | None = None,
     return {"rows_read": read, "clients": len(days),
             "periods": sorted({k[0] for k in days}),
             "counted_on": ", ".join(money) or "a row per day, no figures in the file",
-            "columns": {f: str(rows[head][i]) for f, i in sorted(cols.items())}}
+            "columns": {f: str(header[i]) for f, i in sorted(cols.items())}}
 
 
 def served_days(db: Session, period: str) -> dict[tuple[str, str], int]:
