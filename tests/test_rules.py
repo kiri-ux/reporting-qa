@@ -3948,3 +3948,24 @@ def test_two_names_that_merely_start_and_end_alike_are_not():
     assert not _dropped_middle("hondaofstatecollege", "hondaofpittsburgh")
     assert not _dropped_middle("smithford", "smithchevrolet")
     assert not _dropped_middle("abcdefgh", "abcdefghijklmnop")
+
+
+def test_missing_previews_are_only_flagged_from_july_2026():
+    import datetime as dt
+    from app.checks.rules import _rule_applies, check_thumbnails, skip_reason
+    text = "Social Mirror Creative Performance\nThumbnail not available   Ad one\n"
+    base = {"text": text, "page_of": lambda _o: 1}
+
+    def ctx(start, end, period=""):
+        return {**base, "date_range": (start, end), "period": period}
+
+    june = ctx(dt.date(2026, 6, 1), dt.date(2026, 6, 30))
+    assert check_thumbnails(june) == []
+    assert not _rule_applies(check_thumbnails, june)
+    assert skip_reason(check_thumbnails, june) == "not checked before July 2026"
+    # A lifetime that reaches into July is checked.
+    assert check_thumbnails(ctx(dt.date(2025, 5, 1), dt.date(2026, 7, 3)))
+    assert check_thumbnails(ctx(dt.date(2026, 7, 1), dt.date(2026, 7, 31)))
+    # No printed range: the period decides.
+    assert check_thumbnails({**base, "period": "2026-05"}) == []
+    assert check_thumbnails({**base, "period": "2026-08"})

@@ -551,6 +551,22 @@ def check_pacing_off(ctx) -> list[dict]:
 
 
 # ---------------------------------------------------------------- previews
+# PREVIEWS ARE ONLY JUDGED FROM JULY 2026. Older creatives lost their
+# thumbnails upstream and nothing can bring them back, so a report covering
+# nothing after June says so on every pull. A report reaching into July or
+# later is still checked, whatever it starts on.
+THUMBNAILS_FROM = dt.date(2026, 7, 1)
+
+
+def _before_thumbnails(ctx) -> bool:
+    """Does this report cover only dates before THUMBNAILS_FROM?"""
+    got = ctx.get("date_range")
+    if got and got[1]:
+        return got[1] < THUMBNAILS_FROM
+    period = ctx.get("period") or ""
+    return bool(period) and period < THUMBNAILS_FROM.strftime("%Y-%m")
+
+
 def check_thumbnails(ctx) -> list[dict]:
     """ONE FINDING PER WIDGET, NOT ONE PER REPORT.
 
@@ -562,6 +578,8 @@ def check_thumbnails(ctx) -> list[dict]:
     number you cannot check against what is in front of you is worse than no
     number at all.
     """
+    if _before_thumbnails(ctx):
+        return []
     text = ctx["text"]
     counts: dict[str, int] = {}
     nouns: dict[str, str] = {}
@@ -2660,6 +2678,8 @@ def skip_reason(rule, ctx) -> str:
             return "an SEO report carries SEO and nothing else"
     if name == "check_site_ctr" and ctx.get("is_lifetime"):
         return "not checked on a lifetime"
+    if name == "check_thumbnails" and _before_thumbnails(ctx):
+        return "not checked before July 2026"
     return SKIP_WHY.get(name, "")
 
 
@@ -2776,6 +2796,8 @@ def _rule_applies(rule, ctx) -> bool:
         if any(sec in bodies for sec, _o in COMPLETION_OWED):
             return True
         return bool(set(ctx.get("products") or ()) & set(WATCHED_PRODUCTS))
+    if name == "check_thumbnails":
+        return not _before_thumbnails(ctx)
     if name == "check_site_ctr":
         # NOT ON A LIFETIME. A site clicking too high is something to block on
         # a running campaign; on a finished one there is nothing left to do.
