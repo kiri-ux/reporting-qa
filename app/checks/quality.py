@@ -1698,7 +1698,11 @@ def check_site_ctr(ctx) -> list[dict]:
     trying to press. That explanation belongs here, in the code, rather than on
     the report page every month: the people reading it know what it means and
     are there for the numbers.
+
+    Not on a lifetime: the campaign is over, so there is no site left to block.
     """
+    if ctx.get("is_lifetime"):
+        return []
     text = ctx.get("text") or ""
     bad = []
     for title, name, imps, clicks, printed, at in site_rows(text):

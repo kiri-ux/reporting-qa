@@ -2658,6 +2658,8 @@ def skip_reason(rule, ctx) -> str:
                     "be read again before this check can say anything")
         if ctx.get("is_seo"):
             return "an SEO report carries SEO and nothing else"
+    if name == "check_site_ctr" and ctx.get("is_lifetime"):
+        return "not checked on a lifetime"
     return SKIP_WHY.get(name, "")
 
 
@@ -2775,7 +2777,10 @@ def _rule_applies(rule, ctx) -> bool:
             return True
         return bool(set(ctx.get("products") or ()) & set(WATCHED_PRODUCTS))
     if name == "check_site_ctr":
-        return bool(SITE_GRID.search(ctx.get("text") or ""))
+        # NOT ON A LIFETIME. A site clicking too high is something to block on
+        # a running campaign; on a finished one there is nothing left to do.
+        return (not ctx.get("is_lifetime")
+                and bool(SITE_GRID.search(ctx.get("text") or "")))
     if name == "check_social_placement_totals":
         return bool(PLACEMENT_GRID.search(ctx.get("text") or ""))
     if name == "check_rogue_ctv":
