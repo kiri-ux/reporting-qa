@@ -4767,6 +4767,21 @@ def report_orders(report_id: int, request: Request, db: Session = Depends(get_db
                 "total_impressions": getattr(l, "total_impressions", None),
                 "ran": _ran_during(l, rep.period) if rep.period else None,
             })
+    # ADDITIONAL BILLING IS NOT A PRODUCT ON ANY REPORT, and it was most of the
+    # table. And ONE ROW PER LINE ITEM: the same line item came back twice
+    # when it reached this client by two stored rows.
+    seen_rows: set = set()
+    kept_rows = []
+    for r in rows:
+        if r["product"] == "Additional Billing":
+            continue
+        key = (r["product"], str(r.get("order") or ""), str(r.get("line") or ""),
+               str(r.get("starts") or ""), str(r.get("ends") or ""), r["status"])
+        if key in seen_rows:
+            continue
+        seen_rows.add(key)
+        kept_rows.append(r)
+    rows = kept_rows
     rows.sort(key=lambda r: (r["product"], r.get("starts") or "",
                              str(r.get("order") or "")))
     # Only the first row of each product group prints the product, so the eye

@@ -8,3 +8,10 @@ needs it, and nowhere the user reads.
 
 This has been asked for repeatedly. A wording problem is never answered by
 adding wording.
+
+## Bump the build and say which it is
+
+Every change that merges bumps `BUILD` in `app/version.py` (date, then the
+next number: `2026.10.01-263` -> `2026.10.01-264`). Every reply about a merged
+change names the build it went out in. The footer shows the build, and it is
+how a deploy is confirmed live.

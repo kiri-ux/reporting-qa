@@ -3344,6 +3344,11 @@ def test_the_fingerprint_covers_what_a_recheck_stores():
     assert h.hexdigest()[:16] != rules_fingerprint(), \
         "a fix to what the report is judged against reaches nothing"
     h.update((root / "roster.py").read_bytes())
+    assert h.hexdigest()[:16] != rules_fingerprint(), \
+        "a fix to a lifetime's flight reaches nothing"
+    from app.version import _flight_source
+    assert "def flight_lines" in _flight_source()
+    h.update(_flight_source().encode())
     assert h.hexdigest()[:16] == rules_fingerprint()
 
 def test_the_pair_check_abstains_on_a_half_nobody_has_re_read(tmp_path, monkeypatch):

@@ -1469,7 +1469,8 @@ def check_date_range(ctx) -> list[dict]:
         trace = [("Printed on the report", printed),
                  ("Expected", f"{w_start.strftime(fmt)} to "
                               f"{w_end.strftime(fmt) if w_end else 'open'}")]
-        for l in (ctx.get("flight_lines") or [])[:12]:
+        for l in [x for x in (ctx.get("flight_lines") or [])
+                  if x.get("product") != "Additional Billing"][:12]:
             trace.append((f"Order {l.get('order') or '?'} · line {l.get('lines') or '?'}"
                           f" · {l.get('product') or ''}".strip(),
                           f"{l.get('starts') or '?'} to {l.get('ends') or 'open'}"
