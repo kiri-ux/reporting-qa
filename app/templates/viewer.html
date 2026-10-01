@@ -255,7 +255,8 @@
       {% for p in pacing if p.pace is not none and p.pace|abs >= 50 %}
         {% set _ = _off.append(p) %}
       {% endfor %}
-      <details class="pacefold"{% if _off %} open{% endif %}>
+      {# Closed even with a product off: the count on the summary says so. #}
+      <details class="pacefold">
         <summary>Pacing{% if rep.is_lifetime %} · campaign to date{% endif %}
           {%- if _off %}<span class="paceoff">{{ _off|length }} off</span>{% endif %}</summary>
         {% include "pacing_body.html" %}
