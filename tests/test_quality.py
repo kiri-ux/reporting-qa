@@ -498,6 +498,12 @@ def test_a_site_clicking_at_46_percent_is_found():
     assert len(out) == 1 and out[0]["severity"] == "fail"
     assert "Slicing Hero" in out[0]["detail"]
     assert "T-Mobile Play" not in out[0]["detail"]
+    # A finished campaign has no site left to block.
+    assert q.check_site_ctr({"text": text, "is_lifetime": True}) == []
+    from app.checks.rules import _rule_applies, skip_reason
+    life = {"text": text, "is_lifetime": True}
+    assert not _rule_applies(q.check_site_ctr, life)
+    assert skip_reason(q.check_site_ctr, life) == "not checked on a lifetime"
 
 
 def test_a_handful_of_impressions_is_not_evidence():
