@@ -1078,6 +1078,9 @@ class OrderSync(Base):
     # Which version of the product mapping read this export. An unchanged file
     # still has to be read again when the code interpreting it changes.
     map_version: Mapped[str] = mapped_column(String(32), default="")
+    # host:pid of the worker running this sync, so a restart is seen at once
+    # rather than after STALE_RUN_MINUTES. See orders_s3.running_sync.
+    runner: Mapped[str] = mapped_column(String(128), default="")
     # WHO OR WHAT STARTED THIS ONE.
     #
     # Three different things can begin a sync - a button, a deploy whose import
@@ -1136,6 +1139,7 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("order_sync", "state", "VARCHAR(16) DEFAULT 'done' NOT NULL"),
     ("order_sync", "started_at", "TIMESTAMP"),
     ("order_sync", "map_version", "VARCHAR(32) DEFAULT '' NOT NULL"),
+    ("order_sync", "runner", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("reports", "signoff_cleared_at", "TIMESTAMP"),
     ("order_lines", "flights", "JSON"),
     ("order_lines", "live", "BOOLEAN DEFAULT TRUE NOT NULL"),
