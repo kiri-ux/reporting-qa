@@ -1286,14 +1286,13 @@ def test_an_seo_row_uploads_without_running_the_checks(client):
     assert "Nothing to fix." not in page
 
 
-def test_any_row_can_be_uploaded_without_the_checks(client):
-    """The automatic case covers SEO. This is the escape hatch for everything
-    else that is not a Digital Marketing Report."""
+def test_a_missing_row_is_upload_and_the_two_decisions(client):
+    """No "No checks" and no note box on the board: SEO skips the checks on
+    its own, and the two extra controls were most of the row."""
     c, (db, dbm, imod) = client
     cycle = (Path(__file__).resolve().parents[1] / "app" / "templates" / "cycle.html").read_text()
-    assert 'name="skip_checks" value="1"' in cycle
-    assert ">\n                No checks\n              </label>" in cycle \
-        or "No checks" in cycle
+    assert "No checks" not in cycle
+    assert 'class="notebox"' not in cycle and "notesave" not in cycle.split("<style")[0]
 
 
 # ---------------------------------------- a hand-added row and the file that came
@@ -1357,7 +1356,7 @@ def test_a_note_on_a_waiting_row_does_not_mark_it_complete(client):
     assert row.noted_by == "Taylor"
     # And the buttons are still there to press, with the note in the box.
     page = c.get("/cycle?period=2026-07").text
-    assert 'value="waiting on the buyer"' in page
+    assert 'title="waiting on the buyer"' in page
     assert 'name="action" value="done"' in page
 
 
@@ -1371,17 +1370,13 @@ def test_an_unknown_action_is_refused_rather_than_treated_as_done(client):
     assert r.status_code == 400
 
 
-def test_the_note_button_comes_before_the_decision_buttons_in_the_form():
-    """Enter presses the first submit button in the form. That is the whole
-    fix, and it is an ordering that a tidy-up would quietly undo."""
+def test_a_missing_row_has_no_text_box_for_enter_to_submit():
+    """Enter in the old note box pressed "Done, no report". The box is gone."""
     page = (Path(__file__).resolve().parents[1] / "app" / "templates"
             / "cycle.html").read_text()
-    # The signoff form on a row, not the "add a row to this cycle" form above
-    # it, which posts to the same place.
     at = page.index('action="/cycle/done" class="signoff"')
-    block = page[at:at + 3000]
-    assert block.index('value="note"') < block.index('value="done"'), \
-        "Enter in the note box will mark the row complete again"
+    block = page[at:page.index("</form>", at)]
+    assert 'type="text"' not in block
 
 
 def test_an_upload_only_replaces_a_report_on_its_own_market(client):

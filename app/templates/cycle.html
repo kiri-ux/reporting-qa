@@ -956,28 +956,9 @@
                 Upload
               </label>
             </form>
-            {# AND ONE THAT DOES NOT RUN THE CHECKS.
-               An SEO report is not a Digital Marketing Report - no line item
-               grid, no creative previews, none of the widgets forty checks are
-               written about - so running them produces a screenful of failures
-               that are all about the wrong kind of document. This stores it,
-               names it and packages it with the rest, and says "not checked"
-               on the row rather than pretending it passed. An SEO-only row
-               does it automatically; this is for the ones that are not. #}
-            <form method="post" action="/cycle/upload" enctype="multipart/form-data"
-                  class="upform">
-              <input type="hidden" name="period" value="{{ period }}">
-              <input type="hidden" name="market" value="{{ e.market }}">
-              <input type="hidden" name="client" value="{{ e.client }}">
-              <input type="hidden" name="account_ids" value="{{ e.account_ids }}">
-              <input type="hidden" name="kind" value="{{ e.kind }}">
-              <input type="hidden" name="skip_checks" value="1">
-              <label class="uplabel" data-tip="Store it, name it and package it with the rest, without running the checks. For SEO and anything else that is not a Digital Marketing Report.">
-                <input type="file" name="file" accept=".pdf,.pptx"
-                       onchange="this.form.submit()">
-                No checks
-              </label>
-            </form>
+            {# NO "NO CHECKS" BUTTON. An SEO row skips the checks on its own;
+               anything else odd is uploaded and waived. /cycle/upload still
+               takes skip_checks. #}
             {# SEO is pulled outside TapClicks, so there is nothing to upload
                and the row would sit at "Missing" all month holding its
                partner off ready. This cycle only. #}
@@ -992,15 +973,6 @@
                   <svg aria-hidden="true"><use href="#ic-undo"/></svg>
                   <span class="sr">Undo</span></button>
               {% else %}
-                {# FIRST IN THE FORM, LAST ON THE SCREEN.
-
-                   Enter in a text box presses the form's first submit button,
-                   and that used to be "Done, no report" - so writing a note
-                   about a file you are still chasing marked it complete. The
-                   note's own button goes first so Enter saves the note, and
-                   CSS puts it back where it belongs. #}
-                <button class="mini notesave" name="action" value="note"
-                        data-tip="Save this note. It does not check the row off - the row stays on the board asking for its report.">Save</button>
                 {# ICONS, NOT SENTENCES. Two buttons reading "Done, no report"
                    and "Not needed" beside an Upload and a note box made every
                    row of a hundred-and-fifty-partner board a paragraph. What
@@ -1016,14 +988,9 @@
                         data-tip="Not needed - it did not run this month, so nothing is owed. Next month it is back on the board.">
                   <svg aria-hidden="true"><use href="#ic-notneeded"/></svg>
                   <span class="sr">Not needed</span></button>
-                {# The note is the point of the override - six weeks later
-                   "checked off by Lauren" answers who and not why - but it is
-                   the optional part, so it sits after the two decisions. #}
-                <input type="text" name="note" class="notebox" placeholder="Note"
-                       value="{{ e.done_note }}"
-                       aria-label="Why - kept with the mark and shown on the row">
-                {% if e.noted_by %}<span class="notetag"
-                     title="Noted by {{ e.noted_by }}">saved</span>{% endif %}
+                {# NO NOTE BOX ON THE BOARD: it was most of the row's width. A
+                   note saved before still shows. #}
+                {% if e.done_note %}<span class="notetag" title="{{ e.done_note }}">note</span>{% endif %}
               {% endif %}
             </form>
            </div>
@@ -1487,12 +1454,9 @@
 .signoff .notesave{order:9}
 .signoff .notebox{order:8}
 .signoff .notetag{order:10}
-/* TWO LINES, LIKE A ROW WITH A REPORT: the uploads, then the decisions and
-   the note. On one line the six of them ran past the right edge of the table
-   and squeezed the reporter's name. The note is the optional part, so it sits
-   after the two decisions. */
-.rowacts{flex-wrap:wrap;justify-content:flex-start;max-width:230px;row-gap:6px}
-.rowacts .signoff{flex:1 1 100%;flex-wrap:nowrap}
+/* Upload and the two decisions, on one line. */
+.rowacts{flex-wrap:nowrap;justify-content:flex-start}
+.rowacts .signoff{flex:0 0 auto;flex-wrap:nowrap}
 .signoff input{font:inherit;font-size:12.5px;padding:4px 8px;border:1px solid var(--line);
  border-radius:14px;background:var(--surface);color:var(--ink);width:88px}
 .mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
