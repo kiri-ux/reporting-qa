@@ -3515,6 +3515,21 @@ def save_note(report_id: int, request: Request, note: str = Form(""),
     return RedirectResponse(back, status_code=303)
 
 
+@app.post("/report/{report_id}/admin-note")
+def save_admin_note(report_id: int, request: Request, note: str = Form(""),
+                    db: Session = Depends(get_db)):
+    """The admin team's instruction to the reporter. Blank clears it."""
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    rep.admin_note = note.strip()[:4000]
+    rep.admin_note_by = (whoami(request) or "")[:128] if rep.admin_note else ""
+    rep.admin_note_at = dt.datetime.utcnow() if rep.admin_note else None
+    db.commit()
+    back = request.headers.get("referer") or f"/report/{report_id}/view"
+    return RedirectResponse(back, status_code=303)
+
+
 @app.post("/report/{report_id}/ack")
 def ack_finding(report_id: int, request: Request, index: int = Form(...),
                 on: str = Form(""), db: Session = Depends(get_db)):

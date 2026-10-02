@@ -93,6 +93,31 @@
    this page exists to avoid. #}
 <div class="split">
   <aside class="checks">
+    {# THE ADMIN TEAM'S INSTRUCTION, FIRST AND IN ITS OWN COLOR. Plum, because
+       teal is the buyer, gold a warning and red an error. #}
+    {% if rep.admin_note %}
+      <div class="adminnote">
+        <div class="adminhead">Admin note</div>
+        <div class="admintext">{{ rep.admin_note }}</div>
+        <div class="adminby">{{ rep.admin_note_by or 'Admin' }}{% if rep.admin_note_at %},
+          {{ rep.admin_note_at|et('%b %-d') }}{% endif %}</div>
+        <details class="adminedit">
+          <summary>Edit</summary>
+          <form method="post" action="/report/{{ rep.id }}/admin-note">
+            <textarea name="note" rows="3">{{ rep.admin_note }}</textarea>
+            <button class="mini" type="submit">Save</button>
+          </form>
+        </details>
+      </div>
+    {% else %}
+      <details class="adminedit adminadd">
+        <summary>Add admin note</summary>
+        <form method="post" action="/report/{{ rep.id }}/admin-note">
+          <textarea name="note" rows="3" placeholder="What the reporter should do"></textarea>
+          <button class="mini" type="submit">Save</button>
+        </form>
+      </details>
+    {% endif %}
 {# Only what needs attention. An "everything is fine" line is noise in a list
    whose entire job is naming problems, and it got read as one. #}
     {% set problems = [] %}
@@ -572,6 +597,18 @@ details[open] > .cksum::before{content:'▾ '}
  margin-left:6px;vertical-align:1px}
 .ckbad{background:var(--crit-bg);color:var(--crit)}
 .ckskip{background:var(--atlas-10);color:#3D5468}
+.adminnote{background:#F4E6F2;border:2px solid var(--plum);border-radius:10px;
+ padding:12px 14px;margin-bottom:18px;color:#3E1239}
+.adminhead{font-family:Agdasima,sans-serif;font-size:15px;font-weight:700;
+ letter-spacing:.12em;text-transform:uppercase;color:var(--plum);margin-bottom:6px}
+.admintext{font-size:14.5px;font-weight:600;white-space:pre-wrap;line-height:1.45}
+.adminby{font-size:11.5px;color:#7A4F75;margin-top:6px}
+.adminedit summary{cursor:pointer;font-size:12px;color:var(--plum);font-weight:700}
+.adminedit form{display:flex;flex-direction:column;gap:6px;margin-top:6px;align-items:flex-start}
+.adminedit textarea{width:100%;font:inherit;font-size:13px;padding:6px 8px;
+ border:1px solid var(--plum);border-radius:8px;box-sizing:border-box}
+.adminnote .adminedit{margin-top:8px}
+.adminadd{margin-bottom:16px}
 .removebox{margin-top:10px;font-size:12.5px}
 .removebox summary{cursor:pointer;color:var(--ink-2)}
 .removebox form{margin-top:6px}
