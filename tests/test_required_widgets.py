@@ -216,9 +216,11 @@ def test_the_sample_device_table_is_all_known(sample):
 def test_a_completion_performance_widget_over_100_fails():
     text = ("Video Completion Performance by Creative\n"
             "Creative            Impressions    Completion Rate\n"
-            "spot_15.mp4         1,000          101.05%\n")
+            "spot_15.mp4         1,000          102.05%\n")
     out = check_completion_rates({"text": text})
     assert len(out) == 1 and out[0]["severity"] == "fail"
+    # Up to 102% is OTT trackers, not a fault.
+    assert check_completion_rates({"text": text.replace("102.05", "101.95")}) == []
 
 
 def test_exactly_100_is_fine():

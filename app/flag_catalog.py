@@ -265,7 +265,7 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "Verify, then alert Alyssa. The client has been sent a number that "
          "matches nothing else on their report - it needs resending."),
         ("check_completion_rates",
-         "A completion rate above 100%, in any widget that has the column.",
+         "A completion rate above 102%, in any widget that has the column.",
          ADMIN, True,
          "Verify, then alert Alyssa."),
         ("check_zero_completion",
@@ -504,7 +504,7 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
      ("completion_missing",)),
     ("completion_zero", "Completion rates at 0%",
      ("completion_all_zero", "completion_zero_row")),
-    ("completion_over_100", "Completion rate above 100%",
+    ("completion_over_100", "Completion rate above 102%",
      ("completion_over_100",)),
     ("site_ctr_high", "Sites clicking above the ceiling", ("site_ctr_high",)),
     ("previews_blank", "Creative previews did not render",

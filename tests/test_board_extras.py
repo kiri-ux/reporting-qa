@@ -395,9 +395,13 @@ def test_a_completion_rate_over_100_is_caught_by_the_column_not_the_title():
 
     text = "".join(pdf_pages(Path(__file__).resolve().parents[1]
                              / "tests" / "fixtures" / "watsontown.pdf"))
-    out = check_completion_rates({"text": text, "page_of": None})
+    # 100.51% is under the 102% ceiling. Pushed over it, the column still
+    # catches it by the column and not the title.
+    assert check_completion_rates({"text": text, "page_of": None}) == []
+    out = check_completion_rates({"text": text.replace("100.51%", "103.51%"),
+                                  "page_of": None})
     assert len(out) == 1
-    assert "Pluto TV" in out[0]["detail"] and "100.51%" in out[0]["detail"]
+    assert "Pluto TV" in out[0]["detail"] and "103.51%" in out[0]["detail"]
     assert "check_rate_ceiling" not in {fn.__name__ for fn, _l in CHECKS}
 
 
@@ -4620,7 +4624,7 @@ def test_every_finding_has_a_written_name():
     # AND NO NAME CARRIES ONE REPORT'S FIGURES. A fixed threshold is part of
     # the sentence - "above 100%" is the rule - but a number that came off a
     # report is what made three menu entries out of one problem.
-    fixed = {"Completion rates at 0%", "Completion rate above 100%"}
+    fixed = {"Completion rates at 0%", "Completion rate above 102%"}
     for name in KIND_NAME.values():
         if name in fixed:
             continue

@@ -1601,12 +1601,19 @@ def _widget_block(text: str, start: int, limit: int = 6000) -> str:
     return block[:end.start()] if end else block
 
 
-def check_completion_rates(ctx) -> list[dict]:
-    """No completion rate can exceed 100%.
+# HOW FAR OVER 100% A COMPLETION RATE CAN READ BEFORE IT IS FLAGGED.
+#
+# A little over is normal for OTT and the team has an FAQ for it: the rate is
+# built from trackers firing inside the player, and when the start and quartile
+# trackers miss an impression that the complete tracker catches - the viewer's
+# connection drops and comes back, say - completes outnumber starts. The DSP's
+# answer is that those completes are real. Timberland FCU's 100.61% is that.
+# Past 102% it is no longer the trackers, and it is flagged.
+COMPLETION_CEILING = 102.0
 
-    A rate above 100 means more completions than impressions, which is
-    arithmetically impossible - it is a counting fault upstream, not a good
-    month.
+
+def check_completion_rates(ctx) -> list[dict]:
+    """No completion rate above COMPLETION_CEILING.
 
     ANY WIDGET WITH A COMPLETION RATE COLUMN, not only the ones titled
     "Completion Performance". Watsontown's Top CTV Publishers grid has one, and
@@ -1624,7 +1631,7 @@ def check_completion_rates(ctx) -> list[dict]:
         block = _widget_block(text, m.end())
         for line in block.split("\n"):
             bad = [v for v in PCT.findall(line)
-                   if _num(v) is not None and _num(v) > 100.0]
+                   if _num(v) is not None and _num(v) > COMPLETION_CEILING]
             if not bad:
                 continue
             label = re.split(r"\s{2,}", line.strip())[0][:60]
@@ -1638,9 +1645,8 @@ def check_completion_rates(ctx) -> list[dict]:
             seen.add(key)
             page_of = ctx.get("page_of")
             out.append(_f("completion_over_100", "fail",
-                          "Completion rate above 100%",
-                          f"{label} shows {', '.join(v + '%' for v in bad)}. "
-                          f"More completions than impressions is not possible.",
+                          "Completion rate above 102%",
+                          f"{label} shows {', '.join(v + '%' for v in bad)}.",
                           where=(f"p{page_of(m.start())} · " if page_of else "")
                                 + m.group(0).strip()))
     return out
@@ -2540,7 +2546,7 @@ CHECKS: list[tuple] = [
     (check_some_zero_completion, "No video, CTV or audio row sits at 0% watched"),
     (check_variant_preview_links,
      "Every variant carries its preview link"),
-    (check_completion_rates, "No completion rate is above 100%"),
+    (check_completion_rates, "No completion rate is above 102%"),
     (check_ctv_tile,       "The headline CTV completion rate is CTV's own"),
     (check_devices_known,  "Every row of the device breakout is an actual device"),
     (check_required_widgets, "Every product carries the widgets it owes"),

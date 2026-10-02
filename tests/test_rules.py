@@ -2022,7 +2022,7 @@ Beech Bend - Behavioral CTV      100.00%                99.73%
     # any completion widget, not just CTV
     vid = """Video Completion Performance by Line Item
 Line Item                        25% Completion Rate
-Watsontown - Behavioral Video    101.00%
+Watsontown - Behavioral Video    102.50%
 """
     out = check_completion_rates({"text": vid})
     assert out and out[0]["severity"] == "fail"
@@ -2063,18 +2063,10 @@ def test_no_widget_check_fires_on_the_real_fixtures():
                     period="2026-07",
                     flight=(_dt.date(2024, 1, 1), _dt.date(2026, 7, 31)))
         codes = ["unknown_device", "widget_missing"]
-        # WATSONTOWN IS NOT CLEAN ON THIS ONE AND NEVER WAS. Pluto TV reads
-        # 100.51% in its Top CTV Publishers grid - a real completion rate over
-        # 100%, which the old check_rate_ceiling flagged from the other side of
-        # the report. Now that the completion check reads the column rather
-        # than the widget's title, it is the one that says so.
-        if f != "watsontown":
-            codes.append("completion_over_100")
+        # Watsontown's Pluto TV reads 100.51%, under the 102% ceiling.
+        codes.append("completion_over_100")
         noisy = [x for x in r["findings"] if x["code"] in codes]
         assert not noisy, f"{f}: {[x['title'] for x in noisy]}"
-        if f == "watsontown":
-            hit = [x for x in r["findings"] if x["code"] == "completion_over_100"]
-            assert len(hit) == 1 and "Pluto TV" in hit[0]["detail"]
 
 
 # ------------------------------------------- the device-under warning at 20%
