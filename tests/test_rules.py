@@ -4007,3 +4007,12 @@ def test_meta_carousel_card_names_are_cut_off_by_meta():
     from app.checks.rules import run_all
     r = run_all(FIXTURES / "amorem_carousel_cards.pdf", "Lifetime_Amorem 53470.pdf")
     assert not [f for f in r["findings"] if f["code"] == "text_truncated"]
+
+
+def test_a_store_table_clipped_from_above_is_clipped():
+    """Fiesta Auto Insurance's "Grid contains more rows, but they have been
+    clipped." prints over the table's title, not under it."""
+    from app.checks.rules import run_all
+    r = run_all(FIXTURES / "fiesta_store_clipped.pdf",
+                "September 2026_Fiesta Auto Insurance Tax Services 52339 53898.pdf")
+    assert not [f for f in r["findings"] if f["code"].startswith("store_")]

@@ -1819,6 +1819,8 @@ def check_completion_present(ctx) -> list[dict]:
             continue
         if only_if is not None and not only_if.search(body):
             continue
+        if section == "VIDEO ADS" and _native_video_only(text):
+            continue                       # see _completion_without_sections
         name = FRIENDLY_SECTION.get(section, section.title())
         if "Completion" in body:
             trace.append((name, "completion figures found in its section"))
@@ -1832,6 +1834,16 @@ def check_completion_present(ctx) -> list[dict]:
                f"completion rate",
                "No completion figures anywhere in the section for: " + _sample(missing) + ".",
                trace, where=_where(ctx, _section_at_offset(text, missing[0])))]
+
+
+NATIVE_VIDEO = re.compile(r"\bnative\s+video\b", re.I)
+
+
+def _native_video_only(text: str) -> bool:
+    """Are the report's video line items all Native Video?"""
+    vids = [n for n, _at in line_item_names(text)
+            if re.search(r"\bvideo\b", n, re.I)]
+    return bool(vids) and all(NATIVE_VIDEO.search(n) for n in vids)
 
 
 def _completion_without_sections(ctx, text: str) -> list[dict]:
@@ -1850,6 +1862,12 @@ def _completion_without_sections(ctx, text: str) -> list[dict]:
     test is whether the product's name and the word share a line.
     """
     watched = sorted(set(ctx.get("products") or ()) & set(WATCHED_PRODUCTS))
+    # NATIVE VIDEO PRINTS NO COMPLETION RATE, and the product map reads it as
+    # Video. When every video line item is Native Video there is no completion
+    # to ask for - American Society for Cell Biology's was flagged, pointed at
+    # its view-through conversions page.
+    if "Video" in watched and _native_video_only(text):
+        watched.remove("Video")
     if not watched:
         return []
     lines = text.split("\n")
@@ -2011,7 +2029,9 @@ def store_visits(text: str) -> dict | None:
             if got:
                 visits = got[0]
 
-    clipped = "Grid contains more rows" in "\n".join(lines[start:end + 1])
+    # The note can print ABOVE the table's title as well as inside it -
+    # Fiesta Auto Insurance's sits on the line over "Visits by Store Location".
+    clipped = "Grid contains more rows" in "\n".join(lines[max(0, start - 4):end + 1])
     return {"locations": locations, "rows": rows, "visits": visits,
             "clipped": clipped, "places": places,
             # A row whose address would not parse is counted on its own rather
