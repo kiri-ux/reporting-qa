@@ -4974,6 +4974,7 @@ def test_an_admin_note_sits_at_the_top_of_the_report_and_on_the_row(client_order
 
     tpl = (Path(__file__).resolve().parents[1] / "app" / "templates" / "cycle.html").read_text()
     assert 'class="adminflag"' in tpl and "e.report.admin_note" in tpl
+    assert "e.report.admin_flags" in tpl
 
 
 def test_the_serve_gap_flag_is_the_admin_teams_only(client_orders_db):

@@ -998,10 +998,13 @@
           {# View PDF lives with sign-off, not with the findings: opening the
              report and judging it are the same action. #}
           <a class="pill pdf" href="/report/{{ e.report.id }}/view">View PDF</a>
-          {% if e.report.admin_note %}
+          {% set aflags = e.report.admin_flags %}
+          {% if e.report.admin_note or aflags %}
+            {% set atip = (['Admin note: ' ~ e.report.admin_note] if e.report.admin_note else [])
+                          + (aflags|map(attribute='1')|map(attribute='title')|list) %}
             <a class="adminflag" href="/report/{{ e.report.id }}/view"
-               data-tip="Admin note: {{ e.report.admin_note }}"
-               aria-label="Admin note: {{ e.report.admin_note }}">!</a>
+               data-tip="{{ atip|join(' · ') }}"
+               aria-label="{{ atip|join(' · ') }}">!</a>
           {% endif %}
           <form method="post" action="/report/{{ e.report.id }}/review" class="signoff">
             {% if not me %}
