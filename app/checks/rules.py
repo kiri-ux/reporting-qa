@@ -2255,11 +2255,12 @@ PPC_WIDGET = re.compile(
     r"|(?<!Performance Max )PPC Other Google Conversions", re.I)
 
 # BARCK+ RUNS ON THESE AND NOTHING ELSE. Display, Native Display, Native Video,
-# Social Mirror, Video, CTV, Social Mirror CTV and Video + CTV - which the
-# product map reads as these six. Close Lumber runs Mobile Conquesting only and
+# Social Mirror, Video, CTV, Social Mirror CTV, Video + CTV and Online Audio -
+# which the product map reads as these seven. Thirwood Place runs Online Audio
+# and carried BARCK+ Zip Code Performance. Close Lumber runs Mobile Conquesting only and
 # carried BARCK+ Visit Performance, Visits by Location and Visit by Day.
 BARCK_PRODUCTS = {"Display", "Native Display", "Video", "Social Mirror", "CTV",
-                  "Social Mirror CTV"}
+                  "Social Mirror CTV", "Online Audio"}
 BARCK_WIDGET = re.compile(r"(?m)^\s*BARCK\+[^\n:]{0,60}?(?=:|\s{2,}|$)")
 
 # (label, what is on the report, how the buy is read, the test, what to call
