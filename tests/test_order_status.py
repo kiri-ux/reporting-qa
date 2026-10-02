@@ -649,3 +649,22 @@ def test_a_cancelled_line_that_never_served_is_left_out(db, monkeypatch):
     db.commit()
     assert ingest.client_flight(db, "Acme", "1")[0] == dt.date(2025, 9, 1)
     assert not [l for l in ingest.flight_lines(db, "Acme", "1") if l.get("cancelled")]
+
+
+def test_only_reports_skipped_for_stale_orders_are_requeued(db):
+    from app.db import Batch, Report
+    from app.recheck import queue_stood_down
+    b = Batch(market="M", period="2026-09"); db.add(b); db.flush()
+
+    def rep(name, why):
+        r = Report(batch_id=b.id, client=name, period="2026-09", filename=f"{name}.pdf",
+                   rules_version="v1", findings=[], acked=[],
+                   checks=[{"key": "check_products", "state": "skipped", "why": why}])
+        db.add(r)
+        return r
+    stale = rep("A", "the order list was read by older import code - x")
+    seo = rep("B", "an SEO report carries SEO and nothing else")
+    db.commit()
+    assert stale.products_unchecked and not seo.products_unchecked
+    assert queue_stood_down(db, stale_only=True) == 1
+    assert stale.rules_version == "" and seo.rules_version == "v1"

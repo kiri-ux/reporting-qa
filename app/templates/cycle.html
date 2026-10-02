@@ -998,6 +998,17 @@
           {# View PDF lives with sign-off, not with the findings: opening the
              report and judging it are the same action. #}
           <a class="pill pdf" href="/report/{{ e.report.id }}/view">View PDF</a>
+          {# CHECK THIS FILE AGAIN, from the row. Filled when the report was
+             judged by older rules than the ones running now. #}
+          {% set behind = e.report.rules_version != rules_now()
+                          or e.report.products_unchecked %}
+          <form method="post" action="/report/{{ e.report.id }}/recheck" class="rowrecheck">
+            <input type="hidden" name="back" value="{{ request.url.path }}?{{ request.url.query }}">
+            <button class="iconbtn refresh{{ ' behind' if behind }}"
+                    data-tip="{{ 'Checked by older rules. Check this file again' if behind else 'Check this file again' }}">
+              <svg aria-hidden="true"><use href="#ic-refresh"/></svg>
+              <span class="sr">Check this file again</span></button>
+          </form>
           {% set aflags = e.report.admin_flags %}
           {% if e.report.admin_note or aflags %}
             {% set atip = (['Admin note: ' ~ e.report.admin_note] if e.report.admin_note else [])
@@ -1045,16 +1056,6 @@
                 <svg aria-hidden="true"><use href="#ic-undo"/></svg>
                 <span class="sr">Clear verdict</span></button>
             {% endif %}
-          </form>
-          {# CHECK THIS FILE AGAIN, from the row. Filled when the report was
-             judged by older rules than the ones running now. #}
-          {% set behind = e.report.rules_version != rules_now() %}
-          <form method="post" action="/report/{{ e.report.id }}/recheck" class="rowrecheck">
-            <input type="hidden" name="back" value="{{ request.url.path }}?{{ request.url.query }}">
-            <button class="iconbtn refresh{{ ' behind' if behind }}"
-                    data-tip="{{ 'Checked by older rules. Check this file again' if behind else 'Check this file again' }}">
-              <svg aria-hidden="true"><use href="#ic-refresh"/></svg>
-              <span class="sr">Check this file again</span></button>
           </form>
           {% else %}<span class="empty">—</span>{% endif %}
         </td>
@@ -1477,7 +1478,9 @@
  width:20px;height:20px;border-radius:50%;background:var(--plum);color:#fff;
  font-weight:800;font-size:13px;text-decoration:none;margin-left:6px;
  vertical-align:middle;box-shadow:0 0 0 3px #F4E6F2}
-.rowrecheck{display:inline}
+.rowrecheck{display:inline-block;vertical-align:middle;margin-left:4px}
+.rowrecheck .iconbtn{width:22px;height:22px}
+.rowrecheck .iconbtn svg{width:13px;height:13px}
 .iconbtn.refresh{background:transparent;border-color:var(--line);color:#3D5468}
 .iconbtn.refresh.behind{background:var(--gold);border-color:var(--gold);color:var(--atlas)}
 .iconbtn.refresh:hover{background:var(--atlas);border-color:var(--atlas);color:#fff}

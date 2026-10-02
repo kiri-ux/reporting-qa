@@ -507,6 +507,18 @@ def sync(db: Session, *, force: bool = False, claim_id: int | None = None,
         # the order sync - or hold it up: the first serve sync after a backfill
         # lands is gigabytes of reading.
         result = _sync(db, source, prev, force=force, trigger=trigger)
+        # ORDERS READ BY THE CURRENT CODE: re-queue the reports whose product
+        # check stood down because they were not. Only on a fresh read - an
+        # unchanged export returns the previous record - and only those, so the
+        # automatic sync does not re-read every SEO report each time.
+        try:
+            if (getattr(result, "ok", False) and prev is not None
+                    and getattr(result, "id", None) != prev.id
+                    and (result.map_version or "") == map_stamp()):
+                from .recheck import queue_stood_down
+                queue_stood_down(db, stale_only=True)
+        except Exception:                                    # noqa: BLE001
+            log.exception("could not queue reports that stood down")
         try:
             sync_serving(db, force=force)
         except Exception:                                    # noqa: BLE001
