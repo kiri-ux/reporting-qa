@@ -922,7 +922,7 @@
           {% endif %}</td>
         {# THE BUYER, AND WHETHER THEY HAVE SOMETHING TO REVIEW. It was a tag
            under the findings, where it read as being about the line above it. #}
-        <td class="nw" data-v="{{ e.buyer }}">{{ (e.buyer or '').split('(')[0].strip() }}
+        <td class="nw" data-v="{{ e.buyer }}">{{ ((e.buyer or '').split('(')[0].split() or [''])[0] }}
           {% set bflags = e.report.buyer_findings if e.report else [] %}
           {% if bflags %}
             {% set btips = [] %}
