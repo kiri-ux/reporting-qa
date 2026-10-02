@@ -287,11 +287,13 @@ def test_one_partners_link_does_not_serve_another_partners_pdf(client):
 
 
 def test_the_board_row_carries_the_tag_and_the_flags_on_it(client):
-    """On the board it is a tag and a hover, not four lines in the findings
-    column - that column is what the reporting team acts on."""
+    """On the board it is a flag in the Buyer column with the items on hover,
+    not lines or a tag in the findings column - that column is what the
+    reporting team acts on."""
     c, _app = client
     body = c.get("/cycle?period=2026-08&group=Amazing+Results+LLC&done=all").text
-    assert ">Buyer review</span>" in body
+    assert 'class="buyerflag"' in body and "<th>Buyer</th>" in body
+    assert 'class="buyertag"' not in body
     assert "4 geo-fence rows have no business name" in body
     # ...and NOT as one of the things holding the report up.
     assert "All checks passed" in body
