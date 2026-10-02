@@ -578,3 +578,74 @@ def test_a_serve_or_sheet_sync_after_the_orders_does_not_make_them_stale(db):
     row = db.scalars(select(OrderSync).where(is_order_sync(OrderSync))
                      .order_by(OrderSync.id.desc()).limit(1)).first()
     assert row.map_version == map_stamp()
+
+
+def test_a_cancelled_line_that_served_first_sets_the_lifetime_start(db, monkeypatch):
+    """Close Lumber: Social Mirror line 98655 ran from 3 January 2025 and was
+    cancelled; the live lines start in December."""
+    from types import SimpleNamespace
+    from app import ingest, roster
+    from app.db import ServedDays
+
+    def li(line, starts, ends, canceled):
+        return {"order": "43722", "line": line, "starts": starts, "ends": ends,
+                "canceled": canceled, "complete": not canceled, "live": not canceled}
+
+    sm = SimpleNamespace(account_ids="43722", line_ids="", product="Social Mirror",
+                         starts_on=None, ends_on=None, order_starts_on=None,
+                         order_ends_on=None, live=False, canceled=True,
+                         complete=False,
+                         detail=[li("98652", "2023-01-05", "2023-12-31", True),
+                                 li("98655", "2025-01-03", "2025-12-31", True)])
+    mc = SimpleNamespace(account_ids="43722", line_ids="", product="Mobile Conquesting",
+                         starts_on=None, ends_on=None, order_starts_on=None,
+                         order_ends_on=None, live=True, canceled=False, complete=False,
+                         detail=[li("99001", "2025-12-12", "2026-12-31", False)])
+    monkeypatch.setattr(roster, "client_lines", lambda *a, **k: [sm, mc])
+
+    # Serve data from 2024: 98652 (2023) is older than it, 98655 served.
+    db.add(ServedDays(period="2024-06", market_key="m", client_key="closelumber",
+                      market="M", client="Close Lumber", days=1,
+                      day_list=["2024-06-10"], first_day=dt.date(2024, 6, 10),
+                      last_day=dt.date(2024, 6, 10)))
+    db.add(ServedDays(period="2025-01", market_key="m", client_key="closelumber",
+                      market="M", client="Close Lumber", days=2,
+                      day_list=["2025-01-06", "2025-01-07"],
+                      first_day=dt.date(2025, 1, 6), last_day=dt.date(2025, 1, 7)))
+    db.commit()
+
+    flight = ingest.client_flight(db, "Close Lumber", "43722")
+    assert flight == (dt.date(2025, 1, 6), dt.date(2026, 12, 31))
+    lines = ingest.flight_lines(db, "Close Lumber", "43722")
+    gap = [l for l in lines if l.get("cancelled") and l.get("before_serve")]
+    assert [l["lines"] for l in gap] == ["98652"]
+
+    from app.checks.rules import check_date_range
+    out = check_date_range({"is_lifetime": True, "flight": flight, "flight_lines": lines,
+                            "date_range": (dt.date(2025, 1, 6), dt.date(2026, 9, 30))})
+    codes = [f["code"] for f in out]
+    assert "lifetime_serve_gap" in codes and "lifetime_short" not in codes
+    gapf = [f for f in out if f["code"] == "lifetime_serve_gap"][0]
+    assert "98652" in gapf["detail"] and "Jun 10, 2024" in gapf["detail"]
+
+
+def test_a_cancelled_line_that_never_served_is_left_out(db, monkeypatch):
+    from types import SimpleNamespace
+    from app import ingest, roster
+    from app.db import ServedDays
+
+    def li(line, starts, ends, canceled):
+        return {"order": "1", "line": line, "starts": starts, "ends": ends,
+                "canceled": canceled, "complete": False, "live": not canceled}
+    row = SimpleNamespace(account_ids="1", line_ids="", product="Display",
+                          starts_on=None, ends_on=None, order_starts_on=None,
+                          order_ends_on=None, live=True, canceled=False, complete=False,
+                          detail=[li("a", "2025-01-01", "2025-06-30", True),
+                                  li("b", "2025-09-01", "2026-03-31", False)])
+    monkeypatch.setattr(roster, "client_lines", lambda *a, **k: [row])
+    db.add(ServedDays(period="2024-12", market_key="m", client_key="other",
+                      market="M", client="Other", days=1, day_list=["2024-12-01"],
+                      first_day=dt.date(2024, 12, 1), last_day=dt.date(2024, 12, 1)))
+    db.commit()
+    assert ingest.client_flight(db, "Acme", "1")[0] == dt.date(2025, 9, 1)
+    assert not [l for l in ingest.flight_lines(db, "Acme", "1") if l.get("cancelled")]

@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.10.02-275"
+BUILD = "2026.10.02-276"
 BUILD_NOTES = ("")
 
 # ---------------------------------------------------------------------------
@@ -101,7 +101,8 @@ def rules_fingerprint(off: frozenset[str] | set[str] | None = None) -> str:
 def _flight_source() -> str:
     import ast
     from pathlib import Path
-    want = {"client_flight", "flight_lines", "_as_date", "_last_served_day"}
+    want = {"client_flight", "flight_lines", "_as_date", "_last_served_day",
+            "_cancelled_before", "_earliest_served", "_first_served_between"}
     try:
         src = (Path(__file__).resolve().parent / "ingest.py").read_text()
         tree = ast.parse(src)
