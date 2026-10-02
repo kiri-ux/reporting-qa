@@ -437,6 +437,8 @@ def _flag_owner(finding) -> str:
 
 
 templates.env.globals["flag_owner"] = _flag_owner
+from .flag_catalog import ADMIN_ONLY_CODES as _ADMIN_ONLY  # noqa: E402
+templates.env.globals["admin_only_codes"] = _ADMIN_ONLY
 templates.env.filters["flag_owner"] = _flag_owner
 # Chrome that every page needs and no view should have to remember to pass.
 # ---------------------------------------------------------------- who is here
@@ -1063,7 +1065,7 @@ def orders_view(request: Request, view: str = Query("clients"),
     legend = [{"code": c, "bg": h, "fg": ink_on(h), "name": n} for c, h, n, _ in PRODUCTS]
     clients = _client_rollup(db, lines) if view == "clients" else []
     from .orders_io import guidance_from_loaded
-    from .serving import (served_calendar, served_newest,
+    from .serving import (served_calendar, served_newest, served_oldest,
                           served_periods)
     from .orders_s3 import running_sync
     running = running_sync(db)
@@ -1152,6 +1154,7 @@ def orders_view(request: Request, view: str = Query("clients"),
         "serve_months": [{"period": p, "cal": served_calendar(db, p)}
                          for p in served_periods(db)],
         "serve_newest": served_newest(db),
+        "serve_oldest": served_oldest(db),
         # HOW OFTEN IT LOOKS, so "when will my new file show up" is answered on
         # the page rather than by asking. Every panel here says when it last
         # read something and none of them said when it will look again.

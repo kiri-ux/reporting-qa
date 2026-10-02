@@ -376,6 +376,16 @@ def owner_of(finding: dict) -> str:
     return agreed.pop() if len(agreed) == 1 else ""
 
 
+# FOR THE ADMIN TEAM ONLY. Not the reporter's to fix and not a reason to hold
+# the report: a cancelled line older than the serve data means older serve
+# data has to be uploaded, which only the admin team does.
+ADMIN_ONLY_CODES = {"lifetime_serve_gap"}
+
+
+def is_admin_only(finding: dict) -> bool:
+    return (finding or {}).get("code") in ADMIN_ONLY_CODES
+
+
 def is_buyer(finding: dict) -> bool:
     """Is this one for the buyer rather than for whoever reads reports?"""
     return owner_of(finding) == BUYER

@@ -315,9 +315,17 @@ class Report(Base):
         fixed by holding the PDF, and sitting in the same red list as a broken
         widget it taught people that the red list is half things to ignore.
         """
-        from .flag_catalog import is_buyer
+        from .flag_catalog import is_admin_only, is_buyer
 
-        return [f for _i, f in self.live_flags if not is_buyer(f)]
+        return [f for _i, f in self.live_flags
+                if not is_buyer(f) and not is_admin_only(f)]
+
+    @property
+    def admin_flags(self) -> list:
+        """[(index, finding)] for the admin team only. Held to nothing."""
+        from .flag_catalog import is_admin_only
+
+        return [(i, f) for i, f in self.live_flags if is_admin_only(f)]
 
     @property
     def buyer_flags(self) -> list:
