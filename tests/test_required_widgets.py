@@ -611,7 +611,7 @@ def test_the_families_are_one_table():
     assert "Amazon Premium Display" in labels and "PPC" not in labels
     for row in ROGUE_WIDGETS:
         assert len(row) == 5, row[0]
-        assert row[2] in ("line", "product"), row[0]
+        assert row[2] in ("line", "product", "products"), row[0]
 
 
 def test_a_ctv_tile_that_is_plainly_a_click_through_rate():
@@ -667,3 +667,24 @@ def test_mobile_conquesting_does_not_owe_site_and_app():
     assert r["products"] == ["Mobile Conquesting"]
     assert not [f for f in r["findings"] if f["code"] == "widget_missing"
                 and "Site and App" in f["title"]]
+
+
+def test_barck_on_a_buy_that_does_not_run_it():
+    """BARCK+ runs on Display, Native Display, Native Video, Social Mirror,
+    Video, CTV, Social Mirror CTV and Video + CTV. Close Lumber is Mobile
+    Conquesting only and carried three BARCK+ widgets."""
+    from app.checks.rules import check_blank_pages, check_rogue_widgets, run_all
+    fx = Path(__file__).parent / "fixtures" / "close_lumber_barck_mc.pdf"
+    r = run_all(fx, "Lifetime_Close Lumber 43722.pdf")
+    rogue = [f for f in r["findings"] if f["code"] == "widget_rogue"]
+    assert len(rogue) == 1 and "BARCK+" in rogue[0]["title"]
+    assert "BARCK+ Visit by Day" in rogue[0]["detail"]
+    # The Visit by Day chart has two points on it. It is not an empty page.
+    assert not [f for f in r["findings"] if f["code"] == "blank_widget_page"]
+
+    from app.checks.parser import pdf_text
+    text = pdf_text(fx)
+    for ok in ({"Display"}, {"Mobile Conquesting", "Video"}, {"Social Mirror CTV"}):
+        assert check_rogue_widgets({"text": text, "products": ok}) == [], ok
+    # Nothing known about the buy is not a finding.
+    assert check_rogue_widgets({"text": text}) == []
