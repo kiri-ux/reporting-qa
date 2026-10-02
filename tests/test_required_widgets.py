@@ -730,3 +730,19 @@ def test_valero_law_group_youtube_tv_owes_the_completion_rate_tile():
     fx = Path(__file__).parent / "fixtures" / "valero_youtube_tv.pdf"
     r = run_all(fx, "September 2026_Valero Law Group 50052 52972.pdf")
     assert [f["title"] for f in r["findings"]] == ["No CTV Completion Rate on page one"]
+
+
+def test_native_video_owes_no_completion_rate():
+    """American Society for Cell Biology runs Native Video, which the product
+    map reads as Video. Native Video prints no completion rate."""
+    from app.checks.quality import check_completion_present
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "cell_bio_native_video.pdf"
+    r = run_all(fx, "September 2026_American Society for Cell Biology - Cell Bio 53093.pdf")
+    assert "completion_missing" not in {f["code"] for f in r["findings"]}
+    # A plain video line beside it still owes one.
+    text = ("Line Item Performance\\n"
+            " Acme - Retargeting Native Video   1,000   10   1.00%\\n"
+            " Acme - Behavioral Video   1,000   10   1.00%\\n"
+            "Video Creative Performance\\n")
+    assert check_completion_present({"text": text, "products": {"Video"}})
