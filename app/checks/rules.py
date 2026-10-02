@@ -2056,6 +2056,7 @@ def _dooh_only(ctx) -> bool:
 # Products whose inventory breakout is NOT the generic site-and-app list. A
 # billboard has neither. A CTV ad runs on Samsung TV Plus and Pluto, which the
 # report lists as Top CTV Publishers - and that widget IS the breakout.
+NO_SITE_APP_AT_ALL = {"DOOH", "Mobile Conquesting"}
 NO_SITE_APP_PRODUCTS = {"DOOH", "CTV", "Social Mirror CTV", "Video",
                         "Amazon CTV", "Amazon Video"}
 
@@ -2076,6 +2077,11 @@ def _site_app_not_owed(ctx, heads: dict) -> bool:
     products = {p for p in (ctx.get("products") or set())}
     if not products:
         return False
+    # NOR MOBILE CONQUESTING. Its BARCK+ pages are visits by location and by
+    # day, and TapClicks prints no site and app list for it. Close Lumber runs
+    # nothing else and was failed for not carrying one.
+    if products <= NO_SITE_APP_AT_ALL:
+        return True
     # THE INVENTORY WIDGET FOR WHAT RAN, which is the publisher list on a CTV
     # buy. It has to actually be there.
     inventory = heads.get(W_CTV_PUBS, 0) > 0 or heads.get(W_AMZ_SITE, 0) > 0

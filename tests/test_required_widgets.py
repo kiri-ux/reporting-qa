@@ -349,8 +349,10 @@ def test_a_ctv_buy_beside_a_mobile_one_is_still_a_ctv_buy():
     assert _site_app_not_owed(mixed, {W_CTV_PUBS: 1})
     # The publisher list has to actually be there.
     assert not _site_app_not_owed(mixed, {})
-    # And a buy with nothing that gets a publisher list still owes it.
-    assert not _site_app_not_owed({"products": {"Mobile Conquesting"}},
+    # Mobile Conquesting on its own gets no site and app list at all.
+    assert _site_app_not_owed({"products": {"Mobile Conquesting"}}, {})
+    # And a buy with a product that does get one still owes it.
+    assert not _site_app_not_owed({"products": {"Mobile Conquesting", "Display"}},
                                   {W_CTV_PUBS: 1})
 
 
@@ -654,3 +656,14 @@ def test_a_real_completion_rate_is_left_alone():
         assert [f for f in check_ctv_tile({"text": text,
                                            "expected_products": {"CTV"}})
                 if "not a completion rate" in f["title"]] == [], name
+
+
+def test_mobile_conquesting_does_not_owe_site_and_app():
+    """Close Lumber runs Mobile Conquesting and nothing else. Its BARCK+ pages
+    are visits, and there is no site and app list for it."""
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "close_lumber_barck_mc.pdf"
+    r = run_all(fx, "Lifetime_Close Lumber 43722.pdf")
+    assert r["products"] == ["Mobile Conquesting"]
+    assert not [f for f in r["findings"] if f["code"] == "widget_missing"
+                and "Site and App" in f["title"]]

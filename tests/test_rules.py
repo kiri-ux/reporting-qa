@@ -2935,8 +2935,8 @@ def test_barck_still_owes_site_and_app_where_it_would_list_something():
     """This is "the breakout it carries is the right one for what ran", not
     "CTV reports owe nothing"."""
     from app.checks.rules import check_required_widgets
-    text = "BARCK+ Targeting\nMobile Conquesting Creative Performance\n"
-    ctx = {"text": text, "products": {"Mobile Conquesting"},
+    text = "BARCK+ Targeting\nDisplay Creative Performance\n"
+    ctx = {"text": text, "products": {"Display", "Mobile Conquesting"},
            "page_of": lambda _o: 4}
     assert "widget_missing" in {f["code"] for f in check_required_widgets(ctx)}
 
