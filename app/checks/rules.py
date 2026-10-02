@@ -618,6 +618,13 @@ def check_thumbnails(ctx) -> list[dict]:
 
 
 # ---------------------------------------------------------------- empty widgets
+def _no_ppc_buy(ctx) -> bool:
+    """Is anything known about this buy, and is PPC not part of it?"""
+    have = {str(p) for p in (ctx.get("products") or ())}
+    have |= {str(p) for p in (ctx.get("expected_products") or ())}
+    return bool(have) and not any("ppc" in p.lower() for p in have)
+
+
 def check_blank_pages(ctx) -> list[dict]:
     path, pages = ctx["path"], ctx["pages"]
     # One pdftotext call for the whole document rather than one per page. On a
@@ -637,6 +644,19 @@ def check_blank_pages(ctx) -> list[dict]:
             continue
         if page_ink_pct(path, pg) < 1.0:
             hits.append((pg, " ".join(body)[:70]))
+    # AND PPC'S GLOSSARY PAGES ON A BUY WITH NO PPC. They are media widgets -
+    # template prose and a picture, no data - so they are this flag, not a
+    # product finding. They carry a phone number and dates in the picture, so
+    # the digit and ink tests above never see them.
+    if _no_ppc_buy(ctx):
+        seen = {p for p, _t in hits}
+        for pg in range(1, min(pages, len(per_page)) + 1):
+            if pg in seen or not PPC_WIDGET.search(per_page[pg - 1]):
+                continue
+            body = [l.strip() for l in per_page[pg - 1].split("\n")
+                    if l.strip() and not SKIP_LINE.search(l)]
+            hits.append((pg, " ".join(body)[:70]))
+        hits.sort()
     if not hits:
         return []
     detail = "; ".join(f"page {p} of {pages}: {t}" for p, t in hits[:4])
@@ -2127,9 +2147,8 @@ PPC_WIDGET = re.compile(
 #  what was found - "" quotes the widget titles themselves)
 ROGUE_WIDGETS: list[tuple] = [
     ("Amazon Premium Display", AMZ_DISPLAY_WIDGET, "line", AMZ_DISPLAY_LINE, ""),
-    # Prose pages, not titled widgets, so they are named rather than quoted.
-    ("PPC", PPC_WIDGET, "product", "PPC",
-     "the PPC cost-per-click glossary and the ad extension breakdown"),
+    # PPC's glossary pages are not here: they are media widgets with no data,
+    # and check_blank_pages flags them as that.
 ]
 
 

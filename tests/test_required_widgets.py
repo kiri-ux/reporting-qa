@@ -551,47 +551,41 @@ PPC_REPORTS = ["ski_barn_ppc_pages.pdf", "usdan_no_ppc_boilerplate.pdf",
                "earthly_cleaning_ppc_pages.pdf"]
 
 
+def _ppc_ctx(name, products):
+    from app.checks.parser import pdf_pages, pdf_text
+    fx = Path(__file__).parent / "fixtures" / name
+    pages = pdf_pages(fx)
+    return {"path": fx, "pages": len(pages), "page_text": pages,
+            "text": pdf_text(fx), "products": set(products),
+            "expected_products": set(products)}
+
+
 def test_ppc_pages_on_a_buy_with_no_ppc():
-    """Ski Barn carries the PPC cost-per-click glossary and the ad extension
-    breakdown on pages 18 and 19, with no data under either and no PPC on the
-    order. Usdan Summer Camp and Charlottesville's Earthly Cleaning carry the
-    same four lines and neither has PPC either.
+    """Ski Barn, Usdan Summer Camp and Earthly Cleaning carry the PPC
+    cost-per-click glossary and the ad extension breakdown with no PPC on the
+    order. They are media widgets with no data, and that is the flag - not a
+    product on a buy that does not include it."""
+    from app.checks.rules import check_blank_pages, check_rogue_widgets
 
-    ONE RULE FOR ALL THREE, BECAUSE THE TEXT IS IDENTICAL ON ALL THREE. This
-    family was pulled once, on the reading that the glossary is template prose
-    rather than a page anybody ordered. It is template prose AND it is a page
-    nobody ordered, and those are not in conflict: a report should not carry
-    four pages explaining a product the client is not buying.
-
-    Its line items are no help either way - PPC lines are named for the
-    strategy rather than the product - so the buy is read off the report's
-    products and the order.
-    """
-    from app.checks.parser import pdf_text
-    from app.checks.rules import check_rogue_widgets
-
-    fx = Path(__file__).parent / "fixtures"
     for name in PPC_REPORTS:
-        text = pdf_text(fx / name)
-        assert "Amount Spent on the PPC campaign" in text, name
-        ctx = {"text": text, "products": {"Display", "Meta"},
-               "expected_products": {"Display", "Meta"}}
-        out = check_rogue_widgets(ctx)
-        assert [f["title"] for f in out] == ["PPC on a buy with no PPC"], name
-        assert "cost-per-click glossary" in out[0]["detail"], name
+        ctx = _ppc_ctx(name, {"Display", "Meta"})
+        assert "Amount Spent on the PPC campaign" in ctx["text"], name
+        assert check_rogue_widgets(ctx) == [], name
+        out = check_blank_pages(ctx)
+        assert len(out) == 1 and out[0]["code"] == "blank_widget_page", name
+        assert "with a widget but no data" in out[0]["title"], name
+        assert "PPC" in out[0]["detail"], name
 
 
 def test_a_client_who_runs_ppc_says_nothing():
     """Whether the product is read off the report or off the order."""
-    from app.checks.parser import pdf_text
-    from app.checks.rules import check_rogue_widgets
+    from app.checks.rules import check_blank_pages
 
-    fx = Path(__file__).parent / "fixtures" / "ski_barn_ppc_pages.pdf"
-    base = {"text": pdf_text(fx), "products": {"Display"},
-            "expected_products": {"Display"}}
+    base = _ppc_ctx("ski_barn_ppc_pages.pdf", {"Display"})
     for key in ("products", "expected_products"):
         live = dict(base, **{key: set(base[key]) | {"PPC"}})
-        assert check_rogue_widgets(live) == [], key
+        out = check_blank_pages(live)
+        assert not any("PPC" in f["detail"] for f in out), key
 
 
 def test_performance_max_owns_its_own_google_widgets():
@@ -610,7 +604,7 @@ def test_the_families_are_one_table():
     """The next one somebody spots should be a line, not a check."""
     from app.checks.rules import ROGUE_WIDGETS
     labels = [row[0] for row in ROGUE_WIDGETS]
-    assert "Amazon Premium Display" in labels and "PPC" in labels
+    assert "Amazon Premium Display" in labels and "PPC" not in labels
     for row in ROGUE_WIDGETS:
         assert len(row) == 5, row[0]
         assert row[2] in ("line", "product"), row[0]
