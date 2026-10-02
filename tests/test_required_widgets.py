@@ -107,7 +107,9 @@ def test_youtube_on_the_order_with_no_section_still_owes_the_plus_widget():
 def _yt_ctx(text: str, *lines: str) -> dict:
     grid = "Line Item Performance\n" + "".join(
         f" {n}   1,000   10   1.00%\n" for n in lines)
-    return {"text": text + grid, "products": {"YouTube Video Ads"}}
+    # Page one with its CTV Completion Rate tile, which any YouTube TV owes.
+    return {"text": "CTV Completion Rate\n\f" + text + grid,
+            "products": {"YouTube Video Ads"}}
 
 
 def test_either_spelling_of_the_channel_list_satisfies_a_tv_buy():
@@ -708,3 +710,16 @@ def test_the_assignment_limit_is_a_widget_with_no_data():
     assert len(blank) == 1
     assert blank[0]["detail"] == "pg 5: text starting: TikTok Click and"
     assert blank[0]["pages"] == [[5, "TikTok Click and"]]
+
+
+def test_youtube_tv_is_ctv():
+    """Chalfant Corporation - Volkswagen of Boise runs YouTube TV. Its CTV tile
+    belongs, it owes no creative breakout with impressions, and the page-one
+    CTV Completion Rate tile is missing."""
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "chalfant_youtube_tv.pdf"
+    r = run_all(fx, "September 2026_Chalfant Corporation - Volkswagen of Boise 45946 52407.pdf")
+    titles = {f["title"] for f in r["findings"]}
+    assert "CTV tile on a report with no CTV" not in titles
+    assert "No YouTube TV Creative Performance widget" not in titles
+    assert "No CTV Completion Rate on page one" in titles

@@ -800,6 +800,10 @@ def check_rogue_ctv(ctx) -> list[dict]:
         return []
     if any(CTV_LINE.search(n) for n, _i, _c in line_item_totals(text)):
         return []
+    # YOUTUBE TV IS CTV. Chalfant Corporation's YouTube TV line was told its
+    # CTV tile did not belong.
+    if any(YT_TV_LINE.search(n) for n, _i, _c in line_item_totals(text)):
+        return []
     want = ctx.get("expected_products")
     if want and any(CTV_LINE.search(p) for p in want):
         return []          # the order says CTV even if the grid does not
@@ -2538,6 +2542,18 @@ def check_required_widgets(ctx) -> list[dict]:
         owed(W_YT_PLACE, 1, "YouTube+")
     if yt_tv:
         owed(W_YTTV_CHAN, 1, "YouTube TV", alt=(W_YT_CHAN,))
+    # AND ANY YOUTUBE TV IS A CTV BUY, which owes the CTV Completion Rate tile
+    # on page one. Chalfant Corporation carried the cost-per-completed-view
+    # tile and not this one. (It does not owe a creative breakout with
+    # impressions - the completion-by-creative widget is the one it gets.)
+    if tv:
+        page_one = text.split("\f", 1)[0]
+        if not CTV_TILE.search(page_one):
+            out.append(_f("widget_missing", "fail",
+                          "No CTV Completion Rate on page one",
+                          "This report runs YouTube TV. Page one does not carry "
+                          "the CTV Completion Rate tile.",
+                          where="p1"))
 
     # BARCK+ targeting owes the generic site and app breakout. The report
     # names its own BARCK+ widget, so this does not depend on knowing which
