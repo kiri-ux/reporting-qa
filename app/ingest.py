@@ -780,6 +780,12 @@ def prune_old_pdfs(db: Session) -> dict:
         db.commit()
         log.info("pruned %d report PDFs before %s, freed %.1f MB",
                  files, cutoff, freed / 1048576)
+    # The poppler answers kept beside PDFs that are gone - see checks/pdfcache.
+    try:
+        from .checks.pdfcache import sweep
+        sweep(settings.data_dir)
+    except Exception:                     # noqa: BLE001
+        pass
     # empty batch directories left behind
     for d in sorted((settings.data_dir).glob("batch-*")):
         try:

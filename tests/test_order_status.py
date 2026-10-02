@@ -668,3 +668,21 @@ def test_only_reports_skipped_for_stale_orders_are_requeued(db):
     assert stale.products_unchecked and not seo.products_unchecked
     assert queue_stood_down(db, stale_only=True) == 1
     assert stale.rules_version == "" and seo.rules_version == "v1"
+
+
+def test_the_order_list_is_read_once_per_session_and_dropped_when_it_changes(db):
+    from app.db import OrderLine
+    from app.roster import _LINES_KEY, client_lines
+    db.add(OrderLine(market="M", client="Acme Co", account_ids="1", campaign="x"))
+    db.commit()
+    assert len(client_lines(db, "Acme Co", "1")) == 1
+    first = db.info[_LINES_KEY]
+    client_lines(db, "Acme Co", "1")
+    assert db.info[_LINES_KEY] is first, "read again within the session"
+    db.add(OrderLine(market="M", client="Acme Co", account_ids="2", campaign="y"))
+    db.flush()
+    assert _LINES_KEY not in db.info
+    assert len(client_lines(db, "Acme Co", "1 2")) == 2
+    db.query(OrderLine).delete()
+    assert _LINES_KEY not in db.info
+    assert client_lines(db, "Acme Co", "1") is None

@@ -4016,3 +4016,32 @@ def test_a_store_table_clipped_from_above_is_clipped():
     r = run_all(FIXTURES / "fiesta_store_clipped.pdf",
                 "September 2026_Fiesta Auto Insurance Tax Services 52339 53898.pdf")
     assert not [f for f in r["findings"] if f["code"].startswith("store_")]
+
+
+def test_poppler_answers_are_kept_beside_a_stored_pdf(tmp_path, monkeypatch):
+    import os
+    import shutil
+    from app.checks import pdfcache
+    from app.checks.parser import pdf_pages
+    from app.config import settings
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    d = tmp_path / "batch-1"; d.mkdir()
+    pdf = d / "r.pdf"
+    shutil.copy(FIXTURES / "chalfant_youtube_tv.pdf", pdf)
+
+    first = pdf_pages(pdf)
+    cache = pdfcache.cache_dir_for(pdf)
+    assert (next(cache.iterdir()) / "pages.txt").exists()
+    assert pdf_pages(pdf) == first
+    assert pdfcache.page_image(pdf, 1, 50) is not None
+    # A new file at the same path is read fresh.
+    shutil.copy(FIXTURES / "valero_youtube_tv.pdf", pdf)
+    os.utime(pdf, ns=(1, 1))
+    assert pdf_pages(pdf) != first
+    assert len(list(cache.iterdir())) == 1
+    # The PDF going takes its cache with it at the next sweep.
+    pdf.unlink()
+    assert pdfcache.sweep(tmp_path) == 1 and not cache.exists()
+    # Nothing is written beside a file outside the data directory.
+    pdf_pages(FIXTURES / "chalfant_youtube_tv.pdf")
+    assert not pdfcache.cache_dir_for(FIXTURES / "chalfant_youtube_tv.pdf").exists()
