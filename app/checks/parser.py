@@ -380,6 +380,8 @@ HEADLINE_IMPS = re.compile(r"How many ads were served:\s*\n\s*([\d,]+)")
 # The tiles sit within a few hundred characters of the label they belong to.
 HEADLINE_WINDOW = 1200
 
+TILES_END = re.compile(r"Your Product Breakout|Line Item Performance|"
+                       r"Line Item Name|^\s*\*Note", re.I)
 NUM_IN_LINE = re.compile(r"(?<![\d,.%])(\d[\d,]*)(?![\d,.%])")
 
 
@@ -419,6 +421,12 @@ def _by_column(window: str) -> tuple[float | None, float | None]:
 
     found: list[tuple[float, float]] = []          # (column center, value)
     for line in lines[1:]:
+        # ONLY THE TILES. The window runs on past them, and when the line item
+        # grid follows on the same page a number in a NAME sits in the tile's
+        # column: Studle Financial's "Services - 45-64/Financial Planning"
+        # read as 45 impressions against a tile that says 69,449.
+        if TILES_END.search(line):
+            break
         for m in NUM_IN_LINE.finditer(line):
             v = as_number(m.group(1))
             if v is not None:
