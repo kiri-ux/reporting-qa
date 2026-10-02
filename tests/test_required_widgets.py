@@ -216,9 +216,11 @@ def test_the_sample_device_table_is_all_known(sample):
 def test_a_completion_performance_widget_over_100_fails():
     text = ("Video Completion Performance by Creative\n"
             "Creative            Impressions    Completion Rate\n"
-            "spot_15.mp4         1,000          101.05%\n")
+            "spot_15.mp4         1,000          102.05%\n")
     out = check_completion_rates({"text": text})
     assert len(out) == 1 and out[0]["severity"] == "fail"
+    # Up to 102% is OTT trackers, not a fault.
+    assert check_completion_rates({"text": text.replace("102.05", "101.95")}) == []
 
 
 def test_exactly_100_is_fine():
@@ -347,8 +349,10 @@ def test_a_ctv_buy_beside_a_mobile_one_is_still_a_ctv_buy():
     assert _site_app_not_owed(mixed, {W_CTV_PUBS: 1})
     # The publisher list has to actually be there.
     assert not _site_app_not_owed(mixed, {})
-    # And a buy with nothing that gets a publisher list still owes it.
-    assert not _site_app_not_owed({"products": {"Mobile Conquesting"}},
+    # Mobile Conquesting on its own gets no site and app list at all.
+    assert _site_app_not_owed({"products": {"Mobile Conquesting"}}, {})
+    # And a buy with a product that does get one still owes it.
+    assert not _site_app_not_owed({"products": {"Mobile Conquesting", "Display"}},
                                   {W_CTV_PUBS: 1})
 
 
@@ -652,3 +656,14 @@ def test_a_real_completion_rate_is_left_alone():
         assert [f for f in check_ctv_tile({"text": text,
                                            "expected_products": {"CTV"}})
                 if "not a completion rate" in f["title"]] == [], name
+
+
+def test_mobile_conquesting_does_not_owe_site_and_app():
+    """Close Lumber runs Mobile Conquesting and nothing else. Its BARCK+ pages
+    are visits, and there is no site and app list for it."""
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "close_lumber_barck_mc.pdf"
+    r = run_all(fx, "Lifetime_Close Lumber 43722.pdf")
+    assert r["products"] == ["Mobile Conquesting"]
+    assert not [f for f in r["findings"] if f["code"] == "widget_missing"
+                and "Site and App" in f["title"]]
