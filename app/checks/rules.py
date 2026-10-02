@@ -642,6 +642,11 @@ def check_blank_pages(ctx) -> list[dict]:
             continue
         if sum(c.isdigit() for c in " ".join(body)) > 4:
             continue
+        # A BARCK+ CHART IS DRAWN, NOT PRINTED. Its axis and points are
+        # graphics, so a sparse one - Close Lumber's Visit by Day has two
+        # points on one day - reads as an empty page when it is not.
+        if any(BARCK.search(l) for l in body):
+            continue
         if page_ink_pct(path, pg) < 1.0:
             hits.append((pg, " ".join(body)[:70]))
     # AND PPC'S GLOSSARY PAGES ON A BUY WITH NO PPC. They are media widgets -
@@ -2155,10 +2160,19 @@ PPC_WIDGET = re.compile(
     r"Amount Spent on the PPC campaign"
     r"|(?<!Performance Max )PPC Other Google Conversions", re.I)
 
+# BARCK+ RUNS ON THESE AND NOTHING ELSE. Display, Native Display, Native Video,
+# Social Mirror, Video, CTV, Social Mirror CTV and Video + CTV - which the
+# product map reads as these six. Close Lumber runs Mobile Conquesting only and
+# carried BARCK+ Visit Performance, Visits by Location and Visit by Day.
+BARCK_PRODUCTS = {"Display", "Native Display", "Video", "Social Mirror", "CTV",
+                  "Social Mirror CTV"}
+BARCK_WIDGET = re.compile(r"(?m)^\s*BARCK\+[^\n:]{0,60}?(?=:|\s{2,}|$)")
+
 # (label, what is on the report, how the buy is read, the test, what to call
 #  what was found - "" quotes the widget titles themselves)
 ROGUE_WIDGETS: list[tuple] = [
     ("Amazon Premium Display", AMZ_DISPLAY_WIDGET, "line", AMZ_DISPLAY_LINE, ""),
+    ("BARCK+", BARCK_WIDGET, "products", BARCK_PRODUCTS, ""),
     # PPC's glossary pages are not here: they are media widgets with no data,
     # and check_blank_pages flags them as that.
 ]
@@ -2174,6 +2188,11 @@ def _buy_has(kind, test, ctx, names) -> bool:
     """
     if kind == "line":
         return any(test.search(n) for n in names)
+    if kind == "products":
+        have = {str(p) for p in (ctx.get("products") or ())}
+        have |= {str(p) for p in (ctx.get("expected_products") or ())}
+        # Nothing known about the buy is not "no such product".
+        return not have or bool(have & test)
     have = {str(p) for p in (ctx.get("products") or ())}
     have |= {str(p) for p in (ctx.get("expected_products") or ())}
     return any(test.lower() in p.lower() for p in have)
