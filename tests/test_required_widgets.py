@@ -688,3 +688,18 @@ def test_barck_on_a_buy_that_does_not_run_it():
         assert check_rogue_widgets({"text": text, "products": ok}) == [], ok
     # Nothing known about the buy is not a finding.
     assert check_rogue_widgets({"text": text}) == []
+
+
+def test_the_assignment_limit_is_a_widget_with_no_data():
+    """North Bay Trade's TikTok conversion widget printed TapClicks' assignment
+    limit on a page of its own. That is a blank widget to delete, not a
+    widget error to re-pull."""
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "north_bay_assignment_limit.pdf"
+    r = run_all(fx, "September 2026_North Bay Trade Introduction Program TIP 55433.pdf")
+    codes = [f["code"] for f in r["findings"]]
+    assert "widget_error" not in codes
+    blank = [f for f in r["findings"] if f["code"] == "blank_widget_page"]
+    assert len(blank) == 1
+    assert blank[0]["detail"] == ("page 5 of 18: TikTok Click and View-through "
+                                  "Conversion Performance")

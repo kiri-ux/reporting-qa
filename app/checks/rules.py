@@ -14,6 +14,7 @@ from .parser import (as_number, date_range, SKIP_LINE, Table, extract_tables, he
                      meta_from_filename, meta_from_text, page_count, page_ink_pct,
                      pdf_text, tokens)
 from .products import NOT_IN_MONTHLY_REPORT, detect as detect_products
+from .quality import ASSIGNMENT_LIMIT
 from .quality import (check_blank_screenshots, check_conversion_names,
                       check_creative_names, check_social_mirror_sizes,
                       check_creative_shape,
@@ -639,6 +640,14 @@ def check_blank_pages(ctx) -> list[dict]:
         txt = per_page[pg - 1]
         body = [l.strip() for l in txt.split("\n") if l.strip() and not SKIP_LINE.search(l)]
         if not body:
+            continue
+        # TAPCLICKS' ASSIGNMENT LIMIT is a widget with no data, whatever else
+        # is on the page. Named by its title, not the message.
+        if any(m in l.lower() for l in body for m in ASSIGNMENT_LIMIT):
+            title = next((l for l in body if not any(
+                m in l.lower() for m in ASSIGNMENT_LIMIT)
+                and not re.match(r"^\d+\.\s", l)), body[0])
+            hits.append((pg, title[:70]))
             continue
         if sum(c.isdigit() for c in " ".join(body)) > 4:
             continue

@@ -209,9 +209,10 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "Verify the widget shouldn't be there, flag Alyssa if something "
          "is truly missing."),
         ("check_blank_pages",
-         "A page that came out blank where a widget should be.",
+         "A page that came out blank where a widget should be, or a widget "
+         "that printed TapClicks' assignment limit instead of data.",
          REPORTER, False,
-         "Delete the blank page."),
+         "Delete the blank page or widget."),
         ("check_widget_errors",
          "A widget that printed an error message where its table should be.",
          REPORTER, False,

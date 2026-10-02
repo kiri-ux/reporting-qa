@@ -1333,9 +1333,13 @@ def check_page_banners(ctx) -> list[dict]:
 # TapClicks prints its own error into the widget's space and carries on. The
 # page still has a heading and a border, so it does not read as broken until
 # somebody looks - which on a 300-page report is nobody.
+# THE ASSIGNMENT LIMIT IS NOT HERE. "This widget is requesting data for more
+# assignments than is allowed" is a widget with no data, and the fix is to
+# delete it - check_blank_pages flags it as that. North Bay Trade's TikTok
+# conversion widget printed it on a page of its own.
+ASSIGNMENT_LIMIT = ("requesting data for more assignments than is allowed",
+                    "within the assignment limit")
 WIDGET_ERRORS = (
-    "requesting data for more assignments than is allowed",
-    "within the assignment limit",
     "no data available for the selected",
     "an error occurred while loading this widget",
     "this widget could not be loaded",
