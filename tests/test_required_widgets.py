@@ -746,3 +746,12 @@ def test_native_video_owes_no_completion_rate():
             " Acme - Behavioral Video   1,000   10   1.00%\\n"
             "Video Creative Performance\\n")
     assert check_completion_present({"text": text, "products": {"Video"}})
+
+
+def test_online_audio_runs_barck():
+    """Thirwood Place runs Online Audio and carries BARCK+ Zip Code
+    Performance. Online Audio is a BARCK+ product."""
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "thirwood_audio_barck.pdf"
+    r = run_all(fx, "September 2026_Thirwood Place 54800.pdf")
+    assert not [f for f in r["findings"] if f["code"] == "widget_rogue"]
