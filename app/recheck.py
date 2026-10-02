@@ -632,7 +632,7 @@ def _remap_orders_if_stale() -> None:
         db.close()
 
 
-def queue_stood_down(db: Session) -> int:
+def queue_stood_down(db: Session, stale_only: bool = False) -> int:
     """Queue every report whose product check abstained.
 
     A RE-READ FIXES THE ORDERS AND NOT THE REPORTS. Findings are stored, so a
@@ -660,7 +660,11 @@ def queue_stood_down(db: Session) -> int:
     for rep in db.scalars(select(Report).where(Report.rules_version != "")).all():
         for c in (rep.checks or []):
             if (isinstance(c, dict) and c.get("key") == "check_products"
-                    and c.get("state") == "skipped"):
+                    and c.get("state") == "skipped"
+                    # stale_only: the ones skipped for out-of-date orders, or
+                    # with no reason recorded - not SEO, not off the order list.
+                    and (not stale_only or not c.get("why")
+                         or "older import code" in c.get("why", ""))):
                 rep.rules_version = ""    # the Run picks it up from here
                 n += 1
                 break

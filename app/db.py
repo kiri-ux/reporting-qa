@@ -321,6 +321,14 @@ class Report(Base):
                 if not is_buyer(f) and not is_admin_only(f)]
 
     @property
+    def products_unchecked(self) -> bool:
+        """Did the product check stand down for out-of-date orders?"""
+        return any(isinstance(c, dict) and c.get("key") == "check_products"
+                   and c.get("state") == "skipped"
+                   and "older import code" in (c.get("why") or "")
+                   for c in (self.checks or []))
+
+    @property
     def admin_flags(self) -> list:
         """[(index, finding)] for the admin team only. Held to nothing."""
         from .flag_catalog import is_admin_only
