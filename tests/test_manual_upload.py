@@ -1482,3 +1482,30 @@ def test_a_person_still_outranks_it():
                   findings=[{"code": "x", "severity": "fail", "title": "t"}],
                   checks=[])
     assert sign_off_seo(rep4) is False and rep4.review_state == "new"
+
+
+def test_each_row_can_be_checked_again_and_says_when_it_is_behind(client):
+    c, (db, dbm, imod) = client
+    db.add(_order_line(dbm, "Benton Rodeo", "Display",
+                       market="7 Mountains KY", ids="70002"))
+    db.commit()
+    pdf = (FIXTURES / "benton_rodeo.pdf").read_bytes()
+    c.post("/cycle/upload",
+           data={"period": "2026-07", "market": "7 Mountains KY",
+                 "client": "Benton Rodeo", "account_ids": "70002", "kind": "monthly"},
+           files={"file": ("July 2026_Benton Rodeo 70002.pdf", pdf, "application/pdf")})
+    rep = db.query(dbm.Report).filter_by(client="Benton Rodeo").one()
+    board = c.get("/cycle?period=2026-07").text
+    assert f'action="/report/{rep.id}/recheck"' in board
+    assert "iconbtn refresh behind" not in board
+
+    rep.rules_version = "old"; db.commit()
+    board = c.get("/cycle?period=2026-07").text
+    assert "iconbtn refresh behind" in board
+
+    r = c.post(f"/report/{rep.id}/recheck", data={"back": "/cycle?period=2026-07"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == f"/cycle?period=2026-07#r{rep.id}"
+    db.expire_all()
+    assert db.get(dbm.Report, rep.id).rules_version != "old"
