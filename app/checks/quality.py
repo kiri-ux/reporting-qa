@@ -523,7 +523,13 @@ ELLIPSIS = re.compile(r"[A-Za-z0-9)\]](?:\.\.\.|…)")
 # A grid keyed on the ad rather than the line item: "Display Creative
 # Performance", "YouTube+ Video Completion Performance by Creative". Its first
 # column is the ad's own copy.
-CREATIVE_GRID = re.compile(r"\bcreatives?\b", re.I)
+# Grids whose names are written longer than the cell on purpose. Its own name:
+# it was CREATIVE_GRID, and a second CREATIVE_GRID further down this module
+# replaced it, so the exception below never matched a creative widget.
+#
+# META CAROUSEL CARDS too. Amorem's "1: You Deserve More..." is the card name as
+# Meta sends it - cut off before TapClicks ever sees it.
+AD_COPY_GRID = re.compile(r"\bcreatives?\b|\bcarousel card\b", re.I)
 
 
 def check_truncated_text(ctx) -> list[dict]:
@@ -561,7 +567,7 @@ def check_truncated_text(ctx) -> list[dict]:
             # so the cut is the design and not a defect. Only where the line
             # ends there: a donut label under the same title still prints its
             # figure after the ellipsis, and that one is a real one.
-            if not tail.strip() and CREATIVE_GRID.search(widget):
+            if not tail.strip() and AD_COPY_GRID.search(widget):
                 continue
             frag = line[max(0, m.start() - 40):m.end() + 8].strip()
             if frag not in cut:
