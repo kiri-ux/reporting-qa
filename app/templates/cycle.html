@@ -762,8 +762,8 @@
                  data-clear="{{ 1 if not e.report.open_findings else 0 }}"
                  aria-label="Select {{ e.client }}">
         {% endif %}</td>
-        <td class="nw" data-v="{{ e.market }}">{{ e.market }}</td>
-        <td><b>{{ e.client }}</b><button type="button" class="copy copyname"
+        <td class="partnercol" data-v="{{ e.market }}">{{ e.market }}</td>
+        <td class="clientcol"><b>{{ e.client }}</b><button type="button" class="copy copyname"
             data-copy="{{ e.client }}" aria-label="Copy {{ e.client }}"
             data-tip="Copy the client name"><svg viewBox="0 0 16 16" width="12"
             height="12" aria-hidden="true"><rect x="5.5" y="5.5" width="8"
@@ -876,23 +876,6 @@
             {% elif e.report.acked %}
               <span class="empty">{{ e.report.acked|length }} accepted, nothing open</span><br>
             {% else %}<span class="empty">All checks passed</span><br>{% endif %}
-            {# THE BUYER'S ITEMS, AS A TAG AND NOT AS A LINE OF THE LIST ABOVE.
-               That list is what whoever reads reports has to act on, and four
-               lines about strategy names in the middle of it is how a column
-               of real problems stopped being read. Which flags they are is on
-               hover, because the answer to "is this mine" is the tag and the
-               answer to "which one" is one report deep. #}
-            {% set bflags = e.report.buyer_findings %}
-            {% if bflags %}
-              {# One per line. The tooltip is pre-line, and four flags run
-                 together on one line is the thing it was meant to replace. #}
-              {% set btips = [] %}
-              {% for f in bflags %}
-                {% set _ = btips.append((f.title or f.code)
-                                        ~ (' · ' ~ f.where if f.where else '')) %}
-              {% endfor %}
-              <span class="buyertag" data-tip="{{ btips|join('\n') }}">Buyer review</span>
-            {% endif %}
             {% if e.report.review_note %}
               <span class="notetag" title="{{ e.report.review_note }}">note</span>
             {% endif %}
@@ -936,6 +919,19 @@
             {# "sign-off pulled" needed explaining, which is the tag failing at
                its job. This says what to DO about it; the hover says why. #}
             <span class="pendtag" title="{{ e.report.signoff_pulled }}.">needs signing off again</span>
+          {% endif %}</td>
+        {# THE BUYER, AND WHETHER THEY HAVE SOMETHING TO REVIEW. It was a tag
+           under the findings, where it read as being about the line above it. #}
+        <td class="nw" data-v="{{ e.buyer }}">{{ (e.buyer or '').split('(')[0].strip() }}
+          {% set bflags = e.report.buyer_findings if e.report else [] %}
+          {% if bflags %}
+            {% set btips = [] %}
+            {% for f in bflags %}
+              {% set _ = btips.append((f.title or f.code)
+                                      ~ (' · ' ~ f.where if f.where else '')) %}
+            {% endfor %}
+            <span class="buyerflag" data-tip="{{ btips|join('\n') }}"
+                  aria-label="Buyer review: {{ btips|join('; ') }}">&#9873;</span>
           {% endif %}</td>
         <td class="nw">
           {% if not e.report %}
@@ -1186,7 +1182,7 @@
         data-labels="{{ finding_labels|tojson|forceescape }}"
         data-counts="{{ col_counts.get('finding', {})|tojson|forceescape }}">Findings</th>
     <th data-col="Reporter" data-key="reporter"
-        data-counts="{{ col_counts.get('reporter', {})|tojson|forceescape }}">Reporter</th><th>Sign-off</th></tr></thead>
+        data-counts="{{ col_counts.get('reporter', {})|tojson|forceescape }}">Reporter</th><th>Buyer</th><th>Sign-off</th></tr></thead>
     <tbody>{{ reportrows(rows, whoami(request)) }}</tbody></table></div>
   {{ pager() }}
   {# WHAT THIS CYCLE DOES NOT OWE, AND WHY.
@@ -1339,6 +1335,11 @@
    amber, red, plum or blue, and a sixth shade of blue read as a sixth status -
    which is the one thing this must not be. Teal is off that scale entirely,
    and it is the same mark on the row and on the filter above it. */
+.partnercol{max-width:16ch;font-size:13px}
+.clientcol{max-width:28ch}
+.buyerflag{display:inline-flex;align-items:center;justify-content:center;
+ width:20px;height:20px;border-radius:50%;background:var(--teal);color:var(--atlas);
+ font-size:12px;margin-left:4px;vertical-align:middle;cursor:help}
 .buyertag{display:inline-block;font-family:Agdasima,sans-serif;font-size:12px;
  font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 9px;
  border-radius:9px;background:var(--teal);color:var(--atlas);
