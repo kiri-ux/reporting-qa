@@ -723,3 +723,10 @@ def test_youtube_tv_is_ctv():
     assert "CTV tile on a report with no CTV" not in titles
     assert "No YouTube TV Creative Performance widget" not in titles
     assert "No CTV Completion Rate on page one" in titles
+
+
+def test_valero_law_group_youtube_tv_owes_the_completion_rate_tile():
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "valero_youtube_tv.pdf"
+    r = run_all(fx, "September 2026_Valero Law Group 50052 52972.pdf")
+    assert [f["title"] for f in r["findings"]] == ["No CTV Completion Rate on page one"]
