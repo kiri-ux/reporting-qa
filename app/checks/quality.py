@@ -2029,7 +2029,9 @@ def store_visits(text: str) -> dict | None:
             if got:
                 visits = got[0]
 
-    clipped = "Grid contains more rows" in "\n".join(lines[start:end + 1])
+    # The note can print ABOVE the table's title as well as inside it -
+    # Fiesta Auto Insurance's sits on the line over "Visits by Store Location".
+    clipped = "Grid contains more rows" in "\n".join(lines[max(0, start - 4):end + 1])
     return {"locations": locations, "rows": rows, "visits": visits,
             "clipped": clipped, "places": places,
             # A row whose address would not parse is counted on its own rather
