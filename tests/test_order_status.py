@@ -686,3 +686,22 @@ def test_the_order_list_is_read_once_per_session_and_dropped_when_it_changes(db)
     db.query(OrderLine).delete()
     assert _LINES_KEY not in db.info
     assert client_lines(db, "Acme Co", "1") is None
+
+
+def test_startup_waits_for_a_database_that_is_restarting(monkeypatch):
+    """Upgrading the database plan restarts Postgres; a deploy landing in that
+    window exited on "the database system is shutting down"."""
+    from sqlalchemy.exc import OperationalError
+    from app import db as dbm
+    real = dbm.engine.begin
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise OperationalError("connect", {}, Exception("the database system is shutting down"))
+        return real()
+    monkeypatch.setattr(dbm.engine, "begin", flaky)
+    monkeypatch.setattr(dbm.time, "sleep", lambda _s: None)
+    dbm.init_db()
+    assert calls["n"] == 3
