@@ -1274,7 +1274,15 @@ def init_db() -> None:
     from sqlalchemy import text as sql_text
     is_pg = engine.dialect.name == "postgresql"
 
-    for attempt in range(5):
+    # A DATABASE THAT IS RESTARTING IS WAITED FOR. Upgrading the database plan
+    # restarts Postgres, and a deploy that lands in that window got "the
+    # database system is shutting down", exited, and took the site with it.
+    # A failed CONNECTION is retried for about two minutes; anything else -
+    # the other worker holding the lock - keeps the short retries it had.
+    from sqlalchemy.exc import OperationalError
+    waited = 0.0
+    attempt = 0
+    while True:
         try:
             with engine.begin() as conn:
                 if is_pg:
@@ -1287,8 +1295,16 @@ def init_db() -> None:
                     "unset, and everything will be lost on the next deploy.",
                     engine.dialect.name)
             return
+        except OperationalError as exc:
+            if waited >= 120:
+                raise
+            pause = min(10.0, 1.0 + waited / 4)
+            log.warning("database not reachable, retrying in %.0fs: %s", pause, exc)
+            time.sleep(pause)
+            waited += pause
         except Exception as exc:                       # another worker got there first
             if attempt == 4:
                 raise
             log.warning("init_db retry %d after %s", attempt + 1, exc)
             time.sleep(0.5 * (attempt + 1))
+            attempt += 1
