@@ -516,7 +516,8 @@
        "31 of 31, up to date" all through September while nothing new arrives. #}
     {% if serve_newest %}
       <p class="sub" style="margin:0 0 6px;font-size:13px">
-        <b>Newest day in the file: {{ serve_newest }}.</b></p>
+        <b>Newest day in the file: {{ serve_newest }}.</b>
+        {% if serve_oldest %}<b>Oldest: {{ serve_oldest }}.</b>{% endif %}</p>
     {% endif %}
     {% for m in serve_months %}
       {% if m.cal and m.cal.of %}

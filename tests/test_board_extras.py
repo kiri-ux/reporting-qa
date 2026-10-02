@@ -4974,3 +4974,25 @@ def test_an_admin_note_sits_at_the_top_of_the_report_and_on_the_row(client_order
 
     tpl = (Path(__file__).resolve().parents[1] / "app" / "templates" / "cycle.html").read_text()
     assert 'class="adminflag"' in tpl and "e.report.admin_note" in tpl
+
+
+def test_the_serve_gap_flag_is_the_admin_teams_only(client_orders_db):
+    c, db, dbm = client_orders_db
+    b = dbm.Batch(market="Mkt", period="2026-07"); db.add(b); db.flush()
+    gap = {"code": "lifetime_serve_gap", "severity": "warn", "check": "check_date_range",
+           "title": "Cancelled line starts before the serve data", "detail": "x"}
+    r = dbm.Report(batch_id=b.id, client="Acme", market="Mkt", period="2026-07",
+                   severity="warn", filename="Acme.pdf", findings=[gap], acked=[])
+    db.add(r); db.commit()
+    assert r.open_findings == [] and len(r.admin_flags) == 1
+    assert r.effective_severity == "pass"
+    page = c.get(f"/report/{r.id}/view").text
+    assert 'class="ckadmin"' in page
+    look = page[page.index("Needs a look"):page.index('class="ckadmin"')]
+    assert "Cancelled line starts before the serve data" not in look
+
+    db.add(dbm.ServedDays(period="2024-06", market_key="m", client_key="c",
+                          market="M", client="C", days=1, day_list=["2024-06-10"],
+                          first_day=dt.date(2024, 6, 10), last_day=dt.date(2024, 6, 10)))
+    db.commit()
+    assert "Oldest: 2024-06-10." in c.get("/orders").text

@@ -137,8 +137,10 @@
        nothing, which is the expensive half of the lesson. #}
     {% set look = [] %}
     {% set buyers = [] %}
+    {% set admins = [] %}
     {% for i, f in problems %}
-      {% if flag_owner(f) == 'buyer' %}{% set _ = buyers.append((i, f)) %}
+      {% if f.code in admin_only_codes %}{% set _ = admins.append((i, f)) %}
+      {% elif flag_owner(f) == 'buyer' %}{% set _ = buyers.append((i, f)) %}
       {% else %}{% set _ = look.append((i, f)) %}{% endif %}
     {% endfor %}
     {% set live = look|rejectattr('0','in',offs)|list %}
@@ -209,6 +211,19 @@
        things nobody at this desk can do anything about. They hold nothing up
        now - the severity, the board state and the sign-off all read the list
        above - and they stay on the report until somebody accepts them. #}
+    {# THE ADMIN TEAM'S, in the admin note's plum. Collapsed and held to
+       nothing, like the buyer's. #}
+    {% if admins %}
+      <details class="buyerbox adminbox" style="margin-top:20px">
+        <summary class="cksum">Admin<span class="ckadmin">{{ admins|length }}</span></summary>
+        <ul class="flist adminlist">
+          {% for i, f in admins %}
+            {{ flagitem(rep, offs, i, f) }}
+          {% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+
     {# Collapsed: none of it is this desk's to act on. #}
     {% if buyers %}
       <details class="buyerbox" style="margin-top:20px">
@@ -609,6 +624,10 @@ details[open] > .cksum::before{content:'▾ '}
  border:1px solid var(--plum);border-radius:8px;box-sizing:border-box}
 .adminnote .adminedit{margin-top:8px}
 .adminadd{margin-bottom:16px}
+.ckadmin{display:inline-block;font-family:'GT Walsheim Pro',sans-serif;font-size:12px;
+ font-weight:700;letter-spacing:0;padding:1px 8px;border-radius:20px;margin-left:6px;
+ vertical-align:1px;background:var(--plum);color:#fff}
+.adminlist{border-left:3px solid var(--plum);padding-left:12px;margin-top:11px}
 .removebox{margin-top:10px;font-size:12.5px}
 .removebox summary{cursor:pointer;color:var(--ink-2)}
 .removebox form{margin-top:6px}

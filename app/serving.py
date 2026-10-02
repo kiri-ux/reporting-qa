@@ -634,6 +634,12 @@ def served_periods(db: Session) -> list[str]:
         select(ServedDays.period).distinct()).all() if p})
 
 
+def served_oldest(db: Session) -> str:
+    """The oldest day anywhere in the serving data, or ""."""
+    d = db.scalar(select(func.min(ServedDays.first_day)))
+    return str(d)[:10] if d else ""
+
+
 def served_newest(db: Session) -> str:
     """The most recent day anywhere in the serving data.
 
