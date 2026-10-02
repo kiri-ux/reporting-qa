@@ -109,6 +109,11 @@ class Report(Base):
     reviewed_by: Mapped[str] = mapped_column(String(128), default="")
     reviewed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     review_note: Mapped[str] = mapped_column(Text, default="")
+    # THE ADMIN TEAM'S INSTRUCTION TO THE REPORTER - what to do with this
+    # report. Separate from review_note, which is the reporter's own.
+    admin_note: Mapped[str] = mapped_column(Text, default="")
+    admin_note_by: Mapped[str] = mapped_column(String(128), default="")
+    admin_note_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # When a re-check pulled a sign-off because a new failure appeared. The
     # name stays on the row - somebody has to be told - but the report is back
     # to unreviewed, and showing the name as though it were still signed is how
@@ -1117,6 +1122,9 @@ ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("reports", "reviewed_by", "VARCHAR(128) DEFAULT '' NOT NULL"),
     ("reports", "reviewed_at", "TIMESTAMP"),
     ("reports", "review_note", "TEXT DEFAULT '' NOT NULL"),
+    ("reports", "admin_note", "TEXT DEFAULT '' NOT NULL"),
+    ("reports", "admin_note_by", "VARCHAR(128) DEFAULT '' NOT NULL"),
+    ("reports", "admin_note_at", "TIMESTAMP"),
     ("partners", "partner_group", "VARCHAR(255) DEFAULT '' NOT NULL"),
     ("partners", "delivery_target", "VARCHAR(32) DEFAULT '' NOT NULL"),
     ("deliveries", "archive_url", "TEXT"),

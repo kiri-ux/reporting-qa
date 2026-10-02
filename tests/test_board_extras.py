@@ -4950,3 +4950,27 @@ def test_a_report_can_be_removed_back_to_missing_or_not_needed(client_orders_db,
     assert mark.reason == "none" and mark.ident == "mkt|crane|monthly"
 
     assert c.post(f"/report/{rid}/remove", data={"mode": "x"}).status_code in (400, 404)
+
+
+def test_an_admin_note_sits_at_the_top_of_the_report_and_on_the_row(client_orders_db):
+    c, db, dbm = client_orders_db
+    b = dbm.Batch(market="Mkt", period="2026-07"); db.add(b); db.flush()
+    r = dbm.Report(batch_id=b.id, client="Acme", market="Mkt", period="2026-07",
+                   severity="pass", filename="Acme.pdf", findings=[], acked=[])
+    db.add(r); db.commit(); rid = r.id
+
+    page = c.get(f"/report/{rid}/view").text
+    assert "Add admin note" in page and 'class="adminnote"' not in page
+
+    c.post(f"/report/{rid}/admin-note", data={"note": "Re-pull with the CTV grid"},
+           follow_redirects=False)
+    page = c.get(f"/report/{rid}/view").text
+    assert 'class="adminnote"' in page and "Re-pull with the CTV grid" in page
+    assert page.index('class="adminnote"') < page.index("Needs a look")
+
+    c.post(f"/report/{rid}/admin-note", data={"note": "  "}, follow_redirects=False)
+    db.expire_all()
+    assert db.get(dbm.Report, rid).admin_note == ""
+
+    tpl = (Path(__file__).resolve().parents[1] / "app" / "templates" / "cycle.html").read_text()
+    assert 'class="adminflag"' in tpl and "e.report.admin_note" in tpl
