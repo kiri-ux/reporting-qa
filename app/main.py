@@ -439,6 +439,14 @@ def _flag_owner(finding) -> str:
 templates.env.globals["flag_owner"] = _flag_owner
 from .flag_catalog import ADMIN_ONLY_CODES as _ADMIN_ONLY  # noqa: E402
 templates.env.globals["admin_only_codes"] = _ADMIN_ONLY
+
+
+def _rules_now() -> str:
+    from .version import rules_version
+    return rules_version()
+
+
+templates.env.globals["rules_now"] = _rules_now
 templates.env.filters["flag_owner"] = _flag_owner
 # Chrome that every page needs and no view should have to remember to pass.
 # ---------------------------------------------------------------- who is here
@@ -4345,8 +4353,11 @@ def report_viewer(report_id: int, request: Request, db: Session = Depends(get_db
 
 
 @app.post("/report/{report_id}/recheck")
-def report_recheck(report_id: int, db: Session = Depends(get_db)):
-    """Re-read this one now, rather than waiting for the sweep to reach it."""
+def report_recheck(report_id: int, back: str = Form(""),
+                   db: Session = Depends(get_db)):
+    """Re-read this one now, rather than waiting for the sweep to reach it.
+
+    From a board row, back to that row; from the report page, back to it."""
     from .recheck import recheck
 
     rep = db.get(Report, report_id)
@@ -4361,6 +4372,8 @@ def report_recheck(report_id: int, db: Session = Depends(get_db)):
                       "on disk. Old PDFs are pruned after "
                       f"{settings.keep_pdf_months} months. Upload it again below."}]
         db.commit()
+    if back.startswith("/") and not back.startswith("//"):
+        return RedirectResponse(f"{back.split('#')[0]}#r{report_id}", status_code=303)
     return RedirectResponse(f"/report/{report_id}/view", status_code=303)
 
 
