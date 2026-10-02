@@ -4045,3 +4045,25 @@ def test_poppler_answers_are_kept_beside_a_stored_pdf(tmp_path, monkeypatch):
     # Nothing is written beside a file outside the data directory.
     pdf_pages(FIXTURES / "chalfant_youtube_tv.pdf")
     assert not pdfcache.cache_dir_for(FIXTURES / "chalfant_youtube_tv.pdf").exists()
+
+
+def test_psc_yt_is_pensacola_state_college():
+    """Filed as "PSC YT", cover "PSC YT+", line items "Pensacola State College
+    - ...". The initials, then the product - one client."""
+    from app.checks.rules import run_all
+    r = run_all(FIXTURES / "psc_yt_initials.pdf", "September 2026_PSC YT 55690.pdf",
+                for_client="PSC YT")
+    codes = {f["code"] for f in r["findings"]}
+    assert not codes & {"wrong_client", "wrong_client_file", "client_name_typo"}
+
+
+def test_both_client_findings_are_one():
+    from app.checks import rules
+    text = ("Line Item Performance\n"
+            "Everett Railroad - Display        10,000        10    0.10%\n"
+            "Everett Railroad - Video           5,000         5    0.10%\n")
+    ctx = {"text": text, "client": "Acme Widgets Inc",
+           "filed_as": "St. Francis AMT Program", "page_of": lambda _o: 2}
+    assert rules.check_client_data(ctx) and rules.check_client_matches_order(ctx)
+    out = rules.check_client_wrong(ctx)
+    assert len(out) == 1 and "St. Francis" in out[0]["detail"]
