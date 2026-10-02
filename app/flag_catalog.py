@@ -489,6 +489,8 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
      ("date_range_wrong",)),
     ("lifetime_range", "Lifetime range does not match the campaign",
      ("lifetime_short", "lifetime_cut", "lifetime_overrun")),
+    ("lifetime_serve_gap", "Cancelled line starts before the serve data",
+     ("lifetime_serve_gap",)),
     ("wrong_client", "This is a different client's report",
      ("wrong_client", "wrong_client_file")),
     ("generic_logo", "Page one carries the default logo", ("generic_logo",)),

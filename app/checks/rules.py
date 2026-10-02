@@ -1512,14 +1512,38 @@ def check_date_range(ctx) -> list[dict]:
         trace = [("Printed on the report", printed),
                  ("Expected", f"{w_start.strftime(fmt)} to "
                               f"{w_end.strftime(fmt) if w_end else 'open'}")]
-        for l in [x for x in (ctx.get("flight_lines") or [])
+        flines = [x for x in (ctx.get("flight_lines") or [])
                   if x.get("product") not in ("Additional Billing",
-                                              "Website Visitor ID")][:12]:
-            trace.append((f"Order {l.get('order') or '?'} · line {l.get('lines') or '?'}"
-                          f" · {l.get('product') or ''}".strip(),
+                                              "Website Visitor ID")]
+        for l in flines[:12]:
+            name = (f"Order {l.get('order') or '?'} · line {l.get('lines') or '?'}"
+                    f" · {l.get('product') or ''}".strip())
+            if l.get("cancelled"):
+                trace.append((name, f"cancelled · {l.get('line_starts') or '?'} to "
+                                    f"{l.get('line_ends') or 'open'}"
+                              + (f" · served from {l['served_from']}"
+                                 if l.get("served_from") else "")))
+                continue
+            trace.append((name,
                           f"{l.get('starts') or '?'} to {l.get('ends') or 'open'}"
                           + ("" if l.get("live", True) else " · paused")))
         out = []
+        # A CANCELLED LINE OLDER THAN THE SERVE DATA. Whether it ran, and so
+        # where the campaign starts, is only answerable from the serve file -
+        # and the file does not go back that far. Say so, so the older data
+        # can be loaded; the expected start leaves the line out meanwhile.
+        gaps = [l for l in flines if l.get("cancelled") and l.get("before_serve")]
+        if gaps:
+            g = min(gaps, key=lambda l: l.get("line_starts") or dt.date.max)
+            floor = g.get("serve_floor")
+            out.append(_f(
+                "lifetime_serve_gap", "warn",
+                "Cancelled line starts before the serve data",
+                f"Order {g.get('order') or '?'} · line {g.get('lines') or '?'} starts "
+                f"{g['line_starts'].strftime(fmt) if g.get('line_starts') else '?'}. "
+                + (f"Serve data starts {floor.strftime(fmt)}." if floor
+                   else "No serve data is loaded."),
+                trace=trace, where=DATE_RANGE))
         # A lifetime that starts at the month boundary while the campaign began
         # earlier is the classic wrong-range pull.
         if (w_start - start).days < -3:

@@ -320,9 +320,98 @@ def flight_lines(db: Session, client: str, accounts: str) -> list[dict]:
                             "stopped": all(x.get("canceled") or x.get("complete")
                                            for x in ds)})
         if out:
+            if skip_canceled:
+                out += _cancelled_before(db, client, lines, out)
             break
     out.sort(key=lambda r: (r["ends"] or dt.date.min), reverse=True)
     return out
+
+
+def _cancelled_before(db: Session, client: str, lines, kept: list[dict]) -> list[dict]:
+    """Cancelled orders that may have run BEFORE everything else the client has.
+
+    A cancelled line never sets the end, but it can set the start: Close
+    Lumber's Social Mirror line 98655 ran from 3 January 2025 and was then
+    cancelled, and its live lines only start in December. Whether a cancelled
+    line ran is not on the export, so the serve file is asked - only for the
+    stretch before the earliest kept start, so delivery belonging to the live
+    lines cannot vouch for it. Served there: the first served day is the
+    start. Not served: it was cancelled before it ran, and is left out.
+
+    A line starting before the oldest serve data cannot be answered. It is
+    still read for whatever the data does cover, and carries "before_serve"
+    so the lifetime check can say so.
+    """
+    first = min((r["starts"] for r in kept if r.get("starts")), default=None)
+    if first is None or db is None:
+        return []
+    floor = _earliest_served(db)
+    out = []
+    for l in lines:
+        # BY LINE ITEM, NOT BY ORDER. Close Lumber's cancelled lines are all on
+        # order 43722 - one a year from 2023 - and read together the 2023 line
+        # borrowed 2024's delivery.
+        by_line: dict[tuple, list[dict]] = {}
+        for d in (getattr(l, "detail", None) or []):
+            if d.get("canceled"):
+                by_line.setdefault((str(d.get("order") or ""),
+                                    str(d.get("line") or "")), []).append(d)
+        for (order, _line), ds in by_line.items():
+            c_start = min((x for x in (_as_date(d.get("starts")) for d in ds) if x),
+                          default=None)
+            c_end = max((x for x in (_as_date(d.get("ends")) for d in ds) if x),
+                        default=None)
+            if c_start is None or c_start >= first:
+                continue
+            upto = min(c_end or first, first - dt.timedelta(days=1))
+            frm = max(c_start, floor) if floor else c_start
+            served = (_first_served_between(db, client, frm, upto)
+                      if floor and frm <= upto else None)
+            before = floor is None or c_start < floor
+            if served is None and not before:
+                continue
+            out.append({"order": order,
+                        "lines": " ".join(sorted({str(d.get("line") or "")
+                                                  for d in ds} - {""})),
+                        "product": l.product or "",
+                        "starts": served, "ends": None,
+                        "line_starts": c_start, "line_ends": c_end,
+                        "live": False, "stopped": True, "cancelled": True,
+                        "served_from": served,
+                        "before_serve": before,
+                        "serve_floor": floor})
+    return out
+
+
+def _earliest_served(db: Session):
+    """The oldest day the serve data covers, or None when none is loaded."""
+    from sqlalchemy import func, select
+
+    from .db import ServedDays
+    return db.scalar(select(func.min(ServedDays.first_day)))
+
+
+def _first_served_between(db: Session, client: str, start, end):
+    """The first day this client delivered between two dates, or None."""
+    from sqlalchemy import select
+
+    from .db import ServedDays
+    from .serving import _base_key, _key
+    keys = {_key(client), _base_key(client)} - {""}
+    if not keys:
+        return None
+    best = None
+    rows = db.scalars(select(ServedDays).where(
+        ServedDays.client_key.in_(keys),
+        ServedDays.period >= start.strftime("%Y-%m"),
+        ServedDays.period <= end.strftime("%Y-%m"))).all()
+    for r in rows:
+        days = [_as_date(x) for x in (r.day_list or [])] or \
+            [d for d in (r.first_day, r.last_day) if d]
+        for d in days:
+            if d and start <= d <= end and (best is None or d < best):
+                best = d
+    return best
 
 
 def _as_date(v):
