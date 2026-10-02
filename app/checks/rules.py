@@ -1326,6 +1326,7 @@ def check_client_data(ctx) -> list[dict]:
         return []
 
     hits: dict[str, float] = {}
+    heads: dict[str, str] = {}             # flattened -> as written
     total = 0.0
     for name, imps, _clicks in rows:
         if " - " not in (name or ""):
@@ -1336,6 +1337,7 @@ def check_client_data(ctx) -> list[dict]:
         weight = max(imps, 1.0)
         total += weight
         hits[who] = hits.get(who, 0.0) + weight
+        heads.setdefault(who, (name or "").split(" - ")[0])
     if not hits or not total:
         return []
 
@@ -1350,7 +1352,8 @@ def check_client_data(ctx) -> list[dict]:
     initials = _initials(ctx.get("client") or "")
 
     def same(k, n):
-        return _same_client(k, n) or k in initials
+        return (_same_client(k, n) or k in initials
+                or _initials_lead(heads.get(k, ""), n))
     mine = sum(v for k, v in hits.items() if same(k, named))
     if mine / total >= 0.5:
         # Right client, spelled two ways. Not a report problem, but somebody
@@ -1362,7 +1365,8 @@ def check_client_data(ctx) -> list[dict]:
         typo = [k for k, v in sorted(hits.items(), key=lambda kv: -kv[1])
                 if same(k, named) and k != named and k not in named
                 and named not in k and not _dropped_middle(k, named)
-                and k not in initials]
+                and k not in initials
+                and not _initials_lead(heads.get(k, ""), named)]
         if typo:
             return [_f("client_name_typo", "info",
                        "The order spells this client's name differently",
@@ -1402,7 +1406,9 @@ def check_client_data(ctx) -> list[dict]:
 #
 # The ampersand becomes the word before the punctuation goes, so the two
 # spellings meet. Same for a plus sign, which the tracker uses the same way.
-AMPERSAND = re.compile(r"\s*[&+]\s*")
+# A PLUS STUCK ON THE END OF A WORD IS NOT "AND". "PSC YT+" is YouTube+, and
+# read as "PSC YT and" it stopped matching "PSC YT".
+AMPERSAND = re.compile(r"\s*&\s*|\s*\+\s*(?=[A-Za-z0-9])")
 
 
 def _initials(name: str) -> set[str]:
@@ -1417,6 +1423,15 @@ def _initials(name: str) -> set[str]:
     out = {"".join(w[0] for w in words).lower(),
            "".join(w[0] for w in words if w.lower() not in small).lower()}
     return {i for i in out if len(i) >= 3}
+
+
+def _initials_lead(name: str, flat: str) -> bool:
+    """Do a name's initials start the other, flattened name?
+
+    Pensacola State College's report is "PSC YT" - its initials and the
+    product - and its line items spell the name out.
+    """
+    return any(len(i) >= 3 and flat.startswith(i) for i in _initials(name))
 
 
 def _flat_name(s: str) -> str:
@@ -1483,7 +1498,8 @@ def _mostly_this_client(ctx, filed: str) -> bool:
             continue
         weight = max(imps, 1.0)
         total += weight
-        if _same_client(who, filed) or who in _initials(ctx.get("filed_as") or ""):
+        if (_same_client(who, filed) or who in _initials(ctx.get("filed_as") or "")
+                or _initials_lead((name or "").split(" - ")[0], filed)):
             mine += weight
     return bool(total) and mine / total >= 0.5
 
@@ -1544,7 +1560,15 @@ def check_client_wrong(ctx) -> list[dict]:
     cover page against the row it arrived in. A report pulled entirely on the
     wrong client only fails the second, so both still run.
     """
-    return check_client_data(ctx) + check_client_matches_order(ctx)
+    data, slot = check_client_data(ctx), check_client_matches_order(ctx)
+    # ONE FINDING WHEN BOTH SAY IT. Two red items saying the same client is
+    # wrong read as two problems to fix.
+    if data and slot:
+        d, f = data[0], slot[0]
+        d["detail"] = f"{d['detail']} {f['detail']}"
+        d["trace"] = (d.get("trace") or []) + (f.get("trace") or [])
+        return [d] + data[1:] + slot[1:]
+    return data + slot
 
 
 def check_date_range(ctx) -> list[dict]:
