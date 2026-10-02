@@ -12,7 +12,6 @@ import shutil
 import subprocess
 
 from .. import proc as _proc
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,8 +37,11 @@ def pdf_text(path: Path, first: int | None = None, last: int | None = None) -> s
     if last:
         cmd += ["-l", str(last)]
     cmd += [str(path), "-"]
-    out = _proc.run(cmd, capture_output=True, text=True, timeout=90)
-    return out.stdout.replace("\x0c", "")
+    from .pdfcache import text as _cached
+    out = _cached(path, f"text-{first or 0}-{last or 0}",
+                  lambda: _proc.run(cmd, capture_output=True, text=True,
+                                    timeout=90).stdout)
+    return out.replace("\x0c", "")
 
 
 def pdf_pages(path: Path) -> list[str]:
@@ -53,44 +55,43 @@ def pdf_pages(path: Path) -> list[str]:
     cmd = [_bin("pdftotext"), "-layout", str(path), "-"]
     # 300 seconds meant one unreadable PDF could wedge a background job
     # for five minutes, which on screen is a counter that has stopped.
-    out = _proc.run(cmd, capture_output=True, text=True, timeout=90)
-    pages = out.stdout.split("\x0c")
+    from .pdfcache import text as _cached
+    out = _cached(path, "pages", lambda: _proc.run(
+        cmd, capture_output=True, text=True, timeout=90).stdout)
+    pages = out.split("\x0c")
     if pages and not pages[-1].strip():
         pages.pop()
     return pages
 
 
 def page_count(path: Path) -> int:
-    out = _proc.run([_bin("pdfinfo"), str(path)], capture_output=True, text=True, timeout=60)
-    m = re.search(r"Pages:\s+(\d+)", out.stdout)
+    from .pdfcache import text as _cached
+    out = _cached(path, "info", lambda: _proc.run(
+        [_bin("pdfinfo"), str(path)], capture_output=True, text=True,
+        timeout=60).stdout)
+    m = re.search(r"Pages:\s+(\d+)", out)
     return int(m.group(1)) if m else 0
 
 
 def page_ink_pct(path: Path, page: int, dpi: int = 50) -> float:
     """Share of dark pixels below the header band. Near zero means the page has
     text but no chart or table, which is how an empty widget shows up."""
-    from PIL import Image
+    from .pdfcache import page_image
 
-    with tempfile.TemporaryDirectory() as d:
-        _proc.run(
-            [_bin("pdftoppm"), "-r", str(dpi), "-f", str(page), "-l", str(page), "-png",
-             str(path), f"{d}/p"],
-            capture_output=True, timeout=120,
-        )
-        files = list(Path(d).glob("p*.png"))
-        if not files:
-            return 100.0
-        im = Image.open(files[0]).convert("L")
-        w, h = im.size
-        im = im.crop((0, int(h * 0.10), w, h))
-        px = im.load()
-        total = dark = 0
-        for y in range(0, im.size[1], 3):
-            for x in range(0, im.size[0], 3):
-                total += 1
-                if px[x, y] < 235:
-                    dark += 1
-        return dark / total * 100 if total else 100.0
+    got = page_image(path, page, dpi)
+    if got is None:
+        return 100.0
+    im = got.convert("L")
+    w, h = im.size
+    im = im.crop((0, int(h * 0.10), w, h))
+    px = im.load()
+    total = dark = 0
+    for y in range(0, im.size[1], 3):
+        for x in range(0, im.size[0], 3):
+            total += 1
+            if px[x, y] < 235:
+                dark += 1
+    return dark / total * 100 if total else 100.0
 
 
 def tokens(line: str) -> list[tuple[str, int, int]]:

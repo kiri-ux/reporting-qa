@@ -841,6 +841,51 @@ def expected_any(db: Session, client: str, account_ids: str,
                          {l.product for l in hit if l.product})
 
 
+# THE WHOLE ORDER LIST, ONCE PER SESSION. client_lines is asked eight to ten
+# times for one report - the flight, the expected products, what was ordered,
+# the reasons, the budgets - and each asked the database for every order line
+# with all its line item detail, nearly three thousand rows, to keep a handful.
+# On the live box that was most of a ten-second "Check this file again".
+#
+# Kept on the session and dropped the moment it could be wrong: any commit or
+# rollback, any flush that touches an order line, any bulk delete or update.
+_LINES_KEY = "_all_order_lines"
+
+
+def _all_order_lines(db: Session) -> list:
+    info = getattr(db, "info", None)
+    if info is None:
+        return db.scalars(select(OrderLine)).all()
+    got = info.get(_LINES_KEY)
+    if got is None:
+        got = info[_LINES_KEY] = db.scalars(select(OrderLine)).all()
+    return got
+
+
+def _forget_lines(session, *_a, **_k) -> None:
+    session.info.pop(_LINES_KEY, None)
+
+
+def _forget_on_flush(session, *_a) -> None:
+    if any(getattr(o, "__tablename__", "") == "order_lines"
+           for o in (*session.new, *session.dirty, *session.deleted)):
+        session.info.pop(_LINES_KEY, None)
+
+
+def _forget_on_bulk(ctx) -> None:
+    ctx.session.info.pop(_LINES_KEY, None)
+
+
+from sqlalchemy import event as _event  # noqa: E402
+from sqlalchemy.orm import Session as _Session  # noqa: E402
+
+_event.listen(_Session, "after_commit", _forget_lines)
+_event.listen(_Session, "after_soft_rollback", _forget_lines)
+_event.listen(_Session, "before_flush", _forget_on_flush)
+_event.listen(_Session, "after_bulk_delete", _forget_on_bulk)
+_event.listen(_Session, "after_bulk_update", _forget_on_bulk)
+
+
 def client_lines(db: Session, client: str, account_ids: str):
     """Every order line belonging to this client. None if it is not on the list.
 
@@ -853,7 +898,7 @@ def client_lines(db: Session, client: str, account_ids: str):
     and for two products that had stopped in 2024 - the only orders anyone was
     looking at.
     """
-    lines = db.scalars(select(OrderLine)).all()
+    lines = _all_order_lines(db)
     if not lines:
         return None
     ids = _keyify(client, account_ids)

@@ -681,8 +681,10 @@ def page_words(path) -> list[list[tuple]]:
     import html
     from .. import proc as _proc
     from .parser import _bin
-    out = _proc.run([_bin("pdftotext"), "-bbox-layout", str(path), "-"],
-                         capture_output=True, text=True, timeout=300).stdout
+    from .pdfcache import text as _cached
+    out = _cached(path, "bbox", lambda: _proc.run(
+        [_bin("pdftotext"), "-bbox-layout", str(path), "-"],
+        capture_output=True, text=True, timeout=300).stdout)
     pages = []
     for chunk in out.split("<page ")[1:]:
         h = _BBOX_PAGE.search("<page " + chunk)
@@ -785,30 +787,21 @@ def is_blank(crop) -> bool:
 def _empty_cells(path, page_no: int, top: float, bottom: float,
                  cells: list[tuple], page: dict):
     """Yield (ad name, is blank) by looking at the rendered page."""
-    from .. import proc as _proc
-    import tempfile
-    from pathlib import Path as _P
-    from PIL import Image
-    from .parser import _bin
+    from .pdfcache import page_image
 
     dpi = 100
-    with tempfile.TemporaryDirectory() as tmp:
-        stem = str(_P(tmp) / "p")
-        _proc.run([_bin("pdftoppm"), "-f", str(page_no), "-l", str(page_no),
-                        "-r", str(dpi), "-png", str(path), stem],
-                       capture_output=True, timeout=120)
-        hits = sorted(_P(tmp).glob("p-*.png"))
-        if not hits:
-            return
-        im = Image.open(hits[0]).convert("RGB")
-        sc = dpi / 72.0
-        width_pt = im.width / sc
-        for x0, x1, name in cells:
-            box = (max(int(x0 * sc) - 4, 0), int(top * sc),
-                   int((x1 if x1 else width_pt) * sc) - 6, int(bottom * sc))
-            if box[2] - box[0] < 8 or box[3] - box[1] < 8:
-                continue
-            yield name, is_blank(im.crop(box))
+    got = page_image(path, page_no, dpi)
+    if got is None:
+        return
+    im = got.convert("RGB")
+    sc = dpi / 72.0
+    width_pt = im.width / sc
+    for x0, x1, name in cells:
+        box = (max(int(x0 * sc) - 4, 0), int(top * sc),
+               int((x1 if x1 else width_pt) * sc) - 6, int(bottom * sc))
+        if box[2] - box[0] < 8 or box[3] - box[1] < 8:
+            continue
+        yield name, is_blank(im.crop(box))
 
 
 # ------------------------------------------------- 4. conversion names
@@ -957,11 +950,6 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
     holding a real ad has thousands of colors and an empty one has the table
     fill and its border.
     """
-    from .. import proc as _proc
-    import tempfile
-    from pathlib import Path as _P
-    from PIL import Image
-    from .parser import _bin
 
     want = []                # (page index, title, noun, x0, x1, [row y])
     for n, page in enumerate(pages, start=1):
@@ -1010,49 +998,46 @@ def blank_previews(path, pages) -> list[tuple[int, str, str]]:
     dpi = 100
     sc = dpi / 72.0
     done: set = set()
-    with tempfile.TemporaryDirectory() as tmp:
-        for n, title, noun, x0, x1, ys, head_y, words, name_x1 in want:
-            stem = str(_P(tmp) / f"p{n}")
-            _proc.run([_bin("pdftoppm"), "-f", str(n), "-l", str(n),
-                       "-r", str(dpi), "-png", str(path), stem],
-                      capture_output=True, timeout=120)
-            hits = sorted(_P(tmp).glob(f"p{n}-*.png"))
-            if not hits:
+    from .pdfcache import page_image
+
+    for n, title, noun, x0, x1, ys, head_y, words, name_x1 in want:
+        got = page_image(path, n, dpi)
+        if got is None:
+            continue
+        im = got.convert("RGB")
+        # THE WHOLE CELL, not a band around the number.
+        #
+        # The row's figures are centered vertically and its picture is not -
+        # a short logo sits at the TOP of a tall row - so a symmetric slice
+        # around the number missed it and called the cell empty. Northeast
+        # Texas Community College came back "2 previews did not render"
+        # when one had. Halfway to the row above, halfway to the row below:
+        # that is the cell, whatever shape it is.
+        for i, y in enumerate(ys):
+            above = ys[i - 1] if i else max(head_y, y - 60.0)
+            below = ys[i + 1] if i + 1 < len(ys) else y + (y - above)
+            top = max(y - (y - above) / 2 + 1, head_y + 3)
+            bottom = y + (below - y) / 2 - 1
+            box = (max(int(x0 * sc) - 4, 0), max(int(top * sc), 0),
+                   int(x1 * sc) - 6, min(int(bottom * sc), im.height))
+            if box[2] - box[0] < 8 or box[3] - box[1] < 8:
                 continue
-            im = Image.open(hits[0]).convert("RGB")
-            # THE WHOLE CELL, not a band around the number.
-            #
-            # The row's figures are centered vertically and its picture is not -
-            # a short logo sits at the TOP of a tall row - so a symmetric slice
-            # around the number missed it and called the cell empty. Northeast
-            # Texas Community College came back "2 previews did not render"
-            # when one had. Halfway to the row above, halfway to the row below:
-            # that is the cell, whatever shape it is.
-            for i, y in enumerate(ys):
-                above = ys[i - 1] if i else max(head_y, y - 60.0)
-                below = ys[i + 1] if i + 1 < len(ys) else y + (y - above)
-                top = max(y - (y - above) / 2 + 1, head_y + 3)
-                bottom = y + (below - y) / 2 - 1
-                box = (max(int(x0 * sc) - 4, 0), max(int(top * sc), 0),
-                       int(x1 * sc) - 6, min(int(bottom * sc), im.height))
-                if box[2] - box[0] < 8 or box[3] - box[1] < 8:
-                    continue
-                # AN HTML5 CREATIVE HAS NO PREVIEW TO RENDER. The name column
-                # of this row is read for that and nothing else: a zip is a
-                # bundle of markup, there is no still to show, and the empty
-                # cell is the format rather than a fault.
-                name = " ".join(w[4] for w in sorted(
-                    [w for w in words
-                     if x1 - 4 <= w[0] < name_x1 - 2 and top <= w[1] <= bottom],
-                    key=lambda w: (round(w[1], 1), w[0])))
-                if is_html5(name):
-                    continue
-                if is_blank(im.crop(box)):
-                    key = (n, round(y, 1), round(x0, 1))
-                    if key in done:
-                        continue   # the same grid found twice by two header words
-                    done.add(key)
-                    out.append((n, title, noun))
+            # AN HTML5 CREATIVE HAS NO PREVIEW TO RENDER. The name column
+            # of this row is read for that and nothing else: a zip is a
+            # bundle of markup, there is no still to show, and the empty
+            # cell is the format rather than a fault.
+            name = " ".join(w[4] for w in sorted(
+                [w for w in words
+                 if x1 - 4 <= w[0] < name_x1 - 2 and top <= w[1] <= bottom],
+                key=lambda w: (round(w[1], 1), w[0])))
+            if is_html5(name):
+                continue
+            if is_blank(im.crop(box)):
+                key = (n, round(y, 1), round(x0, 1))
+                if key in done:
+                    continue   # the same grid found twice by two header words
+                done.add(key)
+                out.append((n, title, noun))
     return out
 
 
@@ -2123,12 +2108,14 @@ def page_images(path) -> dict:
     from .. import proc as _proc
 
     try:
-        out = _proc.run(["pdfimages", "-list", str(path)],
-                        capture_output=True, text=True, timeout=60)
+        from .pdfcache import text as _cached
+        listing = _cached(path, "imglist", lambda: _proc.run(
+            ["pdfimages", "-list", str(path)], capture_output=True, text=True,
+            timeout=60).stdout or "")
     except Exception:                                            # noqa: BLE001
         return {}
     rows = []
-    for line in (out.stdout or "").splitlines():
+    for line in listing.splitlines():
         bits = line.split()
         # page num type width height ... object_id ...
         if len(bits) < 11 or bits[2] != "image":

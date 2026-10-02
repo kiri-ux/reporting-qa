@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+import shutil
 import threading
 import time as _time
 from pathlib import Path
@@ -2415,12 +2416,14 @@ def remove_report(report_id: int, request: Request, mode: str = Form(...),
             if e.report is not None and e.report.id == rep.id:
                 market, client, kind = e.market, e.client, e.kind
                 break
+    from .checks.pdfcache import cache_dir_for
     for path in (rep.stored_path, getattr(rep, "pending_path", "")):
         if path:
             try:
                 Path(path).unlink(missing_ok=True)
             except OSError:
                 pass
+            shutil.rmtree(cache_dir_for(path), ignore_errors=True)
     db.delete(rep)
     if mode == "none" and period and board_key(market) and board_key(client):
         ident = f"{board_key(market)}|{board_key(client)}|{kind}"
