@@ -38,7 +38,12 @@
         {% endfor %}
         <b>{{ f.title or f.code }}</b>
         {% if isoff %}<span class="wpill">check switched off</span>{% endif %}
-        {% if f.detail and f.detail != f.title %}
+        {% if f.pages %}
+          {% for pg, words in f.pages %}
+            <span class="fdetail"><span class="wpill pg">pg {{ pg }}:</span>
+              text starting: {{ words }}</span>
+          {% endfor %}
+        {% elif f.detail and f.detail != f.title %}
           <span class="fdetail">{{ f.detail }}</span>{% endif %}
       </span>
     </form>

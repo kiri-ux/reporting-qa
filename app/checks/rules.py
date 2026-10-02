@@ -520,6 +520,12 @@ def check_row_math(ctx) -> list[dict]:
             widest = max(full, key=len)
             common = {k for k in widest
                       if sum(1 for f in full if k in f) > len(full) / 2}
+        # THE GEO-FENCING GRID IS READ ON ITS OWN, below. Its address, city,
+        # state and ZIP columns throw the generic reader: Floor Coverings Cape
+        # Cod's "Pinehills #2 ... MA 2360 ... 2 0 0.00%" came out as a row
+        # named "Pi" with the ZIP for impressions.
+        if "Geo-Fencing" in (t.title or ""):
+            continue
         for name, v in t.body:
             if common and not common <= set(v):
                 continue
@@ -533,7 +539,27 @@ def check_row_math(ctx) -> list[dict]:
                               f"{t.title or 'table'} / \"{name[:60]}\": shows {ctr:.2f}%, "
                               f"{clicks:.0f}/{imps:.0f} = {expected:.3f}%.",
                               where=_where(ctx, at, t.title or "")))
+    # Each geo-fence row ends impressions, clicks, CTR - whatever came before.
+    text = ctx["text"]
+    for line in _geofence_rows(text):
+        m = GEOFENCE_TAIL.search(line)
+        if not m:
+            continue
+        imps, clicks, ctr = (as_number(m.group(1)), as_number(m.group(2)),
+                             as_number(m.group(3)))
+        if not imps or clicks is None or ctr is None:
+            continue
+        expected = clicks / imps * 100
+        if abs(expected - ctr) > max(0.011, expected * 0.03):
+            name = re.split(r"\s{2,}", line.strip())[0]
+            out.append(_f("row_ctr", "warn", "Row CTR does not match its own numbers",
+                          f"Geo-Fencing Performance / \"{name[:60]}\": shows "
+                          f"{ctr:.2f}%, {clicks:.0f}/{imps:.0f} = {expected:.3f}%.",
+                          where=_where(ctx, text.find(line), "Geo-Fencing Performance")))
     return out[:5]
+
+
+GEOFENCE_TAIL = re.compile(r"([\d,]+)\s+([\d,]+)\s+([\d.]+)%\s*$")
 
 
 def check_pacing_off(ctx) -> list[dict]:
@@ -673,17 +699,27 @@ def check_blank_pages(ctx) -> list[dict]:
         hits.sort()
     if not hits:
         return []
-    detail = "; ".join(f"page {p} of {pages}: {t}" for p, t in hits[:4])
-    return [_f("blank_widget_page", "warn",
-               f"{len(hits)} page{'s' if len(hits) > 1 else ''} with a widget but no data",
-               detail, where=f"p{hits[0][0]}")]
+    # "pg 2: text starting: Spend Performance Does" - the page and the first
+    # three words on it, enough to find it. The page is a pill on the report
+    # page, from "pages".
+    def start(t):
+        return " ".join(t.split()[:3])
+    shown = [[p, start(t)] for p, t in hits[:6]]
+    detail = "; ".join(f"pg {p}: text starting: {w}" for p, w in shown)
+    out = _f("blank_widget_page", "warn",
+             f"{len(hits)} page{'s' if len(hits) > 1 else ''} with a widget but no data",
+             detail, where=f"p{hits[0][0]}")
+    out["pages"] = shown
+    return [out]
 
 
 # ---------------------------------------------------------------- geo-fencing
 # A geo-fence row prints its state and ZIP - "  FL   32405 " - which is what
 # tells a data row from the heading, the column header and the page furniture
 # around it.
-GEOFENCE_ROW = re.compile(r"\s{2,}[A-Z]{2}\s{2,}\d{5}\s")
+# Four digits too: TapClicks drops a ZIP's leading zero, so Plymouth, MA prints
+# 2360, not 02360.
+GEOFENCE_ROW = re.compile(r"\s{2,}[A-Z]{2}\s{2,}\d{4,5}\s")
 
 
 def _geofence_block(text: str) -> tuple[str | None, list[str]]:
@@ -1307,7 +1343,10 @@ def check_client_data(ctx) -> list[dict]:
     # "Jiffy Lube Johnstown - AI Video" that came out as 100% of the
     # impressions belonging to somebody else. A misspelled order is a
     # misspelled order; it is not a report pulled on the wrong client.
-    same = _same_client
+    initials = _initials(ctx.get("client") or "")
+
+    def same(k, n):
+        return _same_client(k, n) or k in initials
     mine = sum(v for k, v in hits.items() if same(k, named))
     if mine / total >= 0.5:
         # Right client, spelled two ways. Not a report problem, but somebody
@@ -1318,7 +1357,8 @@ def check_client_data(ctx) -> list[dict]:
         # to fix on the order.
         typo = [k for k, v in sorted(hits.items(), key=lambda kv: -kv[1])
                 if same(k, named) and k != named and k not in named
-                and named not in k and not _dropped_middle(k, named)]
+                and named not in k and not _dropped_middle(k, named)
+                and k not in initials]
         if typo:
             return [_f("client_name_typo", "info",
                        "The order spells this client's name differently",
@@ -1335,6 +1375,8 @@ def check_client_data(ctx) -> list[dict]:
     if not top or top[0][1] / total < 0.5 or same(top[0][0], named):
         return []
     biggest = max(rows, key=lambda r: r[1])[0]
+    # ON THE LINE ITEM GRID, where the names it quotes are - not page one.
+    at = (ctx.get("text") or "").find(biggest[:40])
     return [_f("wrong_client", "fail",
                "The data on this report is for a different client",
                f"{(1 - mine / total) * 100:.0f}% of the impressions sit on line "
@@ -1343,7 +1385,8 @@ def check_client_data(ctx) -> list[dict]:
                trace=[("Report is for", ctx.get("client") or "?"),
                       ("Line items name", ", ".join(k for k, _ in top[:3])),
                       ("Impressions on this client",
-                       f"{mine:,.0f} of {total:,.0f}")], where=COVER)]
+                       f"{mine:,.0f} of {total:,.0f}")],
+               where=_where(ctx, at, "Line Item Performance") if at >= 0 else COVER)]
 
 
 # "&" AND "AND" ARE THE SAME WORD, AND STRIPPING PUNCTUATION MADE THEM TWO.
@@ -1356,6 +1399,20 @@ def check_client_data(ctx) -> list[dict]:
 # The ampersand becomes the word before the punctuation goes, so the two
 # spellings meet. Same for a plus sign, which the tracker uses the same way.
 AMPERSAND = re.compile(r"\s*[&+]\s*")
+
+
+def _initials(name: str) -> set[str]:
+    """A client name's initials, with and without the small words.
+
+    Line items are often named for the client's abbreviation: Floor Coverings
+    International Cape Cod's read "FCICC - Flooring/Carpets/...", which no
+    letter-by-letter comparison calls the same client.
+    """
+    words = re.findall(r"[A-Za-z0-9]+", AMPERSAND.sub(" and ", name or ""))
+    small = {"of", "the", "and", "a", "an", "at", "in", "for"}
+    out = {"".join(w[0] for w in words).lower(),
+           "".join(w[0] for w in words if w.lower() not in small).lower()}
+    return {i for i in out if len(i) >= 3}
 
 
 def _flat_name(s: str) -> str:
@@ -1422,7 +1479,7 @@ def _mostly_this_client(ctx, filed: str) -> bool:
             continue
         weight = max(imps, 1.0)
         total += weight
-        if _same_client(who, filed):
+        if _same_client(who, filed) or who in _initials(ctx.get("filed_as") or ""):
             mine += weight
     return bool(total) and mine / total >= 0.5
 

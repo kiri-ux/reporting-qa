@@ -578,7 +578,9 @@ def test_ppc_pages_on_a_buy_with_no_ppc():
         out = check_blank_pages(ctx)
         assert len(out) == 1 and out[0]["code"] == "blank_widget_page", name
         assert "with a widget but no data" in out[0]["title"], name
-        assert "PPC" in out[0]["detail"], name
+        from app.checks.rules import PPC_WIDGET
+        ppc = {i + 1 for i, t in enumerate(ctx["page_text"]) if PPC_WIDGET.search(t)}
+        assert ppc and ppc <= {pg for pg, _w in out[0]["pages"]}, name
 
 
 def test_a_client_who_runs_ppc_says_nothing():
@@ -589,7 +591,10 @@ def test_a_client_who_runs_ppc_says_nothing():
     for key in ("products", "expected_products"):
         live = dict(base, **{key: set(base[key]) | {"PPC"}})
         out = check_blank_pages(live)
-        assert not any("PPC" in f["detail"] for f in out), key
+        from app.checks.rules import PPC_WIDGET
+        ppc = {i + 1 for i, t in enumerate(live["page_text"]) if PPC_WIDGET.search(t)}
+        flagged = {pg for f in out for pg, _w in f.get("pages", [])}
+        assert ppc and not (ppc & flagged), key
 
 
 def test_performance_max_owns_its_own_google_widgets():
@@ -701,5 +706,5 @@ def test_the_assignment_limit_is_a_widget_with_no_data():
     assert "widget_error" not in codes
     blank = [f for f in r["findings"] if f["code"] == "blank_widget_page"]
     assert len(blank) == 1
-    assert blank[0]["detail"] == ("page 5 of 18: TikTok Click and View-through "
-                                  "Conversion Performance")
+    assert blank[0]["detail"] == "pg 5: text starting: TikTok Click and"
+    assert blank[0]["pages"] == [[5, "TikTok Click and"]]

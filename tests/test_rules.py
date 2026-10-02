@@ -3972,3 +3972,38 @@ def test_a_number_in_a_line_item_name_is_not_the_headline():
     fx = Path(__file__).parent / "fixtures" / "studle_financial_45_64.pdf"
     imps, clicks, _ctr = headline(pdf_text(fx))
     assert (imps, clicks) == (69449, 19)
+
+
+def test_floor_coverings_cape_cod_reads_clean_where_it_is():
+    """Its geo-fence ZIPs print without the leading zero (2360), which put a
+    ZIP in the impressions column; and its line items are named "FCICC", the
+    client's initials, which read as a different client - on page 1, about
+    line items on page 2."""
+    from app.checks.rules import _initials, run_all
+    fx = FIXTURES / "fcicc_zip_and_acronym.pdf"
+    r = run_all(fx, "September 2026_Floor Coverings International Cape Cod 52058.pdf")
+    codes = {f["code"] for f in r["findings"]}
+    assert "row_ctr" not in codes and "wrong_client" not in codes
+    assert "fcicc" in _initials("Floor Coverings International Cape Cod")
+
+
+def test_a_wrong_client_finding_points_at_the_line_items():
+    from app.checks.rules import check_client_data
+    text = ("Digital Marketing Report\n\fLine Item Performance\n"
+            "Line Item Name                 Impressions   Clicks   CTR\n"
+            "Everett Railroad - Display        10,000        10    0.10%\n"
+            "Everett Railroad - Video           5,000         5    0.10%\n")
+    pages = text.split("\f")
+    ctx = {"client": "St. Francis AMT Program", "text": text,
+           "page_of": lambda o: text[:o].count("\f") + 1}
+    out = check_client_data(ctx)
+    if out:
+        assert out[0]["where"].startswith("p2"), out[0]["where"]
+
+
+def test_meta_carousel_card_names_are_cut_off_by_meta():
+    """Amorem's carousel cards read "1: You Deserve More..." - the card name as
+    Meta sends it."""
+    from app.checks.rules import run_all
+    r = run_all(FIXTURES / "amorem_carousel_cards.pdf", "Lifetime_Amorem 53470.pdf")
+    assert not [f for f in r["findings"] if f["code"] == "text_truncated"]
