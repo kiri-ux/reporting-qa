@@ -3969,3 +3969,14 @@ def test_missing_previews_are_only_flagged_from_july_2026():
     # No printed range: the period decides.
     assert check_thumbnails({**base, "period": "2026-05"}) == []
     assert check_thumbnails({**base, "period": "2026-08"})
+
+
+def test_a_number_in_a_line_item_name_is_not_the_headline():
+    """Studle Financial's page one says 69,449 and 19. The line item grid
+    follows on the same page, and "Services - 45-64/Financial Planning" put a
+    45 in the impressions tile's column."""
+    from pathlib import Path
+    from app.checks.parser import headline, pdf_text
+    fx = Path(__file__).parent / "fixtures" / "studle_financial_45_64.pdf"
+    imps, clicks, _ctr = headline(pdf_text(fx))
+    assert (imps, clicks) == (69449, 19)
