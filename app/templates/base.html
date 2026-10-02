@@ -1570,11 +1570,11 @@ body.fit .pdfwrap object{height:100%}
       // a thousand. The server's figures already cover the whole cycle and
       // whatever filter is on it, so when the board is paged they stand.
       if ('paged' in tiles.dataset) return;
-      var sum = { total: 0, life: 0, missing: 0, review: 0, fail: 0, errors: 0, fix: 0, ready: 0, sent: 0 };
+      var sum = { total: 0, life: 0, missing: 0, review: 0, fail: 0, ready: 0, sent: 0 };
       visible.forEach(function (c) {
         for (var k in sum) sum[k] += parseInt(c.d['n' + k.charAt(0).toUpperCase() + k.slice(1)] || 0, 10);
       });
-      ['total', 'missing', 'review', 'fail', 'errors', 'fix', 'ready', 'sent'].forEach(function (k) {
+      ['total', 'missing', 'review', 'fail', 'ready', 'sent'].forEach(function (k) {
         if (tileEl[k]) tileEl[k].textContent = sum[k].toLocaleString();
       });
       if (tileEl.groups) tileEl.groups.textContent = visible.length.toLocaleString();
