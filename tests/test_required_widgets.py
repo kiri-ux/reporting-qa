@@ -793,3 +793,21 @@ def test_a_cancelled_barck_line_that_left_its_pages_ran():
     ctx = {"text": text, "products": {"Mobile Conquesting"},
            "cancelled_products": {"PPC"}}
     assert len(check_rogue_widgets(ctx)) == 1
+
+
+def test_online_audio_owes_creative_and_completion_widgets():
+    """John 3:16 Mission ran AI Audio and carried neither Online Audio
+    widget. Thirwood Place carries both."""
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "john316_ott_audio.pdf"
+    r = run_all(fx, "Lifetime_John 316 Mission 41994.pdf",
+                expected_products={"CTV", "Online Audio"})
+    got = sorted(f["title"] for f in r["findings"]
+                 if f["code"] == "widget_missing" and "Audio" in f["title"])
+    assert got == ["No Online Audio Completion Performance by Line Item widget",
+                   "No Online Audio Creative Performance widget"]
+    codes = [f["code"] for f in r["findings"]]
+    assert "completion_missing" not in codes and "ctv_tile_unchecked" not in codes
+    fx = Path(__file__).parent / "fixtures" / "thirwood_audio_barck.pdf"
+    r = run_all(fx, "September 2026_Thirwood Place 1.pdf")
+    assert not [f for f in r["findings"] if "Audio" in f["title"]]

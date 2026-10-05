@@ -1944,25 +1944,11 @@ def check_ctv_tile(ctx) -> list[dict]:
                    where=where)]
     rows = _ctv_full_rates(text)
     if len(rows) < 1:
-        # NOTHING TO COMPARE IT TO IS NOT THE SAME AS NOTHING WRONG.
-        #
-        # This returned an empty list, which reads on the report as the check
-        # having passed. It is the failure that cost two days: the tile was
-        # there, the grids were titled OTT and Prime OTT, nothing matched them,
-        # and the check said nothing about any of it.
-        #
-        # So where the client BOUGHT CTV and the report prints the tile, the
-        # absence of rows is itself the finding - either the grid is missing or
-        # it is titled something nobody has taught this. Where they did not buy
-        # CTV, a tile with no rows is check_rogue_ctv's, not this one's.
-        if not (set(ctx.get("expected_products") or ()) & CTV_ORDERS):
-            return []
-        return [_f("ctv_tile_unchecked", "warn",
-                   "CTV VCR could not be checked",
-                   f"The tile reads {tile:.2f}% and the client has a CTV "
-                   f"order, and there is no CTV grid on the report to check it "
-                   f"against.",
-                   where=where)]
+        # NOTHING TO COMPARE IT TO. This used to warn "CTV VCR could not be
+        # checked" when the client had a CTV order, and on John 3:16 Mission
+        # - CTV sold under its old name, OTT - it read as nonsense. A missing
+        # grid is a missing widget, not a fault in the tile.
+        return []
     lo = min(v for _n, v in rows)
     hi = max(v for _n, v in rows)
     if lo - CTV_TILE_SLACK <= tile <= hi + CTV_TILE_SLACK:
@@ -2600,6 +2586,20 @@ def check_required_widgets(ctx) -> list[dict]:
                           where=_section_spot(ctx, "YouTube+")))
     if yt_tv:
         owed(W_YTTV_CHAN, 1, "YouTube TV", alt=(W_YT_CHAN,))
+    # ONLINE AUDIO OWES ITS CREATIVE AND COMPLETION WIDGETS. John 3:16
+    # Mission ran AI Audio and carried neither. Matched loosely - "Audio"
+    # and the widget's kind on one line - so an older title still counts.
+    if "OA" in codes:
+        for title, pat in (
+                ("Online Audio Creative Performance",
+                 r"\bAudio\b.*\bCreative Performance\b"),
+                ("Online Audio Completion Performance by Line Item",
+                 r"\bAudio\b.*\bCompletion\b")):
+            if not re.search(pat, text):
+                out.append(_f("widget_missing", "fail", f"No {title} widget",
+                              f"This report runs Online Audio, which should "
+                              f"carry a {title} widget. It is not on the "
+                              f"report.", where=_section_spot(ctx, "Online Audio")))
     # AND ANY YOUTUBE TV IS A CTV BUY, which owes the CTV Completion Rate tile
     # on page one. Chalfant Corporation carried the cost-per-completed-view
     # tile and not this one. (It does not owe a creative breakout with

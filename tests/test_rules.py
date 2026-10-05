@@ -3841,7 +3841,7 @@ def test_a_ctv_tile_built_over_other_products_is_a_finding():
     assert "62.10%" in got[0]["detail"]
 
 
-def test_a_ctv_tile_with_nothing_to_compare_it_to_says_so():
+def test_a_ctv_tile_with_nothing_to_compare_it_to_says_nothing():
     """NOTHING TO COMPARE IT TO IS NOT THE SAME AS NOTHING WRONG.
 
     It returned an empty list, which reads on the report as the check having
@@ -3861,16 +3861,9 @@ def test_a_ctv_tile_with_nothing_to_compare_it_to_says_so():
     vals = " " * 10 + "41.20%" + " " * (at - 12) + "62.10%" + "        0.04"
     text = head + "\n\n" + vals + "\n"
 
-    got = check_ctv_tile({"text": text, "page_of": lambda _o: 1,
-                          "expected_products": {"CTV", "Display"}})
-    assert [f["code"] for f in got] == ["ctv_tile_unchecked"]
-    assert got[0]["severity"] == "warn"
-    assert "62.10%" in got[0]["detail"]
-
-    # Social Mirror CTV is a CTV order too.
-    got = check_ctv_tile({"text": text, "page_of": lambda _o: 1,
-                          "expected_products": {"Social Mirror CTV"}})
-    assert [f["code"] for f in got] == ["ctv_tile_unchecked"]
+    # John 3:16 Mission: CTV sold as OTT and no CTV grid. Not a finding.
+    assert check_ctv_tile({"text": text, "page_of": lambda _o: 1,
+                           "expected_products": {"CTV", "Display"}}) == []
 
     # No CTV order, and no order list at all: not this check's finding.
     assert check_ctv_tile({"text": text, "page_of": lambda _o: 1,

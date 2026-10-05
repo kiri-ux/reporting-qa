@@ -1740,7 +1740,9 @@ COMPLETION_OWED = (
     ("VIDEO ADS", None),
     ("CTV ADS", None),
     ("SOCIAL MIRROR CTV ADS", None),
-    ("ONLINE AUDIO ADS", None),
+    # Online Audio is check_required_widgets': its completion widget is one
+    # of two it owes, and "no completion rate" named only half of what was
+    # missing on John 3:16 Mission.
     ("YOUTUBE+ ADS", None),
     ("YOUTUBE TV ADS", None),
     # Amazon Premium Display sits in the same section and has nothing to
@@ -1777,7 +1779,7 @@ def section_bodies(text: str) -> dict[str, str]:
 # Products that owe a completion rate, named the way `detect` names them. Used
 # on the older template that prints no "SECTION - PAGE n" banners at all, where
 # there are no sections to look inside.
-WATCHED_PRODUCTS = ("Video", "CTV", "Social Mirror CTV", "Online Audio", "YouTube")
+WATCHED_PRODUCTS = ("Video", "CTV", "Social Mirror CTV", "YouTube")
 
 
 def _section_at_offset(text: str, friendly: str) -> int:
