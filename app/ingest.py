@@ -21,7 +21,8 @@ from .notify import post_slack, send_digest
 from .naming import canonical_name
 from .roster import (attach_owners, client_lines, completeness, expected_any,
                      expected_products, expected_why, ordered_for,
-                     quiet_products, budgets_for)
+                     quiet_products, budgets_for,
+                     cancelled_products)
 
 log = logging.getLogger("reportqa.ingest")
 
@@ -567,6 +568,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
                              market=batch.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
+                     cancelled_products=cancelled_products(
+                         db, meta_guess["client"], meta_guess["account_ids"]),
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok, is_seo=seo_guess,

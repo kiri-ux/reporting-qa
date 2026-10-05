@@ -758,3 +758,17 @@ def test_a_row_with_no_line_items_kept_answers_as_it_always_did(db):
     _line(db, "Social Mirror Ads", "2026-01-01", "2026-12-31")
     db.commit()
     assert _exp(db, period="2026-08") == {"Social Mirror Ads"}
+
+
+def test_cancelled_products_reads_the_line_items():
+    from app.roster import cancelled_products
+    s = _paused_db()
+    s.add(_OL(market="m", client="W&L Subaru", account_ids="14885",
+              product="Social Mirror", live=True,
+              detail=[{"canceled": True, "starts": "2026-06-01", "ends": "2026-09-30"}]))
+    s.add(_OL(market="m", client="W&L Subaru", account_ids="14885",
+              product="Display", live=True,
+              detail=[{"canceled": False, "starts": "2026-06-01", "ends": "2026-09-30"}]))
+    s.commit()
+    got = cancelled_products(s, "W&L Subaru", "14885")
+    assert "Social Mirror" in got and "Display" not in got
