@@ -509,6 +509,7 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
      ("widget_missing", "geofence_widget_missing")),
     ("widget_rogue", "A widget for a product this buy does not include",
      ("widget_rogue",)),
+    ("report_blank", "Blank report", ("report_blank",)),
     ("widget_error", "A widget printed an error or no data",
      ("widget_error", "blank_widget_page")),
     ("page_banner", "Page banners still printing", ("page_banner",)),

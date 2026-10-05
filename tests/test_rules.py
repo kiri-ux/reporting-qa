@@ -4091,3 +4091,48 @@ def test_meta_is_not_in_the_device_widget():
     assert is_device_excluded("X - Homeschooling Facebook/Instagram Premium", ex)
     assert is_device_excluded("X - Retargeting Meta", ex)
     assert not is_device_excluded("Facebook Fans Club - Behavioral Video", ex)
+
+
+def test_a_report_with_only_its_header_is_blank():
+    """Bellefonte Historical Railroad Society's September is one page of
+    cover header and nothing else."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "bellefonte_blank.pdf"
+    r = run_all(fx, "September 2026_Bellefonte Historical Railroad Society 55957.pdf")
+    codes = [f["code"] for f in r["findings"]]
+    assert "report_blank" in codes and "date_range_missing" not in codes
+    blank = [f for f in r["findings"] if f["code"] == "report_blank"][0]
+    assert blank["title"] == "Blank report" and blank["severity"] == "fail"
+
+
+def test_a_mobile_line_with_an_audience_tag_is_not_device_eligible():
+    """Surprenant Beneski and Nunes: "...Geo-Fencing Mobile ELDERLY"."""
+    from app.checks.rules import is_device_excluded
+    ex = {"Mobile Conquesting"}
+    assert is_device_excluded("S - Geo-Fencing Mobile ELDERLY", ex)
+    assert is_device_excluded("S - Financial Advisor Visitors Mobile PLYMOUTH WEALTHY", ex)
+    assert not is_device_excluded("S - Geo-Fencing Mobile Display", ex)
+    assert not is_device_excluded("S - Medicare Behavioral Display", ex)
+
+
+def test_the_row_ctr_finding_says_ctr_not_calculating_correctly():
+    from app.checks.rules import check_row_math
+    from app.checks.parser import Table
+    t = Table(title="Site and App Performance",
+              rows=[("bostonglobe.com", {"Impressions": 6245.0, "Clicks": 9.0, "CTR": 0.25})])
+    out = check_row_math({"tables": [t], "text": ""})
+    assert out and out[0]["title"] == "CTR not calculating correctly"
+
+
+def test_a_client_name_with_a_dash_in_it_is_still_the_client():
+    """ADAMA ~ Novali's line items read "ADAMA - Novali - ..."."""
+    from app.checks.rules import check_client_data
+    text = ("Line Item Performance\n"
+            "Line Item Name                             Impressions   Clicks   CTR\n"
+            "ADAMA - Novali - Farming/Agriculture/Crops Behavioral B2B Social Mirror     89,864   469   0.52%\n"
+            "ADAMA - Novali - Farming/Agriculture/Crops Behavioral B2B Audio     33,989   3   0.01%\n"
+            "ADAMA - Novali - Keyword B2B Social Mirror     8,217   15   0.18%\n")
+    for c in ("ADAMA ~ Novali", "ADAMA Novali"):
+        assert check_client_data({"text": text, "client": c}) == [], c
+    assert check_client_data({"text": text, "client": "Bellefonte Railroad"})

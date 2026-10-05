@@ -92,7 +92,11 @@ PRODUCT_TAIL = {
     # Still anchored, deliberately. The client here is NAMED "Belmont Park
     # Mobile Conquesting", so matching those words anywhere in the line would
     # take out their Facebook rows as well and leave nothing eligible at all.
-    "Mobile Conquesting": r"\bMobile(?:\s+Conquesting)?$",
+    #
+    # AND AN AUDIENCE TAG IN CAPITALS AFTER IT. Surprenant Beneski and Nunes
+    # names its Mobile lines "...Mobile ELDERLY", "...Mobile PLYMOUTH WEALTHY",
+    # and 3.1M impressions of them were counted as device-eligible.
+    "Mobile Conquesting": r"\bMobile(?:\s+Conquesting)?(?-i:\s+[A-Z]{2,})*$",
     "PPC": r"\bPPC$",
     "YouTube": r"\bYouTube\b",
     "LinkedIn": r"\bLinkedIn\b",
@@ -540,7 +544,7 @@ def check_row_math(ctx) -> list[dict]:
             expected = clicks / imps * 100
             if abs(expected - ctr) > max(0.011, expected * 0.03):
                 at = ctx["text"].find(name[:40]) if name else -1
-                out.append(_f("row_ctr", "warn", "Row CTR does not match its own numbers",
+                out.append(_f("row_ctr", "warn", "CTR not calculating correctly",
                               f"{t.title or 'table'} / \"{name[:60]}\": shows {ctr:.2f}%, "
                               f"{clicks:.0f}/{imps:.0f} = {expected:.3f}%.",
                               where=_where(ctx, at, t.title or "")))
@@ -557,7 +561,7 @@ def check_row_math(ctx) -> list[dict]:
         expected = clicks / imps * 100
         if abs(expected - ctr) > max(0.011, expected * 0.03):
             name = re.split(r"\s{2,}", line.strip())[0]
-            out.append(_f("row_ctr", "warn", "Row CTR does not match its own numbers",
+            out.append(_f("row_ctr", "warn", "CTR not calculating correctly",
                           f"Geo-Fencing Performance / \"{name[:60]}\": shows "
                           f"{ctr:.2f}%, {clicks:.0f}/{imps:.0f} = {expected:.3f}%.",
                           where=_where(ctx, text.find(line), "Geo-Fencing Performance")))
@@ -657,8 +661,25 @@ def _no_ppc_buy(ctx) -> bool:
     return bool(have) and not any("ppc" in p.lower() for p in have)
 
 
+# THE COVER HEADER AND NOTHING ELSE. Bellefonte Historical Railroad Society's
+# September was one page of logo, client, date range, created on and report
+# type - in a header that spells the month out in full and lowercases
+# "marketing report", so PAGE_HEAD missed it and the report read as one with
+# no date range.
+BLANK_HEAD = re.compile(r"(?i)(Digital marketing report|Date range|Created on"
+                        r"|Report type|Powered by TCPDF)")
+
+
+def _report_blank(text: str) -> bool:
+    """Is there nothing on this report but its page headers?"""
+    lines = [l for l in (text or "").split("\n") if l.strip()]
+    return bool(lines) and all(BLANK_HEAD.search(l) for l in lines)
+
+
 def check_blank_pages(ctx) -> list[dict]:
     path, pages = ctx["path"], ctx["pages"]
+    if _report_blank(ctx.get("text") or ""):
+        return [_f("report_blank", "fail", "Blank report", "", where="p1")]
     # One pdftotext call for the whole document rather than one per page. On a
     # forty-one page report that was forty-one subprocesses and most of the
     # wait after uploading a corrected PDF.
@@ -1337,6 +1358,11 @@ def check_client_data(ctx) -> list[dict]:
         if " - " not in (name or ""):
             continue                       # no client on this row to read
         who = _client_of(name)
+        # A CLIENT WHOSE OWN NAME HAS A DASH IN IT. ADAMA ~ Novali's line items
+        # read "ADAMA - Novali - ...", so the part before the first dash was
+        # "ADAMA" and the whole report read as somebody else's.
+        if re.sub(r"[^a-z0-9]", "", (name or "").lower()).startswith(named):
+            who = named
         if not who or len(who) < 5:
             continue
         weight = max(imps, 1.0)
@@ -1590,6 +1616,8 @@ def check_date_range(ctx) -> list[dict]:
     campaign to the client even though the export lists them separately.
     """
     got = ctx.get("date_range")
+    if not got and _report_blank(ctx.get("text") or ""):
+        return []                       # check_blank_pages: a blank report
     if not got:
         return [_f("date_range_missing", "warn", "No date range printed on the report",
                    "Page one usually carries \"Date range ... to ...\". Without it "
