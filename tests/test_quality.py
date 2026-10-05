@@ -550,8 +550,12 @@ def test_an_online_audio_section_with_no_completion_is_found():
             "Online Audio Creative Performance\n"
             "Creative Name   Impressions   Clicks   CTR\n"
             "spot.mp3            2,762    0   0.00%\n")
-    out = q.check_completion_present({"text": text})
-    assert "Online Audio" in out[0]["detail"]
+    # Owned by check_required_widgets now, as a missing widget.
+    assert q.check_completion_present({"text": text}) == []
+    from app.checks.rules import check_required_widgets
+    out = check_required_widgets({"text": text, "products": {"Online Audio"}})
+    assert [f["title"] for f in out if "Audio" in f["title"]] == [
+        "No Online Audio Completion Performance by Line Item widget"]
 
 
 def test_completion_reported_as_a_column_counts(sample):
@@ -620,10 +624,11 @@ def test_one_products_completion_tile_does_not_answer_for_another():
             "Online Audio Performance by Line Item\n"
             "Line Item   Impressions   Clicks   CTR\n"
             "WQLN Audio    119,133   64   0.05%\n")
-    out = q.check_completion_present({"text": text,
-                                      "products": {"CTV", "Online Audio"}})
-    assert len(out) == 1
-    assert "Online Audio" in out[0]["detail"] and "CTV" not in out[0]["detail"]
+    from app.checks.rules import check_required_widgets
+    out = check_required_widgets({"text": text,
+                                  "products": {"CTV", "Online Audio"}})
+    assert "No Online Audio Completion Performance by Line Item widget" in [
+        f["title"] for f in out]
 
 
 def test_naming_the_audio_widget_properly_clears_it():
