@@ -90,9 +90,11 @@ def test_youtube_tv_only_does_not_owe_the_youtube_plus_widgets():
 def test_youtube_plus_owes_the_placement_widget_and_not_the_channel_list():
     """The two are an either/or. A YouTube+ buy has placements to break out;
     the channel list is the TV buy's widget."""
-    text = "YOUTUBE+ ADS - PAGE 1\nYouTube+ Placement Performance\n"
+    text = ("YOUTUBE+ ADS - PAGE 1\nYouTube+ Placement Performance\n"
+            "YouTube+ Creative Performance\n")
     assert check_required_widgets({"text": text, "products": set()}) == []
-    out = check_required_widgets({"text": "YOUTUBE+ ADS - PAGE 1\n",
+    out = check_required_widgets({"text": "YOUTUBE+ ADS - PAGE 1\n"
+                                          "YouTube+ Creative Performance\n",
                                   "products": set()})
     assert [f["title"] for f in out] == ["No YouTube+ Placement Performance widget"]
 
@@ -101,14 +103,16 @@ def test_youtube_on_the_order_with_no_section_still_owes_the_plus_widget():
     """A report that dropped the YouTube pages entirely is the worst case."""
     out = check_required_widgets({"text": "OVERVIEW - PAGE 1\n",
                                   "products": {"YouTube Video Ads"}})
-    assert [f["title"] for f in out] == ["No YouTube+ Placement Performance widget"]
+    assert [f["title"] for f in out] == ["No YouTube+ Placement Performance widget",
+                                         "No YouTube+ Creative Performance widget"]
 
 
 def _yt_ctx(text: str, *lines: str) -> dict:
     grid = "Line Item Performance\n" + "".join(
         f" {n}   1,000   10   1.00%\n" for n in lines)
     # Page one with its CTV Completion Rate tile, which any YouTube TV owes.
-    return {"text": "CTV Completion Rate\n\f" + text + grid,
+    # ...and the YouTube+ creative breakout, which any YouTube+ owes.
+    return {"text": "CTV Completion Rate\n\fYouTube+ Creative Performance\n" + text + grid,
             "products": {"YouTube Video Ads"}}
 
 

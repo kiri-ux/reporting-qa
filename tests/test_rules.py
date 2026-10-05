@@ -4067,3 +4067,20 @@ def test_both_client_findings_are_one():
     assert rules.check_client_data(ctx) and rules.check_client_matches_order(ctx)
     out = rules.check_client_wrong(ctx)
     assert len(out) == 1 and "St. Francis" in out[0]["detail"]
+
+
+def test_a_youtube_plus_line_item_is_youtube():
+    """Pensacola State College's lines end "Youtube+". Read as nothing, its
+    YouTube order was "ordered but not on the report"."""
+    from app.checks.products import detect
+    from app.checks.parser import extract_tables, pdf_text
+    from app.checks.rules import run_all
+    text = pdf_text(FIXTURES / "psc_yt_initials.pdf")
+    assert "YouTube" in detect(text, extract_tables(text, strict=True))
+    r = run_all(FIXTURES / "psc_yt_initials.pdf", "September 2026_PSC YT 55690.pdf",
+                for_client="PSC YT", expected_products={"YouTube"})
+    assert "product_missing" not in {f["code"] for f in r["findings"]}
+    titles = {f["title"] for f in r["findings"]}
+    assert {"No YouTube+ Placement Performance widget",
+            "No YouTube+ Creative Performance widget"} <= titles
+    assert "completion_missing" in {f["code"] for f in r["findings"]}

@@ -2092,6 +2092,7 @@ W_SITE_APP   = "Site and App Performance"
 W_AMZ_INV    = "Amazon Inventory Source Performance"
 W_AMZ_SITE   = "Amazon Premium Site and App Performance"
 W_YT_PLACE   = "YouTube+ Placement Performance"
+W_YT_CREAT   = "YouTube+ Creative Performance"
 W_YT_CHAN    = "Top 10 YouTube Channel Performance"
 W_YTTV_CHAN  = "Top 10 YouTube TV Channel Performance"
 # AMAZON PREMIUM IS SOLD AS CTV + VIDEO AND REPORTED AS TWO SETS OF WIDGETS.
@@ -2565,6 +2566,15 @@ def check_required_widgets(ctx) -> list[dict]:
         yt_plus = True                      # ran YouTube, nothing says which
     if yt_plus:
         owed(W_YT_PLACE, 1, "YouTube+")
+        # AND ITS CREATIVE BREAKOUT. Pensacola State College's YouTube+ report
+        # carried neither. Matched anywhere on a line - two widgets can print
+        # side by side - not as a heading of its own.
+        if not re.search(r"\bYouTube\+ Creative Performance\b", text):
+            out.append(_f("widget_missing", "fail",
+                          f"No {W_YT_CREAT} widget",
+                          f"This report runs YouTube+, which should carry a "
+                          f"{W_YT_CREAT} widget. It is not on the report.",
+                          where=_section_spot(ctx, "YouTube+")))
     if yt_tv:
         owed(W_YTTV_CHAN, 1, "YouTube TV", alt=(W_YT_CHAN,))
     # AND ANY YOUTUBE TV IS A CTV BUY, which owes the CTV Completion Rate tile
