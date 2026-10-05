@@ -418,6 +418,24 @@ def quiet_products(db: Session, client: str, account_ids: str,
     return out
 
 
+def cancelled_products(db: Session, client: str, account_ids: str) -> set[str]:
+    """Products with at least one cancelled line item on this client's orders.
+
+    Whether it ran before it was stopped is not known from the order. The
+    report answers that: Close Lumber's cancelled Social Mirror left BARCK+
+    pages behind, so it ran. See check_rogue_widgets.
+    """
+    out = set()
+    for l in client_lines(db, client, account_ids) or []:
+        if not l.product:
+            continue
+        if getattr(l, "canceled", False) or any(
+                isinstance(d, dict) and d.get("canceled")
+                for d in (getattr(l, "detail", None) or [])):
+            out.add(l.product)
+    return out
+
+
 def budgets_for(db: Session, client: str, account_ids: str,
                 period: str | None = None) -> dict:
     """What each of this client's live products should spend in the month.

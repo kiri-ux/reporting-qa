@@ -2318,6 +2318,18 @@ def _buy_has(kind, test, ctx, names) -> bool:
     return any(test.lower() in p.lower() for p in have)
 
 
+def _cancelled_barck(ctx) -> list[str]:
+    """Cancelled BARCK+ products, when nothing live on the buy runs BARCK+."""
+    gone = {str(p) for p in (ctx.get("cancelled_products") or ())} & BARCK_PRODUCTS
+    if not gone:
+        return []
+    have = {str(p) for p in (ctx.get("products") or ())}
+    have |= {str(p) for p in (ctx.get("expected_products") or ())}
+    if have & BARCK_PRODUCTS - gone:
+        return []
+    return sorted(gone)
+
+
 def _amazon_av_buy(text: str) -> bool:
     """Is this an Amazon Premium CTV/Video buy with no Amazon Display in it?
 
@@ -2353,6 +2365,12 @@ def _rogue_widgets(ctx) -> list[tuple]:
         if not hits:
             continue
         if _buy_has(kind, test, ctx, names):
+            continue
+        # A CANCELLED LINE THAT LEFT ITS PAGES BEHIND RAN. Close Lumber's
+        # Social Mirror was cancelled and its BARCK+ pages are on the report:
+        # not rogue. Whether the product's own pages are there too is
+        # check_required_widgets' question (_cancelled_barck).
+        if label == "BARCK+" and _cancelled_barck(ctx):
             continue
         # The Amazon Display widget is only wrong on the CTV + Video buy.
         if label == "Amazon Premium Display" and not _amazon_av_buy(text):
@@ -2598,6 +2616,20 @@ def check_required_widgets(ctx) -> list[dict]:
     # is nothing for that widget to list, and TapClicks does not print one.
     if BARCK.search(text) and not _site_app_not_owed(ctx, heads):
         owed(W_SITE_APP, 1, "BARCK+ targeting")
+
+    # A CANCELLED BARCK+ PRODUCT WHOSE BARCK+ PAGES ARE HERE RAN, so its own
+    # pages are owed too. Close Lumber's cancelled Social Mirror left BARCK+
+    # Visit Performance behind and nothing of Social Mirror's. With no BARCK+
+    # pages either, it never ran and nothing is owed.
+    gone = _cancelled_barck(ctx)
+    found = {str(p) for p in (ctx.get("products") or ())}
+    if gone and BARCK_WIDGET.search(text) and not (found & set(gone)):
+        names = " or ".join(gone)
+        out.append(_f("widget_missing", "fail", f"No {names} widgets",
+                      f"This report carries BARCK+ widgets from a cancelled "
+                      f"{names} line. The {names} widgets are not on the "
+                      f"report.", where=_where(ctx, BARCK_WIDGET.search(text).start(),
+                                               "BARCK+")))
     return out
 
 
@@ -3075,6 +3107,7 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
             market: str = "", expected_why: list | None = None,
             expected_any: list | None = None,
             quiet_products: set | None = None,
+            cancelled_products: set | None = None,
             is_lifetime: bool | None = None, ordered: dict | None = None,
             logo_generic: bool = False, logo_known: bool = False,
             logo_hash: str = "", budgets: dict | None = None,
@@ -3116,6 +3149,8 @@ def run_all(path: Path, filename: str | None = None, for_client: str = "",
         # Bought, but not owed this month - paused, or out of flight.
         # Neither expected nor a surprise.
         "quiet_products": quiet_products or set(),
+        # Products with a cancelled line item. Bought, maybe never run.
+        "cancelled_products": cancelled_products or set(),
         # Other markets whose reports carry this same header logo.
         # What the order says each product should spend in a month.
         "budgets": budgets or {},

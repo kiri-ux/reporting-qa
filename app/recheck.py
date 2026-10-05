@@ -206,7 +206,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False,
     from .cycle import cycle_for
     from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
-                     expected_why, ordered_for, quiet_products)
+                     expected_why, ordered_for, quiet_products,
+                     cancelled_products)
 
     path = Path(rep.stored_path or "")
     if not path.exists():
@@ -331,6 +332,8 @@ def recheck(db: Session, rep: Report, *, manual: bool = False,
                        period=rep.period, market=rep.market or "",
                        expected_why=why, expected_any=any_of,
                        quiet_products=quiet,
+                       cancelled_products=cancelled_products(
+                           db, rep.client, rep.account_ids),
                        logo_hash=logo, logo_generic=logo_bad,
                        logo_known=logo_seen, budgets=budgets, ordered=ordered,
                        orders_current=orders_ok,

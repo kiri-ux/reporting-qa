@@ -759,3 +759,37 @@ def test_online_audio_runs_barck():
     fx = Path(__file__).parent / "fixtures" / "thirwood_audio_barck.pdf"
     r = run_all(fx, "September 2026_Thirwood Place 54800.pdf")
     assert not [f for f in r["findings"] if f["code"] == "widget_rogue"]
+
+
+def test_a_cancelled_barck_line_that_left_its_pages_ran():
+    """Close Lumber's Social Mirror was cancelled. Its BARCK+ pages are on the
+    report, so it ran: not rogue, but its Social Mirror pages are missing."""
+    from app.checks.parser import pdf_text
+    from app.checks.rules import check_required_widgets, check_rogue_widgets, run_all
+    fx = Path(__file__).parent / "fixtures" / "close_lumber_barck_mc.pdf"
+    r = run_all(fx, "Lifetime_Close Lumber 43722.pdf",
+                expected_products={"Mobile Conquesting"},
+                cancelled_products={"Social Mirror"})
+    assert not [f for f in r["findings"] if f["code"] == "widget_rogue"]
+    miss = [f for f in r["findings"] if f["code"] == "widget_missing"
+            and "Social Mirror" in f["title"]]
+    assert len(miss) == 1 and miss[0]["title"] == "No Social Mirror widgets"
+
+    # Nothing of the cancelled product on the report: it never ran.
+    text = pdf_text(fx)
+    bare = "\n".join(l for l in text.split("\n") if "BARCK+" not in l)
+    ctx = {"text": bare, "products": {"Mobile Conquesting"},
+           "cancelled_products": {"Social Mirror"}}
+    assert check_rogue_widgets(ctx) == []
+    assert not [f for f in check_required_widgets(ctx)
+                if "Social Mirror" in f["title"]]
+
+    # A live BARCK+ product explains the pages; nothing to say.
+    ctx = {"text": text, "products": {"Mobile Conquesting", "Display"},
+           "cancelled_products": {"Social Mirror"}}
+    assert not [f for f in check_required_widgets(ctx)
+                if "Social Mirror" in f["title"]]
+    # A cancelled product that is not BARCK+ does not excuse them.
+    ctx = {"text": text, "products": {"Mobile Conquesting"},
+           "cancelled_products": {"PPC"}}
+    assert len(check_rogue_widgets(ctx)) == 1

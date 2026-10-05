@@ -3678,6 +3678,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     from .ingest import client_flight, flight_lines, open_batch
     from .roster import (attach_owners, expected_any, expected_products,
                      expected_why, ordered_for, quiet_products,
+                     cancelled_products,
                      budgets_for)
     from .version import rules_version as _rv
 
@@ -3820,6 +3821,8 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
                          period=period, market=market,
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
+                     cancelled_products=cancelled_products(
+                         db, client, account_ids),
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok, is_seo=is_seo_report,
@@ -3891,7 +3894,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     from .cycle import cycle_for
     from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
-                     expected_why, ordered_for, quiet_products)
+                     expected_why, ordered_for, quiet_products,
+                     cancelled_products)
     from .version import rules_version as _rv
 
     rep = db.get(Report, report_id)
@@ -3960,6 +3964,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                      period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
+                     cancelled_products=cancelled_products(
+                         db, rep.client, rep.account_ids),
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok,
@@ -4021,7 +4027,8 @@ async def replace_report(report_id: int, request: Request,
     from .cycle import cycle_for
     from .ingest import client_flight, flight_lines
     from .roster import (budgets_for, expected_any, expected_products,
-                     expected_why, ordered_for, quiet_products)
+                     expected_why, ordered_for, quiet_products,
+                     cancelled_products)
 
     rep = db.get(Report, report_id)
     if not rep:
@@ -4114,6 +4121,8 @@ async def replace_report(report_id: int, request: Request,
                          period=rep.period, market=rep.market or "",
                      expected_why=why, expected_any=any_of,
                      quiet_products=quiet,
+                     cancelled_products=cancelled_products(
+                         db, rep.client, rep.account_ids),
                      logo_hash=logo, logo_generic=logo_bad,
                      logo_known=logo_seen, budgets=budgets, ordered=ordered,
                      orders_current=orders_ok,
