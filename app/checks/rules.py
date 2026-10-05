@@ -105,7 +105,8 @@ PRODUCT_TAIL = {
     # two lines, so "$" never matched and 218,084 impressions were counted as
     # device-eligible on a product the device widget does not describe - the
     # breakout read 84% short of a total it was never part of.
-    "Performance Max": r"\bPerformance\s+Max\b",
+    # And a number glued on: Carilion Clinic Foundation's "...Performance Max1".
+    "Performance Max": r"\bPerformance\s+Max\d*\b",
     # Meta's devices are not in the device widget. Albemarle Baptist Church
     # School's "...Facebook/Instagram Premium" line was counted as eligible
     # and the Video line's 350 desktop impressions read 97% short.

@@ -4136,3 +4136,12 @@ def test_a_client_name_with_a_dash_in_it_is_still_the_client():
     for c in ("ADAMA ~ Novali", "ADAMA Novali"):
         assert check_client_data({"text": text, "client": c}) == [], c
     assert check_client_data({"text": text, "client": "Bellefonte Railroad"})
+
+
+def test_performance_max_with_a_number_is_not_device_eligible():
+    """Carilion Clinic Foundation's PMax line reads "...Performance Max1"."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "carilion_pmax1.pdf"
+    r = run_all(fx, "September 2026_Carilion Clinic Foundation 52278.pdf")
+    assert not [f for f in r["findings"] if f["code"].startswith("device_")]
