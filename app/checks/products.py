@@ -121,7 +121,10 @@ TAIL_PATTERNS: list[tuple[str, str]] = [
     # belong to is still YouTube. Which rows the page-one CTV tile is measured
     # against is a separate question - see CTV_GRIDS in rules.py.
     ("YouTube", r"\bYouTube TV$"),
-    ("YouTube", r"\bYouTube$"),
+    # AND "YOUTUBE+", the product's own name. Pensacola State College's lines
+    # end "Education/College Youtube+" and read as no product at all, so its
+    # YouTube order was "ordered but not on the report".
+    ("YouTube", r"\bYouTube\+?$"),
 ]
 
 # What the order tool calls a product -> what the report calls it.
