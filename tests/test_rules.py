@@ -4145,3 +4145,24 @@ def test_performance_max_with_a_number_is_not_device_eligible():
     fx = Path(__file__).parent / "fixtures" / "carilion_pmax1.pdf"
     r = run_all(fx, "September 2026_Carilion Clinic Foundation 52278.pdf")
     assert not [f for f in r["findings"] if f["code"].startswith("device_")]
+
+
+def test_a_report_of_only_no_data_widgets_is_blank():
+    """Clearfield County Career and Technology Center: two "We don't have any
+    data for ..." widgets under the cover header."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "clearfield_no_data.pdf"
+    r = run_all(fx, "September 2026_Clearfield County Career and Technology Center 53194.pdf")
+    codes = [f["code"] for f in r["findings"]]
+    assert "report_blank" in codes and "date_range_missing" not in codes
+
+
+def test_the_too_large_to_attach_page_is_a_blank_report():
+    """St Louis Symphony Orchestra: a download link and nothing else."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "stl_symphony_too_large.pdf"
+    r = run_all(fx, "September 2026_St Louis Symphony Orchestra 55107 55329 55733.pdf")
+    codes = [f["code"] for f in r["findings"]]
+    assert "report_blank" in codes and "date_range_missing" not in codes

@@ -671,10 +671,24 @@ BLANK_HEAD = re.compile(r"(?i)(Digital marketing report|Date range|Created on"
                         r"|Report type|Powered by TCPDF)")
 
 
+TOO_LARGE = re.compile(r"This report is too large to be attached")
+NO_DATA_FOR = re.compile(r"We don.t have any data for (.+?) for the period")
+
+
 def _report_blank(text: str) -> bool:
     """Is there nothing on this report but its page headers?"""
-    lines = [l for l in (text or "").split("\n") if l.strip()]
-    return bool(lines) and all(BLANK_HEAD.search(l) for l in lines)
+    # A DOWNLOAD LINK IN PLACE OF THE REPORT. St Louis Symphony Orchestra's
+    # September was TapClicks' "too large to be attached" page and nothing else.
+    if TOO_LARGE.search(text or ""):
+        return True
+    lines = [l.strip() for l in (text or "").split("\n") if l.strip()]
+    # AND WIDGETS THAT SAY THEY HAVE NO DATA, with their titles. Clearfield
+    # County Career and Technology Center's September was two of those under
+    # the cover header.
+    empty = [m.group(1) for l in lines for m in [NO_DATA_FOR.search(l)] if m]
+    return bool(lines) and all(
+        BLANK_HEAD.search(l) or NO_DATA_FOR.search(l) or l in empty
+        for l in lines)
 
 
 def check_blank_pages(ctx) -> list[dict]:
@@ -2615,6 +2629,16 @@ def check_required_widgets(ctx) -> list[dict]:
                           where=_section_spot(ctx, "YouTube+")))
     if yt_tv:
         owed(W_YTTV_CHAN, 1, "YouTube TV", alt=(W_YT_CHAN,))
+    # DOOH OWES ITS LINE ITEM GRID. Stay Your Way McPherson KS ran DOOH and
+    # its Venue Targeting line was on no grid at all - which is also why the
+    # line items came up 9,922 short of the top line.
+    if "DOOH" in (ctx.get("products") or set()) and not re.search(
+            r"\bDOOH Line Item Performance\b", text):
+        out.append(_f("widget_missing", "fail",
+                      "No DOOH Line Item Performance widget",
+                      "This report runs DOOH, which should carry a DOOH Line "
+                      "Item Performance widget. It is not on the report.",
+                      where=_section_spot(ctx, "DOOH")))
     # ONLINE AUDIO OWES ITS CREATIVE AND COMPLETION WIDGETS. John 3:16
     # Mission ran AI Audio and carried neither. Matched loosely - "Audio"
     # and the widget's kind on one line - so an older title still counts.

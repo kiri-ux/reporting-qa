@@ -811,3 +811,15 @@ def test_online_audio_owes_creative_and_completion_widgets():
     fx = Path(__file__).parent / "fixtures" / "thirwood_audio_barck.pdf"
     r = run_all(fx, "September 2026_Thirwood Place 1.pdf")
     assert not [f for f in r["findings"] if "Audio" in f["title"]]
+
+
+def test_dooh_owes_its_line_item_grid():
+    """Stay Your Way McPherson KS ran DOOH with no DOOH Line Item Performance.
+    Independence Ford carries it."""
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "stay_your_way_no_dooh.pdf"
+    r = run_all(fx, "September 2026_Stay Your Way McPherson KS 53466.pdf")
+    assert "No DOOH Line Item Performance widget" in [f["title"] for f in r["findings"]]
+    fx = Path(__file__).parent / "fixtures" / "independence_ford.pdf"
+    r = run_all(fx, "September 2026_Independence Ford 1.pdf")
+    assert "No DOOH Line Item Performance widget" not in [f["title"] for f in r["findings"]]
