@@ -595,8 +595,16 @@ def ordered_for(db: Session, client: str, account_ids: str,
             began, ran = _month_window(l, period)
             if began and (row["started"] is None or began < row["started"]):
                 row["started"] = began
-            if ran is not None:
-                row["days"] = ran if row["days"] is None else max(row["days"], ran)
+            # THE DAYS ANY OF ITS LINE ITEMS RAN, ADDED UP. Suave Mattress's
+            # Social Mirror ran 9/2-9/16 on one line and 9/17-9/30 on the next,
+            # and the longer of the two - 15 days - halved a goal that both
+            # lines together were owed.
+            days = _month_days(l, period)
+            if days:
+                row["_days"] = row.get("_days", set()) | days
+                row["days"] = len(row["_days"])
+            elif ran is not None and row["days"] is None:
+                row["days"] = ran
             # A CANCELLED LINE ITEM IS NOT PART OF WHAT THE MONTH IS OWED.
             #
             # The stored row is one answer per client and product, so Houston
@@ -736,6 +744,26 @@ def ordered_for(db: Session, client: str, account_ids: str,
         if row.pop("_seen_detail", False) and not row.pop("_any_live", False):
             row["stopped"] = True
         row.pop("_any_live", None)
+        row.pop("_days", None)
+    return out
+
+
+def _month_days(line, period: str | None) -> set:
+    """Every day of the month any of this line's flights covers."""
+    if not period:
+        return set()
+    y, m = (int(x) for x in period.split("-"))
+    first = dt.date(y, m, 1)
+    last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+    windows = [w for w in (getattr(line, "flights", None) or [])
+               if isinstance(w, (list, tuple)) and len(w) == 2] \
+        or [(line.starts_on, line.ends_on)]
+    out = set()
+    for w_start, w_end in windows:
+        s_, e_ = _as_date(w_start), _as_date(w_end)
+        lo = max(s_, first) if s_ else first
+        hi = min(e_, last) if e_ else last
+        out |= {lo + dt.timedelta(days=i) for i in range((hi - lo).days + 1)}
     return out
 
 
