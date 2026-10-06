@@ -772,3 +772,25 @@ def test_cancelled_products_reads_the_line_items():
     s.commit()
     got = cancelled_products(s, "W&L Subaru", "14885")
     assert "Social Mirror" in got and "Display" not in got
+
+
+def test_back_to_back_line_items_count_every_day_they_ran():
+    """Suave Mattress's Social Mirror: 111,111 on 9/2-9/16 and 55,555 on
+    9/17-9/30. The month's goal is both, over 29 days, not 15."""
+    from app.roster import ordered_for
+    s = _ce("sqlite://")
+    _B.metadata.create_all(s)
+    db = _sm(bind=s)()
+    db.add_all([
+        _OL(market="m", client="Suave Mattress", account_ids="56089",
+            product="Social Mirror", live=True, complete=True, impressions=111111,
+            line_ids="136388", starts_on=_d.date(2026, 9, 2), ends_on=_d.date(2026, 9, 16),
+            flights=[["2026-09-02", "2026-09-16"]]),
+        _OL(market="m", client="Suave Mattress", account_ids="56089",
+            product="Social Mirror", live=True, impressions=55555,
+            line_ids="136389", starts_on=_d.date(2026, 9, 17), ends_on=_d.date(2026, 9, 30),
+            flights=[["2026-09-17", "2026-09-30"]]),
+    ])
+    db.commit()
+    row = ordered_for(db, "Suave Mattress", "56089", "2026-09")["Social Mirror"]
+    assert row["days"] == 29

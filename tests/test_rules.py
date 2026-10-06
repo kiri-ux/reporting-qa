@@ -4161,3 +4161,11 @@ def test_the_too_large_to_attach_page_is_a_blank_report():
     r = run_all(fx, "September 2026_St Louis Symphony Orchestra 55107 55329 55733.pdf")
     codes = [f["code"] for f in r["findings"]]
     assert "report_blank" in codes and "date_range_missing" not in codes
+
+
+def test_dooh_is_out_of_the_device_widget_and_audio_is_in():
+    from app.config import settings
+    from app.checks.rules import is_device_excluded
+    ex = settings.excluded_products
+    assert is_device_excluded("X - Venue Targeting DOOH Display", ex)
+    assert not is_device_excluded("X - AI Audio", ex)
