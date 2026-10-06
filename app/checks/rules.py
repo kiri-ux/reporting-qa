@@ -567,6 +567,14 @@ def check_row_math(ctx) -> list[dict]:
 GEOFENCE_TAIL = re.compile(r"([\d,]+)\s+([\d,]+)\s+([\d.]+)%\s*$")
 
 
+def _flight_explains(want, served, key: str, band: float = None) -> bool:
+    """Is the product in band against its campaign total over its flight?"""
+    goal = ((want or {}).get("flight_goal") or {}).get(key)
+    if not goal or served is None:
+        return False
+    return abs((served - goal) / goal * 100) < (PACE_BAND if band is None else band)
+
+
 def check_pacing_off(ctx) -> list[dict]:
     """Delivery and spend against what the order asked for - ONE CHECK.
 
@@ -1053,6 +1061,8 @@ def check_pacing(ctx) -> list[dict]:
         ratio = got / budget
         if abs(ratio - 1.0) < PACING_BAND:
             continue
+        if _flight_explains(row, got, "budget", band=PACING_BAND * 100):
+            continue                    # see check_pacing_off
         if days is not None and days <= MIN_DAYS_TO_PACE:
             continue
         way = "under" if ratio < 1 else "over"
@@ -1276,6 +1286,16 @@ def check_impression_pacing(ctx) -> list[dict]:
         # short of what is still being asked for, which is a real number about
         # a real buy and still worth saying.
         if pace > 0 and (ordered.get(row.get("product")) or {}).get("cancel_ran"):
+            continue
+        # THE MONTHLY GOAL FIRST, THEN THE FLIGHT. An order that writes a
+        # forty-four day flight as two months, or fifteen days as a month,
+        # puts the monthly goal off what the line was actually asked to do
+        # in these days. When the campaign total spread over the line items'
+        # own flights lands in band, the gap is that and not delivery.
+        # Bloomsburg Foundation (Social Mirror, 8/18-9/30) and Bulldog Winch
+        # (Display, 9/16-9/30).
+        if _flight_explains(ordered.get(row.get("product")), row.get("served"),
+                            "impressions"):
             continue
         # A WEEK OR LESS OF THE MONTH IS NOT OFF PACE, IT IS NEW.
         days = row.get("days")

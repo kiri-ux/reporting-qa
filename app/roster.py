@@ -495,8 +495,9 @@ def _live_lines(line, period: str | None) -> dict | None:
     # THE CAMPAIGN TOTAL SPREAD OVER THE LINE'S OWN FLIGHT, per line item, when
     # every line has one. Bloomsburg Foundation's Social Mirror is 66,666 over
     # 8/18-9/30 and the order calls that 33,333 a month - two months for a
-    # forty-four day flight - so September's 30 days were owed 45,454, not
-    # 33,333, and 50,194 served read as 51% over.
+    # forty-four day flight - so September's 30 days come to 45,454 on the
+    # flight, against 50,194 served. Used only as check_pacing_off's second
+    # look, never as the goal.
     flat = {"budget": None, "impressions": None}
     flat_ok = bool(period)
     for d in detail:
@@ -658,17 +659,18 @@ def ordered_for(db: Session, client: str, account_ids: str,
             if live is not None:
                 for key in ("budget", "impressions"):
                     got[key] = live.get(key)
-                # Owed for the days it had, already - see _live_lines. The
-                # whole month counts as covered so nothing cuts it again.
+                # THE MONTHLY GOAL STAYS THE GOAL. The campaign total over the
+                # flight rides beside it, for check_pacing_off to ask whether a
+                # months-versus-days mismatch on the order explains the gap.
                 if live.get("flat"):
+                    fg = row.setdefault("flight_goal",
+                                        {"budget": None, "impressions": None})
                     for key in ("budget", "impressions"):
-                        if live["flat"][key] is not None:
-                            got[key] = live["flat"][key]
-                    y, m = (int(x) for x in period.split("-"))
-                    first = dt.date(y, m, 1)
-                    n = (dt.date(y + (m == 12), (m % 12) + 1, 1) - first).days
-                    row["_days"] = {first + dt.timedelta(days=i) for i in range(n)}
-                    row["days"] = n
+                        v = live["flat"][key]
+                        if v is not None:
+                            fg[key] = v if fg[key] is None else fg[key] + v
+                else:
+                    row["_no_flight"] = True
                 # And the row is only "stopped" if nothing is left running.
                 # One cancelled line beside a live one is not a campaign that
                 # was called off, and marking it so silenced the finding on
@@ -791,6 +793,9 @@ def ordered_for(db: Session, client: str, account_ids: str,
             row["stopped"] = True
         row.pop("_any_live", None)
         row.pop("_days", None)
+        # Only when every line item behind the row had one.
+        if row.pop("_no_flight", False):
+            row.pop("flight_goal", None)
     return out
 
 
@@ -804,15 +809,6 @@ def _month_days(line, period: str | None) -> set:
     windows = [w for w in (getattr(line, "flights", None) or [])
                if isinstance(w, (list, tuple)) and len(w) == 2] \
         or [(line.starts_on, line.ends_on)]
-    # A FLIGHT THAT STARTS AND ENDS INSIDE THE MONTH carries its whole goal
-    # for those days, not a monthly rate. Bulldog Winch's three Display lines
-    # ran 9/16-9/30 at 690,907 between them, and pro-rated over 15 days that
-    # read as 345,454 owed.
-    starts = [_as_date(a) for a, _b in windows]
-    ends = [_as_date(b) for _a, b in windows]
-    if (all(starts) and all(ends) and min(starts) >= first
-            and max(ends) <= last):
-        return {first + dt.timedelta(days=i) for i in range((last - first).days + 1)}
     out = set()
     for w_start, w_end in windows:
         s_, e_ = _as_date(w_start), _as_date(w_end)
