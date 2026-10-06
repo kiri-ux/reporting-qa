@@ -183,7 +183,7 @@ class Settings(BaseSettings):
     keep_pdf_months: int = 4
 
     # device breakout legitimately excludes these products
-    device_excluded_products: str = "Mobile Conquesting,PPC,YouTube,LinkedIn,Performance Max,Meta"
+    device_excluded_products: str = "Mobile Conquesting,PPC,YouTube,LinkedIn,Performance Max"
     # creative types that never carry a preview image
     no_preview_creative_types: str = "Audio,HTML5"
     # device may run under the eligible total by this much before we flag it
