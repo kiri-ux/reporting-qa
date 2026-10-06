@@ -817,3 +817,25 @@ def test_a_flight_inside_the_month_is_not_pro_rated():
     assert got["Display"]["days"] == 30
     assert got["Display"]["impressions"] == 690907
     assert got["Meta"]["days"] == 15
+
+
+def test_the_campaign_total_is_spread_over_the_flight():
+    """Bloomsburg Foundation's Social Mirror: 66,666 over 8/18-9/30, written
+    as 33,333 a month. September's 30 of 44 days are owed 45,454."""
+    from app.roster import ordered_for
+    eng = _ce("sqlite://")
+    _B.metadata.create_all(eng)
+    db = _sm(bind=eng)()
+    db.add(_OL(market="m", client="Bloomsburg Foundation", account_ids="55726",
+               product="Social Mirror", live=True, impressions=33333,
+               total_impressions=66666, line_ids="135410",
+               starts_on=_d.date(2026, 8, 18), ends_on=_d.date(2026, 9, 30),
+               flights=[["2026-08-18", "2026-09-30"]],
+               detail=[{"line": "135410", "starts": "2026-08-18", "ends": "2026-09-30",
+                        "impressions": 33333, "total_impressions": 66666,
+                        "budget": 500, "total_budget": 1000, "canceled": False}]))
+    db.commit()
+    row = ordered_for(db, "Bloomsburg Foundation", "55726", "2026-09")["Social Mirror"]
+    assert round(row["impressions"]) == round(66666 * 30 / 44)
+    assert round(row["budget"]) == round(1000 * 30 / 44)
+    assert row["days"] == 30

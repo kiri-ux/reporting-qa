@@ -491,7 +491,14 @@ def _live_lines(line, period: str | None) -> dict | None:
     detail = getattr(line, "detail", None)
     if not detail:
         return None
-    out = {"budget": None, "impressions": None, "any": False}
+    out = {"budget": None, "impressions": None, "any": False, "flat": None}
+    # THE CAMPAIGN TOTAL SPREAD OVER THE LINE'S OWN FLIGHT, per line item, when
+    # every line has one. Bloomsburg Foundation's Social Mirror is 66,666 over
+    # 8/18-9/30 and the order calls that 33,333 a month - two months for a
+    # forty-four day flight - so September's 30 days were owed 45,454, not
+    # 33,333, and 50,194 served read as 51% over.
+    flat = {"budget": None, "impressions": None}
+    flat_ok = bool(period)
     for d in detail:
         if not isinstance(d, dict) or d.get("canceled"):
             continue
@@ -503,7 +510,35 @@ def _live_lines(line, period: str | None) -> dict | None:
             v = d.get(key)
             if v is not None:
                 out[key] = float(v) if out[key] is None else out[key] + float(v)
+        share = _flight_share(d, period) if flat_ok else None
+        if share is None:
+            flat_ok = False
+            continue
+        for key in ("budget", "impressions"):
+            whole = d.get("total_" + key)
+            if whole is None:
+                if d.get(key) is not None:
+                    flat_ok = False
+                continue
+            add = float(whole) * share
+            flat[key] = add if flat[key] is None else flat[key] + add
+    if flat_ok and out["any"] and any(v is not None for v in flat.values()):
+        out["flat"] = flat
     return out
+
+
+def _flight_share(d: dict, period: str) -> float | None:
+    """The part of one line item's flight that falls in the month, 0-1."""
+    s_, e_ = _as_date(d.get("starts")), _as_date(d.get("ends"))
+    if not s_ or not e_ or e_ < s_:
+        return None
+    y, m = (int(x) for x in period.split("-"))
+    first = dt.date(y, m, 1)
+    last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+    lo, hi = max(s_, first), min(e_, last)
+    if hi < lo:
+        return 0.0
+    return ((hi - lo).days + 1) / ((e_ - s_).days + 1)
 
 
 class _Window:
@@ -623,6 +658,17 @@ def ordered_for(db: Session, client: str, account_ids: str,
             if live is not None:
                 for key in ("budget", "impressions"):
                     got[key] = live.get(key)
+                # Owed for the days it had, already - see _live_lines. The
+                # whole month counts as covered so nothing cuts it again.
+                if live.get("flat"):
+                    for key in ("budget", "impressions"):
+                        if live["flat"][key] is not None:
+                            got[key] = live["flat"][key]
+                    y, m = (int(x) for x in period.split("-"))
+                    first = dt.date(y, m, 1)
+                    n = (dt.date(y + (m == 12), (m % 12) + 1, 1) - first).days
+                    row["_days"] = {first + dt.timedelta(days=i) for i in range(n)}
+                    row["days"] = n
                 # And the row is only "stopped" if nothing is left running.
                 # One cancelled line beside a live one is not a campaign that
                 # was called off, and marking it so silenced the finding on
