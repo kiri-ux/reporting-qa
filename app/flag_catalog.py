@@ -164,6 +164,11 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "Verify this first - it could be a typo or abbreviation preventing "
          "the tool from seeing that match. Use your judgment if it's the right "
          "client, pull with the correct client if not."),
+        ("check_dashboard",
+         "The report was built on the wrong dashboard - the Website Visitor ID "
+         "one instead of the campaign report.",
+         REPORTER, False,
+         "Verify, then repull on the correct reporting dashboard."),
         ("check_date_range",
          "The printed date range is not the period this report claims to "
          "cover.",
@@ -511,6 +516,8 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
     ("widget_rogue", "A widget for a product this buy does not include",
      ("widget_rogue",)),
     ("report_blank", "Blank report", ("report_blank",)),
+    ("wrong_dashboard", "Wrong reporting dashboard",
+     ("wrong_dashboard",)),
     ("widget_error", "A widget printed an error or no data",
      ("widget_error", "blank_widget_page")),
     ("page_banner", "Page banners still printing", ("page_banner",)),
