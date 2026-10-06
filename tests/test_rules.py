@@ -4171,3 +4171,35 @@ def test_dooh_is_out_of_the_device_widget_and_audio_is_in():
     ex = settings.excluded_products
     assert is_device_excluded("X - Venue Targeting DOOH Display", ex)
     assert not is_device_excluded("X - AI Audio", ex)
+
+
+def test_the_website_visitor_id_dashboard_is_the_wrong_one():
+    """San Diego Blood Bank's September was built on the WVID dashboard."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    from app.flag_catalog import owner_of, REPORTER
+    fx = Path(__file__).parent / "fixtures" / "sd_blood_bank_wvid.pdf"
+    r = run_all(fx, "September 2026_San Diego Blood Bank - WVID 52298.pdf")
+    got = [f for f in r["findings"] if f["code"] == "wrong_dashboard"]
+    assert len(got) == 1 and owner_of(got[0]) == REPORTER
+    assert got[0]["title"] == "Wrong reporting dashboard used for this report"
+
+
+def test_a_page_one_with_no_tiles_is_a_blank_report():
+    """Parkwood at Polo Grounds: cover and footnote, then Google Business."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "parkwood_blank.pdf"
+    r = run_all(fx, "September 2026_Parkwood at Polo Grounds - Active Adult Apartments 47646 50829.pdf")
+    assert "report_blank" in [f["code"] for f in r["findings"]]
+
+
+def test_facebook_instagram_line_items_are_meta():
+    """SD Gulls' line items end "Facebook/Instagram Premium"."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "sd_gulls_wvid.pdf"
+    r = run_all(fx, "September 2026_San Diego Gulls - Home Opener 55291.pdf",
+                expected_products={"Meta"})
+    assert "Meta" in r["products"]
+    assert not [f for f in r["findings"] if f["code"] == "product_missing"]

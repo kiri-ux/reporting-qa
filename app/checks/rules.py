@@ -686,9 +686,48 @@ def _report_blank(text: str) -> bool:
         for l in lines)
 
 
+def _page_one(ctx) -> str:
+    per_page = ctx.get("page_text")
+    if per_page is None and ctx.get("path"):
+        from .parser import pdf_pages
+        per_page = ctx["page_text"] = pdf_pages(ctx["path"])
+    if per_page:
+        return per_page[0]
+    return (ctx.get("text") or "").split("\f", 1)[0]
+
+
+def _page_one_empty(ctx) -> bool:
+    """A Digital Marketing Report whose page one carries no tiles at all.
+
+    Parkwood at Polo Grounds' September printed the cover, the footnote and
+    nothing else, then two pages of Google Business Profile.
+    """
+    if ctx.get("is_seo"):
+        return False
+    one = _page_one(ctx)
+    return ("Digital Marketing Report" in one and "Impressions" not in one
+            and not WVID_HEAD.search(one))
+
+
+# THE WEBSITE VISITOR ID DASHBOARD, used for a report. San Diego Blood Bank's
+# September came out of it: "Website Visitor ID for ..." in the header and
+# visitor demographics where the campaign should be.
+WVID_HEAD = re.compile(r"(?m)^\s*Website Visitor ID for\b")
+
+
+def check_dashboard(ctx) -> list[dict]:
+    """The report was built on the campaign reporting dashboard."""
+    one = _page_one(ctx)
+    if WVID_HEAD.search(one):
+        return [_f("wrong_dashboard", "fail",
+                   "Wrong reporting dashboard used for this report", "",
+                   where="p1")]
+    return []
+
+
 def check_blank_pages(ctx) -> list[dict]:
     path, pages = ctx["path"], ctx["pages"]
-    if _report_blank(ctx.get("text") or ""):
+    if _report_blank(ctx.get("text") or "") or _page_one_empty(ctx):
         return [_f("report_blank", "fail", "Blank report", "", where="p1")]
     # One pdftotext call for the whole document rather than one per page. On a
     # forty-one page report that was forty-one subprocesses and most of the
@@ -2778,6 +2817,7 @@ CHECKS: list[tuple] = [
     (check_device,         "The device breakout matches the eligible total"),
     (check_row_math,       "Every row's CTR matches that row's own numbers"),
     (check_thumbnails,     "Every creative preview rendered"),
+    (check_dashboard,      "Built on the campaign reporting dashboard"),
     (check_blank_pages,    "No widget page came out blank"),
     (check_geofence_names, "Every geo-fencing row has a business name"),
     (check_geofence_widget,
