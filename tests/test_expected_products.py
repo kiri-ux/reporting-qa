@@ -776,7 +776,7 @@ def test_cancelled_products_reads_the_line_items():
 
 def test_back_to_back_line_items_count_every_day_they_ran():
     """Suave Mattress's Social Mirror: 111,111 on 9/2-9/16 and 55,555 on
-    9/17-9/30. Each flight is inside the month, so its goal is owed in full."""
+    9/17-9/30. Every day either line ran counts: 29, not 15."""
     from app.roster import ordered_for
     s = _ce("sqlite://")
     _B.metadata.create_all(s)
@@ -793,11 +793,12 @@ def test_back_to_back_line_items_count_every_day_they_ran():
     ])
     db.commit()
     row = ordered_for(db, "Suave Mattress", "56089", "2026-09")["Social Mirror"]
-    assert row["days"] == 30
+    assert row["days"] == 29
 
 
-def test_a_flight_inside_the_month_is_not_pro_rated():
-    """Bulldog Winch: three Display lines, all 9/16-9/30, 690,907 between them."""
+def test_a_flight_inside_the_month_keeps_its_monthly_goal():
+    """Bulldog Winch: three Display lines, all 9/16-9/30, 690,907 between them.
+    The monthly goal is still cut to 15 days; the flight goal rides beside it."""
     from app.roster import ordered_for
     eng = _ce("sqlite://")
     _B.metadata.create_all(eng)
@@ -814,14 +815,14 @@ def test_a_flight_inside_the_month_is_not_pro_rated():
                flights=[["2026-09-16", "2027-07-31"]]))
     db.commit()
     got = ordered_for(db, "Bulldog Winch", "56270", "2026-09")
-    assert got["Display"]["days"] == 30
+    assert got["Display"]["days"] == 15
     assert got["Display"]["impressions"] == 690907
     assert got["Meta"]["days"] == 15
 
 
 def test_the_campaign_total_is_spread_over_the_flight():
     """Bloomsburg Foundation's Social Mirror: 66,666 over 8/18-9/30, written
-    as 33,333 a month. September's 30 of 44 days are owed 45,454."""
+    as 33,333 a month. On the flight, September's 30 of 44 days are 45,454."""
     from app.roster import ordered_for
     eng = _ce("sqlite://")
     _B.metadata.create_all(eng)
@@ -836,6 +837,6 @@ def test_the_campaign_total_is_spread_over_the_flight():
                         "budget": 500, "total_budget": 1000, "canceled": False}]))
     db.commit()
     row = ordered_for(db, "Bloomsburg Foundation", "55726", "2026-09")["Social Mirror"]
-    assert round(row["impressions"]) == round(66666 * 30 / 44)
-    assert round(row["budget"]) == round(1000 * 30 / 44)
-    assert row["days"] == 30
+    assert row["impressions"] == 33333                 # the monthly goal stays
+    assert round(row["flight_goal"]["impressions"]) == round(66666 * 30 / 44)
+    assert round(row["flight_goal"]["budget"]) == round(1000 * 30 / 44)

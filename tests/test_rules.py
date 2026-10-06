@@ -4203,3 +4203,24 @@ def test_facebook_instagram_line_items_are_meta():
                 expected_products={"Meta"})
     assert "Meta" in r["products"]
     assert not [f for f in r["findings"] if f["code"] == "product_missing"]
+
+
+def test_the_flight_goal_clears_a_monthly_pacing_gap_it_explains():
+    """Bloomsburg Foundation: 50,194 served against 33,333 a month is 51%
+    over, but 45,454 on the flight - in band, so not flagged."""
+    from app.checks.rules import check_pacing_off
+    text = ("Line Item Performance\n"
+            "Line Item Name                        Impressions   Clicks   CTR\n"
+            "Bloomsburg - Geo-Retargeting Social Mirror     50,194   40   0.08%\n")
+    base = {"impressions": 33333.0, "budget": None, "basis": "", "days": 30,
+            "started": None, "stopped": False, "cancel_ran": False}
+    ctx = {"text": text, "period": "2026-09", "is_lifetime": False,
+           "ordered": {"Social Mirror": dict(base)}}
+    assert [f["code"] for f in check_pacing_off(ctx)] == ["pacing_off"]
+    ctx["ordered"]["Social Mirror"]["flight_goal"] = {"impressions": 45454.0,
+                                                      "budget": None}
+    assert check_pacing_off(ctx) == []
+    # A flight goal that is off too does not clear it.
+    ctx["ordered"]["Social Mirror"]["flight_goal"] = {"impressions": 20000.0,
+                                                      "budget": None}
+    assert [f["code"] for f in check_pacing_off(ctx)] == ["pacing_off"]

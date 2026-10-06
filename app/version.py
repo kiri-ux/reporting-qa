@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 # ---- bump this on every deploy you need to confirm -------------------------
-BUILD = "2026.10.06-303"
+BUILD = "2026.10.06-304"
 BUILD_NOTES = ("")
 
 # ---------------------------------------------------------------------------
