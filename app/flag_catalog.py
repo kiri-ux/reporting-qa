@@ -236,8 +236,9 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
         ("check_variant_preview_links",
          "A variant with no PREVIEW LINK. Separate from the screenshot check "
          "above.",
-         ADMIN, True,
-         "Verify, then alert Alyssa if missing."),
+         BUYER, True,
+         "Remind the buyer never to delete variants on Nova - mark them "
+         "inactive."),
         ("check_creative_names",
          "A creative row that does not say which creative it is.",
          ADMIN, True,

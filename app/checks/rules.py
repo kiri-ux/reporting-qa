@@ -2760,10 +2760,9 @@ def check_variant_preview_links(ctx) -> list[dict]:
         where = (f"p{page_of(at)} · " if page_of else "") + "Variant preview links"
         out.append(_f("preview_link_blank", "warn",
                       f"{blank} of {rows} variants have no preview link",
-                      "The Preview Link column is empty on those rows. The "
-                      "preview on this grid is a link rather than a picture, "
-                      "so those variants cannot be opened from the report at "
-                      "all.",
+                      "Reminder never to delete variants on Nova, just mark "
+                      "as inactive. Deleted variants have their previews "
+                      "removed as well.",
                       where=where))
     return out
 

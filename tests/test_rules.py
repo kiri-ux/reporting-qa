@@ -3025,7 +3025,9 @@ def test_a_creative_variant_with_no_preview_link_is_flagged():
     assert len(out) == 1
     assert "1 of 2 variants have no preview link" == out[0]["title"]
     assert out[0]["where"] == "p12 · Variant preview links"
-    assert "link rather than a picture" in out[0]["detail"]
+    assert out[0]["detail"].startswith("Reminder never to delete variants on Nova")
+    from app.flag_catalog import owner_of, BUYER
+    assert owner_of({"check": "check_variant_preview_links", "code": "preview_link_blank"}) == BUYER
 
 
 def test_the_variant_link_check_is_named_apart_from_the_screenshot_one():
