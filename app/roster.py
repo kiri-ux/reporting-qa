@@ -758,6 +758,15 @@ def _month_days(line, period: str | None) -> set:
     windows = [w for w in (getattr(line, "flights", None) or [])
                if isinstance(w, (list, tuple)) and len(w) == 2] \
         or [(line.starts_on, line.ends_on)]
+    # A FLIGHT THAT STARTS AND ENDS INSIDE THE MONTH carries its whole goal
+    # for those days, not a monthly rate. Bulldog Winch's three Display lines
+    # ran 9/16-9/30 at 690,907 between them, and pro-rated over 15 days that
+    # read as 345,454 owed.
+    starts = [_as_date(a) for a, _b in windows]
+    ends = [_as_date(b) for _a, b in windows]
+    if (all(starts) and all(ends) and min(starts) >= first
+            and max(ends) <= last):
+        return {first + dt.timedelta(days=i) for i in range((last - first).days + 1)}
     out = set()
     for w_start, w_end in windows:
         s_, e_ = _as_date(w_start), _as_date(w_end)

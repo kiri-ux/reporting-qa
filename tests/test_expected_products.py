@@ -776,7 +776,7 @@ def test_cancelled_products_reads_the_line_items():
 
 def test_back_to_back_line_items_count_every_day_they_ran():
     """Suave Mattress's Social Mirror: 111,111 on 9/2-9/16 and 55,555 on
-    9/17-9/30. The month's goal is both, over 29 days, not 15."""
+    9/17-9/30. Each flight is inside the month, so its goal is owed in full."""
     from app.roster import ordered_for
     s = _ce("sqlite://")
     _B.metadata.create_all(s)
@@ -793,4 +793,27 @@ def test_back_to_back_line_items_count_every_day_they_ran():
     ])
     db.commit()
     row = ordered_for(db, "Suave Mattress", "56089", "2026-09")["Social Mirror"]
-    assert row["days"] == 29
+    assert row["days"] == 30
+
+
+def test_a_flight_inside_the_month_is_not_pro_rated():
+    """Bulldog Winch: three Display lines, all 9/16-9/30, 690,907 between them."""
+    from app.roster import ordered_for
+    eng = _ce("sqlite://")
+    _B.metadata.create_all(eng)
+    db = _sm(bind=eng)()
+    for lid, imps in (("137123", 207272), ("137124", 345454), ("137125", 138181)):
+        db.add(_OL(market="m", client="Bulldog Winch", account_ids="56270",
+                   product="Display", live=True, impressions=imps, line_ids=lid,
+                   starts_on=_d.date(2026, 9, 16), ends_on=_d.date(2026, 9, 30),
+                   flights=[["2026-09-16", "2026-09-30"]]))
+    # A line that runs on past the month is still a monthly rate.
+    db.add(_OL(market="m", client="Bulldog Winch", account_ids="56270",
+               product="Meta", live=True, impressions=100000, line_ids="1",
+               starts_on=_d.date(2026, 9, 16), ends_on=_d.date(2027, 7, 31),
+               flights=[["2026-09-16", "2027-07-31"]]))
+    db.commit()
+    got = ordered_for(db, "Bulldog Winch", "56270", "2026-09")
+    assert got["Display"]["days"] == 30
+    assert got["Display"]["impressions"] == 690907
+    assert got["Meta"]["days"] == 15
