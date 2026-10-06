@@ -107,11 +107,6 @@ PRODUCT_TAIL = {
     # breakout read 84% short of a total it was never part of.
     # And a number glued on: Carilion Clinic Foundation's "...Performance Max1".
     "Performance Max": r"\bPerformance\s+Max\d*\b",
-    # Meta's devices are not in the device widget. Albemarle Baptist Church
-    # School's "...Facebook/Instagram Premium" line was counted as eligible
-    # and the Video line's 350 desktop impressions read 97% short.
-    "Meta": r"\b(?:Meta|Facebook|Instagram)(?:\s*/\s*(?:Facebook|Instagram))?"
-            r"(?:\s+(?:Premium|Ads))?$",
 }
 
 

@@ -4079,18 +4079,13 @@ def test_a_youtube_plus_line_item_is_youtube():
     assert "completion_missing" in {f["code"] for f in r["findings"]}
 
 
-def test_meta_is_not_in_the_device_widget():
-    """Albemarle Baptist Church School's device breakout is the Video line's
-    350 desktop impressions. The Facebook/Instagram line is not in it."""
-    from pathlib import Path
-    from app.checks.rules import is_device_excluded, run_all
-    fx = Path(__file__).parent / "fixtures" / "albemarle_meta_device.pdf"
-    r = run_all(fx, "September 2026_Albemarle Baptist Church School 55082.pdf")
-    assert not [f for f in r["findings"] if f["code"].startswith("device_")]
-    ex = {"Meta"}
-    assert is_device_excluded("X - Homeschooling Facebook/Instagram Premium", ex)
-    assert is_device_excluded("X - Retargeting Meta", ex)
-    assert not is_device_excluded("Facebook Fans Club - Behavioral Video", ex)
+def test_meta_is_in_the_device_widget():
+    """FB/IG line items count toward the device-eligible total."""
+    from app.config import settings
+    from app.checks.rules import is_device_excluded
+    assert not is_device_excluded("X - Homeschooling Facebook/Instagram Premium",
+                                  settings.excluded_products)
+    assert not is_device_excluded("X - Retargeting Meta", settings.excluded_products)
 
 
 def test_a_report_with_only_its_header_is_blank():
