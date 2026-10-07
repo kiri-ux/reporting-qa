@@ -238,6 +238,29 @@ def pro_rata_note(full, days, period, started, money=False) -> str:
     return note
 
 
+# How far off the monthly goal a row reads before the flight goal is asked.
+FLIGHT_BAND = 50.0
+
+
+def _flight_swap(row: dict, want: dict, key: str) -> dict:
+    """The row against its flight goal, when that explains a monthly miss.
+
+    The monthly goal comes first. Only a row that is off it AND in band on
+    the campaign total over its line items' own flights is shown against the
+    flight figure, so the panel and check_pacing_off agree. Thomas Road
+    Baptist Church's Meta: 120,000 over 9/5-9/25, paced as 84,000 for 21 days.
+    """
+    pace = row.get("pace")
+    goal = ((want or {}).get("flight_goal") or {}).get(key)
+    if pace is None or abs(pace) < FLIGHT_BAND or not goal:
+        return row
+    fpace = pacing_pct(row.get("served"), goal)
+    if fpace is None or abs(fpace) >= FLIGHT_BAND:
+        return row
+    return {**row, "ordered": goal, "pace": fpace, "in_month": None,
+            "month_note": "", "flight": True}
+
+
 def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dict]:
     """One row per product the order bought, plus a total row for impressions.
 
@@ -273,26 +296,26 @@ def pacing_rows(text: str, ordered: dict, period: str | None = None) -> list[dic
             got = spent.get(product)
             full = want.get("budget")
             goal, in_month = pro_rata(full, when["days"], period)
-            rows.append({"product": product, "unit": "money",
+            rows.append(_flight_swap({"product": product, "unit": "money",
                          "served": got, "ordered": goal, "full": full,
                          "in_month": in_month,
                          "month_note": pro_rata_note(full, when["days"], period,
                                                      when["started"], money=True),
                          "basis": want.get("basis") or "",
-                         "pace": pacing_pct(got, goal), **when})
+                         "pace": pacing_pct(got, goal), **when}, want, "budget"))
             continue
         # A grouped buy - "CTV, Video" - takes the delivery of both halves.
         parts = [x.strip() for x in product.split(",")]
         got = sum(served["by_product"].get(p, 0.0) for p in parts) or None
         full = want.get("impressions")
         goal, in_month = pro_rata(full, when["days"], period)
-        rows.append({"product": product, "unit": "impressions",
+        rows.append(_flight_swap({"product": product, "unit": "impressions",
                      "served": got, "ordered": goal, "full": full,
                      "in_month": in_month,
                      "month_note": pro_rata_note(full, when["days"], period,
                                                  when["started"]),
                      "basis": want.get("basis") or "",
-                     "pace": pacing_pct(got, goal), **when})
+                     "pace": pacing_pct(got, goal), **when}, want, "impressions"))
 
     # NOTHING WAS BOUGHT ON IMPRESSIONS, SO THERE IS NOTHING TO PACE ON THEM.
     #

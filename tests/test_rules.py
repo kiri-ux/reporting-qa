@@ -4239,3 +4239,25 @@ def test_a_monthly_that_starts_on_launch_day_is_the_report_month():
     wrong = check_date_range({"date_range": (dt.date(2026, 8, 14), dt.date(2026, 9, 30)),
                               "is_lifetime": False, "period": "2026-09"})
     assert wrong and wrong[0]["code"] == "date_range_wrong"
+
+
+def test_the_pacing_panel_uses_the_flight_goal_when_it_explains_the_month():
+    """Thomas Road Baptist Church's Meta: 120,000 over 9/5-9/25, 129,322
+    served. Monthly it reads +54% against 84,000; on the flight, +8%."""
+    from app.checks.served import pacing_rows
+    text = ("Line Item Performance\n"
+            "Line Item Name                        Impressions   Clicks   CTR\n"
+            "Thomas Road - Beast Feast Facebook/Instagram Premium     129,322   400   0.31%\n")
+    want = {"impressions": 120000.0, "budget": None, "basis": "", "days": 21,
+            "started": None, "stopped": False,
+            "flight_goal": {"impressions": 120000.0, "budget": None}}
+    rows = pacing_rows(text, {"Meta": want}, period="2026-09")
+    meta = [r for r in rows if r["product"] == "Meta"][0]
+    assert meta["ordered"] == 120000.0 and abs(meta["pace"]) < 50
+    total = [r for r in rows if r.get("total")][0]
+    assert abs(total["pace"]) < 50
+    # No flight goal: the monthly figure stands.
+    want.pop("flight_goal")
+    meta = [r for r in pacing_rows(text, {"Meta": want}, period="2026-09")
+            if r["product"] == "Meta"][0]
+    assert meta["pace"] > 50
