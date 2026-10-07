@@ -817,16 +817,16 @@
                 {% if e.life_note %}title="{{ e.life_note }}. A lifetime is owed when a campaign finishes, whatever else this client still has running."{% endif %}>lifetime</span>
           {# Both dates: this is the range the report has to cover, and the end
              date alone does not tell the reporter what to pull. #}
-          {% if e.starts_on or e.ends_on %}<br>
-            <span class="acct">{{ e.starts_on or '?' }} &rarr; {{ e.ends_on or 'open' }}</span>
-          {% endif %}
           {# THE ORDER'S END DATE IS WHAT IT WAS SOLD TO RUN TO. Nothing on the
-             export says when somebody hit cancel, so a lifetime pulled to that
-             date covers weeks of nothing. The last day with delivery on it is
-             where the campaign actually ended. #}
+             export says when somebody hit cancel, so for a campaign that
+             stopped early the range ends on the last day it delivered - the
+             range the report has to cover. NC Symphony read 2026-09-01 to
+             2027-04-09, the order's end, on a campaign that stopped 9/21. #}
+          {% if e.starts_on or e.ends_on %}<br>
+            <span class="acct">{{ e.starts_on or '?' }} &rarr; {{ e.stopped_on or e.ends_on or 'open' }}</span>
+          {% endif %}
           {% if e.stopped_on %}<br>
-            <span class="pendtag"
-                  data-tip="This campaign was cancelled or completed early. It last delivered on {{ e.stopped_on }}, so pull the report to that date rather than the {{ e.ends_on }} on the order.">stopped {{ e.stopped_on }}</span>
+            <span class="pendtag" data-tip="Order end {{ e.ends_on }}">stopped</span>
           {% endif %}
           {% elif e.kind == 'seo' %}
           {# ITS OWN ROW BECAUSE IT IS ITS OWN FILE. Pulled outside TapClicks
