@@ -1782,6 +1782,10 @@ def check_date_range(ctx) -> list[dict]:
     last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
     if start == first and end == last:
         return []
+    # A CAMPAIGN THAT LAUNCHED MID-MONTH starts its range on launch day and
+    # runs to the month's end. CMOco's September printed Sep 14 to Sep 30.
+    if first < start <= last and end == last:
+        return []
     return [_f("date_range_wrong", "fail", "Date range is not the report month",
                f"Printed {printed}. This is the {first.strftime('%B %Y')} report, "
                f"so it should read {first.strftime(fmt)} to {last.strftime(fmt)}.",

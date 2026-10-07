@@ -4224,3 +4224,18 @@ def test_the_flight_goal_clears_a_monthly_pacing_gap_it_explains():
     ctx["ordered"]["Social Mirror"]["flight_goal"] = {"impressions": 20000.0,
                                                       "budget": None}
     assert [f["code"] for f in check_pacing_off(ctx)] == ["pacing_off"]
+
+
+def test_a_monthly_that_starts_on_launch_day_is_the_report_month():
+    """CMOco's September printed Sep 14 to Sep 30 - it launched on the 14th."""
+    import datetime as dt
+    from app.checks.rules import check_date_range
+    ok = check_date_range({"date_range": (dt.date(2026, 9, 14), dt.date(2026, 9, 30)),
+                           "is_lifetime": False, "period": "2026-09"})
+    assert ok == []
+    early = check_date_range({"date_range": (dt.date(2026, 9, 1), dt.date(2026, 9, 15)),
+                              "is_lifetime": False, "period": "2026-09"})
+    assert early and early[0]["code"] == "date_range_wrong"
+    wrong = check_date_range({"date_range": (dt.date(2026, 8, 14), dt.date(2026, 9, 30)),
+                              "is_lifetime": False, "period": "2026-09"})
+    assert wrong and wrong[0]["code"] == "date_range_wrong"
