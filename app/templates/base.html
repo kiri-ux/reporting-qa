@@ -1193,6 +1193,9 @@ body.fit .pdfwrap object{height:100%}
       form.querySelectorAll('button[name="state"]').forEach(function (b) {
         b.disabled = on.length === 0;
       });
+      form.querySelectorAll('button[name="action"]').forEach(function (b) {
+        b.disabled = !on.some(function (cb) { return cb.dataset.pending === '1'; });
+      });
       if (out) {
         out.textContent = on.length ? on.length + ' selected' : '';
         out.classList.toggle('some', on.length > 0);
@@ -1223,8 +1226,9 @@ body.fit .pdfwrap object{height:100%}
       // Only what is on screen. Selecting rows a filter is hiding is how a
       // bulk action signs off something nobody was looking at.
       boxes().forEach(function (cb) {
-        cb.checked = b.dataset.pick === 'clear'
-          && visible(cb) && cb.dataset.clear === '1';
+        cb.checked = visible(cb) && (
+          (b.dataset.pick === 'clear' && cb.dataset.clear === '1')
+          || (b.dataset.pick === 'pending' && cb.dataset.pending === '1'));
       });
       paint();
     });
@@ -1763,6 +1767,23 @@ body.fit .pdfwrap object{height:100%}
       if (out) out.textContent = shown === total
         ? total.toLocaleString() + ' rows'
         : shown.toLocaleString() + ' of ' + total.toLocaleString() + ' rows';
+      keep(q, picks);
+    };
+
+    // THE SEARCH AND THE IN-PAGE PICKS LIVE IN THE ADDRESS TOO, so signing a
+    // report off - a page load - comes back to the same narrowed table. Only
+    // the server-side menus were in it, and the team was re-typing the rest
+    // after every tick.
+    var tkey = 't_' + box.dataset.filter;
+    var keep = function (q, picks) {
+      if (!window.history || !history.replaceState) return;
+      var u = new URL(window.location.href);
+      if (q) u.searchParams.set(tkey, q); else u.searchParams.delete(tkey);
+      selects.forEach(function (sl) { u.searchParams.delete(tkey + '_' + sl.i); });
+      picks.forEach(function (sl) {
+        u.searchParams.set(tkey + '_' + sl.i, sl.el.chosen.join('|'));
+      });
+      history.replaceState(history.state, '', u.toString());
     };
 
     // A dropdown per column marked filterable, built from the values actually
@@ -1877,9 +1898,32 @@ body.fit .pdfwrap object{height:100%}
       }
     }
 
+    (function () {
+      var p = new URL(window.location.href).searchParams;
+      if (p.get(tkey) && !box.value) box.value = p.get(tkey);
+      selects.forEach(function (sl) {
+        var want = (p.get(tkey + '_' + sl.i) || '').split('|').filter(Boolean);
+        if (want.length) sl.el.setChosen(want);
+      });
+    })();
     box.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 90); });
     run();
   });
+
+  // EVERY ACTION ON A REPORT COMES BACK TO THE PAGE IT WAS PRESSED ON, filters
+  // and all. A form that did not carry its own way back fell to the referer or
+  // a cookie, and either can be the board with nothing picked.
+  document.addEventListener('submit', function (ev) {
+    var f = ev.target;
+    if (!f || (f.method || '').toLowerCase() !== 'post') return;
+    if (location.pathname.indexOf('/report/') === 0) return;
+    var b = f.querySelector('input[name="back"]');
+    if (!b) {
+      b = document.createElement('input');
+      b.type = 'hidden'; b.name = 'back'; f.appendChild(b);
+    }
+    b.value = location.pathname + location.search;
+  }, true);
 
   // ---- side sheet -----------------------------------------------------
   // A link marked data-sheet opens its content beside what you are reading
