@@ -1570,6 +1570,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                partner: str = Query(""), buyer: str = Query(""),
                reporter: str = Query(""), trainer: str = Query(""),
                status: str = Query(""), only: str = Query(""),
+               sent: str = Query(""),
                waiting: str = Query(""),
                # THE ROWS WITH SOMETHING ON THEM FOR THE BUYER. Read here
                # rather than in the browser for the same reason as the rest:
@@ -1637,11 +1638,16 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         want = _picked(status)
         groups = [g for g in groups
                   if _card_status(g, sent_marks) in want]
+    # SENT CARDS LEAVE THE BOARD. Not sent is what the board shows until
+    # somebody asks for the sent ones.
+    sent_pick = _picked(sent) or ["Not sent"]
+    groups = [g for g in groups if _sent_label(g, sent_marks) in sent_pick]
     if "arrived" in _picked(only):
         groups = [g for g in groups if g.counts.missing < len(g.expected)]
     card_filters = {"partner": _picked(partner), "buyer": _picked(buyer),
                     "reporter": _picked(reporter), "trainer": _picked(trainer),
-                    "status": _picked(status), "only": _picked(only)}
+                    "status": _picked(status), "sent": sent_pick,
+                    "only": _picked(only)}
     # THE CARDS PAGE TOO, and the search reaches past the page.
     #
     # A search that only looked at the twenty cards on screen would be worse
@@ -1924,9 +1930,11 @@ SAVED_KEYS = ("q", "only", "partner", "buyer", "reporter", "trainer", "status", 
 
 def _card_status(g, sent: dict) -> str:
     """What a partner card's Status filter calls it."""
-    if g.group in sent:
-        return "Sent"
     return "Good to go" if g.ready else "Open"
+
+
+def _sent_label(g, sent: dict) -> str:
+    return "Sent" if g.group in sent else "Not sent"
 
 
 def _sent_marks(db: Session, period: str) -> dict:
@@ -1952,7 +1960,7 @@ def _card_options(groups, sent: dict | None = None) -> tuple[dict, dict]:
 
     out: dict[str, Counter] = {"partner": Counter(), "buyer": Counter(),
                                "reporter": Counter(), "trainer": Counter(),
-                               "status": Counter()}
+                               "status": Counter(), "sent": Counter()}
     for g in groups:
         if g.group:
             out["partner"][g.group] += 1
@@ -1967,6 +1975,9 @@ def _card_options(groups, sent: dict | None = None) -> tuple[dict, dict]:
         # "Good to go" or "Open", so picking any of them matched no card at
         # all and the board went empty.
         out["status"][_card_status(g, sent or {})] += 1
+        out["sent"][_sent_label(g, sent or {})] += 1
+    out["sent"]["Sent"] += 0              # both choices, always
+    out["sent"]["Not sent"] += 0
     return ({k: "|".join(sorted(v)) for k, v in out.items()},
             {k: dict(v) for k, v in out.items()})
 

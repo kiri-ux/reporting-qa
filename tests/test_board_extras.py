@@ -5012,7 +5012,9 @@ def test_a_partner_can_be_marked_sent(client_orders_db):
            follow_redirects=False)
     db.expire_all()
     assert db.query(dbm.PartnerSent).filter_by(period="2026-07", group="Lockwood").count() == 0
-    assert c.get("/cycle?period=2026-07").status_code == 200
+    page = c.get("/cycle?period=2026-07")
+    assert page.status_code == 200
+    assert 'data-opts-sent=' in page.text
 
 
 def test_bree_is_one_name():
