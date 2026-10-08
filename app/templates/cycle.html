@@ -482,10 +482,16 @@
           <form method="post" action="/cycle/{{ period }}/sent" class="sentmark">
             <input type="hidden" name="group" value="{{ g.group }}">
             {% if sm %}<input type="hidden" name="action" value="clear">{% endif %}
-            <input type="checkbox" class="sentbox" {% if sm %}checked{% endif %}
-                   onchange="this.form.submit()"
-                   data-tip="{{ 'Mark Unsent' if sm else 'Mark Sent' }}"
-                   aria-label="{{ 'Mark Unsent' if sm else 'Mark Sent' }}: {{ g.group }}">
+            {# A CIRCLE CHECK, NOT A CHECKBOX. The checkbox read as the same
+               control as the package pick in the other corner. Outline when
+               not sent, filled when sent. #}
+            <button type="submit" class="sentbtn{{ ' on' if sm }}"
+                    aria-pressed="{{ 'true' if sm else 'false' }}"
+                    data-tip="{{ 'Mark Unsent' if sm else 'Mark Sent' }}"
+                    aria-label="{{ 'Mark Unsent' if sm else 'Mark Sent' }}: {{ g.group }}">
+              <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                <circle cx="10" cy="10" r="8.5"/><path d="M6 10.3l2.7 2.7L14 7.7"/></svg>
+            </button>
           </form>
         </div>
 
@@ -1322,8 +1328,26 @@
 .ghead .gpick{margin:3px 2px 0 0;width:16px;height:16px;flex:0 0 auto;cursor:pointer}
 .gcard.sent{opacity:.72}
 .ghead .sentmark{margin:2px 0 0 8px;flex:0 0 auto}
-.ghead .sentbox{width:16px;height:16px;cursor:pointer;margin:0}
-.ghead .gpick:disabled{cursor:default;opacity:.35}
+.ghead .sentbtn{border:0;background:none;padding:0;margin:0;line-height:0;
+ cursor:pointer;color:var(--atlas-50)}
+.ghead .sentbtn:hover{color:var(--ok)}
+.sentbtn circle{fill:none;stroke:currentColor;stroke-width:1.6}
+.sentbtn path{fill:none;stroke:currentColor;stroke-width:1.9;
+ stroke-linecap:round;stroke-linejoin:round}
+.ghead .sentbtn.on{color:var(--ok)}
+.sentbtn.on circle{fill:currentColor}
+.sentbtn.on path{stroke:#fff}
+/* THE PACKAGE PICK SHOWS ON HOVER. Opacity, not visibility, so it keeps its
+   place in the row and can still be reached with Tab. Once anything is picked
+   every pick shows, since a half-visible selection is not one you can trust.
+   Touch screens have no hover, so they always show. */
+.ghead .gpick{opacity:0;transition:opacity .12s}
+.gcard:hover .ghead .gpick,.ghead .gpick:checked,.ghead .gpick:focus-visible,
+body:has(.gpick:checked) .ghead .gpick{opacity:1}
+.ghead .gpick:disabled{cursor:default}
+.gcard:hover .ghead .gpick:disabled,
+body:has(.gpick:checked) .ghead .gpick:disabled{opacity:.35}
+@media (hover:none){.ghead .gpick{opacity:1}.ghead .gpick:disabled{opacity:.35}}
 .ghead .gpick.pad{display:block}
 /* BUYER REVIEWED, AND EVERYTHING IN. Beside the name, because the name is
    what anybody scanning this page is reading. */

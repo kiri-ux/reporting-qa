@@ -5017,6 +5017,17 @@ def test_a_partner_can_be_marked_sent(client_orders_db):
     assert 'data-opts-sent=' in page.text
 
 
+
+def test_sent_is_a_circle_check_and_picks_show_on_hover():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "app" / "templates"
+           / "cycle.html").read_text()
+    assert 'class="sentbox"' not in src
+    assert "class=\"sentbtn{{ ' on' if sm }}\"" in src
+    assert ".sentbtn.on circle{fill:currentColor}" in src
+    assert ".ghead .gpick{opacity:0" in src
+    assert ".gcard:hover .ghead .gpick" in src
+
 def test_bree_is_one_name():
     from app.partners import first_name
     assert first_name("Brianne Smith") == "Bree"
