@@ -5032,3 +5032,19 @@ def test_bree_is_one_name():
     from app.partners import first_name
     assert first_name("Brianne Smith") == "Bree"
     assert first_name("Bree, Brianne") == "Bree"
+
+
+def test_buyers_are_one_first_name_each():
+    from app.partners import first_name
+    assert first_name("Alyssa Frank") == first_name("Alyssa") == "Alyssa"
+    assert first_name("Brianne Baccarini") == "Bree"
+    assert first_name("Dan Renninger") == "Renn"
+    assert first_name("Dan") == "Dan"
+
+
+def test_card_head_does_not_overflow():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "app" / "templates"
+           / "cycle.html").read_text()
+    assert ".ghead>div{flex:1 1 auto;min-width:0}" in src
+    assert ".gcard .who{align-items:center;flex-wrap:wrap" in src

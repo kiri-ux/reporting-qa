@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from . import brand, selfcheck, version
 from .config import settings
+from .partners import first_name
 from .db import (Batch, Delivery, Inbound, KnownLogo, OrderLine, OrderSync,
                  Partner, Report, SessionLocal, WorkerBoot, init_db,
                  sign_off_seo)
@@ -438,6 +439,7 @@ def _flag_owner(finding) -> str:
 
 
 templates.env.globals["flag_owner"] = _flag_owner
+templates.env.filters["first_name"] = lambda v: first_name(v or "")
 from .flag_catalog import ADMIN_ONLY_CODES as _ADMIN_ONLY  # noqa: E402
 templates.env.globals["admin_only_codes"] = _ADMIN_ONLY
 
@@ -1712,7 +1714,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                "reporter": lambda e: {e.reporter or ""},
                # A client can be split between two buyers, so this one answers
                # with a set like the findings do.
-               "buyer": lambda e: {b.strip() for b in (e.buyer or "").split(",")},
+               # By first name, so "Alyssa" and "Alyssa Frank" are one pick.
+               "buyer": lambda e: {first_name(b) for b in (e.buyer or "").split(",")
+                                   if b.strip()},
                "finding": _finding_codes,
                # THE ADMIN NOTES AND ADMIN FLAGS, as one question.
                "admin": lambda e: {"Admin note" if e.report and (

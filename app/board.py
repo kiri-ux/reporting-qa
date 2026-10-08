@@ -1589,7 +1589,10 @@ def by_group(db: Session, period: str,
         # inside the SAME role.
         out.append(GroupRow(
             group=g, target=targets.get(g, ""), expected=rows,
-            buyer=first_name(buyer, name_pool["buyer"]),
+            # NO SURNAMES ON A BUYER. The sheet spells the same buyer two
+            # ways ("Alyssa", "Alyssa Frank") and the surname split them into
+            # two people on the card and in the filter.
+            buyer=first_name(buyer),
             reporter=first_name(p.reporting_team if p else "", name_pool["reporter"]),
             trainer=first_name(p.trainer if p else "", name_pool["trainer"]),
             seo=first_name((p.seo if p else "") if has_seo else "",

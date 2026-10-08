@@ -394,6 +394,10 @@ def _clashing_first_names(others: frozenset) -> frozenset:
 # ONE NAME PER PERSON, whatever the sheet calls them. Bree was on the partner
 # sheet as both Bree and Brianne, and the Reporter filter listed her twice.
 NICKNAMES = {"brianne": "Bree"}
+# THE SAME, BY THE WHOLE NAME, for the people known by something other than
+# their first name. Dan Renninger is Renn; a bare "Dan" is not him, so this is
+# keyed on the full name and checked before the first-name map.
+FULL_NICKNAMES = {"dan renninger": "Renn"}
 
 
 def first_name(value: str, others: set | None = None) -> str:
@@ -421,8 +425,10 @@ def first_name(value: str, others: set | None = None) -> str:
 
     out = []
     for p in parts:
+        p = p.split("(")[0].strip() or p
         head = p.split()[0]
-        nick = NICKNAMES.get(head.lower())
+        nick = (FULL_NICKNAMES.get(" ".join(p.lower().split()))
+                or NICKNAMES.get(head.lower()))
         if nick:
             out.append(nick)
             continue
