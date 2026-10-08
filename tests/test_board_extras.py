@@ -4555,7 +4555,7 @@ def test_a_filter_counts_every_row_it_would_act_on():
     assert "if (always || counts[n] > 1)" in base
     cycle = (TPL / "cycle.html").read_text()
     # Five columns, and the Buyer menu that has no column under it.
-    assert cycle.count("data-counts=") == 6, "every filterable column"
+    assert cycle.count("data-counts=") == 7, "every filterable column"
 
 
 def test_a_finding_name_is_a_kind_not_one_reports_answer():

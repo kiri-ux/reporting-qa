@@ -733,28 +733,40 @@
           <option value="lifetime">Lifetime</option>
           <option value="seo">SEO</option>
         </select></label>
-      <label class="grow">Why
-        <input type="text" name="note" size="30"
-               placeholder="Cancelled, never got a lifetime"></label>
-      {% if not me %}<label>You
-        <input type="text" name="who" size="10" placeholder="Your name"></label>{% endif %}
-      <span class="brk" aria-hidden="true"></span>
-      {# THE PRODUCTS ARE WHAT THE CHECKS JUDGE THE PDF AGAINST. A row with
-         none reads as a blank beside a hundred that name their buy.
-
-         CHIPS, NOT A MULTI-SELECT. A native multiple select is a scrolling box
-         of mostly empty space that needs a modifier key held down to pick a
-         second thing - and picking several is the normal case here, not the
-         exception. These are checkboxes; clicking one toggles it. #}
-      <span class="wide prodpick">Products
+      {# ONE ROW. Products are a dropdown of checkboxes - the chips took two
+         lines of their own. Why is short. #}
+      <details class="prodpick">
+        <summary>Products <b class="prodcount">Pick</b></summary>
         <span class="chips">
           {% for p in all_products %}
             <label><input type="checkbox" name="products" value="{{ p }}"><span>{{ p }}</span></label>
           {% endfor %}
-        </span></span>
-      <span class="brk" aria-hidden="true"></span>
-      <button class="mini ok" type="submit">Save the row</button>
+        </span>
+      </details>
+      <label>Why
+        <input type="text" name="note" size="18"
+               placeholder="Cancelled, no lifetime"></label>
+      {% set _me = whoami(request) %}
+      {% if _me %}<input type="hidden" name="who" value="{{ _me }}">
+      {% else %}<label>You
+        <input type="text" name="who" size="10" placeholder="Your name"></label>{% endif %}
+      <button class="mini ok addsave" type="submit">Save the row</button>
     </form>
+    <script>
+    (function () {
+      var d = document.querySelector('.addrow .prodpick');
+      if (!d) return;
+      var out = d.querySelector('.prodcount');
+      d.addEventListener('change', function () {
+        var on = [].slice.call(d.querySelectorAll('input:checked'))
+          .map(function (i) { return i.value; });
+        out.textContent = on.length ? (on.length > 2 ? on.length + ' picked' : on.join(', ')) : 'Pick';
+      });
+      document.addEventListener('click', function (e) {
+        if (d.open && !d.contains(e.target)) d.open = false;
+      });
+    })();
+    </script>
     <p class="sub" style="font-size:12px;margin:8px 0 0">This cycle only - next
       month starts from the export again. From here the row behaves like any
       other: it waits for its report, gets checked, and gets signed off.</p>
@@ -1153,6 +1165,8 @@
     <span hidden data-col="Buyer" data-key="buyer"
           data-always="{{ col_counts.get('buyer', {}).keys()|join('|') }}"
           data-counts="{{ col_counts.get('buyer', {})|tojson|forceescape }}"></span>
+    <span hidden data-col="Admin" data-key="admin" data-always="Admin note|None"
+          data-counts="{{ col_counts.get('admin', {})|tojson|forceescape }}"></span>
   </div>
 
   {# Bulk sign-off. Most of a cycle is reports where everything passed, and
