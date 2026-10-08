@@ -1587,6 +1587,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                col_partner: str = Query(""), col_kind: str = Query(""),
                col_status: str = Query(""), col_reporter: str = Query(""),
                col_buyer: str = Query(""), col_finding: str = Query(""),
+               col_admin: str = Query(""),
                db: Session = Depends(get_db)):
     from .board import (MIN_DAYS_IN_MONTH, STATE_LABEL, by_group, expected_for,
                         summary)
@@ -1701,7 +1702,8 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
             # are where the flags are. Its menu is built from the server's
             # counts alone, there being no cell to read it off.
             "buyer": _picked(col_buyer),
-            "finding": _picked(col_finding)}
+            "finding": _picked(col_finding),
+            "admin": _picked(col_admin)}
     # A row carries several findings and any one of them counts, so that one
     # answers with a set where the rest answer with a value.
     _col_of = {"partner": lambda e: {e.market or ""},
@@ -1711,7 +1713,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                # A client can be split between two buyers, so this one answers
                # with a set like the findings do.
                "buyer": lambda e: {b.strip() for b in (e.buyer or "").split(",")},
-               "finding": _finding_codes}
+               "finding": _finding_codes,
+               # THE ADMIN NOTES AND ADMIN FLAGS, as one question.
+               "admin": lambda e: {"Admin note" if e.report and (
+                   e.report.admin_note or e.report.admin_flags) else "None"}}
 
     def _narrow(rows_, skip=""):
         for name, want in cols.items():
