@@ -955,7 +955,7 @@
           {% endif %}</td>
         {# THE BUYER, AND WHETHER THEY HAVE SOMETHING TO REVIEW. It was a tag
            under the findings, where it read as being about the line above it. #}
-        <td class="nw" data-v="{{ e.buyer }}">{{ ((e.buyer or '').split('(')[0].split() or [''])[0] }}
+        <td class="nw" data-v="{{ e.buyer | first_name }}">{{ e.buyer | first_name }}
           {% set bflags = e.report.buyer_findings if e.report else [] %}
           {% if bflags %}
             {% set btips = [] %}
@@ -1447,7 +1447,12 @@ body:has(.gpick:checked) .ghead .gpick:disabled{opacity:.35}
 .gtags{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 .gtags a,.gtags .pill,.gtags button{display:inline-flex;align-items:center;
  text-decoration:none}
-.gcard .who{align-items:center}
+/* NOTHING ON A CARD GETS CUT OFF. Four people tags on one line were wider
+   than the column, so the name block pushed the % past the card edge. The
+   name block now takes what is left and the tags wrap. */
+.ghead>div{flex:1 1 auto;min-width:0}
+.ghead h3{overflow-wrap:anywhere}
+.gcard .who{align-items:center;flex-wrap:wrap;row-gap:4px}
 .gcard .wtag{align-items:center}
 .pill.pdf{background:var(--velocity-10);color:var(--velocity);text-decoration:none;
  display:inline-block;margin-bottom:5px}
