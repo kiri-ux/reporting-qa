@@ -1645,14 +1645,18 @@ body.fit .pdfwrap object{height:100%}
         }
       });
       selects.forEach(function (s) {
-        var want = (p.get(s.key) || '').split('|').filter(Boolean);
+        // A FILTER WITH A DEFAULT shows it ticked: Sent reads "Not sent" on
+        // arrival, because that is what the board is showing.
+        var dk = 'pick' + s.key.charAt(0).toUpperCase() + s.key.slice(1);
+        var want = (p.get(s.key) || (grid && grid.dataset[dk]) || '')
+          .split('|').filter(Boolean);
         if (want.length) s.el.setChosen(want);
       });
     };
 
     if (wrap) {
       [['partner', 'Partner'], ['buyer', 'Buyer'], ['reporter', 'Reporter'],
-       ['trainer', 'Trainer'], ['status', 'Status']].forEach(function (pair) {
+       ['trainer', 'Trainer'], ['status', 'Status'], ['sent', 'Sent']].forEach(function (pair) {
         var key = pair[0], vals = {};
         cards.forEach(function (c) {
           (c.d[key] || '').split(/\s*,\s*/).forEach(function (v) {
