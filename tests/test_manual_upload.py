@@ -1509,3 +1509,32 @@ def test_each_row_can_be_checked_again_and_says_when_it_is_behind(client):
     assert r.headers["location"] == f"/cycle?period=2026-07#r{rep.id}"
     db.expire_all()
     assert db.get(dbm.Report, rep.id).rules_version != "old"
+
+
+def test_the_links_page_shows_sent_and_filters_on_it(client):
+    c, (db, dbm, imod) = client
+    rep = _feed(imod, db, (FIXTURES / "benton_rodeo.pdf").read_bytes()).reports[0]
+    for name in ("Aardvark Media", "Zebra Radio"):
+        db.add(dbm.Delivery(period=rep.period, group=name, target="drive",
+                            reports=1, ok=True,
+                            share_url=f"https://drive.google.com/{name}"))
+    db.add(dbm.PartnerSent(period=rep.period, group="Aardvark Media"))
+    db.commit()
+
+    page = c.get(f"/cycle/links?period={rep.period}").text
+    assert 'aria-label="Mark Unsent: Aardvark Media"' in page
+    assert 'aria-label="Mark Sent: Zebra Radio"' in page
+    assert ">Sent (1)<" in page and ">Not sent (1)<" in page
+
+    only = c.get(f"/cycle/links?period={rep.period}&sent=Sent").text
+    assert "Aardvark Media" in only and "Zebra Radio" not in only
+    only = c.get(f"/cycle/links?period={rep.period}&sent=Not+sent").text
+    assert "Zebra Radio" in only and "https://drive.google.com/Aardvark Media" not in only
+
+    r = c.post(f"/cycle/{rep.period}/sent",
+               data={"group": "Zebra Radio",
+                     "back": f"/cycle/links?period={rep.period}"},
+               follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/cycle/links")
+    page = c.get(f"/cycle/links?period={rep.period}").text
+    assert 'aria-label="Mark Unsent: Zebra Radio"' in page

@@ -3269,7 +3269,7 @@ def lifetimes_view(request: Request, db: Session = Depends(get_db)):
 @app.get("/cycle/links")
 def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
                 buyer: str = Query(""), reporter: str = Query(""),
-                db: Session = Depends(get_db)):
+                sent: str = Query(""), db: Session = Depends(get_db)):
     """Every finished partner's client link for this cycle, on its own page."""
     from .board import by_group
     from .cycle import working_period, cycle_for, recent_periods
@@ -3297,6 +3297,13 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
         l["should"] = should
         l["mismatch"] = bool(should and l["target"] and should != l["target"])
         l["buyer"], l["reporter"] = who.get(l["group"], ("", ""))
+    # SENT, the same mark the board's circle check sets, so the page you send
+    # links from says which have gone without a trip back to the board.
+    marks = _sent_marks(db, period)
+    for l in delivered["links"]:
+        l["sent"] = l["group"] in marks
+    sent_n = {"Sent": sum(1 for l in delivered["links"] if l["sent"])}
+    sent_n["Not sent"] = len(delivered["links"]) - sent_n["Sent"]
     # THE MENUS ARE BUILT BEFORE THE FILTER RUNS. Offering only what survives
     # means one pick and the menu can never take you anywhere else.
     who_opts = {
@@ -3317,6 +3324,11 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
     if reporter:
         delivered["links"] = [l for l in delivered["links"]
                               if _has(l["reporter"], reporter)]
+    if sent in ("Sent", "Not sent"):
+        delivered["links"] = [l for l in delivered["links"]
+                              if l["sent"] == (sent == "Sent")]
+    else:
+        sent = ""
     # PACKAGING MOVED HERE FROM THE CARD. The card is where you judge reports;
     # this is where you hand links over, and re-packaging belongs beside the
     # link it replaces rather than three screens away from it.
@@ -3411,7 +3423,8 @@ def cycle_links(request: Request, period: str = Query(""), new: str = Query(""),
         "waiting": waiting, "running": running,
         "behind": behind(db, period), "all_job": all_job,
         "configured": settings.delivery_configured,
-        "picked": {"buyer": buyer, "reporter": reporter},
+        "picked": {"buyer": buyer, "reporter": reporter, "sent": sent},
+        "sent_n": sent_n,
         # Every packaged partner's people, not whatever the filter left.
         "who_opts": who_opts,
     })

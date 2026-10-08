@@ -60,7 +60,17 @@
       </label>
     {% endif %}
   {% endfor %}
-  {% if picked.buyer or picked.reporter %}
+  {% if sent_n['Sent'] or sent_n['Not sent'] %}
+    <label class="wholab">Sent
+      <select name="sent" onchange="this.form.submit()">
+        <option value="">All</option>
+        {% for o in ('Sent', 'Not sent') %}
+          <option value="{{ o }}" {% if picked.sent == o %}selected{% endif %}>{{ o }} ({{ sent_n[o] }})</option>
+        {% endfor %}
+      </select>
+    </label>
+  {% endif %}
+  {% if picked.buyer or picked.reporter or picked.sent %}
     <a class="mini" href="/cycle/links?period={{ period }}">Clear</a>
   {% endif %}
 </form>
@@ -87,7 +97,22 @@
           {# The one just packaged is marked until it has been used. See the
              script at the foot of this page for when the mark comes off. #}
           <li id="g-{{ anchor(l.group) }}"{% if new and l.group == new %} class="fresh" data-fresh{% endif %}>
-            <span class="lname">{{ l.group }}
+            <span class="lname">
+              {# The board's circle check, so a link can be marked sent from
+                 the page it is sent from. #}
+              <form method="post" action="/cycle/{{ period }}/sent" class="sentmark">
+                <input type="hidden" name="group" value="{{ l.group }}">
+                <input type="hidden" name="back" value="{{ request.url.path }}?{{ request.url.query }}#g-{{ anchor(l.group) }}">
+                {% if l.sent %}<input type="hidden" name="action" value="clear">{% endif %}
+                <button type="submit" class="sentbtn{{ ' on' if l.sent }}"
+                        aria-pressed="{{ 'true' if l.sent else 'false' }}"
+                        data-tip="{{ 'Mark Unsent' if l.sent else 'Mark Sent' }}"
+                        aria-label="{{ 'Mark Unsent' if l.sent else 'Mark Sent' }}: {{ l.group }}">
+                  <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                    <circle cx="10" cy="10" r="8.5"/><path d="M6 10.3l2.7 2.7L14 7.7"/></svg>
+                </button>
+              </form>
+              {{ l.group }}
               {% if new and l.group == new %}<em>just packaged</em>{% endif %}
               {# WHOSE IT IS, so the two menus above have something to read and
                  so a row says it without one being picked. #}
