@@ -3079,7 +3079,7 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     assert "Add a report to this cycle" in page
     # The partner is picked, not typed: the board is keyed on the partner's
     # real name, and one spelled a hair differently groups with nothing.
-    assert '<select name="market" required>' in page
+    assert '<select name="market" required data-combo>' in page
     assert 'type="checkbox" name="products"' in page
     assert '<option value="custom">Custom</option>' in page
     assert ">Mobile Conquesting<" in page, "the product list has to be offered"
@@ -5077,3 +5077,12 @@ def test_heartbeat_syncs_packaged_links(monkeypatch):
     monkeypatch.setattr(settings, "auto_sync_links", False)
     clock.sync_links()
     assert len(calls) == 1
+
+
+def test_add_a_report_selects_are_type_ahead():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "app" / "templates"
+           / "cycle.html").read_text()
+    assert '<select name="market" required data-combo>' in src
+    assert '<select name="kind" data-combo>' in src
+    assert "querySelectorAll('.addrow select[data-combo]')" in src

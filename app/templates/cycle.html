@@ -724,7 +724,7 @@
       <input type="hidden" name="period" value="{{ period }}">
       <input type="hidden" name="action" value="needed">
       <label>Partner
-        <select name="market" required>
+        <select name="market" required data-combo>
           <option value="">Pick one</option>
           {% for m in all_markets %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
         </select></label>
@@ -735,7 +735,7 @@
         <input type="text" name="ref" inputmode="numeric" pattern="[0-9 ,]*"
                size="10" placeholder="53206"></label>
       <label>Report
-        <select name="kind">
+        <select name="kind" data-combo>
           <option value="monthly">Monthly</option>
           <option value="lifetime">Lifetime</option>
           <option value="seo">SEO</option>
@@ -772,6 +772,86 @@
       });
       document.addEventListener('click', function (e) {
         if (d.open && !d.contains(e.target)) d.open = false;
+      });
+    })();
+
+    // THE SELECTS, DRAWN LIKE EVERYTHING ELSE AND TYPED INTO. The system
+    // dropdown could not be styled to match the row, and a hundred and forty
+    // partners is a list to type into, not scroll. The real <select> stays in
+    // the form and carries the value; this only drives it.
+    (function () {
+      document.querySelectorAll('.addrow select[data-combo]').forEach(function (sel) {
+        var opts = [].slice.call(sel.options).filter(function (o) { return o.value; });
+        var wrap = document.createElement('div');
+        wrap.className = 'combo';
+        var box = document.createElement('input');
+        box.type = 'text'; box.className = 'combobox'; box.autocomplete = 'off';
+        box.size = Math.min(30, Math.max(8, opts.reduce(function (n, o) {
+          return Math.max(n, o.textContent.length); }, 0)));
+        box.setAttribute('role', 'combobox');
+        box.setAttribute('aria-label', sel.closest('label').firstChild.textContent.trim());
+        var blank = [].slice.call(sel.options).filter(function (o) { return !o.value; })[0];
+        box.placeholder = blank ? blank.textContent : '';
+        var menu = document.createElement('div');
+        menu.className = 'multimenu combomenu'; menu.hidden = true;
+        var rows = opts.map(function (o) {
+          var r = document.createElement('div');
+          r.className = 'multirow comborow'; r.textContent = o.textContent;
+          r.dataset.value = o.value;
+          r.addEventListener('mousedown', function (e) { e.preventDefault(); pick(o); });
+          menu.appendChild(r);
+          return r;
+        });
+        var at = -1;
+        function shown() { return rows.filter(function (r) { return !r.hidden; }); }
+        function mark(i) {
+          var s = shown();
+          rows.forEach(function (r) { r.classList.remove('on'); });
+          at = Math.max(0, Math.min(i, s.length - 1));
+          if (s[at]) { s[at].classList.add('on'); s[at].scrollIntoView({block: 'nearest'}); }
+        }
+        function open() { menu.hidden = false; }
+        function close() { menu.hidden = true; }
+        function pick(o) {
+          sel.value = o.value;
+          box.value = o.textContent;
+          wrap.classList.remove('bad');
+          close();
+        }
+        function filter() {
+          var q = box.value.toLowerCase().trim();
+          rows.forEach(function (r) {
+            r.hidden = !!q && r.textContent.toLowerCase().indexOf(q) === -1;
+          });
+          mark(0);
+        }
+        box.addEventListener('focus', function () { box.select(); rows.forEach(function (r) { r.hidden = false; }); open(); mark(opts.indexOf(sel.selectedOptions[0])); });
+        box.addEventListener('input', function () { sel.value = ''; open(); filter(); });
+        box.addEventListener('keydown', function (e) {
+          if (e.key === 'ArrowDown') { e.preventDefault(); open(); mark(at + 1); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); mark(at - 1); }
+          else if (e.key === 'Enter') {
+            var s = shown();
+            if (!menu.hidden && s[at]) {
+              e.preventDefault();
+              pick(opts.filter(function (o) { return o.value === s[at].dataset.value; })[0]);
+            }
+          } else if (e.key === 'Escape') { close(); }
+        });
+        box.addEventListener('blur', function () {
+          close();
+          var o = sel.selectedOptions[0];
+          box.value = o && o.value ? o.textContent : '';
+        });
+        if (sel.value) box.value = sel.selectedOptions[0].textContent;
+        sel.classList.add('comboreal'); sel.tabIndex = -1;
+        sel.parentNode.insertBefore(wrap, sel);
+        wrap.appendChild(box); wrap.appendChild(menu); wrap.appendChild(sel);
+        sel.form.addEventListener('submit', function (e) {
+          if (sel.required && !sel.value) {
+            e.preventDefault(); wrap.classList.add('bad'); box.focus();
+          }
+        });
       });
     })();
     </script>
