@@ -3081,6 +3081,7 @@ def test_a_row_can_be_added_to_the_cycle_by_hand(tmp_path, monkeypatch):
     # real name, and one spelled a hair differently groups with nothing.
     assert '<select name="market" required>' in page
     assert 'type="checkbox" name="products"' in page
+    assert '<option value="custom">Custom</option>' in page
     assert ">Mobile Conquesting<" in page, "the product list has to be offered"
 
     c.post("/cycle/done", data={
@@ -5048,3 +5049,16 @@ def test_card_head_does_not_overflow():
            / "cycle.html").read_text()
     assert ".ghead>div{flex:1 1 auto;min-width:0}" in src
     assert ".gcard .who{align-items:center;flex-wrap:wrap" in src
+
+
+def test_select_newer_files_filters_and_is_off_when_none(client_orders_db):
+    from pathlib import Path
+    c, db, dbm = client_orders_db
+    assert c.get("/cycle?period=2026-07&newer=1").status_code == 200
+    src = (Path(__file__).resolve().parent.parent / "app" / "templates"
+           / "cycle.html").read_text()
+    assert "{% if not newer_total %}disabled{% endif %}" in src
+    assert "&newer=1#reports" in src
+    base = (Path(__file__).resolve().parent.parent / "app" / "templates"
+            / "base.html").read_text()
+    assert "if (b.dataset.href) { window.location.href = b.dataset.href; return; }" in base

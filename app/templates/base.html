@@ -461,6 +461,12 @@ button[data-tip],a[data-tip]{cursor:pointer}
  outline-offset:2px}
 .prodpick input:checked + span{background:var(--velocity);
  border-color:var(--velocity);color:#fff}
+/* ONE HEIGHT FOR EVERY CONTROL ON THE ROW. The selects drew shorter than the
+   text fields beside them. */
+.addrow input[type=text],.addrow select,.addrow .prodpick .prodcount{
+ height:40px;box-sizing:border-box;padding-top:0;padding-bottom:0;
+ line-height:38px}
+.addrow .prodpick .prodcount{display:block;min-width:240px;max-width:340px}
 .addrow .addsave{align-self:flex-end;margin-bottom:3px}
 .addrow .brk{flex-basis:100%;height:0}
 .addrow button{align-self:flex-start}
@@ -1235,6 +1241,7 @@ body.fit .pdfwrap object{height:100%}
     form.addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-pick]') : null;
       if (!b) return;
+      if (b.dataset.href) { window.location.href = b.dataset.href; return; }
       // Only what is on screen. Selecting rows a filter is hiding is how a
       // bulk action signs off something nobody was looking at.
       boxes().forEach(function (cb) {
@@ -1254,6 +1261,14 @@ body.fit .pdfwrap object{height:100%}
       });
     });
 
+    // Arriving from Select newer files: the table is already narrowed to the
+    // rows with a newer file, so tick them.
+    var newerOn = form.querySelector('[data-pick="pending"].on');
+    if (newerOn) {
+      boxes().forEach(function (cb) {
+        cb.checked = visible(cb) && cb.dataset.pending === '1';
+      });
+    }
     paint();
   });
 

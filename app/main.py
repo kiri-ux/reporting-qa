@@ -1574,6 +1574,9 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
                status: str = Query(""), only: str = Query(""),
                sent: str = Query(""),
                waiting: str = Query(""),
+               # THE ROWS WITH A NEWER FILE WAITING. Select newer files sends
+               # this, so the table shows only what it is about to select.
+               newer: str = Query(""),
                # THE ROWS WITH SOMETHING ON THEM FOR THE BUYER. Read here
                # rather than in the browser for the same reason as the rest:
                # the table is fifty rows a page, and a filter that can only
@@ -1689,6 +1692,10 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         rows = [e for e in rows if e.report and e.report.buyer_findings]
     if waiting:
         rows = [e for e in rows if e.report and e.report.waiting_on_file]
+    # Counted before the filter, so the button can be off when there are none.
+    newer_total = sum(1 for e in rows if e.report and e.report.has_pending)
+    if newer:
+        rows = [e for e in rows if e.report and e.report.has_pending]
     # Each column filters on the row's own value rather than on whatever its
     # cell prints - a Kind cell also carries the flight dates, and a filter
     # built out of the printed text offers "lifetime 2026-01-01 to ..." as a
@@ -1917,6 +1924,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         "all_products": every_product(),
         "cols": cols,
         "wait_total": wait_total, "wait_on": bool(waiting),
+        "newer_total": newer_total, "newer_on": bool(newer),
         "breview_total": breview_total, "breview_on": bool(buyer_review),
         "min_days": MIN_DAYS_IN_MONTH,
         "orders_stale": _orders_stale(db),
@@ -2748,7 +2756,7 @@ def mark_row_done(request: Request, period: str = Form(...),
     """
     from .board import _key as board_key
     from .db import CycleDone
-    if kind not in {"monthly", "lifetime", "seo"}:
+    if kind not in {"monthly", "lifetime", "seo", "custom"}:
         raise HTTPException(400, "unknown report kind")
     back = request.headers.get("referer") or f"/cycle?period={period}"
     ident = f"{board_key(market)}|{board_key(client)}|{kind}"
