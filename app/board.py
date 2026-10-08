@@ -1444,6 +1444,20 @@ def _attach_reports(db: Session, period: str,
                                r, strict)
                 if hit:
                     break
+        # A CUSTOM ROW IS OWED A FILE OF NO KIND THE PARSER KNOWS. Nothing
+        # arrives stamped "custom", so a report with no row of its own kind
+        # lands on the client's custom row instead of leaving it Not received.
+        if hit is None:
+            for strict in (True, False):
+                for a in ids:
+                    hit = pick(by_account.get((a, "custom")) or [], r, strict)
+                    if hit:
+                        break
+                if hit is None:
+                    hit = pick(by_client.get((_key(r.client), "custom")) or [],
+                               r, strict)
+                if hit:
+                    break
         if hit is not None and hit.report is None:
             hit.report = r
 

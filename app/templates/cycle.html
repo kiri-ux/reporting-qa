@@ -14,6 +14,7 @@
   if q and 'q' not in skip %}&q={{ q|urlencode }}{% endif %}{%
   if bucket != 'pending' and 'done' not in skip %}&done={{ bucket }}{% endif %}{%
   if wait_on and 'waiting' not in skip %}&waiting=1{% endif %}{%
+  if newer_on and 'newer' not in skip %}&newer=1{% endif %}{%
   if breview_on and 'buyerreview' not in skip %}&buyerreview=1{% endif %}{%
   if show_all and 'rows' not in skip %}&rows=all{% endif %}{%
   for name, picks in (card_filters or {}).items() %}{%
@@ -738,6 +739,7 @@
           <option value="monthly">Monthly</option>
           <option value="lifetime">Lifetime</option>
           <option value="seo">SEO</option>
+          <option value="custom">Custom</option>
         </select></label>
       {# ONE ROW. Products are a dropdown of checkboxes - the chips took two
          lines of their own. Why is short. #}
@@ -749,7 +751,7 @@
           {% endfor %}
         </span>
       </details>
-      <label>Why
+      <label class="grow">Why
         <input type="text" name="note" size="18"
                placeholder="Cancelled, no lifetime"></label>
       {% set _me = whoami(request) %}
@@ -1195,7 +1197,13 @@
        manual pull, and every one of them waited to be taken by hand. A
        report signed off before keeps its sign-off when the new copy comes
        back with nothing open. #}
-    <button type="button" class="mini" data-pick="pending">Select newer files</button>
+    {# FILTERS FIRST, THEN SELECTS. The click reloads the table with only the
+       rows that have a newer file, and the page ticks them on arrival - so
+       what is selected is everything on screen. Off when there are none. #}
+    <button type="button" class="mini{{ ' on' if newer_on }}" data-pick="pending"
+            {% if not newer_on %}data-href="/cycle?{{ keep('newer') }}&newer=1#reports"{% endif %}
+            {% if not newer_total %}disabled{% endif %}>Select newer files</button>
+    {% if newer_on %}<a class="chip" href="/cycle?{{ keep('newer') }}#reports">Newer files &times;</a>{% endif %}
     <button class="mini ok" name="action" value="accept" formaction="/reports/pending" disabled
             data-tip="Use the newer file">Use newer files</button>
     <button class="mini" name="action" value="discard" formaction="/reports/pending" disabled
