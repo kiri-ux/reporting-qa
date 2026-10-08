@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # An unchanged everything costs three small requests, because all three are
     # checked by fingerprint before anything is downloaded. 0 turns it off.
     sync_every_minutes: int = 30
+    # PACKAGED LINKS KEEP UP ON THEIR OWN. On the same heartbeat, every
+    # partner already packaged whose folder is behind its signed-off reports
+    # is synced - the same thing "Sync all" does by hand. False turns it off.
+    auto_sync_links: bool = True
 
     # passed to boto3 explicitly, so a missing one is a legible error rather
     # than boto3's unhelpful "Unable to locate credentials"

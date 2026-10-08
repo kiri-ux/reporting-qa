@@ -55,7 +55,40 @@ def start() -> None:
                 log.warning("scheduled sync skipped: %s", exc)
             finally:
                 db.close()
+            sync_links()
             time.sleep(max(settings.sync_every_minutes, 5) * 60)
 
     threading.Thread(target=run, name="report-qa-clock", daemon=True).start()
+
+
+def sync_links() -> None:
+    """Bring every packaged folder up to its signed-off reports.
+
+    A report corrected after its partner was packaged sat in the tool while
+    the client's link held the old file, until somebody pressed sync. This is
+    that press, on the heartbeat. Packaged partners only and signed-off
+    reports only - exactly what Sync all sends - so nothing reaches a folder
+    that would not have reached it by hand.
+
+    TWO WORKERS, ONE RUN. start_sync_all refuses while its job row says
+    running; the jitter keeps both heartbeats from reading that row in the
+    same instant after a deploy.
+    """
+    if not settings.auto_sync_links:
+        return
+    import random
+
+    from .cycle import working_period
+    from .db import SessionLocal
+    from .delivery import start_sync_all
+
+    time.sleep(random.uniform(0, 45))
+    db = SessionLocal()
+    try:
+        start_sync_all(db, working_period())
+    except Exception as exc:                                 # noqa: BLE001
+        log.warning("scheduled link sync skipped: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
     log.info("scheduled sync every %s minutes", settings.sync_every_minutes)
