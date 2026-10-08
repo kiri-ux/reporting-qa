@@ -5062,3 +5062,18 @@ def test_select_newer_files_filters_and_is_off_when_none(client_orders_db):
     base = (Path(__file__).resolve().parent.parent / "app" / "templates"
             / "base.html").read_text()
     assert "if (b.dataset.href) { window.location.href = b.dataset.href; return; }" in base
+
+
+def test_heartbeat_syncs_packaged_links(monkeypatch):
+    from app import clock, delivery
+    settings = clock.settings
+    calls = []
+    monkeypatch.setattr(clock.time, "sleep", lambda s: None)
+    monkeypatch.setattr(delivery, "start_sync_all",
+                        lambda db, period: calls.append(period) or {})
+    monkeypatch.setattr(settings, "auto_sync_links", True)
+    clock.sync_links()
+    assert len(calls) == 1
+    monkeypatch.setattr(settings, "auto_sync_links", False)
+    clock.sync_links()
+    assert len(calls) == 1
