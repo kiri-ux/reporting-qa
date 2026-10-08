@@ -329,6 +329,15 @@ code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink
 .wtag.r b{background:var(--velocity)}
 .wtag.t b{background:var(--plum)}
 .wtag.s b{background:var(--ok)}
+.links .sentmark{display:inline-block;margin:0 6px 0 0;vertical-align:-4px}
+.links .sentbtn{border:0;background:none;padding:0;margin:0;line-height:0;
+ cursor:pointer;color:var(--atlas-50)}
+.links .sentbtn:hover,.links .sentbtn.on{color:var(--ok)}
+.links .sentbtn circle{fill:none;stroke:currentColor;stroke-width:1.6}
+.links .sentbtn path{fill:none;stroke:currentColor;stroke-width:1.9;
+ stroke-linecap:round;stroke-linejoin:round}
+.links .sentbtn.on circle{fill:currentColor}
+.links .sentbtn.on path{stroke:#fff}
 .links .wtag{font-size:11.5px;margin-left:6px;vertical-align:1px}
 /* ---- where a link goes, at a glance ---- */
 .tgt{width:15px;height:15px;vertical-align:-3px;flex:none}
