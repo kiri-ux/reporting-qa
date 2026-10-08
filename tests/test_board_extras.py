@@ -994,11 +994,11 @@ def test_the_filter_dropdowns_offer_the_whole_cycle():
     """Built from the cards on screen, the Partner filter offered the twenty
     this page happens to show and called it "All (20)"."""
     src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
-    assert "def _card_options(groups)" in src
+    assert "def _card_options(groups" in src
     # Built from EVERY group, not from the ones that survived the filter -
     # offering only what is still showing means one pick and the menu can
     # never take you anywhere else.
-    assert "card_opts, card_opt_counts = _card_options(every_group)" in src
+    assert "card_opts, card_opt_counts = _card_options(every_group" in src
     assert '"opts": card_opts' in src
     html = (TPL / "cycle.html").read_text()
     for key in ("partner", "buyer", "reporter", "trainer", "status"):
@@ -4242,7 +4242,7 @@ def test_a_replacement_takes_the_new_files_logo():
     src = inspect.getsource(main.replace_report)
     assert "rep.logo_hash = logo" in src
     # The pending-file path already did this; the upload path stamps at insert.
-    assert "rep.logo_hash = logo" in inspect.getsource(main.resolve_pending)
+    assert "rep.logo_hash = logo" in inspect.getsource(main._resolve_pending)
 
 
 def test_a_long_list_of_ids_shows_five_and_hides_the_rest():
@@ -4997,3 +4997,25 @@ def test_the_serve_gap_flag_is_the_admin_teams_only(client_orders_db):
                           first_day=dt.date(2024, 6, 10), last_day=dt.date(2024, 6, 10)))
     db.commit()
     assert "Oldest: 2024-06-10." in c.get("/orders").text
+
+
+def test_a_partner_can_be_marked_sent(client_orders_db):
+    """The team marks a partner sent once its client links go out."""
+    c, db, dbm = client_orders_db
+    r = c.post("/cycle/2026-07/sent",
+               data={"group": "Lockwood", "back": "/cycle?period=2026-07&status=Sent"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/cycle?period=2026-07&status=Sent"
+    assert db.query(dbm.PartnerSent).filter_by(period="2026-07", group="Lockwood").count() == 1
+    c.post("/cycle/2026-07/sent", data={"group": "Lockwood", "action": "clear"},
+           follow_redirects=False)
+    db.expire_all()
+    assert db.query(dbm.PartnerSent).filter_by(period="2026-07", group="Lockwood").count() == 0
+    assert c.get("/cycle?period=2026-07").status_code == 200
+
+
+def test_bree_is_one_name():
+    from app.partners import first_name
+    assert first_name("Brianne Smith") == "Bree"
+    assert first_name("Bree, Brianne") == "Bree"

@@ -1632,10 +1632,11 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         if _picked(val):
             want = _picked(val)
             groups = [g for g in groups if _any_of(getattr(g, attr, ""), want)]
+    sent_marks = _sent_marks(db, period)
     if _picked(status):
         want = _picked(status)
         groups = [g for g in groups
-                  if ("Good to go" if g.ready else "Open") in want]
+                  if _card_status(g, sent_marks) in want]
     if "arrived" in _picked(only):
         groups = [g for g in groups if g.counts.missing < len(g.expected)]
     card_filters = {"partner": _picked(partner), "buyer": _picked(buyer),
@@ -1827,7 +1828,7 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
     periods = recent_periods()
     if period not in periods:
         periods = sorted(set(periods) | {period}, reverse=True)
-    card_opts, card_opt_counts = _card_options(every_group)
+    card_opts, card_opt_counts = _card_options(every_group, sent_marks)
     return templates.TemplateResponse(request, "cycle.html", {
         "nav": "cycle", "cycle": cyc, "period": period, "chips": chips,
         "pinned": working_period(),
@@ -1878,6 +1879,8 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
         # WHICH PARTNERS THE BUYER HAS BEEN THROUGH. One query for the board,
         # not one per card.
         "buyer_reviewed": _buyer_reviewed(db, period),
+        # WHICH PARTNERS HAVE HAD THEIR LINKS SENT, marked by hand.
+        "sent": sent_marks,
         # THE BUYER'S LINK, PER PARTNER. Signed rather than stored, so there is
         # nothing to create, hand out or clean up - the card just has it.
         "buyer_links": {g.group: buyer_url(str(request.base_url), g.group)
@@ -1919,7 +1922,20 @@ def cycle_view(request: Request, period: str = Query(""), group: str = Query("")
 SAVED_KEYS = ("q", "only", "partner", "buyer", "reporter", "trainer", "status", "state")
 
 
-def _card_options(groups) -> tuple[dict, dict]:
+def _card_status(g, sent: dict) -> str:
+    """What a partner card's Status filter calls it."""
+    if g.group in sent:
+        return "Sent"
+    return "Good to go" if g.ready else "Open"
+
+
+def _sent_marks(db: Session, period: str) -> dict:
+    from .db import PartnerSent
+    return {r.group: r for r in db.scalars(
+        select(PartnerSent).where(PartnerSent.period == period)).all()}
+
+
+def _card_options(groups, sent: dict | None = None) -> tuple[dict, dict]:
     """(every value each card filter could offer, how many partners carry it).
 
     BOTH OVER THE WHOLE CYCLE. The options have been cycle-wide for a while -
@@ -1950,7 +1966,7 @@ def _card_options(groups) -> tuple[dict, dict]:
         # state - Not received, Errors, In review - and a card is labeled
         # "Good to go" or "Open", so picking any of them matched no card at
         # all and the board went empty.
-        out["status"]["Good to go" if g.ready else "Open"] += 1
+        out["status"][_card_status(g, sent or {})] += 1
     return ({k: "|".join(sorted(v)) for k, v in out.items()},
             {k: dict(v) for k, v in out.items()})
 
@@ -2354,7 +2370,8 @@ def mark_logo(logo: str, request: Request, kind: str = Form("generic"),
 
 @app.post("/reports/review")
 def review_many(request: Request, ids: list[int] = Form([]), state: str = Form(""),
-                who: str = Form(""), db: Session = Depends(get_db)):
+                who: str = Form(""), back_to: str = Form("", alias="back"),
+                db: Session = Depends(get_db)):
     """Sign off a set of reports at once.
 
     Most of a cycle is reports where every check passed, and ticking them one
@@ -2363,7 +2380,8 @@ def review_many(request: Request, ids: list[int] = Form([]), state: str = Form("
     with, which is why the page defaults the selection to nothing and gives
     you a one-click way to take only the ones that passed.
     """
-    back = request.headers.get("referer") or "/cycle"
+    back = (back_to if back_to.startswith("/") and not back_to.startswith("//")
+            else request.headers.get("referer") or "/cycle")
     if state not in {"new", "reviewed", "waived", "needs_fix"}:
         raise HTTPException(400, "unknown review state")
     name = who.strip() or whoami(request)
@@ -2770,6 +2788,26 @@ def mark_row_done(request: Request, period: str = Form(...),
     if who.strip():
         _remember(resp, who)
     return resp
+
+
+@app.post("/cycle/{period}/sent")
+def mark_partner_sent(request: Request, period: str, group: str = Form(...),
+                      action: str = Form("sent"), back: str = Form(""),
+                      who: str = Form(""), db: Session = Depends(get_db)):
+    """Mark a partner's client links as sent this cycle, or take it back."""
+    from .db import PartnerSent
+    row = db.scalar(select(PartnerSent).where(PartnerSent.period == period,
+                                              PartnerSent.group == group))
+    if action == "clear":
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(PartnerSent(period=period, group=group,
+                           sent_by=who.strip() or whoami(request) or ""))
+    db.commit()
+    to = back if back.startswith("/") and not back.startswith("//") else (
+        request.headers.get("referer") or f"/cycle?period={period}")
+    return RedirectResponse(to, status_code=303)
 
 
 @app.post("/cycle/{period}/deliver")
@@ -3882,8 +3920,8 @@ def pending_file(report_id: int, db: Session = Depends(get_db)):
                                  "Cache-Control": "no-store"})
 
 
-@app.post("/report/{report_id}/pending/{action}")
-def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
+def _resolve_pending(db: Session, rep: Report, action: str,
+                     keep_signoff: bool = False) -> None:
     """Take the newer file that arrived, or throw it away.
 
     One of the two has to happen deliberately: the whole reason it is waiting
@@ -3898,11 +3936,8 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
                      cancelled_products)
     from .version import rules_version as _rv
 
-    rep = db.get(Report, report_id)
-    if not rep:
-        raise HTTPException(404)
     if not rep.has_pending:
-        return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+        return
 
     incoming = Path(rep.pending_path)
     if action == "discard":
@@ -3913,7 +3948,7 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
         rep.pending_path = rep.pending_name = ""
         rep.pending_at = None
         db.commit()
-        return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+        return
 
     if action != "accept":
         raise HTTPException(404)
@@ -3994,6 +4029,13 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     # that moved down the list keeps it.
     from .recheck import remap_acks
     rep.acked = remap_acks(_old_findings, _old_acked, rep.findings)
+    # A SIGN-OFF CARRIES OVER ONLY WHEN ASKED, AND ONLY ON A CLEAN COPY. The
+    # bulk "use the new files" is for lifetimes the feed sends again hours
+    # after the manual pull - forty of them already Good to Go, re-passed by
+    # hand one at a time.
+    _was = (rep.review_state, rep.reviewed_by, rep.reviewed_at)
+    _clean = not [f for f in rep.open_findings
+                  if f.get("severity") in ("fail", "warn")]
     rep.review_state = "new"
     rep.reviewed_at = None
     # THE MARKS ABOUT THE COPY BEING REPLACED GO WITH IT. The resend mark says
@@ -4006,8 +4048,47 @@ def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
     rep.source = ""                       # it is the feed's copy now
     rep.pending_path = rep.pending_name = ""
     rep.pending_at = None
+    if keep_signoff and _clean and _was[0] in ("reviewed", "waived"):
+        rep.review_state, rep.reviewed_by, rep.reviewed_at = _was
     db.commit()
+
+
+
+@app.post("/report/{report_id}/pending/{action}")
+def resolve_pending(report_id: int, action: str, db: Session = Depends(get_db)):
+    """Take the newer file that arrived, or throw it away.
+
+    One of the two has to happen deliberately: the whole reason it is waiting
+    is that overwriting this report would have thrown away a sign-off or
+    somebody's manual upload without asking.
+    """
+    rep = db.get(Report, report_id)
+    if not rep:
+        raise HTTPException(404)
+    _resolve_pending(db, rep, action)
     return RedirectResponse(f"/report/{report_id}/view", status_code=303)
+
+
+@app.post("/reports/pending")
+def resolve_pending_many(request: Request, ids: list[int] = Form([]),
+                         action: str = Form(""), back: str = Form(""),
+                         db: Session = Depends(get_db)):
+    """Use or keep the newer file on every ticked report at once.
+
+    "accept" keeps a Good to Go when the new copy has nothing open on it.
+    """
+    if action not in ("accept", "discard"):
+        raise HTTPException(400, "unknown action")
+    for rep in db.scalars(select(Report).where(Report.id.in_(ids[:500]))).all():
+        if not rep.has_pending:
+            continue
+        try:
+            _resolve_pending(db, rep, action, keep_signoff=True)
+        except HTTPException:
+            db.rollback()                # a file gone from disk; the rest go on
+    to = back if back.startswith("/") and not back.startswith("//") else (
+        request.headers.get("referer") or "/cycle")
+    return RedirectResponse(to, status_code=303)
 
 
 @app.post("/report/{report_id}/replace")

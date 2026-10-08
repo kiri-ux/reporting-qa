@@ -391,6 +391,11 @@ def _clashing_first_names(others: frozenset) -> frozenset:
 # read inside its role: the buyer tag, the trainer tag, and one tab each on the
 # workload page. Two people with the same first name in the SAME role would be
 # a real collision, and that is the one case this does not shorten.
+# ONE NAME PER PERSON, whatever the sheet calls them. Bree was on the partner
+# sheet as both Bree and Brianne, and the Reporter filter listed her twice.
+NICKNAMES = {"brianne": "Bree"}
+
+
 def first_name(value: str, others: set | None = None) -> str:
     """"Lauren Hunter" -> "Lauren". "Todd, Megan" -> "Todd, Megan".
 
@@ -417,8 +422,12 @@ def first_name(value: str, others: set | None = None) -> str:
     out = []
     for p in parts:
         head = p.split()[0]
+        nick = NICKNAMES.get(head.lower())
+        if nick:
+            out.append(nick)
+            continue
         out.append(p if head.lower() in clash else head)
-    return ", ".join(out)
+    return ", ".join(o for i, o in enumerate(out) if o not in out[:i])
 
 
 def role_names(db, role: str) -> set:

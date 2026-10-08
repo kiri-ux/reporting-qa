@@ -411,10 +411,11 @@
          card says a partner is ready to send while three of its reports have
          not arrived. #}
       {% set brdone = buyer_reviewed.get(g.group) and not g.counts.missing %}
-      <div class="gcard {% if g.ready %}done{% endif %}{% if brdone %} party{% endif %}"
+      {% set sm = sent.get(g.group) %}
+      <div class="gcard {% if g.ready %}done{% endif %}{% if brdone %} party{% endif %}{% if sm %} sent{% endif %}"
            data-partner="{{ g.group }}" data-buyer="{{ g.buyer }}"
            data-reporter="{{ g.reporter }}" data-trainer="{{ g.trainer }}"
-           data-status="{{ 'Good to go' if g.ready else 'Open' }}"
+           data-status="{{ 'Sent' if sent.get(g.group) else ('Good to go' if g.ready else 'Open') }}"
            data-arrived="{{ 1 if g.counts.missing < g.expected|length else 0 }}"
            {# The counts travel with the card so the tiles at the top can be
               re-added from whatever is on screen. Filtering to one buyer and
@@ -655,6 +656,21 @@
           {% endif %}
         </div>
 
+        {# SENT TO THE CLIENT. Packaging makes the link; sending it is an email
+           nobody on the board could see. #}
+        {% if d and d.ok %}
+          <form method="post" action="/cycle/{{ period }}/sent" class="sentmark">
+            <input type="hidden" name="group" value="{{ g.group }}">
+            {% if sm %}
+              <input type="hidden" name="action" value="clear">
+              <button class="mini sentdone" type="submit"
+                      data-tip="Sent{% if sm.sent_by %} by {{ sm.sent_by }}{% endif %} {{ sm.sent_at.strftime('%b %d') }}. Click to undo.">&#10003; Sent</button>
+            {% else %}
+              <button class="mini" type="submit">Mark sent</button>
+            {% endif %}
+          </form>
+        {% endif %}
+
         {% if d and not d.ok %}
           {# THE FAILURE BELONGS WHERE THE PACKAGING HAPPENED. Syncing is done
              on the links page now, so an error from it turning up on this card
@@ -760,6 +776,7 @@
         <td class="pick">{% if e.report %}
           <input type="checkbox" class="rowpick" value="{{ e.report.id }}"
                  data-clear="{{ 1 if not e.report.open_findings else 0 }}"
+                 data-pending="{{ 1 if e.report.has_pending else 0 }}"
                  aria-label="Select {{ e.client }}">
         {% endif %}</td>
         <td class="partnercol" data-v="{{ e.market }}">{{ e.market }}</td>
@@ -1156,6 +1173,15 @@
        and keeps it out of the partner's folder. #}
     <button class="mini" name="state" value="new" disabled
             data-tip="Take the verdict off these and leave them with no tag at all. They are not marked wrong and they are not kept out of the partner's folder.">Clear verdict</button>
+    {# THE NEWER FILES, IN BULK. The feed re-sends lifetimes hours after the
+       manual pull, and every one of them waited to be taken by hand. A
+       report signed off before keeps its sign-off when the new copy comes
+       back with nothing open. #}
+    <button type="button" class="mini" data-pick="pending">Select newer files</button>
+    <button class="mini ok" name="action" value="accept" formaction="/reports/pending" disabled
+            data-tip="Use the newer file">Use newer files</button>
+    <button class="mini" name="action" value="discard" formaction="/reports/pending" disabled
+            data-tip="Keep the current file">Keep current files</button>
   </form>
 
   <div class="tw"><table id="tbl-cycle">
@@ -1282,6 +1308,9 @@
    them, and two copies drift the week either is touched. */
 .gcard[hidden]{display:none}
 .ghead .gpick{margin:3px 2px 0 0;width:16px;height:16px;flex:0 0 auto;cursor:pointer}
+.gcard.sent{opacity:.72}
+.sentmark{margin-top:8px}
+.sentmark .sentdone{background:var(--ok-bg,#e6f4ea);color:var(--ok,#1e7e34);border-color:transparent}
 .ghead .gpick:disabled{cursor:default;opacity:.35}
 .ghead .gpick.pad{display:block}
 /* BUYER REVIEWED, AND EVERYTHING IN. Beside the name, because the name is

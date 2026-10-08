@@ -1058,6 +1058,22 @@ class DeliveryJob(Base):
         return (dt.datetime.utcnow() - (self.updated_at or self.started_at)).total_seconds() > 240
 
 
+class PartnerSent(Base):
+    """A partner whose client links went out this cycle, marked by hand.
+
+    Packaging makes the link; sending it is somebody's email. The team had no
+    way to tell from the board which partners had been sent theirs.
+    """
+    __tablename__ = "partner_sent"
+    __table_args__ = (UniqueConstraint("period", "group", name="uq_partner_sent"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period: Mapped[str] = mapped_column(String(32), index=True)
+    group: Mapped[str] = mapped_column(String(255), index=True)
+    sent_by: Mapped[str] = mapped_column(String(128), default="")
+    sent_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class OrderSync(Base):
     """Records the last successful pull of the order list, so a batch does not
     re-download an object that has not changed."""
