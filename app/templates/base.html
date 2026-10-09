@@ -836,7 +836,7 @@ input[type=text]:focus{outline:none;border-color:var(--velocity);
 .colfilters .chip a{text-decoration:none;color:var(--muted);font-size:15px;line-height:1}
 .colfilters .chip a:hover{color:var(--cardinal)}
 .colf{display:flex;flex-direction:column;gap:3px}
-.colf label{font-family:Agdasima,sans-serif;font-size:12px;font-weight:700;
+.colf>label{font-family:Agdasima,sans-serif;font-size:12px;font-weight:700;
  letter-spacing:.09em;text-transform:uppercase;color:var(--atlas-50);margin:0}
 .colf select{font:inherit;font-size:13.5px;padding:6px 11px;border:1px solid var(--line);
  border-radius:16px;background:var(--surface);color:var(--ink);min-width:140px;max-width:230px}
@@ -865,7 +865,8 @@ input[type=text]:focus{outline:none;border-color:var(--velocity);
 /* A HUNDRED AND FORTY-FIVE PARTNERS IS A LIST NOBODY SCROLLS. */
 .multifind{position:sticky;top:-5px;z-index:2;display:block;width:calc(100% - 10px);
  margin:0 5px 5px;font:inherit;font-size:12.5px;padding:6px 10px;border-radius:14px;
- border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+ border:1px solid var(--line);background:var(--surface);color:var(--ink);
+ box-shadow:0 0 0 5px var(--surface)}
 
 .mini{font-family:'GT Walsheim Pro',sans-serif;font-size:12px;font-weight:700;
  padding:6px 12px;border-radius:16px;border:1px solid var(--line);cursor:pointer;
@@ -1886,6 +1887,22 @@ body.fit .pdfwrap object{height:100%}
           v = v.trim();
           if (v && !(v in vals)) vals[v] = 0;
         });
+        // A SERVER-SIDE MENU LISTS WHAT THE SERVER COUNTED. Read off the page
+        // it only offered the partners on these fifty rows, and splitting the
+        // cell on commas turned "Something, CA" into a partner called "CA".
+        var srvKeys = [];
+        try {
+          srvKeys = Object.keys(JSON.parse(th.dataset.counts || '{}'));
+        } catch (e) { srvKeys = []; }
+        if (key && srvKeys.length) {
+          var whole = {};
+          srvKeys.forEach(function (v) { whole[v] = 0; });
+          (th.dataset.always || '').split('|').forEach(function (v) {
+            v = v.trim();
+            if (v) whole[v] = 0;
+          });
+          vals = whole;
+        }
         var names = Object.keys(vals).sort(function (a, b) { return a.localeCompare(b); });
         // A dropdown with one option filters nothing. Narrow the board to one
         // partner and this row still offered "Partner: All (1)", which is a

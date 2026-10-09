@@ -5086,3 +5086,12 @@ def test_add_a_report_selects_are_type_ahead():
     assert '<select name="market" required data-combo>' in src
     assert '<select name="kind" data-combo>' in src
     assert "querySelectorAll('.addrow select[data-combo]')" in src
+
+
+def test_table_menus_list_every_partner_the_server_counted():
+    """The Partner menu only offered partners on the fifty rows on screen, and
+    split "Something, CA" into a partner called "CA"."""
+    base = (TPL / "base.html").read_text()
+    assert "srvKeys = Object.keys(JSON.parse(th.dataset.counts" in base
+    # Menu rows are <label>s, so the column heading's caps must not reach them.
+    assert ".colf>label{" in base and ".colf label{" not in base
