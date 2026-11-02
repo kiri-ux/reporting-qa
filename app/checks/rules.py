@@ -98,7 +98,11 @@ PRODUCT_TAIL = {
     # and 3.1M impressions of them were counted as device-eligible.
     "Mobile Conquesting": r"\bMobile(?:\s+Conquesting)?(?-i:\s+[A-Z]{2,})*$",
     "PPC": r"\bPPC$",
-    "YouTube": r"\bYouTube\b",
+    # YOUTUBE TV ONLY. The device widget (TapClicks 373674) filters out line
+    # items named *YouTube TV* and keeps every other YouTube line - North
+    # Sunflower's YouTube+ shows up as 43,080 Connected TV in its breakout.
+    # Taking all of YouTube out of the eligible total hid that.
+    "YouTube TV": r"\bYou\s*Tube\s*TV\b",
     "LinkedIn": r"\bLinkedIn\b",
     # NOT ANCHORED, because the name wraps. Peters - Troy's line reads
     # "...Retargeting Performance Max" and comes out of the PDF broken across
