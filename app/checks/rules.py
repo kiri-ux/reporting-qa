@@ -538,6 +538,18 @@ def check_row_math(ctx) -> list[dict]:
         for name, v in t.body:
             if common and not common <= set(v):
                 continue
+            # A ROW CUT OFF AT THE BOTTOM OF THE PAGE. TPB Resorts' last
+            # creative row is clipped by the page edge and its text layer is
+            # the tops of the glyphs: "h C l    i l   b   23   8   0   %",
+            # which read as 8 clicks on 23 impressions at 0.00%. Its numbers
+            # are not numbers anybody can check, so the row is reported as
+            # cut off rather than as wrong math.
+            if _clipped_row(name):
+                at = ctx["text"].find(name[:20]) if name else -1
+                out.append(_f("row_cut_off", "warn", "Row cut off at the page edge",
+                              f"{t.title or 'table'}: last row cut off.",
+                              where=_where(ctx, at, t.title or "")))
+                continue
             imps, clicks, ctr = v.get("Impressions"), v.get("Clicks"), v.get("CTR")
             if not imps or clicks is None or ctr is None:
                 continue
@@ -555,7 +567,7 @@ def check_row_math(ctx) -> list[dict]:
         if not m:
             continue
         imps, clicks, ctr = (as_number(m.group(1)), as_number(m.group(2)),
-                             as_number(m.group(3)))
+                             as_number(m.group(3).replace(" ", ".")))
         if not imps or clicks is None or ctr is None:
             continue
         expected = clicks / imps * 100
@@ -568,7 +580,24 @@ def check_row_math(ctx) -> list[dict]:
     return out[:5]
 
 
-GEOFENCE_TAIL = re.compile(r"([\d,]+)\s+([\d,]+)\s+([\d.]+)%\s*$")
+# THE CTR ALWAYS HAS TWO DECIMALS, AND THE POINT CAN GO MISSING. Mid-Cape
+# Home Centers' "Schernecker Property ... 50  1  2 00%" is 2.00% with the point
+# lost from the text layer, and an open "[\d.]+" read it as 1 impression, 2
+# clicks, 00% - "shows 0.00%, 2/1 = 200%".
+GEOFENCE_TAIL = re.compile(r"([\d,]+)\s+([\d,]+)\s+(\d+(?:\.| )\d{2})%\s*$")
+
+
+def _clipped_row(name: str) -> bool:
+    """Is this row name the tops of glyphs from a row the page edge cut off?
+
+    Every word in it is one or two letters - "h C l    i l   b". A real name
+    has at least one word of three letters or more.
+    """
+    # Letters and spaces only: "9tv.co.il" is a site, not a clipped row.
+    if not re.fullmatch(r"[A-Za-z ]+", (name or "").strip()):
+        return False
+    words = name.split()
+    return len(words) >= 3 and all(len(w) <= 2 for w in words)
 
 
 def _flight_explains(want, served, key: str, band: float = None) -> bool:
