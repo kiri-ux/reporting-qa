@@ -538,6 +538,20 @@ def test_a_conversion_breakout_is_not_evidence_the_product_ran():
         assert want in detect(t + "\n", []), t
 
 
+def test_an_audio_conversion_breakout_is_not_an_audio_buy():
+    """W and L Subaru bought no Audio and carried "Online Audio View-through
+    Conversion Performance Breakout", and was failed for the Audio creative
+    and completion widgets."""
+    from app.checks.products import detect
+    for t in ("Online Audio View-through Conversion Performance Breakout",
+              "Online Audio Click Conversion Performance Breakout",
+              "Top Online Audio View-through Conversions by Strategy Performance"):
+        assert "Online Audio" not in detect(t + "\n", []), t
+    for t in ("Online Audio Creative Performance",
+              "Online Audio Completion Performance by Line Item"):
+        assert "Online Audio" in detect(t + "\n", []), t
+
+
 def test_a_real_ctv_buy_keeps_its_product_from_the_line_items():
     """The line items are the record, so a CTV buy whose only CTV widget was a
     conversion breakout does not lose the product and get failed the other way
