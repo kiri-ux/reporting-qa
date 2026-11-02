@@ -29,7 +29,13 @@ SECTION_PATTERNS: list[tuple[str, str]] = [
     ("Performance Max", r"Performance Max"),
     ("Mobile Conquesting", r"Mobile Conquesting"),
     ("Social Mirror", r"Social Mirror"),
-    ("Online Audio", r"Online Audio"),
+    # NOT OFF A CONVERSION BREAKOUT - see the CTV note below. W and L Subaru
+    # bought no Audio (no Audio line item, no Audio impressions) and TapClicks
+    # printed "Online Audio View-through Conversion Performance Breakout" on
+    # it, which credited the report with Online Audio and failed it for the
+    # Audio creative and completion widgets. A real Audio buy has its creative
+    # and completion widgets and "... Audio" line items, both read here.
+    ("Online Audio", r"^(?!.*\bConversion).*Online Audio"),
     # EVERY NAME THE CTV PRODUCTS PRINT. The orders that sell CTV are Connected
     # TV, CTV + Video, Amazon Premium CTV + Video and Social Mirror CTV, and
     # their widgets are titled with any of CTV, OTT or Connected TV - "OTT
