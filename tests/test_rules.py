@@ -4273,3 +4273,29 @@ def test_youtube_plus_is_in_the_device_widget_and_youtube_tv_is_not():
     assert not is_device_excluded("X - AI YouTube", ex)
     assert is_device_excluded("X - Sports YouTube TV", ex)
     assert is_device_excluded("X - Sports Youtube TV", ex)
+
+
+def test_a_geofence_ctr_that_lost_its_point_is_read_as_one():
+    """Mid-Cape Home Centers: "Schernecker Property ... 50  1  2 00%" is 2.00%."""
+    from app.checks.rules import GEOFENCE_TAIL
+    m = GEOFENCE_TAIL.search("Schernecker Property      63 Kendrick St #102   Needham"
+                             "          MA      02494          50          1          2 00%")
+    assert m.groups() == ("50", "1", "2 00")
+    m = GEOFENCE_TAIL.search("Pella Windows    1600 Falmouth Rd   MA   2632     50     0     0.00%")
+    assert m.groups() == ("50", "0", "0.00")
+
+
+def test_a_row_cut_off_at_the_page_edge_is_not_a_ctr_error():
+    """TPB Resorts' last creative row is clipped: "h C l    i l   b"."""
+    from app.checks.rules import check_row_math, _clipped_row
+    from app.checks.parser import Table
+    assert _clipped_row("h C l    i l   b")
+    assert not _clipped_row("TPB Resorts - The Colonial Harbor Springs__320x50_3")
+    assert not _clipped_row("ID")
+    assert not _clipped_row("9tv.co.il")
+    t = Table(title="Display Creative Performance", rows=[
+        ("TPB Resorts - The Colonial Harbor Springs__320x50_3",
+         {"Impressions": 4368.0, "Clicks": 40.0, "CTR": 0.92}),
+        ("h C l    i l   b", {"Impressions": 23.0, "Clicks": 8.0, "CTR": 0.0})])
+    out = check_row_math({"tables": [t], "text": ""})
+    assert [f["code"] for f in out] == ["row_cut_off"]

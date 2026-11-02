@@ -540,6 +540,7 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
     ("creative_shape", "A Social Mirror preview is a display banner",
      ("creative_shape",)),
     ("text_truncated", "Labels cut off", ("text_truncated",)),
+    ("row_cut_off", "Row cut off at the page edge", ("row_cut_off",)),
     ("conversion_names", "Conversions badly named",
      ("conversion_name_blank", "conversion_name_retargeting")),
     ("geofence_no_business_name", "Geo-fence rows have no business name",
