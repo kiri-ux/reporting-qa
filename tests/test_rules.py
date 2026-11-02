@@ -4261,3 +4261,15 @@ def test_the_pacing_panel_uses_the_flight_goal_when_it_explains_the_month():
     meta = [r for r in pacing_rows(text, {"Meta": want}, period="2026-09")
             if r["product"] == "Meta"][0]
     assert meta["pace"] > 50
+
+
+def test_youtube_plus_is_in_the_device_widget_and_youtube_tv_is_not():
+    """North Sunflower's YouTube+ is 43,080 Connected TV in its device
+    breakout. The widget filters out *YouTube TV* line items only."""
+    from app.config import settings
+    from app.checks.rules import is_device_excluded
+    ex = settings.excluded_products
+    assert not is_device_excluded("North Sunflower - Healthcare Education YouTube+", ex)
+    assert not is_device_excluded("X - AI YouTube", ex)
+    assert is_device_excluded("X - Sports YouTube TV", ex)
+    assert is_device_excluded("X - Sports Youtube TV", ex)
