@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import shutil
+import time
 import logging
 import re
 import uuid
@@ -490,7 +492,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     db.flush()
 
     store = settings.data_dir / f"batch-{batch.id}"
-    store.mkdir(parents=True, exist_ok=True)
+    with_room(db, lambda: store.mkdir(parents=True, exist_ok=True))
 
     # A RE-PULL REPLACES THE REPORT IT CORRECTS.
     #
@@ -510,7 +512,7 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         # overwrote the copy already there - including one somebody had signed
         # off, which is the exact thing the guard below exists to prevent.
         path = store / f".incoming-{uuid.uuid4().hex}.pdf"
-        path.write_bytes(blob)
+        with_room(db, lambda: path.write_bytes(blob))
         meta_guess = meta_from_filename(name)
         # The name is the only thing known about the file at this point, and a
         # lifetime is judged against the whole campaign rather than the month.
@@ -613,6 +615,11 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
             continue
 
         replaced = rep is not None
+        # The file being superseded. Nothing else points at it once stored_path
+        # moves, so it is deleted below - left alone, every re-pull kept a
+        # dead copy (and its page renders) on the disk for good, which the
+        # retention prune never saw because it only follows stored_path.
+        superseded = rep.stored_path if replaced else ""
         if rep is None:
             rep = Report(batch_id=batch.id, period=meta.get("period") or batch.period)
             db.add(rep)
@@ -665,6 +672,8 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
         rep.filename = name
         rep.stored_path = str(path)
         rep.file_at = dt.datetime.utcnow()
+        if superseded:
+            drop_file(db, superseded, keep=path)
         rep.client = meta.get("client", "") or rep.client
         rep.account_ids = meta.get("account_ids", "") or rep.account_ids
         rep.market = batch.market or rep.market
@@ -746,7 +755,113 @@ def process_batch(db: Session, files: list[tuple[str, bytes]], *, source: str = 
     return batch
 
 
-def prune_old_pdfs(db: Session) -> dict:
+def drop_file(db: Session, old, keep=None) -> int:
+    """Delete a report file nothing points at any more, and its poppler cache.
+
+    Not when it is the file being kept, and not when another report row still
+    names it. Returns bytes freed.
+    """
+    from sqlalchemy import or_
+    try:
+        p = Path(old).resolve()
+        if keep is not None and p == Path(keep).resolve():
+            return 0
+        root = Path(settings.data_dir).resolve()
+        if root not in p.parents:
+            return 0
+    except OSError:
+        return 0
+    db.flush()
+    still = db.scalar(select(func.count(Report.id)).where(
+        or_(Report.stored_path == str(old), Report.pending_path == str(old))))
+    if still:
+        return 0
+    freed = 0
+    try:
+        if p.is_file():
+            freed = p.stat().st_size
+            p.unlink()
+    except OSError:
+        return 0
+    from .checks.pdfcache import cache_dir_for
+    shutil.rmtree(cache_dir_for(p), ignore_errors=True)
+    return freed
+
+
+def sweep_orphans(db: Session, older_than_minutes: int = 60) -> dict:
+    """Delete files in batch-* folders that no report row points at.
+
+    Superseded copies from before drop_file existed, a PDF left behind when a
+    deck replaced it, an .incoming- file from a worker killed mid-batch. The
+    half-hour-plus age limit keeps an upload in flight in the other worker.
+    """
+    root = Path(settings.data_dir)
+    live: set[str] = set()
+    for sp, pp in db.execute(select(Report.stored_path, Report.pending_path)):
+        for v in (sp, pp):
+            if v:
+                try:
+                    live.add(str(Path(v).resolve()))
+                except OSError:
+                    pass
+    cutoff = time.time() - older_than_minutes * 60
+    freed = files = 0
+    for d in root.glob("batch-*"):
+        if not d.is_dir():
+            continue
+        for f in d.iterdir():
+            try:
+                if not f.is_file() or str(f.resolve()) in live:
+                    continue
+                st = f.stat()
+                if st.st_mtime > cutoff:
+                    continue
+                f.unlink()
+            except OSError:
+                continue
+            freed += st.st_size
+            files += 1
+    if files:
+        log.info("swept %d orphaned report files, freed %.1f MB",
+                 files, freed / 1048576)
+    return {"freed": freed, "files": files}
+
+
+def make_room(db: Session) -> int:
+    """The disk is full: everything that can go without losing a report.
+
+    Orphans regardless of age, and every poppler cache - those are only a
+    speed-up and rebuild on the next read. Returns bytes freed.
+    """
+    freed = prune_old_pdfs(db, force=True).get("freed", 0)
+    freed += sweep_orphans(db, older_than_minutes=0)["freed"]
+    for c in Path(settings.data_dir).glob("batch-*/.*.cache"):
+        for f in c.rglob("*"):
+            try:
+                if f.is_file():
+                    freed += f.stat().st_size
+            except OSError:
+                pass
+        shutil.rmtree(c, ignore_errors=True)
+    log.warning("disk full: made room, freed %.1f MB", freed / 1048576)
+    return freed
+
+
+def with_room(db: Session, write):
+    """Run a disk write; on a full disk, make room and try once more."""
+    try:
+        return write()
+    except OSError as exc:
+        if exc.errno != errno.ENOSPC:
+            raise
+    make_room(db)
+    return write()
+
+
+_ORPHANS_SWEPT_AT = 0.0
+
+
+def prune_old_pdfs(db: Session, force: bool = False) -> dict:
     """Delete stored PDFs past the retention window, keep every check result.
 
     A cycle is roughly 1.6 GB of PDFs. Left alone that fills a 10 GB disk in
@@ -757,18 +872,18 @@ def prune_old_pdfs(db: Session) -> dict:
     """
     from sqlalchemy import select
     months = settings.keep_pdf_months
-    if months <= 0:
-        return {"freed": 0, "files": 0}
-
-    today = dt.date.today()
-    y, m = today.year, today.month - months
-    while m <= 0:
-        y, m = y - 1, m + 12
-    cutoff = f"{y:04d}-{m:02d}"
+    # 0 keeps every report file; the orphan sweep below still runs.
+    cutoff = ""
+    if months > 0:
+        today = dt.date.today()
+        y, m = today.year, today.month - months
+        while m <= 0:
+            y, m = y - 1, m + 12
+        cutoff = f"{y:04d}-{m:02d}"
 
     freed = files = 0
     rows = db.scalars(select(Report).where(Report.stored_path != "",
-                                           Report.period < cutoff)).all()
+                                           Report.period < cutoff)).all() if cutoff else []
     for r in rows:
         p = Path(r.stored_path)
         try:
@@ -783,6 +898,17 @@ def prune_old_pdfs(db: Session) -> dict:
         db.commit()
         log.info("pruned %d report PDFs before %s, freed %.1f MB",
                  files, cutoff, freed / 1048576)
+    # Files no row points at. Walks every batch folder, so at most every
+    # quarter hour from the board's page load.
+    global _ORPHANS_SWEPT_AT
+    if force or time.time() - _ORPHANS_SWEPT_AT > 900:
+        _ORPHANS_SWEPT_AT = time.time()
+        try:
+            o = sweep_orphans(db)
+            freed += o["freed"]
+            files += o["files"]
+        except Exception:                 # noqa: BLE001
+            log.exception("orphan sweep failed")
     # The poppler answers kept beside PDFs that are gone - see checks/pdfcache.
     try:
         from .checks.pdfcache import sweep
