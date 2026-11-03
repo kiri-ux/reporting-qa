@@ -1486,7 +1486,8 @@ def check_client_data(ctx) -> list[dict]:
 
     def same(k, n):
         return (_same_client(k, n) or k in initials
-                or _initials_lead(heads.get(k, ""), n))
+                or _initials_lead(heads.get(k, ""), n)
+                or _initials_then_rest(k, ctx.get("client") or ""))
     mine = sum(v for k, v in hits.items() if same(k, named))
     if mine / total >= 0.5:
         # Right client, spelled two ways. Not a report problem, but somebody
@@ -1499,7 +1500,8 @@ def check_client_data(ctx) -> list[dict]:
                 if same(k, named) and k != named and k not in named
                 and named not in k and not _dropped_middle(k, named)
                 and k not in initials
-                and not _initials_lead(heads.get(k, ""), named)]
+                and not _initials_lead(heads.get(k, ""), named)
+                and not _initials_then_rest(k, ctx.get("client") or "")]
         if typo:
             return [_f("client_name_typo", "info",
                        "The order spells this client's name differently",
@@ -1567,6 +1569,22 @@ def _initials_lead(name: str, flat: str) -> bool:
     return any(len(i) >= 3 and flat.startswith(i) for i in _initials(name))
 
 
+def _initials_then_rest(flat: str, name: str) -> bool:
+    """Is the flattened name the other's first words as initials, then the rest?
+
+    Mid-Cape Home Centers Marvin's line items read "MCHC Marvin - ..." - the
+    company as initials and the brand spelled out - which is neither its full
+    initials ("MCHCM") nor a spelling of it.
+    """
+    words = re.findall(r"[A-Za-z0-9]+", AMPERSAND.sub(" and ", name or ""))
+    for k in range(2, len(words)):
+        lead = "".join(w[0] for w in words[:k]).lower()
+        rest = "".join(words[k:]).lower()
+        if len(lead) >= 3 and len(rest) >= 3 and flat == lead + rest:
+            return True
+    return False
+
+
 def _flat_name(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", AMPERSAND.sub(" and ", (s or "")).lower())
 
@@ -1632,7 +1650,8 @@ def _mostly_this_client(ctx, filed: str) -> bool:
         weight = max(imps, 1.0)
         total += weight
         if (_same_client(who, filed) or who in _initials(ctx.get("filed_as") or "")
-                or _initials_lead((name or "").split(" - ")[0], filed)):
+                or _initials_lead((name or "").split(" - ")[0], filed)
+                or _initials_then_rest(who, ctx.get("filed_as") or "")):
             mine += weight
     return bool(total) and mine / total >= 0.5
 
