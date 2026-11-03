@@ -4380,3 +4380,11 @@ def test_a_full_disk_makes_room_and_retries_once(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         imod.with_room(db, denied)
     assert made == [1], "only a full disk makes room"
+
+
+def test_initials_then_the_rest_is_the_same_client():
+    """Mid-Cape Home Centers Marvin's line items read "MCHC Marvin - ..."."""
+    from app.checks.rules import _initials_then_rest
+    assert _initials_then_rest("mchcmarvin", "Mid-Cape Home Centers Marvin")
+    assert not _initials_then_rest("mchcmarvin", "Mid-Cape Home Centers Andersen")
+    assert not _initials_then_rest("everettrailroad", "St. Francis AMT Program")
