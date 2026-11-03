@@ -4388,3 +4388,20 @@ def test_initials_then_the_rest_is_the_same_client():
     assert _initials_then_rest("mchcmarvin", "Mid-Cape Home Centers Marvin")
     assert not _initials_then_rest("mchcmarvin", "Mid-Cape Home Centers Andersen")
     assert not _initials_then_rest("everettrailroad", "St. Francis AMT Program")
+
+
+def test_initials_ignore_a_trailing_state():
+    """Floor Coverings International of West Vegas, NV reads "FCIWV - ..."."""
+    from app.checks.rules import _initials
+    assert "fciwv" in _initials("Floor Coverings International of West Vegas, NV")
+    assert "fcicc" in _initials("Floor Coverings International Cape Cod")
+
+
+def test_a_one_row_table_is_not_an_empty_widget():
+    """The Breakers' DOOH Line Item Performance had one row, at 3,967."""
+    from app.checks.rules import DATA_ROW
+    assert DATA_ROW.search("TPB Resorts - The Breakers - Venue Targeting DOOH Display    3,967")
+    assert DATA_ROW.search("(YouTube TV) FOX News 1")
+    assert not DATA_ROW.search("Spend Performance")
+    assert not DATA_ROW.search('"Calls from ads" in the widget measures calls that last at least 60 seconds.')
+    assert not DATA_ROW.search("Note: Costs do not include management fee")

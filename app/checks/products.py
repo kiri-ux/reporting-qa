@@ -503,6 +503,15 @@ def detect(text: str, tables) -> set[str]:
             if re.search(rx, title):
                 found.add(product)
                 break
+    # AN EMPTY LINKEDIN PAGE IS NOT LINKEDIN. FCSI TAD, Kia of Muncie and
+    # four others in October bought no LinkedIn and still printed "LinkedIn
+    # Spend Performance" with nothing under it - the template's LinkedIn pages
+    # left switched on. The empty page is already its own finding; reading it
+    # as the product as well put "on the report with no live order" on top.
+    if ("LinkedIn" in found
+            and not re.search(r"(?m)^\s*LinkedIn\b(?!\s+Spend Performance)", text)
+            and _only_empty_pages(text, r"^\s*LinkedIn Spend Performance")):
+        found.discard("LinkedIn")
 
     from .rules import LINE_ITEM
     for t in tables:
@@ -515,6 +524,31 @@ def detect(text: str, tables) -> set[str]:
                     found.add(product)
                     break
     return found
+
+
+def _only_empty_pages(text: str, title_rx: str) -> bool:
+    """Every widget carrying this title has no figures under it.
+
+    A widget runs from its title to the next title or page header. Pages do
+    not split cleanly in the text - the next page's table can come out ahead of
+    its header - so the next title is the boundary, not the page.
+    """
+    from .parser import SKIP_LINE
+    lines = text.split("\n")
+    hit = False
+    for n, line in enumerate(lines):
+        if not re.search(title_rx, line):
+            continue
+        hit = True
+        digits = 0
+        for nxt in lines[n + 1:]:
+            s = nxt.strip()
+            if SKIP_LINE.search(nxt) or (len(s) < 80 and "Performance" in s):
+                break
+            digits += sum(c.isdigit() for c in s)
+        if digits > 4:
+            return False
+    return hit
 
 
 # ---------------------------------------------------------------- what a product

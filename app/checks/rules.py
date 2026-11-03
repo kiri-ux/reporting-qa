@@ -766,6 +766,10 @@ def check_dashboard(ctx) -> list[dict]:
     return []
 
 
+# A table row: a name, then a figure at the end of the line.
+DATA_ROW = re.compile(r"[A-Za-z)].*\s\$?[\d,]*\d(?:\.\d+)?%?\s*$")
+
+
 def check_blank_pages(ctx) -> list[dict]:
     path, pages = ctx["path"], ctx["pages"]
     if _report_blank(ctx.get("text") or "") or _page_one_empty(ctx):
@@ -792,6 +796,11 @@ def check_blank_pages(ctx) -> list[dict]:
             hits.append((pg, title[:70]))
             continue
         if sum(c.isdigit() for c in " ".join(body)) > 4:
+            continue
+        # A ONE-ROW TABLE IS DATA. The Breakers' DOOH Line Item Performance is
+        # a single strategy at 3,967 and Sonoma State's YouTube TV channels a
+        # single FOX News row at 1 - four digits and one, under the count above.
+        if any(DATA_ROW.search(l) for l in body):
             continue
         # A BARCK+ CHART IS DRAWN, NOT PRINTED. Its axis and points are
         # graphics, so a sparse one - Close Lumber's Visit by Day has two
@@ -1553,11 +1562,19 @@ def _initials(name: str) -> set[str]:
     International Cape Cod's read "FCICC - Flooring/Carpets/...", which no
     letter-by-letter comparison calls the same client.
     """
-    words = re.findall(r"[A-Za-z0-9]+", AMPERSAND.sub(" and ", name or ""))
     small = {"of", "the", "and", "a", "an", "at", "in", "for"}
-    out = {"".join(w[0] for w in words).lower(),
-           "".join(w[0] for w in words if w.lower() not in small).lower()}
+    out = set()
+    # WITH AND WITHOUT A TRAILING STATE. Floor Coverings International of West
+    # Vegas, NV reads "FCIWV - ..." on its line items: the initials stop before
+    # the ", NV" the order tacks on, so "fciwvn" never matched.
+    for nm in {name or "", STATE_TAIL.sub("", name or "")}:
+        words = re.findall(r"[A-Za-z0-9]+", AMPERSAND.sub(" and ", nm))
+        out |= {"".join(w[0] for w in words).lower(),
+                "".join(w[0] for w in words if w.lower() not in small).lower()}
     return {i for i in out if len(i) >= 3}
+
+
+STATE_TAIL = re.compile(r",\s*[A-Z]{2}\s*$")
 
 
 def _initials_lead(name: str, flat: str) -> bool:

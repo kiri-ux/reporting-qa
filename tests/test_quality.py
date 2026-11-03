@@ -1957,3 +1957,15 @@ def test_the_real_tiktok_report_is_quiet():
     text = got if isinstance(got, str) else got[0]
     assert "#Graven..." in text
     assert q.check_truncated_text({"text": text}) == []
+
+
+def test_an_empty_linkedin_page_is_not_linkedin():
+    """FCSI TAD bought no LinkedIn and printed an empty LinkedIn Spend page."""
+    from app.checks.products import detect
+
+    empty = ("LinkedIn Spend Performance﻿\n       Does not include management fee\n"
+             "Line Item Performance\nFCSI TAD - Architect Social Mirror CTV   50,981   12\n")
+    assert "LinkedIn" not in detect(empty, [])
+    full = ("LinkedIn Spend Performance\nDoes not include management fee\n"
+            "$1,762.52\n")
+    assert detect(full, []) == {"LinkedIn"}
