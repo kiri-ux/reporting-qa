@@ -4299,3 +4299,84 @@ def test_a_row_cut_off_at_the_page_edge_is_not_a_ctr_error():
         ("h C l    i l   b", {"Impressions": 23.0, "Clicks": 8.0, "CTR": 0.0})])
     out = check_row_math({"tables": [t], "text": ""})
     assert [f["code"] for f in out] == ["row_cut_off"]
+
+
+def _disk_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path/'r.db'}")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    import importlib
+    from app import config as cfg_mod
+    importlib.reload(cfg_mod)
+    from app import db as db_mod
+    importlib.reload(db_mod)
+    from app import ingest as imod
+    importlib.reload(imod)
+    db_mod.init_db()
+    return db_mod, imod, db_mod.SessionLocal()
+
+
+def test_files_no_report_points_at_are_swept(tmp_path, monkeypatch):
+    """Batch 3930 could not be created: /data was full of superseded copies
+    that no row pointed at, so the retention prune never saw them."""
+    import os
+    import time
+    db_mod, imod, db = _disk_env(tmp_path, monkeypatch)
+    b = db_mod.Batch(market="M", period="2026-10"); db.add(b); db.flush()
+    store = tmp_path / f"batch-{b.id}"
+    store.mkdir()
+    live = store / "live.pdf"; live.write_bytes(b"x" * 100)
+    waiting = store / "waiting-1-x.pdf"; waiting.write_bytes(b"x" * 100)
+    dead = store / "old copy.pdf"; dead.write_bytes(b"x" * 300)
+    fresh = store / ".incoming-abc.pdf"; fresh.write_bytes(b"x" * 50)
+    cache = store / ".old copy.pdf.cache" / "1-1"
+    cache.mkdir(parents=True); (cache / "p1-72.png").write_bytes(b"x")
+    old = time.time() - 7200
+    for f in (live, waiting, dead):
+        os.utime(f, (old, old))
+    db.add(db_mod.Report(batch_id=b.id, period="2026-10", client="C", filename="r.pdf",
+                         stored_path=str(live), pending_path=str(waiting)))
+    db.commit()
+
+    res = imod.prune_old_pdfs(db, force=True)
+    assert live.exists() and waiting.exists()
+    assert not dead.exists(), "orphan was kept"
+    assert fresh.exists(), "an upload in flight was deleted"
+    assert not (store / ".old copy.pdf.cache").exists()
+    assert res["freed"] >= 300
+
+
+def test_a_superseded_file_is_deleted_unless_another_row_has_it(tmp_path, monkeypatch):
+    db_mod, imod, db = _disk_env(tmp_path, monkeypatch)
+    b = db_mod.Batch(market="M", period="2026-10"); db.add(b); db.flush()
+    store = tmp_path / f"batch-{b.id}"; store.mkdir()
+    old, new, shared = store / "a.pdf", store / "b.pdf", store / "c.pdf"
+    for f in (old, new, shared):
+        f.write_bytes(b"x" * 10)
+    db.add(db_mod.Report(batch_id=b.id, period="2026-10", client="C", filename="r.pdf",
+                         stored_path=str(shared)))
+    db.commit()
+    assert imod.drop_file(db, old, keep=new) == 10 and not old.exists()
+    assert imod.drop_file(db, new, keep=new) == 0 and new.exists()
+    assert imod.drop_file(db, shared, keep=new) == 0 and shared.exists()
+
+
+def test_a_full_disk_makes_room_and_retries_once(tmp_path, monkeypatch):
+    import errno
+    db_mod, imod, db = _disk_env(tmp_path, monkeypatch)
+    calls = []
+
+    def write():
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return "ok"
+    made = []
+    monkeypatch.setattr(imod, "make_room", lambda d: made.append(1) or 0)
+    assert imod.with_room(db, write) == "ok"
+    assert len(calls) == 2 and made == [1]
+
+    def denied():
+        raise OSError(errno.EACCES, "Permission denied")
+    with pytest.raises(OSError):
+        imod.with_room(db, denied)
+    assert made == [1], "only a full disk makes room"

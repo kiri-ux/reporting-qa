@@ -3843,8 +3843,9 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
         db.add(batch)
         db.flush()
 
+    from .ingest import with_room
     store = settings.data_dir / f"batch-{batch.id}"
-    store.mkdir(parents=True, exist_ok=True)
+    with_room(db, lambda: store.mkdir(parents=True, exist_ok=True))
     safe = (re.sub(r"[^A-Za-z0-9._ -]", "_", file.filename or "")[:180]
             or f"{client}{extension(filekind)}")
     # THE NAME ON DISK HAS TO CARRY THE KIND. Everything downstream reads the
@@ -3853,7 +3854,7 @@ async def upload_for_expected(period: str = Form(""), market: str = Form(""),
     if not safe.lower().endswith(extension(filekind)):
         safe += extension(filekind)
     path = store / safe
-    path.write_bytes(blob)
+    with_room(db, lambda: path.write_bytes(blob))
 
     flight = client_flight(db, client, account_ids,
                            cutoff=(cycle_for(period).lifetime_cutoff
@@ -4191,17 +4192,25 @@ async def replace_report(report_id: int, request: Request,
     # A DECK REPLACING A PDF CHANGES THE FILE'S NAME, not only its contents.
     # The stored path decides the extension, so it is set before the rename.
     path = Path(rep.stored_path) if rep.stored_path else None
+    renamed_from = None
     if path is not None and not str(path).lower().endswith(extension(filekind)):
+        renamed_from = path
         path = path.with_suffix(extension(filekind))
         rep.stored_path = str(path)
         rep.file_at = dt.datetime.utcnow()
     _rename(rep, file.filename or "", db)
     if path is None:
         store = settings.data_dir / f"batch-{rep.batch_id}"
-        store.mkdir(parents=True, exist_ok=True)
         path = store / rep.filename
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(blob)
+    from .ingest import drop_file, with_room
+
+    def _write():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(blob)
+    with_room(db, _write)
+    # The old-kind file is nobody's now.
+    if renamed_from is not None:
+        drop_file(db, renamed_from, keep=path)
 
     # A lifetime is measured against the campaign that ended, so its flight
     # stops at this cycle's lifetime window rather than at whatever else the
