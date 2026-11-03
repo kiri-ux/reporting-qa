@@ -184,7 +184,9 @@ class Settings(BaseSettings):
     # How many months of report PDFs to keep on the disk. Once delivery is
     # wired up the shared drive holds the archive, so what is here is a cache
     # for the viewer and the packager. 0 keeps everything.
-    keep_pdf_months: int = 4
+    # 3, not 4: four months plus the cycle arriving is ~8 GB of a 10 GB disk,
+    # and the disk filled on Nov 3 2026 with uploads failing ENOSPC.
+    keep_pdf_months: int = 3
 
     # device breakout legitimately excludes these products
     device_excluded_products: str = "Mobile Conquesting,PPC,YouTube TV,LinkedIn,Performance Max,DOOH"
