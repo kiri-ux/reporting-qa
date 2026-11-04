@@ -330,6 +330,9 @@ def flight_lines(db: Session, client: str, accounts: str) -> list[dict]:
     return out
 
 
+PRIOR_CAMPAIGN_GAP = 60   # days
+
+
 def _cancelled_before(db: Session, client: str, lines, kept: list[dict]) -> list[dict]:
     """Cancelled orders that may have run BEFORE everything else the client has.
 
@@ -366,11 +369,20 @@ def _cancelled_before(db: Session, client: str, lines, kept: list[dict]) -> list
                         default=None)
             if c_start is None or c_start >= first:
                 continue
+            # A CANCELLED LINE THAT ENDED LONG BEFORE THE NEXT ONE BEGAN IS AN
+            # EARLIER CAMPAIGN. Hyundai Dealers' CTV line 127212 ran Jun - Sep
+            # 2025 on order 53164 and was cancelled; the live lines start
+            # Jul 07, 2026, and kiri confirmed the lifetime starts there. Close
+            # Lumber's 98655 runs into its live lines and still counts. Only
+            # where serve data covers the line: one older than the data stays
+            # in, so the lifetime check can still say it cannot tell.
+            before = floor is None or c_start < floor
+            if c_end and not before and (first - c_end).days > PRIOR_CAMPAIGN_GAP:
+                continue
             upto = min(c_end or first, first - dt.timedelta(days=1))
             frm = max(c_start, floor) if floor else c_start
             served = (_first_served_between(db, client, frm, upto)
                       if floor and frm <= upto else None)
-            before = floor is None or c_start < floor
             if served is None and not before:
                 continue
             out.append({"order": order,
