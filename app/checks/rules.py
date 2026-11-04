@@ -1441,6 +1441,14 @@ def near(a: str, b: str) -> bool:
     return SequenceMatcher(None, a, b).ratio() >= NAME_MATCH
 
 
+# Clients kiri has confirmed are the report's own client, line items named
+# another way. Flattened client -> flattened line item heads. Add to this
+# rather than acking the same finding every month; nobody renames the lines.
+KNOWN_SAME_CLIENT = {
+    "mullenfactorydirectflooring": {"mullencarpet"},
+}
+
+
 def check_client_data(ctx) -> list[dict]:
     """The data on the report has to belong to the client it names.
 
@@ -1496,7 +1504,9 @@ def check_client_data(ctx) -> list[dict]:
     def same(k, n):
         return (_same_client(k, n) or k in initials
                 or _initials_lead(heads.get(k, ""), n)
-                or _initials_then_rest(k, ctx.get("client") or ""))
+                or _initials_then_rest(k, ctx.get("client") or "")
+                or _same_parent(heads.get(k, ""), ctx.get("client") or "")
+                or k in KNOWN_SAME_CLIENT.get(n, ()))
     mine = sum(v for k, v in hits.items() if same(k, named))
     if mine / total >= 0.5:
         # Right client, spelled two ways. Not a report problem, but somebody
@@ -1510,7 +1520,9 @@ def check_client_data(ctx) -> list[dict]:
                 and named not in k and not _dropped_middle(k, named)
                 and k not in initials
                 and not _initials_lead(heads.get(k, ""), named)
-                and not _initials_then_rest(k, ctx.get("client") or "")]
+                and not _initials_then_rest(k, ctx.get("client") or "")
+                and not _same_parent(heads.get(k, ""), ctx.get("client") or "")
+                and k not in KNOWN_SAME_CLIENT.get(named, ())]
         if typo:
             return [_f("client_name_typo", "info",
                        "The order spells this client's name differently",
@@ -1630,6 +1642,32 @@ def _dropped_middle(a: str, b: str) -> bool:
            and short[len(short) - 1 - suf] == long[len(long) - 1 - suf]):
         suf += 1
     return pre >= 6 and suf >= 6 and pre + suf >= len(short)
+
+
+def _parent_of(name: str) -> str:
+    """The part of a client name before its own tight hyphen, flattened.
+
+    "District 4- English" -> "district4". A spaced " - " is the line item
+    separator, not part of the name, so only a hyphen without a space on both
+    sides counts.
+    """
+    m = re.match(r"\s*(.+?)(?:\s-(?=\S)|(?<=\S)-\s)", name or "")
+    if not m or " - " in m.group(0):
+        return ""
+    return re.sub(r"[^a-z0-9]", "", m.group(1).lower())
+
+
+def _same_parent(head: str, client: str) -> bool:
+    """Two sub-campaigns of one parent, named "<parent>- <part>".
+
+    DISTRICT 4- ENGLISH CARRIES LINES NAMED "District 4- Clark". Same order,
+    same client in TapClicks, and kiri confirmed nothing needs renaming - the
+    part after the parent's hyphen is not a different client. Clark's own
+    client is "District 6- Clark", a different parent, so a pull on the wrong
+    one of those still flags.
+    """
+    a, b = _parent_of(head), _parent_of(client)
+    return bool(a) and len(a) >= 5 and a == b
 
 
 def _same_client(a: str, b: str) -> bool:
