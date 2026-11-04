@@ -2,7 +2,10 @@ services:
   - type: web
     name: report-qa
     runtime: docker
-    plan: starter
+    # Standard is 1 CPU / 2 GB, the size the dashboard shows as 1c-2g. A
+    # blueprint sync applies this field, so a smaller value here drops the
+    # service to it on the next merge - that took the site down on Nov 3 2026.
+    plan: standard
     healthCheckPath: /healthz
     disk:
       name: report-store
