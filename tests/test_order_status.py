@@ -629,6 +629,36 @@ def test_a_cancelled_line_that_served_first_sets_the_lifetime_start(db, monkeypa
     assert "98652" in gapf["detail"] and "Jun 10, 2024" in gapf["detail"]
 
 
+def test_a_cancelled_line_from_an_earlier_campaign_does_not_set_the_start(db, monkeypatch):
+    """Hyundai Dealers: CTV line 127212 ran Jun - Sep 2025 and was cancelled;
+    the live lines on the same order start Jul 07, 2026."""
+    from types import SimpleNamespace
+    from app import ingest, roster
+    from app.db import ServedDays
+
+    def li(line, starts, ends, canceled):
+        return {"order": "53164", "line": line, "starts": starts, "ends": ends,
+                "canceled": canceled, "complete": False, "live": not canceled}
+
+    ctv = SimpleNamespace(account_ids="53164", line_ids="", product="CTV",
+                          starts_on=None, ends_on=None, order_starts_on=None,
+                          order_ends_on=None, live=True, canceled=False, complete=False,
+                          detail=[li("127212", "2025-06-02", "2025-09-21", True),
+                                  li("127213", "2026-07-07", "2026-10-07", False)])
+    monkeypatch.setattr(roster, "client_lines", lambda *a, **k: [ctv])
+    db.add(ServedDays(period="2024-06", market_key="m", client_key="other",
+                      market="M", client="Other", days=1, day_list=["2024-06-10"],
+                      first_day=dt.date(2024, 6, 10), last_day=dt.date(2024, 6, 10)))
+    db.add(ServedDays(period="2025-07", market_key="m", client_key="hyundaidealers",
+                      market="M", client="Hyundai Dealers", days=1,
+                      day_list=[], first_day=dt.date(2025, 7, 1),
+                      last_day=dt.date(2025, 7, 31)))
+    db.commit()
+
+    assert ingest.client_flight(db, "Hyundai Dealers", "53164") == \
+        (dt.date(2026, 7, 7), dt.date(2026, 10, 7))
+
+
 def test_a_cancelled_line_that_never_served_is_left_out(db, monkeypatch):
     from types import SimpleNamespace
     from app import ingest, roster
