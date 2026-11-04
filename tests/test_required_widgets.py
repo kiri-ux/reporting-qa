@@ -107,7 +107,7 @@ def test_youtube_on_the_order_with_no_section_still_owes_the_plus_widget():
                                          "No YouTube+ Creative Performance widget"]
 
 
-def test_only_a_youtube_tv_completion_widget_owes_no_youtube_widgets():
+def test_only_a_youtube_tv_completion_widget_is_flagged_to_come_off():
     """Carilion Clinic Foundation: YouTube TV ran, served no YouTube TV, was not
     billed and printed no line item - only the completion widget, which splits
     YouTube+ from TV by ad group name."""
@@ -115,7 +115,10 @@ def test_only_a_youtube_tv_completion_widget_owes_no_youtube_widgets():
             "\fDigital Marketing Report for Carilion Clinic Foundation\n"
             "YouTube TV Video Completion Performance by Creative\n"
             "Carilion_Understanding Proton Therapy   98.32%   97.87%\n")
-    assert check_required_widgets({"text": text, "products": {"YouTube"}}) == []
+    out = check_required_widgets({"text": text, "products": {"YouTube"}})
+    assert [(f["code"], f["title"]) for f in out] == [
+        ("widget_rogue", "YouTube TV widget on a buy with no YouTube TV")]
+    assert "YouTube TV Video Completion Performance by Creative" in out[0]["detail"]
 
 
 def _yt_ctx(text: str, *lines: str) -> dict:

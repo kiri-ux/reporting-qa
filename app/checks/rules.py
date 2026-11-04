@@ -2742,13 +2742,27 @@ def check_required_widgets(ctx) -> list[dict]:
         # under the YOUTUBE+ banner.
         yt_plus, yt_tv = bool(non_tv), bool(tv) and not non_tv
     elif "YT" in codes and not (yt_plus or yt_tv):
-        # NO YOUTUBE LINE ITEM AND ONLY YOUTUBE TV WIDGETS: NOTHING IS OWED.
+        # NO YOUTUBE LINE ITEM AND ONLY YOUTUBE TV WIDGETS: THE WIDGET GOES.
         # Carilion Clinic Foundation's YouTube TV campaign ran but served no
         # YouTube TV inventory, so nothing was billed and no line item printed.
         # The YouTube TV completion widget still shows it, because the Ads data
         # view has no network dimension and splits the two by ad group name.
-        yt_heads = re.findall(r"(?m)^\s*(YouTube\b.*)$", text)
-        if not (yt_heads and all("YouTube TV" in h for h in yt_heads)):
+        # kiri: the fix is taking that page off, not adding YouTube+ widgets.
+        yt_heads = list(re.finditer(r"(?m)^\s*(YouTube\b.*?)\s*$", text))
+        if yt_heads and all("YouTube TV" in m.group(1) for m in yt_heads):
+            titles = []
+            for m in yt_heads:
+                if m.group(1) not in titles:
+                    titles.append(m.group(1))
+            out.append(_f(
+                "widget_rogue", "fail",
+                "YouTube TV widget on a buy with no YouTube TV"
+                if len(titles) == 1 else
+                f"{len(titles)} YouTube TV widgets on a buy with no YouTube TV",
+                "This report carries " + ", ".join(f'"{t}"' for t in titles)
+                + ". Nothing in the line items is a YouTube TV buy.",
+                where=_where(ctx, yt_heads[0].start(1), titles[0])))
+        else:
             yt_plus = True                  # ran YouTube, nothing says which
     if yt_plus:
         owed(W_YT_PLACE, 1, "YouTube+")
