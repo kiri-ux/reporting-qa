@@ -2742,7 +2742,14 @@ def check_required_widgets(ctx) -> list[dict]:
         # under the YOUTUBE+ banner.
         yt_plus, yt_tv = bool(non_tv), bool(tv) and not non_tv
     elif "YT" in codes and not (yt_plus or yt_tv):
-        yt_plus = True                      # ran YouTube, nothing says which
+        # NO YOUTUBE LINE ITEM AND ONLY YOUTUBE TV WIDGETS: NOTHING IS OWED.
+        # Carilion Clinic Foundation's YouTube TV campaign ran but served no
+        # YouTube TV inventory, so nothing was billed and no line item printed.
+        # The YouTube TV completion widget still shows it, because the Ads data
+        # view has no network dimension and splits the two by ad group name.
+        yt_heads = re.findall(r"(?m)^\s*(YouTube\b.*)$", text)
+        if not (yt_heads and all("YouTube TV" in h for h in yt_heads)):
+            yt_plus = True                  # ran YouTube, nothing says which
     if yt_plus:
         owed(W_YT_PLACE, 1, "YouTube+")
         # AND ITS CREATIVE BREAKOUT. Pensacola State College's YouTube+ report

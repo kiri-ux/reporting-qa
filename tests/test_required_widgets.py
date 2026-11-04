@@ -107,6 +107,17 @@ def test_youtube_on_the_order_with_no_section_still_owes_the_plus_widget():
                                          "No YouTube+ Creative Performance widget"]
 
 
+def test_only_a_youtube_tv_completion_widget_owes_no_youtube_widgets():
+    """Carilion Clinic Foundation: YouTube TV ran, served no YouTube TV, was not
+    billed and printed no line item - only the completion widget, which splits
+    YouTube+ from TV by ad group name."""
+    text = ("Line Item Performance\n Carilion - AI Social Mirror   52,162   295   0.57%\n"
+            "\fDigital Marketing Report for Carilion Clinic Foundation\n"
+            "YouTube TV Video Completion Performance by Creative\n"
+            "Carilion_Understanding Proton Therapy   98.32%   97.87%\n")
+    assert check_required_widgets({"text": text, "products": {"YouTube"}}) == []
+
+
 def _yt_ctx(text: str, *lines: str) -> dict:
     grid = "Line Item Performance\n" + "".join(
         f" {n}   1,000   10   1.00%\n" for n in lines)
