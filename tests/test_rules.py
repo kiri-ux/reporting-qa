@@ -4405,3 +4405,28 @@ def test_a_one_row_table_is_not_an_empty_widget():
     assert not DATA_ROW.search("Spend Performance")
     assert not DATA_ROW.search('"Calls from ads" in the widget measures calls that last at least 60 seconds.')
     assert not DATA_ROW.search("Note: Costs do not include management fee")
+
+
+def test_a_sub_campaign_of_the_same_parent_is_the_same_client():
+    """District 4- English carries lines named "District 4- Clark". kiri: no
+    rename needed. A different parent (District 6- Clark) still flags."""
+    from app.checks.rules import check_client_data
+    text = ("Line Item Performance\n"
+            " Line Item Name   Impressions   Clicks   CTR\n"
+            " District 4- Clark - AI Display   106,652   252   0.24%\n"
+            " District 4- English - Address Targeting Mobile   48,451   219   0.45%\n"
+            " District 4- Clark - Retargeting Display   5,191   19   0.37%\n")
+    assert check_client_data({"client": "District 4- English", "text": text}) == []
+    other = text.replace("District 4- Clark", "District 6- Clark")
+    out = check_client_data({"client": "District 4- English", "text": other})
+    assert [f["code"] for f in out] == ["wrong_client"]
+
+
+def test_a_client_kiri_confirmed_is_not_the_wrong_client():
+    from app.checks.rules import check_client_data
+    text = ("Line Item Performance\n"
+            " Line Item Name   Impressions   Clicks   CTR\n"
+            " Mullen Carpet - Floor Tiles Display   60,000   120   0.20%\n"
+            " Mullen Carpet - Retargeting Display   9,000   20   0.22%\n")
+    assert check_client_data(
+        {"client": "Mullen Factory Direct Flooring", "text": text}) == []
