@@ -1724,6 +1724,38 @@ def check_site_ctr(ctx) -> list[dict]:
                where=_where(ctx, bad[0][2], bad[0][3]))]
 
 
+def check_site_sort(ctx) -> list[dict]:
+    """Site and App Performance lists the biggest placements first.
+
+    kiri, Nov 2026: the widget is sorted by impressions, largest to smallest.
+    Speakeasy Dispensary's printed sorted by name ("Name" header ascending), so
+    page one was "(1)", "#Alarm Clock", "#Calculator" - a few impressions each -
+    and the placements that carried the campaign were pages away. Ties are
+    fine; any row with more impressions than the row above it is not.
+    """
+    text = ctx.get("text") or ""
+    for m in SITE_GRID.finditer(text):
+        title = m.group(1).strip()
+        prev = None
+        for name, at in grid_rows(text, m.end()):
+            eol = text.find("\n", at)
+            line = text[at:eol if eol > 0 else len(text)]
+            cells = [c for c in re.split(r"\s{2,}", line.strip()) if c]
+            nums = _figures(cells[1:])
+            if not nums:
+                continue
+            row = (GLUED_TITLE.sub("", name).strip(), nums[0])
+            if prev and row[1] > prev[1]:
+                return [_f("site_sort", "warn",
+                           f"{title} is not sorted by impressions",
+                           f"\"{row[0][:40]}\" ({row[1]:,.0f}) "
+                           f"comes after \"{prev[0][:40]}\" "
+                           f"({prev[1]:,.0f}).",
+                           where=_where(ctx, m.start(1), title))]
+            prev = row
+    return []
+
+
 # ------------------------------------------- 10. video and audio owe a rate
 # Anything a person watches or listens to has a completion rate, and the client
 # is paying for the watching. A video or audio section with no completion

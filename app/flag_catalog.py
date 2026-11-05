@@ -314,6 +314,10 @@ FLAG_GROUPS: list[tuple[str, list[tuple[str, str, str, bool, str]]]] = [
          "bot traffic on a placement.",
          BUYER, False,
          "Okay to package but alert the buyer to check on the high CTR."),
+        ("check_site_sort",
+         "Site and App Performance not sorted by impressions, largest first.",
+         REPORTER, False,
+         "Sort the widget by impressions, largest to smallest, and repull."),
     ]),
 ]
 
@@ -530,6 +534,8 @@ FINDING_KINDS: list[tuple[str, str, tuple[str, ...]]] = [
     ("completion_over_100", "Completion rate above 102%",
      ("completion_over_100",)),
     ("site_ctr_high", "Sites clicking above the ceiling", ("site_ctr_high",)),
+    ("site_sort", "Site and App Performance not sorted by impressions",
+     ("site_sort",)),
     ("previews_blank", "Creative previews did not render",
      ("missing_thumbnail", "blank_screenshot")),
     ("preview_link_blank", "Variants with no preview link",
