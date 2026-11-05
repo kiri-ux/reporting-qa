@@ -61,6 +61,27 @@ def test_a_product_word_anywhere_in_the_name_is_enough():
     assert q.check_strategy_categorized({"text": text}) == []
 
 
+def test_pmax_asset_groups_are_not_uncategorized_strategies():
+    """Lakehouse 5143: "Winter" and "Brickman" are Performance Max asset
+    groups, filed under PMax by TapClicks."""
+    text = ("Performance Max Week by Week Spend Performance\n"
+            "Line Item Performance\n"
+            "Name   Impressions   Clicks   CTR\n"
+            "Winter     13,343   449   3.37%\n"
+            "Brickman    1,635   300  18.35%\n")
+    assert q.check_strategy_categorized({"text": text}) == []
+
+
+def test_mobile_retargeting_video_is_a_video_line():
+    """School Choice Wisconsin AD 61 (5429) read its Video line as Mobile
+    Conquesting."""
+    from app.checks.served import report_product
+    assert report_product(
+        "School Choice Wisconsin Action - AD 61 - Mobile Retargeting Video") == "Video"
+    assert report_product("Close Lumber - Geo-Retargeting Mobile") == "Mobile Conquesting"
+    assert report_product("Acme - Behavioral Mobile Conquesting") == "Mobile Conquesting"
+
+
 def test_a_name_with_no_product_word_at_all_is_flagged():
     text = ("Line Item Performance\n"
             "Name   Impressions   Clicks   CTR\n"
