@@ -198,6 +198,13 @@ class Settings(BaseSettings):
     # for ten or twelve - so at 10% this was warning on the normal case
     # and nobody was reading it.
     device_under_tolerance_pct: float = 20.0
+    # Display and Social Mirror lines get 35% (kiri, Nov 5 2026). Backup
+    # Exchange (Zeta) reports a large share of Unknown devices, which the
+    # widget filters out: Vortakt ran 30% under, Route 66 23%, both exactly
+    # the Unknown count. The report's line names do not say which exchange a
+    # line ran on, so the allowance goes by product. CTV and the rest keep
+    # 20%: Greg Franklin's 23% short is a missing device day, a real gap.
+    device_under_display_tolerance_pct: float = 35.0
 
     class Config:
         env_file = ".env"
