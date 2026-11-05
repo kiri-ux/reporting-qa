@@ -4440,3 +4440,19 @@ def test_donorconnect_envision_sight_is_its_own_client():
             " Yes Idaho- Envision Sight - Retargeting Display   45,050   60   0.13%\n")
     assert check_client_data(
         {"client": "DonorConnect- Envision Sight", "text": text}) == []
+
+
+def test_site_and_app_sorted_by_name_is_flagged():
+    from app.checks.quality import check_site_sort
+    head = ("Site and App Performance\n"
+            " Name   Impressions   Clicks   CTR\n")
+    by_name = head + (" (1)   15   0   0.00%\n"
+                      " #Alarm Clock   7   0   0.00%\n"
+                      " #Calculator   21   0   0.00%\n")
+    out = check_site_sort({"text": by_name})
+    assert [f["code"] for f in out] == ["site_sort"]
+    by_imps = head + (" Otnews.com   126   0   0.00%\n"
+                      " 2.boredpanda.com   40   0   0.00%\n"
+                      " 1sttix.org   20   0   0.00%\n"
+                      " 101planners.com   20   0   0.00%\n")
+    assert check_site_sort({"text": by_imps}) == []

@@ -19,7 +19,7 @@ from .quality import (check_blank_screenshots, check_conversion_names,
                       check_creative_names, check_social_mirror_sizes,
                       check_creative_shape,
                       check_strategy_categorized, check_truncated_text,
-                      check_completion_present, check_site_ctr,
+                      check_completion_present, check_site_ctr, check_site_sort,
                       check_store_visits, STORE_TABLE,
                       check_social_placement_totals, COMPLETION_OWED,
                       section_bodies,
@@ -3007,6 +3007,7 @@ CHECKS: list[tuple] = [
     (check_social_placement_totals,
      "Social placements add up to no more than their platform totals"),
     (check_site_ctr,        "No site is clicking at a rate a person would not"),
+    (check_site_sort,       "Site and App Performance is sorted by impressions"),
     (check_completion_present,
      "Every video and audio product reports how much got watched"),
     (check_store_visits,    "Store visits agree with the store table"),
@@ -3098,6 +3099,7 @@ SKIP_WHY = {
     "check_social_mirror_sizes": "no Social Mirror creative grid on the report",
     "check_social_placement_totals": "no social placement grid on the report",
     "check_site_ctr": "no site and app breakout on the report",
+    "check_site_sort": "no site and app breakout on the report",
     "check_completion_present": "no video or audio product on the report",
     "check_store_visits": "no store visit breakout on the report",
 }
@@ -3271,6 +3273,8 @@ def _rule_applies(rule, ctx) -> bool:
         # a running campaign; on a finished one there is nothing left to do.
         return (not ctx.get("is_lifetime")
                 and bool(SITE_GRID.search(ctx.get("text") or "")))
+    if name == "check_site_sort":
+        return bool(SITE_GRID.search(ctx.get("text") or ""))
     if name == "check_social_placement_totals":
         return bool(PLACEMENT_GRID.search(ctx.get("text") or ""))
     if name == "check_rogue_ctv":
