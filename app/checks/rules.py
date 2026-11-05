@@ -1446,6 +1446,7 @@ def near(a: str, b: str) -> bool:
 # rather than acking the same finding every month; nobody renames the lines.
 KNOWN_SAME_CLIENT = {
     "mullenfactorydirectflooring": {"mullencarpet"},
+    "donorconnectenvisionsight": {"yesidahoenvisionsight"},
 }
 
 
