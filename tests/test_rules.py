@@ -4430,3 +4430,13 @@ def test_a_client_kiri_confirmed_is_not_the_wrong_client():
             " Mullen Carpet - Retargeting Display   9,000   20   0.22%\n")
     assert check_client_data(
         {"client": "Mullen Factory Direct Flooring", "text": text}) == []
+
+
+def test_donorconnect_envision_sight_is_its_own_client():
+    from app.checks.rules import check_client_data
+    text = ("Line Item Performance\n"
+            " Line Item Name   Impressions   Clicks   CTR\n"
+            " Yes Idaho- Envision Sight - Philanthropy/Charity Donors Behavioral Display   80,000   120   0.15%\n"
+            " Yes Idaho- Envision Sight - Retargeting Display   45,050   60   0.13%\n")
+    assert check_client_data(
+        {"client": "DonorConnect- Envision Sight", "text": text}) == []
