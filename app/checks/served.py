@@ -26,7 +26,10 @@ from .quality import line_item_totals
 # at the end, and the order's own pattern needs both words, so every Mobile
 # Conquesting line on every report matched nothing at all.
 NICKNAMES: list[tuple[str, str]] = [
-    ("Mobile Conquesting", r"\bmobile\b"),
+    # NOT WHEN A FORMAT WORD ENDS THE NAME. "School Choice Wisconsin Action -
+    # AD 61 - Mobile Retargeting Video" is a Video line, and was read as the
+    # report's only Mobile Conquesting - "5,318 served", 97% short (5429).
+    ("Mobile Conquesting", r"\bmobile\b(?!.*\b(?:video|display|audio)\W*$)"),
     # AMAZON PUTS ITS NAME ON EITHER SIDE OF THE FORMAT. "... Behavioral Amazon
     # CTV" and "... Products Video Amazon" are the same buy written two ways,
     # and the order's own patterns are anchored to the front of a product name

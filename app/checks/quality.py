@@ -488,9 +488,20 @@ def line_item_totals(text: str) -> list[tuple[str, float, float]]:
     return out
 
 
+PMAX_SECTION = re.compile(r"^[ \t]*Performance Max\b[^\n]*\b(?:Performance|Spend|Conversions?)\b", re.M)
+
+
 def check_strategy_categorized(ctx) -> list[dict]:
     """Every strategy line has to name the product it runs."""
     text = ctx.get("text") or ""
+    # PERFORMANCE MAX ASSET GROUPS. A PMax line item is named after its asset
+    # group - "Winter", "Brickman", "Patton Collision Center - Commercial
+    # Vehicle Repair/Dent Repair/Fleet Vehicle" - and TapClicks files it under
+    # Performance Max by data source, not by name, so it never becomes its own
+    # slice (Patton 5190, Lakehouse 5143, Nov 2026). On a report carrying a
+    # Performance Max section a bare name is taken to be one of those.
+    if PMAX_SECTION.search(text):
+        return []
     bad, seen, first_at = [], set(), -1
     for name, at in line_item_names(text):
         low = name.lower()
