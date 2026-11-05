@@ -446,6 +446,11 @@ def check_creative(ctx) -> list[dict]:
     return []
 
 
+# Lines that can run on Backup Exchange (Zeta), whose Unknown-device share the
+# device widget filters out. See device_under_display_tolerance_pct.
+DISPLAY_LINE = re.compile(r"\b(?:Display|Social Mirror)\b", re.I)
+
+
 def check_device(ctx) -> list[dict]:
     """The device breakout cannot describe more impressions than were served.
 
@@ -474,12 +479,14 @@ def check_device(ctx) -> list[dict]:
     where = _where(ctx, (ctx.get("text") or "").find(title), title)
 
     excluded = settings.excluded_products
-    eligible = 0.0
+    eligible = display = 0.0
     li = [t for t in ctx["tables"] if LINE_ITEM.search(t.title or "")]
     for t in li:
         for name, v in t.body:
             if not is_device_excluded(name, excluded):
                 eligible += v.get("Impressions", 0.0)
+                if DISPLAY_LINE.search(re.sub(r"\s+", " ", name or "")):
+                    display += v.get("Impressions", 0.0)
 
     trace = [("Device breakout total", f"{device_total:,.0f} impressions"),
              ("Top-line impressions", f"{imps:,.0f}"),
@@ -500,7 +507,12 @@ def check_device(ctx) -> list[dict]:
 
     if eligible > 0:
         pct = (device_total - eligible) / eligible * 100
-        if pct < -settings.device_under_tolerance_pct:
+        # Each line may run short by its product's allowance, weighted by
+        # impressions: Display and Social Mirror by the larger one.
+        allowed = ((eligible - display) * settings.device_under_tolerance_pct
+                   + display * settings.device_under_display_tolerance_pct
+                   ) / eligible
+        if pct < -allowed:
             return [_f("device_under", "warn",
                        "Device breakout well under the eligible total",
                        f"Device totals {device_total:,.0f} against {eligible:,.0f} "
@@ -542,13 +554,12 @@ def check_row_math(ctx) -> list[dict]:
             # creative row is clipped by the page edge and its text layer is
             # the tops of the glyphs: "h C l    i l   b   23   8   0   %",
             # which read as 8 clicks on 23 impressions at 0.00%. Its numbers
-            # are not numbers anybody can check, so the row is reported as
-            # cut off rather than as wrong math.
+            # are not numbers anybody can check, so the row is skipped.
+            #
+            # It used to raise "Row cut off at the page edge". kiri (Nov 5
+            # 2026) dropped it: the widget is often already as tall as the
+            # page allows, so there is nothing for the reporter to do.
             if _clipped_row(name):
-                at = ctx["text"].find(name[:20]) if name else -1
-                out.append(_f("row_cut_off", "warn", "Row cut off at the page edge",
-                              f"{t.title or 'table'}: last row cut off.",
-                              where=_where(ctx, at, t.title or "")))
                 continue
             imps, clicks, ctr = v.get("Impressions"), v.get("Clicks"), v.get("CTR")
             if not imps or clicks is None or ctr is None:

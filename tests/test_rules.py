@@ -2084,6 +2084,43 @@ def test_fourteen_percent_under_is_no_longer_a_warning():
     assert 15066 / 17535 - 1 > -0.20
 
 
+# ------------------------------------------- Display / Social Mirror Unknowns
+def _device_ctx(device, lines, imps):
+    from app.checks.parser import Table
+    dev = Table(title="Device Performance",
+                rows=[("Mobile", {"Impressions": float(device)})])
+    li = Table(title="Line Item Performance",
+               rows=[(n, {"Impressions": float(v)}) for n, v in lines])
+    return {"tables": [dev, li], "imps": float(imps), "text": ""}
+
+
+def test_display_and_social_mirror_allow_35_percent_under():
+    from app.checks.rules import check_device
+    assert check_device(_device_ctx(283965, [
+        ("Route 66 Shooting Sports Park - Behavioral Display", 368271),
+        ("Route 66 Shooting Sports Park - Geo-Fencing Display", 2777)],
+        371048)) == []
+    assert check_device(_device_ctx(78933, [
+        ("Vortakt Barrel Works - Gun Manufacturing B2B Social Mirror", 113171),
+        ("Vortakt Barrel Works - Geo-Fence Social Mirror", 233)], 113404)) == []
+    out = check_device(_device_ctx(60000, [("Acme - Display", 100000)], 100000))
+    assert [f["code"] for f in out] == ["device_under"]
+
+
+def test_ctv_keeps_the_20_percent_line():
+    from app.checks.rules import check_device
+    out = check_device(_device_ctx(71807, [
+        ("Greg Franklin for Yucaipa City Council 2026 - Restricted CTV", 40188),
+        ("Greg Franklin - Restricted CTV + Video", 53016)], 93204))
+    assert [f["code"] for f in out] == ["device_under"]
+
+
+def test_display_over_the_top_line_still_fails():
+    from app.checks.rules import check_device
+    out = check_device(_device_ctx(103000, [("Acme - Display", 100000)], 100000))
+    assert [f["code"] for f in out] == ["device_over"]
+
+
 # ------------------------------------------- the data belongs to this client
 def test_a_report_pulled_against_the_wrong_client_is_caught():
     """It passes everything else - the numbers are consistent, the widgets are
@@ -4285,7 +4322,7 @@ def test_a_geofence_ctr_that_lost_its_point_is_read_as_one():
     assert m.groups() == ("50", "0", "0.00")
 
 
-def test_a_row_cut_off_at_the_page_edge_is_not_a_ctr_error():
+def test_a_row_cut_off_at_the_page_edge_is_not_flagged():
     """TPB Resorts' last creative row is clipped: "h C l    i l   b"."""
     from app.checks.rules import check_row_math, _clipped_row
     from app.checks.parser import Table
@@ -4298,7 +4335,7 @@ def test_a_row_cut_off_at_the_page_edge_is_not_a_ctr_error():
          {"Impressions": 4368.0, "Clicks": 40.0, "CTR": 0.92}),
         ("h C l    i l   b", {"Impressions": 23.0, "Clicks": 8.0, "CTR": 0.0})])
     out = check_row_math({"tables": [t], "text": ""})
-    assert [f["code"] for f in out] == ["row_cut_off"]
+    assert out == []
 
 
 def _disk_env(tmp_path, monkeypatch):
