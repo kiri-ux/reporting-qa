@@ -4222,6 +4222,16 @@ def test_the_website_visitor_id_dashboard_is_the_wrong_one():
     assert got[0]["title"] == "Wrong reporting dashboard used for this report"
 
 
+def test_view_through_conversions_alone_are_not_the_product():
+    """Cell Bio 5717: Social Mirror served nothing in October and printed
+    only its view-through conversions."""
+    from app.checks.products import detect
+    text = ("Social Mirror View-through Conversion Performance Breakout\n"
+            "Name   Conversions\n")
+    assert "Social Mirror" not in detect(text, [])
+    assert "Social Mirror" in detect("Social Mirror Creative Performance\n", [])
+
+
 def test_a_visitor_id_only_client_is_on_the_right_dashboard():
     """Belmont Park - Website Visitor ID (5980, 5011)."""
     from app.checks.rules import check_dashboard
