@@ -85,6 +85,8 @@ SECTION_PATTERNS: list[tuple[str, str]] = [
     ("Display", r"^Display (?:Creative|Click|Conversion)"),
 ]
 
+VIEW_THROUGH = re.compile(r"\bView[- ]?through Conversion", re.I)
+
 # Line-item name suffix -> product. Order matters.
 TAIL_PATTERNS: list[tuple[str, str]] = [
     # DOOH first. Its line items are named "... Venue Targeting DOOH Video"
@@ -499,6 +501,13 @@ def detect(text: str, tables) -> set[str]:
             titles.append(s)
 
     for title in titles:
+        # A VIEW-THROUGH BREAKOUT IS NOT EVIDENCE THE PRODUCT RAN (kiri, Nov
+        # 2026). View-throughs land for weeks after a flight ends: American
+        # Society for Cell Biology's Social Mirror served nothing in October
+        # and still printed 6 view-through conversions, which read as Social
+        # Mirror on the report with no live order (5717).
+        if VIEW_THROUGH.search(title):
+            continue
         for product, rx in SECTION_PATTERNS:
             if re.search(rx, title):
                 found.add(product)
