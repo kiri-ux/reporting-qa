@@ -4222,6 +4222,16 @@ def test_the_website_visitor_id_dashboard_is_the_wrong_one():
     assert got[0]["title"] == "Wrong reporting dashboard used for this report"
 
 
+def test_a_visitor_id_only_client_is_on_the_right_dashboard():
+    """Belmont Park - Website Visitor ID (5980, 5011)."""
+    from app.checks.rules import check_dashboard
+    ctx = {"page_text": ["Website Visitor ID for Belmont Park - Website Visitor ID\n"
+                         "Top Visits by Industry\n"], "text": ""}
+    assert check_dashboard(ctx) == []
+    ctx = {"page_text": ["Website Visitor ID for San Diego Blood Bank\n"], "text": ""}
+    assert [f["code"] for f in check_dashboard(ctx)] == ["wrong_dashboard"]
+
+
 def test_a_page_one_with_no_tiles_is_a_blank_report():
     """Parkwood at Polo Grounds: cover and footnote, then Google Business."""
     from pathlib import Path

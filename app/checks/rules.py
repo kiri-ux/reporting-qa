@@ -765,12 +765,18 @@ def _page_one_empty(ctx) -> bool:
 # September came out of it: "Website Visitor ID for ..." in the header and
 # visitor demographics where the campaign should be.
 WVID_HEAD = re.compile(r"(?m)^\s*Website Visitor ID for\b")
+WVID_CLIENT = re.compile(r"\b(?:Website\s+)?Visitor\s+ID\b|\bWVID\b", re.I)
 
 
 def check_dashboard(ctx) -> list[dict]:
     """The report was built on the campaign reporting dashboard."""
     one = _page_one(ctx)
-    if WVID_HEAD.search(one):
+    m = WVID_HEAD.search(one)
+    # A CLIENT THAT ONLY BUYS VISITOR ID. Belmont Park - Website Visitor ID
+    # (5980, 5011, Nov 2026) is its own client, and the Visitor ID dashboard
+    # is the right one for it. Its name carries the product, which a campaign
+    # client's - "San Diego Blood Bank" - does not.
+    if m and not WVID_CLIENT.search(one[m.end():].split("\n", 1)[0]):
         return [_f("wrong_dashboard", "fail",
                    "Wrong reporting dashboard used for this report", "",
                    where="p1")]
