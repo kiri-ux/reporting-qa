@@ -4232,6 +4232,17 @@ def test_view_through_conversions_alone_are_not_the_product():
     assert "Social Mirror" in detect("Social Mirror Creative Performance\n", [])
 
 
+def test_a_broken_image_glyph_is_a_logo_that_did_not_load():
+    """USD Data Science 54693: Top CTV Publishers logos came out as the
+    browser's 14x16 broken-image glyph."""
+    from pathlib import Path
+    from app.checks.rules import run_all
+    fx = Path(__file__).parent / "fixtures" / "broken_publisher_logos.pdf"
+    r = run_all(fx, "October 2026_Test 1.pdf")
+    got = [f for f in r["findings"] if f["code"] == "missing_thumbnail"]
+    assert [f["title"] for f in got] == ["2 publisher images did not render"]
+
+
 def test_a_visitor_id_only_client_is_on_the_right_dashboard():
     """Belmont Park - Website Visitor ID (5980, 5011)."""
     from app.checks.rules import check_dashboard
