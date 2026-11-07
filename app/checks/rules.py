@@ -651,6 +651,31 @@ def _before_thumbnails(ctx) -> bool:
     return bool(period) and period < THUMBNAILS_FROM.strftime("%Y-%m")
 
 
+PICTURE_COLUMN = re.compile(r"(Publisher Image|Station Image|Preview Image|Ad Preview)")
+GLYPH_PX = 24
+
+
+def broken_image_glyphs(path) -> dict[int, int]:
+    """{page: count} of images no bigger than the broken-image glyph."""
+    from .. import proc as _proc
+    from .pdfcache import text as _cached
+    listing = _cached(path, "imglist", lambda: _proc.run(
+        ["pdfimages", "-list", str(path)], capture_output=True, text=True,
+        timeout=60).stdout or "")
+    got: dict[int, int] = {}
+    for line in listing.splitlines():
+        bits = line.split()
+        if len(bits) < 5 or bits[2] != "image":
+            continue
+        try:
+            page, w, h = int(bits[0]), int(bits[3]), int(bits[4])
+        except ValueError:
+            continue
+        if w <= GLYPH_PX and h <= GLYPH_PX:
+            got[page] = got.get(page, 0) + 1
+    return got
+
+
 def check_thumbnails(ctx) -> list[dict]:
     """ONE FINDING PER WIDGET, NOT ONE PER REPORT.
 
@@ -687,6 +712,33 @@ def check_thumbnails(ctx) -> list[dict]:
                 where = f"p{page_no} · {title}" if title else f"p{page_no}"
                 counts[where] = counts.get(where, 0) + 1
                 nouns[where] = noun
+    except Exception:      # a preview count is never worth failing the run
+        pass
+
+    # THE BROWSER'S BROKEN-IMAGE GLYPH IS STILL A PICTURE, so the pixel test
+    # above reads it as printed. USD's three October reports (54692, 54693,
+    # 54694, Local Media San Diego) went out with Top CTV Publishers logos
+    # replaced by it, and the client found them. The glyph is embedded as a
+    # 14x16 image; no real logo, preview or partner header is anywhere near
+    # that small, so any image that size on a page with a picture column is a
+    # picture that did not load.
+    try:
+        path = ctx.get("path")
+        per_page = ctx.get("page_text") or []
+        if path and per_page:
+            for page_no, n in broken_image_glyphs(path).items():
+                if page_no > len(per_page):
+                    continue
+                ptxt = per_page[page_no - 1]
+                col = PICTURE_COLUMN.search(ptxt)
+                if not col:
+                    continue
+                title = (widget_at(ptxt, col.start()) or "").strip()
+                where = f"p{page_no} · {title}" if title else f"p{page_no}"
+                # The pixel test may have caught some of the same cells.
+                counts[where] = max(counts.get(where, 0), n)
+                nouns[where] = ("publisher image" if "Publisher" in col.group()
+                                else nouns.get(where, "creative preview"))
     except Exception:      # a preview count is never worth failing the run
         pass
 
