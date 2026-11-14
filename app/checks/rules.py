@@ -2734,6 +2734,28 @@ def check_required_widgets(ctx) -> list[dict]:
     heads = _heading_counts(text)
     out = []
 
+    # THE LINE ITEMS NAME A PRODUCT AND NOTHING AFTER THEM DOES. Anchorage
+    # School District HR Out of Market (Stream Alaska, Oct 2026) came out as
+    # the summary page and the line item table - four Social Mirror lines and
+    # not one Social Mirror widget - and passed every check, because the only
+    # evidence of a product was the line item tails, and nothing asks a Social
+    # Mirror report for a particular widget. PSC YT+ in September was the same
+    # three pages. Only when NO product has a section of its own: a report
+    # with real product pages whose line items also name a sibling product
+    # (Amazon CTV next to Amazon Video, Geo-Framing under Mobile Conquesting)
+    # is a different, normal shape.
+    tables = ctx.get("tables")
+    if tables is not None:
+        from .products import detect, detect_tails
+        tails = detect_tails(tables)
+        if tails and not detect(text, tables, sections_only=True) and not secs:
+            for product in sorted(tails):
+                out.append(_f("widget_missing", "fail",
+                              f"No {product} pages",
+                              "Only the summary and line items are on the report.",
+                              where=_where(ctx, max(text.find("Line Item"), 0),
+                                           "Line Item")))
+
     def _section_spot(ctx, why: str) -> str:
         """The page a product's section starts on, or "" when there are none."""
         text = ctx.get("text") or ""

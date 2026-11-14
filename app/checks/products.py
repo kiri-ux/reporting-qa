@@ -456,7 +456,7 @@ def _whole(needle: str, haystack: str) -> bool:
                      haystack) is not None
 
 
-def detect(text: str, tables) -> set[str]:
+def detect(text: str, tables, sections_only: bool = False) -> set[str]:
     """The products this report actually shows.
 
     Two kinds of evidence: a widget section - "Mobile Conquesting Creative
@@ -522,7 +522,15 @@ def detect(text: str, tables) -> set[str]:
             and _only_empty_pages(text, r"^\s*LinkedIn Spend Performance")):
         found.discard("LinkedIn")
 
+    if sections_only:
+        return found
+    return found | detect_tails(tables)
+
+
+def detect_tails(tables) -> set[str]:
+    """Products named only by the tail of a line item name."""
     from .rules import LINE_ITEM
+    found: set[str] = set()
     for t in tables:
         if not LINE_ITEM.search(t.title or ""):
             continue

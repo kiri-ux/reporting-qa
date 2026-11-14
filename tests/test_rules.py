@@ -4524,3 +4524,23 @@ def test_site_and_app_sorted_by_name_is_flagged():
                       " 1sttix.org   20   0   0.00%\n"
                       " 101planners.com   20   0   0.00%\n")
     assert check_site_sort({"text": by_imps}) == []
+
+
+def test_summary_and_line_items_only_is_a_finding():
+    """Anchorage School District HR Out of Market (Oct 2026) printed the
+    summary and four Social Mirror line items and nothing else, and passed."""
+    from app.checks.rules import run_all
+    r = run_all(FIXTURES / "asd_summary_only.pdf",
+                "October 2026_Anchorage School District HR Out of Market 56478.pdf",
+                expected_products={"Social Mirror"})
+    assert "No Social Mirror pages" in {f["title"] for f in r["findings"]}
+
+
+def test_line_item_sibling_products_are_not_missing_pages():
+    """Amazon CTV named only in line items, next to real Amazon Video pages."""
+    from app.checks.rules import run_all
+    for name in ("window_world_bowling_green.pdf", "renegade_marine.pdf",
+                 "srv_july_has_geoframing.pdf", "john316_ott_audio.pdf"):
+        r = run_all(FIXTURES / name)
+        assert not [f for f in r["findings"]
+                    if f["title"].startswith("No ") and f["title"].endswith(" pages")]
